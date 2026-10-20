@@ -1,0 +1,36 @@
+namespace P2MW.S_CerednikDrinfeld_QM_FakeEllipticCurve_exists_isEichlerOrder_forall_mem_awayUnits_iff_forall_exists_smul_mem_preservesLevel_and_exists_isMaximalOrder_inf_eq_of_isPullback_prod
+
+attribute [-instance] IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instDimensionLEOneSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.instLiesOverSubtypeAdicCompletionMemValuationSubringAdicCompletionIntegersCompletionIdealAsIdeal IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsPrincipalIdealRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemSubringIntegerWithZeroMultiplicativeInt_definitions IsDedekindDomain.HeightOneSpectrum.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicCompletionV_definitions
+
+set_option autoImplicit false
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+namespace LStabAsm
+
+open Matrix
+
+open scoped Quaternion
+
+open QuaternionAlgebra
+
+section Orders
+
+variable {a b : ℚ}
+
+def e10 {N : ℕ} : Matrix (Fin 2) (Fin 2) (ZMod N) →ₗ[ℤ] ZMod N where
+  toFun M := M 1 0
+  map_add' _ _ := rfl
+  map_smul' _ _ := rfl
+
+end Orders
+end LStabAsm
+end P2MW.S_CerednikDrinfeld_QM_FakeEllipticCurve_exists_isEichlerOrder_forall_mem_awayUnits_iff_forall_exists_smul_mem_preservesLevel_and_exists_isMaximalOrder_inf_eq_of_isPullback_prod

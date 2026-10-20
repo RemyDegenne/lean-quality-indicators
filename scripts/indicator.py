@@ -6,7 +6,8 @@ import tomllib
 from pathlib import Path
 
 DEFAULTS = {"positive": ["unnecessary_hypothesis_found"], "mathlib": "master",
-            "skip_libraries": [], "split_field": None}
+            "skip_libraries": [], "split_field": None, "denominator_excludes": [],
+            "flag_missing_docstring": False}
 
 
 def config(ind: Path) -> dict:

@@ -1,0 +1,26 @@
+namespace P2MW.S_ModularCurve_laurentBaseChange_x1FunctionField_sup_xHTopFunctionFieldC
+
+attribute [-instance] ModularCurve.PhiGen.instNeZeroPhiGenCosetA ModularCurve.instIsDomainTensorProduct AlgebraicClosure.Rat.isGalois AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.IsCurveOver.instNontrivialKaehler AlgebraicCurve.IsCurveOver.instFreeKaehler AlgebraicCurve.IsCurveOver.toHasPrincipalDivisors AlgebraicCurve.IsCurveOver.instFiniteResidue AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation
+
+set_option autoImplicit false
+
+set_option linter.unusedSectionVars false
+
+noncomputable section
+
+open scoped MatrixGroups
+
+namespace GenHSol
+
+open ModularCurve CongruenceSubgroup IntermediateField AlgebraicCurve HahnSeries UpperHalfPlane
+
+section ComplexSide
+
+variable (M q : ℕ)
+
+abbrev An (Δ : Subgroup SL(2, ℤ)) : IntermediateField ℂ (LaurentSeries ℂ) := adjoin ℂ (anSet Δ)
+
+end ComplexSide
+end GenHSol
+end
+end P2MW.S_ModularCurve_laurentBaseChange_x1FunctionField_sup_xHTopFunctionFieldC

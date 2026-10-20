@@ -1,0 +1,161 @@
+namespace P2MW.S_AlgebraicCurve_RationalFunctionField_trace_localResidue_placeInfty_X_pow_eq_zero
+
+attribute [-instance] AlgebraicCurve.instHasCanonicalLocalResidueK AlgebraicCurve.Place.instAlgebra_restrictResidueField AlgebraicCurve.Place.instIsScalarTower_restrictResidueField AlgebraicCurve.instHasLocalResidue AlgebraicCurve.HasSeparableResidue.of_perfectField_of_isCurveOver AlgebraicCurve.HasSeparableResidue.of_perfectField AlgebraicCurve.Place.instIsLocalHom_restrictSubringHom AlgebraicCurve.instHasCanonicalLocalResidueKStar ModularCurve.KwNo6Pin.isLocalRing_completion AlgebraicCurve.Place.kw_ffgc_finiteDimensional_adicCompletion instAlgebraSubtypeMemValuationSubring_definitions AlgebraicCurve.Place.kw_ffgc_isScalarTower_integersIntegersCompletion ModularCurve.KwF4gRRTate.instAlgebraKAdicCompletionIntegers AlgebraicCurve.Place.kw_ffgc_continuousSMul_adicCompletionComap AlgebraicCurve.Place.kw_ffgc_isScalarTower_integersCompletionCompletion IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instDimensionLEOneSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.instLiesOverSubtypeAdicCompletionMemValuationSubringAdicCompletionIntegersCompletionIdealAsIdeal IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsPrincipalIdealRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemSubringIntegerWithZeroMultiplicativeInt_definitions IsDedekindDomain.HeightOneSpectrum.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicCompletionV_definitions
+
+set_option linter.unusedSectionVars false
+
+set_option linter.unusedVariables false
+
+namespace J1ThirteenPlaneModel end J1ThirteenPlaneModel
+
+namespace J1ThirteenPicZeroFibreDiamond end J1ThirteenPicZeroFibreDiamond
+
+namespace J1ThirteenPicZeroLiteralChordChain end J1ThirteenPicZeroLiteralChordChain
+
+namespace J1ThirteenPicZeroPlaceDictionary end J1ThirteenPicZeroPlaceDictionary
+
+namespace J1ThirteenPicZeroPlaceDictionary.PlaceConstruction end J1ThirteenPicZeroPlaceDictionary.PlaceConstruction
+
+namespace J1ThirteenPicZeroLitPic0Comparison end J1ThirteenPicZeroLitPic0Comparison
+
+namespace J1ThirteenX113RiemannRochRows end J1ThirteenX113RiemannRochRows
+
+namespace MazurTate1973Mt31b end MazurTate1973Mt31b
+
+namespace J1ThirteenX113PackageHeldRowOne end J1ThirteenX113PackageHeldRowOne
+
+namespace MilneAvAg9bRd9DictionaryHeld3Closure end MilneAvAg9bRd9DictionaryHeld3Closure
+
+namespace J1ThirteenX113OrdRowWellDefinedReduction end J1ThirteenX113OrdRowWellDefinedReduction
+
+namespace MilneAvAg9bRd10EllKFinUpperRow end MilneAvAg9bRd10EllKFinUpperRow
+
+namespace MilneAvAg9bRd11X113TowerPowerBasis end MilneAvAg9bRd11X113TowerPowerBasis
+
+namespace Ag9b11bX113HwdUnitDischarge end Ag9b11bX113HwdUnitDischarge
+
+namespace MilneAvAg9bRd11DictionaryBinderShrink end MilneAvAg9bRd11DictionaryBinderShrink
+
+namespace MilneAvAg9bRd12X113AssemblyRetirement end MilneAvAg9bRd12X113AssemblyRetirement
+
+namespace MilneAvAg9bRd12T1P1InftyResidue end MilneAvAg9bRd12T1P1InftyResidue
+
+namespace MilneAvAg9bRd12X113LocalDatumMint end MilneAvAg9bRd12X113LocalDatumMint
+
+namespace MilneAvAg9bRd12X113FiveRowUpgrade end MilneAvAg9bRd12X113FiveRowUpgrade
+
+set_option autoImplicit false
+
+set_option synthInstance.maxHeartbeats 6400000
+
+set_option maxHeartbeats 12800000
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+section
+
+section
+
+noncomputable section
+
+p2m_open
+
+namespace AlgebraicCurve
+
+p2m_open
+
+namespace Place
+
+p2m_open
+
+p2m_reactivate
+
+variable {K F F' : Type*} [Field K] [Field F] [Field F']
+  [Algebra K F] [Algebra K F'] [Algebra F F'] [IsScalarTower K F F']
+  [FiniteDimensional F F'] [Algebra.IsSeparable F F']
+
+attribute [local instance 0] valuationSubringAlgebra
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+section ResidueDictionary
+
+variable {v : Place K F} {w : Place K F'}
+
+def toValuationSubringOfRestrictEq (hw : w.restrict F = v) :
+    integralClosureAt F' v →+* w.toValuationSubring :=
+  (algebraMap (integralClosureAt F' v) F').codRestrict
+    w.toValuationSubring.toSubring (forall_mem_of_restrict_eq hw)
+
+end ResidueDictionary
+end Place
+end AlgebraicCurve
+end
+end
+end
+end MilneAvAg9bRd12X113FiveRowUpgrade
+end MilneAvAg9bRd12X113LocalDatumMint
+end MilneAvAg9bRd12T1P1InftyResidue
+end MilneAvAg9bRd12X113AssemblyRetirement
+end MilneAvAg9bRd11DictionaryBinderShrink
+end Ag9b11bX113HwdUnitDischarge
+end MilneAvAg9bRd11X113TowerPowerBasis
+end MilneAvAg9bRd10EllKFinUpperRow
+end J1ThirteenX113OrdRowWellDefinedReduction
+end MilneAvAg9bRd9DictionaryHeld3Closure
+end J1ThirteenX113PackageHeldRowOne
+end MazurTate1973Mt31b
+end J1ThirteenX113RiemannRochRows
+end J1ThirteenPicZeroLitPic0Comparison
+end J1ThirteenPicZeroPlaceDictionary.PlaceConstruction
+end J1ThirteenPicZeroPlaceDictionary
+end J1ThirteenPicZeroLiteralChordChain
+end J1ThirteenPicZeroFibreDiamond
+end J1ThirteenPlaneModel
+end P2MW.S_AlgebraicCurve_RationalFunctionField_trace_localResidue_placeInfty_X_pow_eq_zero

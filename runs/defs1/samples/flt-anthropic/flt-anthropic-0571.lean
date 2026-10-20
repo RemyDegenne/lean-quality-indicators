@@ -1,0 +1,25 @@
+namespace P2MW.S_AlgebraicCurve_Place_exists_localParam_meromorphicOrderAt_evalAt_eq_ord_complex
+
+attribute [-instance] AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.instFundamentalIdentityOfSumRamificationInertia AlgebraicCurve.Place.instIsScalarTowerResidueFieldRestrictPushforward AlgebraicCurve.Place.instAlgebraResidueFieldRestrictPushforward AlgebraicCurve.Place.instIsLocalHomRestrictInclusion
+
+set_option autoImplicit false
+
+noncomputable section
+
+open Filter Topology Metric FormalMultilinearSeries Polynomial
+
+namespace AlgebraicCurve
+
+namespace Place
+
+namespace MeroRealize
+
+p2m_open
+
+def SL (L : LaurentSeries ℂ) (u : ℂ) : ℂ := u ^ L.order * S L.powerSeriesPart u
+
+end MeroRealize
+end Place
+end AlgebraicCurve
+end
+end P2MW.S_AlgebraicCurve_Place_exists_localParam_meromorphicOrderAt_evalAt_eq_ord_complex

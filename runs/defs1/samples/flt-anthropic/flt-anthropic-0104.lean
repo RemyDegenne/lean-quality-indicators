@@ -1,0 +1,78 @@
+namespace P2MW.S_CerednikDrinfeld_natCard_ofFiniteIdele_levelHeckeUSet_eq_natCard_subgroup_dualPair_ker_of_dvd_of_inf_conjByFiniteIdele
+
+attribute [-instance] WeierstrassCurve.instIsEllipticBaseChange WeierstrassCurve.Univ.Affine.instAddGroupPointFieldBaseChangeMvPolynomialCoeffIntCurve WeierstrassCurve.Univ.instIsEllipticFieldPointedCurve WeierstrassCurve.Univ.instCommRingPoly AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt WeierstrassCurve.Affine.instIsScalarTowerPolynomialRatFuncFunctionField_definitions WeierstrassCurve.Affine.instAlgebraRatFuncFunctionField_definitions WeierstrassCurve.Affine.instIsScalarTowerRatFuncFunctionField_definitions WeierstrassCurve.Affine.CoordinateRing.moduleFinite WeierstrassCurve.Affine.instDecidableEqFunctionField WeierstrassCurve.Affine.CoordinateRing.isIntegral IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instDimensionLEOneSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.instLiesOverSubtypeAdicCompletionMemValuationSubringAdicCompletionIntegersCompletionIdealAsIdeal IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsPrincipalIdealRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemSubringIntegerWithZeroMultiplicativeInt_definitions IsDedekindDomain.HeightOneSpectrum.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicCompletionV_definitions
+
+set_option autoImplicit false
+
+set_option linter.unusedVariables false
+
+set_option linter.unusedSectionVars false
+
+open scoped Quaternion TensorProduct NumberField Pointwise
+
+p2m_open
+
+set_option autoImplicit false
+
+open scoped Quaternion TensorProduct NumberField Pointwise
+
+p2m_open
+
+set_option autoImplicit false
+
+open IsDedekindDomain NumberField
+
+set_option autoImplicit false
+
+open scoped TensorProduct Quaternion Pointwise
+
+open IsDedekindDomain NumberField
+
+set_option autoImplicit false
+
+open scoped TensorProduct Quaternion Pointwise
+
+open IsDedekindDomain NumberField
+
+set_option autoImplicit false
+
+open scoped TensorProduct Quaternion Pointwise
+
+open IsDedekindDomain NumberField
+
+p2m_reactivate
+
+p2m_reactivate
+
+noncomputable section
+
+p2m_reactivate
+
+p2m_reactivate
+
+namespace CerednikDrinfeld
+
+namespace BrandtLevel
+
+p2m_open
+
+p2m_reactivate
+
+p2m_reactivate
+
+section Adelic
+
+variable {a b : ℚ}
+
+local notation "𝔸f" => FiniteAdeleRing (𝓞 ℚ) ℚ
+
+variable (Λ : Submodule ℤ ℍ[ℚ, a, b])
+
+def place (p : ℕ) (hp : p.Prime) : HeightOneSpectrum (𝓞 ℚ) :=
+  (Rat.HeightOneSpectrum.primesEquiv (R := 𝓞 ℚ)).symm ⟨p, hp⟩
+
+end Adelic
+end BrandtLevel
+end CerednikDrinfeld
+end
+end P2MW.S_CerednikDrinfeld_natCard_ofFiniteIdele_levelHeckeUSet_eq_natCard_subgroup_dualPair_ker_of_dvd_of_inf_conjByFiniteIdele

@@ -1,0 +1,52 @@
+public section
+
+noncomputable section
+
+open StateTransition (EvalsToInTime)
+
+open scoped BigOperators
+
+namespace GapCVP
+
+open GapCVP.TraceGolf (oneStep rebound)
+
+namespace Factor400BinaryConstructivePaperVariableAritySourceFieldArithmeticMachine
+
+section
+
+open Turing GapCVP.BinaryEncoding GapCVP.SourceFormulaStructuralDecoder GapCVP.SourceMachineCert
+
+open GapCVP.SourceStructuralTuringTM GapCVP.SourceMixedRadixDimensionRowMajorIndexTM
+
+open GapCVP.SourceMixedRadixMaskSelectedFlatPreparationTM
+
+open GapCVP.SourceFourFamilyBooleanPredicateTM GapCVP.SourceMixedRadixUnaryQuotientRemainderTM
+
+open GapCVP.SourceMixedRadixMaskSelectedRankTaggedSquareBasisPairTM
+
+open GapCVP.CNFCappedUnaryPairArithmeticTM GapCVP.CNFFiveFamilyOriginalIndexedBitTM
+
+open GapCVP.GaussianPivotScheduleTM GapCVP.GaussianRowWorker GapCVP.BinaryFieldBasis
+
+open GapCVP.BinaryModularReductionTM GapCVP.BinarySourceFieldMultiplicationTM
+
+open GapCVP.BinarySourceConvolutionTM GapCVP.BinarySourceConvolutionCorrectness
+
+open GapCVP.BinarySelectedIrreducibleWordTM GapCVP.BinarySelectedIrreducibleWordOrderCorrectness
+
+open GapCVP.FormulaBridge GapCVP.PhysicalFamilyRowTM GapCVP.Core.EffectiveBinaryField
+
+/-- GapCVP reduction support. -/
+@[irreducible] noncomputable def
+    paperVariableAritySourceIrreducibleNoProperFactorComputable :
+    BitTM
+      sourceIrreducibleNoProperFactorWord :=
+  factor400BinaryIrreduciblePhysicalCompositionComputer
+    paperVariableAritySourceIrreducibleProperFactorExistsComputable
+    sourceFourFamilyBooleanNotComputable
+
+end
+end Factor400BinaryConstructivePaperVariableAritySourceFieldArithmeticMachine
+end GapCVP
+end
+end

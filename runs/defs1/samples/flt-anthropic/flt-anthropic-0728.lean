@@ -1,0 +1,33 @@
+namespace P2MW.S_ModularCurve_relfinrank_xHHeckeCompositum_eq_mul
+
+attribute [-instance] ModularCurve.PhiGen.instNeZeroPhiGenCosetA ModularCurve.instIsDomainTensorProduct AlgebraicClosure.Rat.isGalois AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.instFundamentalIdentityOfSumRamificationInertia AlgebraicCurve.Place.instIsScalarTowerResidueFieldRestrictPushforward AlgebraicCurve.Place.instAlgebraResidueFieldRestrictPushforward AlgebraicCurve.Place.instIsLocalHomRestrictInclusion AlgebraicCurve.IsCurveOver.instNontrivialKaehler AlgebraicCurve.IsCurveOver.instFreeKaehler AlgebraicCurve.IsCurveOver.toHasPrincipalDivisors AlgebraicCurve.IsCurveOver.instFiniteResidue AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation
+
+set_option autoImplicit false
+
+set_option linter.unusedSectionVars false
+
+set_option linter.unusedVariables false
+
+noncomputable section
+
+open scoped MatrixGroups
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+namespace XHLDMain
+
+p2m_open
+
+open XHLDGroups XHLDField XHLDLaurent
+
+open scoped MatrixGroups
+
+def AA (Γ : Subgroup SL(2, ℤ)) : IntermediateField ℂ (LaurentSeries ℂ) := adjoin ℂ (anSet Γ)
+
+end XHLDMain
+end
+end P2MW.S_ModularCurve_relfinrank_xHHeckeCompositum_eq_mul

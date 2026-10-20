@@ -1,0 +1,45 @@
+namespace P2MW.S_AutomorphicForm_exists_levelInvariant_finTranslateSum_ne_zero_and_dense_of_isInTranslateSpanOn_of_finite
+
+attribute [-instance] instFiniteResidueFieldAdicCompletionRingOfIntegersWithZeroMultiplicativeInt_definitions NumberField.instCompactSpaceAdicCompletionIntegers Rat.adicCompletion.locallyCompactSpace NumberField.instFiniteResidueFieldAdicCompletionIntegers instWeaklyLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions instLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instDimensionLEOneSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.instLiesOverSubtypeAdicCompletionMemValuationSubringAdicCompletionIntegersCompletionIdealAsIdeal IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsPrincipalIdealRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemSubringIntegerWithZeroMultiplicativeInt_definitions IsDedekindDomain.HeightOneSpectrum.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicCompletionV_definitions instCountableOfNumberField_definitions RestrictedProduct.SecondCountableTopology_of_principal instCountableElemSetSetsCofinite_definitions
+
+set_option autoImplicit false
+
+set_option linter.unusedSectionVars false
+
+set_option linter.unusedVariables false
+
+set_option maxHeartbeats 3200000
+
+open NumberField NumberField.AdelicLevel NumberField.AdelicBox NumberField.AdelicHaar MeasureTheory
+
+open AutomorphicForm AutomorphicForm.WindowedSiegel AutomorphicForm.SiegelCovering
+
+open FLT.SmoothVectors IsDedekindDomain
+
+open scoped ENNReal InnerProductSpace ComplexConjugate
+
+noncomputable section
+
+namespace LevelAverageFinSol
+
+variable {F : Type} [Field F] [NumberField F]
+
+local notation "𝔾" => AdelicGL2 (𝓞 F) F
+
+attribute [local instance] NumberField.AdelicHaar.glBorel NumberField.AdelicHaar.borelSpace_glBorel
+
+section Context
+
+variable (F)
+
+variable {F} (C : Ctx F)
+
+namespace Ctx
+
+def dm (f : 𝔾 → ℂ) : ℝ≥0∞ := ∫⁻ y in C.D, (‖f y‖₊ : ℝ≥0∞) ^ 2 ∂(adelicGLHaar (Fin 2) (𝓞 F) F)
+
+end Ctx
+end Context
+end LevelAverageFinSol
+end
+end P2MW.S_AutomorphicForm_exists_levelInvariant_finTranslateSum_ne_zero_and_dense_of_isInTranslateSpanOn_of_finite

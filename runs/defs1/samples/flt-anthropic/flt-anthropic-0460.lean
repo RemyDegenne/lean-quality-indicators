@@ -1,0 +1,21 @@
+namespace P2MW.S_ModularCurve_IsInfReductionMap_comp_baseChange_genU_self_eq_genDiffModL_comp
+
+attribute [-instance] AlgebraicCurve.IsCurveOver.instNontrivialKaehler AlgebraicCurve.IsCurveOver.instFreeKaehler AlgebraicCurve.IsCurveOver.toHasPrincipalDivisors AlgebraicCurve.IsCurveOver.instFiniteResidue ModularCurve.PhiGen.instNeZeroPhiGenCosetA AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.RationalFunctionField.instNontrivialSubtypeUnitsWithZeroMultiplicativeIntMemSubgroupValueGroupRatFuncValuationInftyValuation_definitions
+
+set_option autoImplicit false
+
+set_option maxHeartbeats 6400000
+
+set_option synthInstance.maxHeartbeats 1600000
+
+open scoped TensorProduct MatrixGroups
+
+open ModularCurve
+
+namespace C4Main
+
+noncomputable def decimate (p : ℕ) (pf : PowerSeries ℤ) : PowerSeries ℤ :=
+  PowerSeries.mk fun n => PowerSeries.coeff (n * p) pf
+
+end C4Main
+end P2MW.S_ModularCurve_IsInfReductionMap_comp_baseChange_genU_self_eq_genDiffModL_comp

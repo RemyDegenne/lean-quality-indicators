@@ -1,0 +1,33 @@
+namespace P2MW.S_ModularCurve_principal_le_closure_divisor_laurentIntegral_diamondAutHBar
+
+attribute [-instance] ModularCurve.instIsDomainTensorProduct AlgebraicClosure.Rat.isGalois AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation ModularCurve.PhiGen.instNeZeroPhiGenCosetA ModularCurve.instFiniteProjectiveLine ModularCurve.unimodularRowSetoid AlgebraicCurve.RationalFunctionField.instNontrivialSubtypeUnitsWithZeroMultiplicativeIntMemSubgroupValueGroupRatFuncValuationInftyValuation_definitions
+
+set_option linter.unusedSectionVars false
+
+set_option autoImplicit false
+
+set_option synthInstance.maxHeartbeats 1600000
+
+set_option maxHeartbeats 3200000
+
+noncomputable section
+
+open scoped MatrixGroups ModularForm Classical
+
+open IntermediateField AlgebraicCurve ModularCurve
+
+namespace PLCDSol
+
+section Forms
+
+open ModularForm UpperHalfPlane EisensteinSeries
+
+variable (Γ : Subgroup (Matrix.SpecialLinearGroup (Fin 2) ℤ))
+
+def delta : ModularForm (Γ : Subgroup (GL (Fin 2) ℝ)) 12 :=
+  restrictForm (Subgroup.map_le_range _ Γ) (CuspForm.discriminant : ModularForm 𝒮ℒ 12)
+
+end Forms
+end PLCDSol
+end
+end P2MW.S_ModularCurve_principal_le_closure_divisor_laurentIntegral_diamondAutHBar

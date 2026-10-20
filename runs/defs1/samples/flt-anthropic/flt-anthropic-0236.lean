@@ -1,0 +1,12 @@
+namespace P2MW.S_LanglandsTunnell_CubicInduction_compactPicture_eq_zero_of_lowering_eq_zero_of_three_le
+
+set_option autoImplicit false
+
+open MvPolynomial
+
+namespace CompactPictureLowering
+
+abbrev P3 := MvPolynomial (Fin 3) ℂ
+
+end CompactPictureLowering
+end P2MW.S_LanglandsTunnell_CubicInduction_compactPicture_eq_zero_of_lowering_eq_zero_of_three_le

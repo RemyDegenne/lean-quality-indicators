@@ -1,0 +1,47 @@
+namespace P2MW.S_AutomorphicForm_integral_mul_conj_weylIntertwiningIntegral_eq_integral_weylIntertwiningIntegral_mul_conj_of_re_gt_half
+
+attribute [-instance] NumberField.AdelicCentre.locallyCompactSpace_adelicPGL2 NumberField.AdelicCentre.isTopologicalGroup_adelicPGL2 NumberField.AdelicCentre.t2Space_adelicPGL2 NumberField.AdelicCentre.isClosed_center FixedPoints.instMulActionElemFixedPointsOfSMulCommClass_definitions FixedPoints.module FixedPoints.instSMulElemFixedPointsOfSMulCommClass_definitions FixedPoints.instAddCommMonoidElemFixedPoints_definitions instCountableOfNumberField_definitions RestrictedProduct.SecondCountableTopology_of_principal instCountableElemSetSetsCofinite_definitions instFiniteResidueFieldAdicCompletionRingOfIntegersWithZeroMultiplicativeInt_definitions NumberField.instCompactSpaceAdicCompletionIntegers Rat.adicCompletion.locallyCompactSpace NumberField.instFiniteResidueFieldAdicCompletionIntegers instWeaklyLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions instLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instDimensionLEOneSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.instLiesOverSubtypeAdicCompletionMemValuationSubringAdicCompletionIntegersCompletionIdealAsIdeal IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsPrincipalIdealRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemSubringIntegerWithZeroMultiplicativeInt_definitions IsDedekindDomain.HeightOneSpectrum.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicCompletionV_definitions HeckePair.instSMulCommClassSubtypeForallMemSubmoduleHeckeAlgebra HeckePair.instAlgebraSubtypeForallMemSubmoduleHeckeAlgebra HeckePair.instOneSubtypeForallMemSubmoduleHeckeAlgebra HeckePair.instIsScalarTowerSubtypeForallMemSubmoduleHeckeAlgebra HeckePair.instRingSubtypeForallMemSubmoduleHeckeAlgebra HeckePair.instMulSubtypeForallMemSubmoduleHeckeAlgebra FLT.SmoothVectors.RightTranslationFn.instAddCommMonoid FLT.SmoothVectors.RightTranslationFn.instMulAction FLT.SmoothVectors.RightTranslationFn.instDistribMulAction instContinuousSMulOfDiscreteTopologyOfContinuousSMulDiscrete
+
+set_option autoImplicit false
+
+open MeasureTheory NumberField NumberField.AdelicHaar NumberField.AdelicLevel AutomorphicForm
+
+open scoped ENNReal NNReal ComplexConjugate Topology
+
+noncomputable section
+
+namespace R4AdjW
+
+variable (F : Type) [Field F] [NumberField F]
+
+local notation "𝔸" => AdeleRing (𝓞 F) F
+
+local notation "G" => AdelicGL2 (𝓞 F) F
+
+local notation "I" => (AdeleRing (𝓞 F) F)ˣ
+
+local notation "KK" => adelicMaximalCompact F
+
+attribute [local instance] NumberField.AdelicHaar.glBorel NumberField.AdelicHaar.borelSpace_glBorel
+  NumberField.AdelicHaar.adeleBorel NumberField.AdelicHaar.borelSpace_adeleBorel
+
+local notation "dx" => adelicAddHaar (𝓞 F) F
+
+local notation "dk" => AutomorphicForm.maximalCompactHaar F
+
+local notation "dq" => Measure.prod (AutomorphicForm.maximalCompactHaar F) (adelicAddHaar (𝓞 F) F)
+
+scoped instance secondCountable_adele : SecondCountableTopology 𝔸 :=
+  NumberField.AdeleRing.secondCountableTopology F
+
+scoped instance secondCountable_gl : SecondCountableTopology G :=
+  NumberField.AdeleRing.secondCountableTopology_generalLinearGroup_finTwo F
+
+scoped instance isAddHaarMeasure_adelicAddHaar' : (adelicAddHaar (𝓞 F) F).IsAddHaarMeasure :=
+  isAddHaarMeasure_adelicAddHaar (𝓞 F) F
+
+def P0 (q : KK × 𝔸) : G := unipotentGL2 q.2 * (q.1 : G)
+
+end R4AdjW
+end
+end P2MW.S_AutomorphicForm_integral_mul_conj_weylIntertwiningIntegral_eq_integral_weylIntertwiningIntegral_mul_conj_of_re_gt_half

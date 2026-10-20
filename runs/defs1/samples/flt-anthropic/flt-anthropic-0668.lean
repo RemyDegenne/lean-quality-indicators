@@ -1,0 +1,152 @@
+namespace P2MW.S_ModularCurve_DRModelPackage_exists_dRResolvedModelPackageV4_and_dRResolvedModelCharts
+
+attribute [-instance] AlgebraicGeometry.Scheme.branchIdeal_isPrime WeierstrassCurve.instIsEllipticBaseChange WeierstrassCurve.Univ.Affine.instAddGroupPointFieldBaseChangeMvPolynomialCoeffIntCurve WeierstrassCurve.Univ.instIsEllipticFieldPointedCurve WeierstrassCurve.Univ.instCommRingPoly ModularCurve.PhiGen.instNeZeroPhiGenCosetA AlgebraicCurve.instFundamentalIdentityOfSumRamificationInertia AlgebraicCurve.Place.instIsScalarTowerResidueFieldRestrictPushforward AlgebraicCurve.Place.instAlgebraResidueFieldRestrictPushforward AlgebraicCurve.Place.instIsLocalHomRestrictInclusion AlgebraicCurve.IsCurveOver.instNontrivialKaehler AlgebraicCurve.IsCurveOver.instFreeKaehler AlgebraicCurve.IsCurveOver.toHasPrincipalDivisors AlgebraicCurve.IsCurveOver.instFiniteResidue AlgebraicCurve.CurveModel.locallyOfFiniteType_gluedToBase AlgebraicCurve.CurveModel.isFractionRing_overlap AlgebraicCurve.CurveModel.isLocallyNoetherian_glued AlgebraicCurve.CurveModel.jacobsonSpace_glued AlgebraicCurve.CurveModel.isOpenImmersion_ι₀ AlgebraicCurve.CurveModel.isIntegral_glued AlgebraicCurve.CurveModel.quasiSeparated_gluedToBase AlgebraicCurve.CurveModel.compactSpace_glued AlgebraicCurve.CurveModel.isIntegral_adjoin_chartRing AlgebraicCurve.CurveModel.isFractionRing_overlap_functionField AlgebraicCurve.CurveModel.isProper_gluedToBase AlgebraicCurve.CurveModel.isOpenImmersion_ιU AlgebraicCurve.CurveModel.isOpenImmersion_f₀ AlgebraicCurve.CurveModel.isOpenImmersion_fInf AlgebraicCurve.CurveModel.isOpenImmersion_ιInf AlgebraicCurve.CurveModel.algebra_overlap_functionField AlgebraicCurve.CurveModel.quasiCompact_gluedToBase AlgebraicCurve.CurveModel.algebraAdjoin AlgebraicCurve.CurveModel.isDedekindDomain_chartRing AlgebraicCurve.CurveModel.isIntegralClosure AlgebraicCurve.CurveModel.finite_chartRing AlgebraicCurve.CurveModel.centre_isPrime AlgebraicCurve.CurveModel.isFractionRing_chartRing AlgebraicCurve.CurveModel.finiteType_chartRing AlgebraicCurve.CurveModel.isNoetherianRing_chartRing AlgebraicCurve.CurveModel.isScalarTower_base_adjoin
+
+attribute [-instance] AlgebraicCurve.CurveModel.isScalarTower_adjoin AlgebraicCurve.CurveModel.chartRing_finitePresentation AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.RationalFunctionField.instNontrivialSubtypeUnitsWithZeroMultiplicativeIntMemSubgroupValueGroupRatFuncValuationInftyValuation_definitions instIsScalarTowerIntegralClosure instNeZeroIdealUnderOfNontrivialOfIsDomainOfIsIntegral_definitions instAlgebraIntegralClosure_1 isInvariant_integralClosure instAlgebraIntegralClosure continuousSMulDiscrete_integralClosure mulSemiringActionIntegralClosure smulCommClass_integralClosure instIsDomainIntegralClosure instIsIntegralIntegralClosure instCommRingIntegralClosure instFaithfulSMulIntegralClosure instContinuousSMulOfDiscreteTopologyOfContinuousSMulDiscrete ModularCurve.instAlgebraJLineBar ModularCurve.instModuleJLineBar AlgebraicCurve.instHasLocalResidue_of_hasCanonicalLocalResidueK AlgebraicCurve.instHasCanonicalLocalResidueK_of_hasCanonicalLocalResidueKStar AlgebraicCurve.Place.kw_ffgc_finiteDimensional_adicCompletion instAlgebraSubtypeMemValuationSubring_definitions AlgebraicCurve.Place.kw_ffgc_isScalarTower_integersIntegersCompletion ModularCurve.KwF4gRRTate.instAlgebraKAdicCompletionIntegers AlgebraicCurve.Place.kw_ffgc_continuousSMul_adicCompletionComap AlgebraicCurve.Place.kw_ffgc_isScalarTower_integersCompletionCompletion IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instDimensionLEOneSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.instLiesOverSubtypeAdicCompletionMemValuationSubringAdicCompletionIntegersCompletionIdealAsIdeal IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsPrincipalIdealRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemSubringIntegerWithZeroMultiplicativeInt_definitions IsDedekindDomain.HeightOneSpectrum.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicCompletionV_definitions AlgebraicCurve.instHasCanonicalLocalResidueK
+
+attribute [-instance] AlgebraicCurve.Place.instAlgebra_restrictResidueField AlgebraicCurve.Place.instIsScalarTower_restrictResidueField AlgebraicCurve.instHasLocalResidue AlgebraicCurve.HasSeparableResidue.of_perfectField_of_isCurveOver AlgebraicCurve.HasSeparableResidue.of_perfectField AlgebraicCurve.Place.instIsLocalHom_restrictSubringHom AlgebraicCurve.instHasCanonicalLocalResidueKStar ModularCurve.KwNo6Pin.isLocalRing_completion WeierstrassCurve.Affine.instIsScalarTowerPolynomialRatFuncFunctionField_definitions WeierstrassCurve.Affine.instAlgebraRatFuncFunctionField_definitions WeierstrassCurve.Affine.instIsScalarTowerRatFuncFunctionField_definitions WeierstrassCurve.Affine.CoordinateRing.moduleFinite WeierstrassCurve.Affine.instDecidableEqFunctionField WeierstrassCurve.Affine.CoordinateRing.isIntegral ModularCurve.instFiniteProjectiveLine ModularCurve.unimodularRowSetoid ModularCurve.TatePoint.instIsElliptic_nearCurve ModularCurve.instIsElliptic_tateLaurent ModularCurve.B3.instIsElliptic_goodModel ModularCurve.instIsScalarTowerJAdjoin WeierstrassCurve.VeluQuotientJGates.instIsElliptic27a4 ModularCurve.ElevenA1.instDecidableEquation ModularCurve.ElevenA1.instDecidableNonsingular ModularCurve.HpoolLevelRing.instCommRingAfin ModularCurve.HpoolLevelRing.instCommRingLevelRing ModularCurve.HpoolLevelRing.instSMulAway ModularCurve.HpoolLevelRing.instModuleAfinAfinAway ModularCurve.HpoolLevelRing.instAlgebraAfinAfinAway ModularCurve.HpoolLevelRing.instModuleAway ModularCurve.HpoolLevelRing.instModuleLevelRing ModularCurve.HpoolLevelRing.instCommRingAfinAway ModularCurve.HpoolLevelRing.instModuleAfinSelf ModularCurve.HpoolLevelRing.instSMulAfinAfinAway ModularCurve.HpoolLevelRing.instAlgebraLevelRing ModularCurve.HpoolLevelRing.instAlgebraIntAfinAway ModularCurve.HpoolLevelRing.instIsDomainAfin ModularCurve.HpoolLevelRing.instAlgebraIntAfin ModularCurve.HpoolLevelRing.instSMulLevelRing ModularCurve.HpoolLevelRing.algebraAway ModularCurve.HpoolLevelRing.instAlgebraAfinAwayLevelRing
+
+attribute [-instance] ModularCurve.instIsElliptic_tateBase
+
+set_option autoImplicit false
+
+set_option maxHeartbeats 800000
+
+set_option autoImplicit false
+
+set_option maxHeartbeats 800000
+
+universe u
+
+p2m_open
+
+p2m_reactivate
+
+p2m_reactivate
+
+namespace MvPolynomial p2m_export "MvPolynomial" "comap_comp X map constantCoeff R ringKrullDim_of_isNoetherianRing ext support comap coe_add vanishingIdeal C rTensor monomial coe_one induction_on CrossingQuotient.Resolution CrossingQuotient.Resolution.ι CrossingQuotient.Resolution.toCrossing CrossingQuotient.U CrossingQuotient.V CrossingQuotient CrossingQuotient.Resolution.isRegularLocalRing_stalk CrossingQuotient.Resolution.exists_idealSheafData_chartTable CrossingQuotient.Resolution.origin_injective" namespace CrossingQuotient p2m_export "MvPolynomial.CrossingQuotient" "crossingScheme chartScheme Resolution Resolution.ι Resolution.exists_ι_apply_eq Resolution.toCrossing U V U_mul_V resolutionChart resolutionChart_U resolutionChart_V mk monomial Resolution.isIso_toCrossing_morphismRestrict_basicOpen_U_sup_basicOpen_V Resolution.isProper_toCrossing linearIndependent_monomial_and_span_eq_top Resolution.isRegularLocalRing_stalk Resolution.exists_idealSheafData_chartTable Resolution.origin_injective" namespace Resolution p2m_export "MvPolynomial.CrossingQuotient.Resolution" "ι exists_ι_apply_eq openCover chartToCrossing toCrossing ι_toCrossing toSpec ι_toSpec isIso_toCrossing_morphismRestrict_basicOpen_U_sup_basicOpen_V isProper_toCrossing isRegularLocalRing_stalk exists_idealSheafData_chartTable lineGen lineUGen origin_injective" end MvPolynomial.CrossingQuotient.Resolution
+
+p2m_open_scoped "MvPolynomial MvPolynomial.CrossingQuotient MvPolynomial.CrossingQuotient.Resolution" in
+
+p2m_open
+
+noncomputable section
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_reactivate
+
+section etaleReduced
+
+p2m_reactivate
+
+p2m_reactivate
+
+p2m_open
+
+universe v
+
+noncomputable section
+
+namespace AlgebraicGeometry p2m_export "AlgebraicGeometry" "IsLocallyNoetherian LocallyOfFiniteType.stalkMap SmoothOfRelativeDimension IsProper basicOpen_eq_bot_iff LocallyOfFiniteType.isLocallyNoetherian Scheme.Hom IsZariskiLocalAtSource.of_openCover stalkwise FormallyUnramified.stalkMap LocallyOfFiniteType Spec IsIntegral Spec.map Scheme Smooth Scheme.IdealSheafData.vanishingIdeal isReduced_of_isIntegral isReduced_of_isReduced_stalk IsZariskiLocalAtSource IsOpenImmersion Scheme.Hom.comp_base IsReduced.of_openCover isLocallyNoetherian_iff_openCover Flat.stalkMap Flat IsReduced HasRingHomProperty.Spec_iff isAffineOpen_top Etale IsNoetherian FormallyUnramified Flat.generalizingMap isReduced_of_isOpenImmersion Scheme.IdealSheafData.ofIdealTop HasRingHomProperty Scheme.Hom.comp_apply Scheme.IdealSheafData Scheme.ΓSpecIso v3_isReduced_pullback_subschemeι_of_isOpenImmersion exists_etale_nhd_of_flat_stalkMap_of_map_maximalIdeal_eq_of_isIso_residueFieldMap Smooth.isReduced_of_isReduced_of_isLocallyNoetherian Scheme.Pullback.eq_of_fst_eq_of_snd_eq_of_isIso_residueFieldMap Scheme.isIntegral_subscheme_vanishingIdeal" namespace IsOpenImmersion p2m_export "AlgebraicGeometry.IsOpenImmersion" "comp" end AlgebraicGeometry.IsOpenImmersion
+
+p2m_open_scoped "AlgebraicGeometry AlgebraicGeometry.IsOpenImmersion" in
+
+p2m_open_scoped "AlgebraicGeometry AlgebraicGeometry.IsOpenImmersion" in
+
+set_option autoImplicit false
+
+set_option maxHeartbeats 800000
+
+p2m_open
+
+namespace IsLocalRing p2m_export "IsLocalRing" "ResidueField closedPoint maximalIdeal maximalIdeal.isMaximal maximalIdeal_height_eq_ringKrullDim residue" end IsLocalRing
+
+p2m_open_scoped "IsLocalRing" in
+
+namespace IsRegularLocalRing p2m_export "IsRegularLocalRing" "spanFinrank_maximalIdeal of_ringEquiv of_spanFinrank_maximalIdeal_le toIsNoetherian mk isDomain" end IsRegularLocalRing
+
+p2m_open_scoped "IsRegularLocalRing" in
+
+namespace AlgebraicGeometry p2m_export "AlgebraicGeometry" "IsLocallyNoetherian LocallyOfFiniteType.stalkMap SmoothOfRelativeDimension IsProper basicOpen_eq_bot_iff LocallyOfFiniteType.isLocallyNoetherian Scheme.Hom IsZariskiLocalAtSource.of_openCover stalkwise FormallyUnramified.stalkMap LocallyOfFiniteType Spec IsIntegral Spec.map Scheme Smooth Scheme.IdealSheafData.vanishingIdeal isReduced_of_isIntegral isReduced_of_isReduced_stalk IsZariskiLocalAtSource IsOpenImmersion Scheme.Hom.comp_base IsReduced.of_openCover isLocallyNoetherian_iff_openCover Flat.stalkMap Flat IsReduced HasRingHomProperty.Spec_iff isAffineOpen_top Etale IsNoetherian FormallyUnramified Flat.generalizingMap isReduced_of_isOpenImmersion Scheme.IdealSheafData.ofIdealTop HasRingHomProperty Scheme.Hom.comp_apply Scheme.IdealSheafData Scheme.ΓSpecIso v3_isReduced_pullback_subschemeι_of_isOpenImmersion exists_etale_nhd_of_flat_stalkMap_of_map_maximalIdeal_eq_of_isIso_residueFieldMap Smooth.isReduced_of_isReduced_of_isLocallyNoetherian Scheme.Pullback.eq_of_fst_eq_of_snd_eq_of_isIso_residueFieldMap Scheme.isIntegral_subscheme_vanishingIdeal" end AlgebraicGeometry
+
+p2m_open_scoped "AlgebraicGeometry" in
+
+p2m_reactivate
+
+set_option autoImplicit false
+
+p2m_open
+
+namespace MvPolynomial
+
+namespace CrossingQuotient
+
+p2m_open
+
+p2m_reactivate
+
+p2m_reactivate
+
+noncomputable section
+
+p2m_open
+
+namespace V3Sol
+
+p2m_reactivate
+
+attribute [local instance] node_fintype
+
+variable (p : ℕ) [Fact p.Prime] (hp : 5 ≤ p) (𝔛 : DRModelPackage p) (O : Type) [CommRing O] [IsDomain O]
+  [IsDiscreteValuationRing O] (hϖ : IsLocalRing.maximalIdeal O = Ideal.span {((p : ℕ) : O)})
+  (κ : Type) [Field κ] [CharP κ p] [IsAlgClosed κ] (toκ : O →+* κ)
+  (hrat : ∀ x : ↥(pullback (𝔛.compInf κ) (𝔛.compZero κ)),
+    ∃ s : Spec (CommRingCat.of (IsLocalRing.ResidueField O)) ⟶
+        pullback (DRModel.toBase p) (Spec.map (CommRingCat.ofHom (algebraMap ℤ (IsLocalRing.ResidueField O)))),
+      s ≫ pullback.snd _ _ = 𝟙 _ ∧
+      (DRModel.baseChangeMap toκ).base ((pullback.fst (𝔛.compInf κ) (𝔛.compZero κ) ≫ 𝔛.compInf κ).base x) =
+        (DRModel.baseChangeMap (IsLocalRing.residue O)).base
+          (s.base (IsLocalRing.closedPoint (IsLocalRing.ResidueField O))))
+
+include p hp 𝔛 O hϖ κ toκ hrat
+
+local notation "𝕐" => Y p hp 𝔛 O hϖ κ toκ hrat
+
+local notation "𝕎" => width p hp 𝔛 O hϖ κ toκ hrat
+
+def smoothOffEdges : (Y p hp 𝔛 O hϖ κ toκ hrat).Opens := (V3Asm.exists_smoothOffEdges p 𝔛 O hϖ κ toκ (SH p hp 𝔛 O hϖ κ toκ hrat) (hξ p hp 𝔛 O hϖ κ toκ hrat)).choose
+
+end V3Sol
+end
+end CrossingQuotient
+end MvPolynomial
+end AlgebraicGeometry
+end IsRegularLocalRing
+end IsLocalRing
+end AlgebraicGeometry
+end
+end etaleReduced
+end
+end MvPolynomial
+end P2MW.S_ModularCurve_DRModelPackage_exists_dRResolvedModelPackageV4_and_dRResolvedModelCharts

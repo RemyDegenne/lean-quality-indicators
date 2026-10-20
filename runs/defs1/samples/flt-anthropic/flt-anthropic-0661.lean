@@ -1,0 +1,27 @@
+namespace P2MW.S_ModularCurve_eq_zero_of_forall_stackOrd_nonneg_of_forall_le_ord_of_neg
+
+attribute [-instance] ModularCurve.PhiGen.instNeZeroPhiGenCosetA WeierstrassCurve.instIsEllipticBaseChange WeierstrassCurve.Univ.Affine.instAddGroupPointFieldBaseChangeMvPolynomialCoeffIntCurve WeierstrassCurve.Univ.instIsEllipticFieldPointedCurve WeierstrassCurve.Univ.instCommRingPoly ModularCurve.instFiniteProjectiveLine ModularCurve.unimodularRowSetoid AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt WeierstrassCurve.Affine.instIsScalarTowerPolynomialRatFuncFunctionField_definitions WeierstrassCurve.Affine.instAlgebraRatFuncFunctionField_definitions WeierstrassCurve.Affine.instIsScalarTowerRatFuncFunctionField_definitions WeierstrassCurve.Affine.CoordinateRing.moduleFinite WeierstrassCurve.Affine.instDecidableEqFunctionField WeierstrassCurve.Affine.CoordinateRing.isIntegral WeierstrassCurve.VeluQuotientJGates.instIsElliptic27a4 ModularCurve.ElevenA1.instDecidableEquation ModularCurve.ElevenA1.instDecidableNonsingular ModularCurve.instSMulAlgEquivRatPic0SubtypeLaurentSeriesMemIntermediateFieldLaurentBaseChange ModularCurve.instDistribMulActionAlgEquivRatPic0SubtypeLaurentSeriesMemIntermediateFieldLaurentBaseChange AlgebraicCurve.RationalFunctionField.instNontrivialSubtypeUnitsWithZeroMultiplicativeIntMemSubgroupValueGroupRatFuncValuationInftyValuation_definitions
+
+set_option autoImplicit false
+
+set_option maxHeartbeats 800000
+
+set_option synthInstance.maxHeartbeats 80000
+
+open AlgebraicCurve ModularCurve
+
+noncomputable section
+
+namespace NegWt
+
+section Main
+
+variable (p : ℕ) [hp : Fact p.Prime] (N : ℕ) [NeZero N]
+  (K : Type*) [Field K] [CharP K p] [IsAlgClosed K] [DecidableEq K]
+
+def pol (f : ↥(modularFunctionFieldC K N)) (v : Place K ↥(modularFunctionFieldC K N)) : ℤ := max (-(v.ord f)) 0
+
+end Main
+end NegWt
+end
+end P2MW.S_ModularCurve_eq_zero_of_forall_stackOrd_nonneg_of_forall_le_ord_of_neg
