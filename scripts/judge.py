@@ -3,7 +3,8 @@
     python3 scripts/judge.py --run pilot --indicator unnecessary-hypotheses \
         [--model claude-opus-5-5] [--effort high] [--jobs 4] [--libs ...] [--ids ...] [--limit K]
 
-Each sample is sent, on its own, to a fresh headless `claude -p` session with the indicator's
+Each sample is sent, on its own, to a fresh headless `claude -p` session (or `codex exec`
+with --backend codex) with the indicator's
 prompt.md as system prompt and its schema.json as structured-output schema, and without
 project or user customisations (`--safe-mode`). The session runs in the pinned clone of the
 sample's library, with the read-only tools Read, Grep and Glob, and can also read the Mathlib
@@ -33,15 +34,58 @@ import os
 import subprocess
 import sys
 import threading
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fetch  # noqa: E402
 import indicator  # noqa: E402
+import codex_judge  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 REPOS = ROOT / "repos"
+
+
+def validate_verdict(verdict: dict, ind: Path) -> None:
+    """Check the indicator's schema subset and the hypothesis verdict invariant."""
+    def check(value, schema):
+        expected = {"object": dict, "array": list, "string": str, "boolean": bool}
+        if not isinstance(value, expected[schema["type"]]):
+            raise ValueError(f"Expected {schema['type']}")
+        if "enum" in schema and value not in schema["enum"]:
+            raise ValueError(f"Unexpected enum value: {value}")
+        if schema["type"] == "object":
+            if not set(schema.get("required", [])) <= value.keys():
+                raise ValueError("Missing required fields")
+            if schema.get("additionalProperties") is False and value.keys() - schema["properties"].keys():
+                raise ValueError("Unexpected fields")
+            for key, val in value.items():
+                if key in schema["properties"]:
+                    check(val, schema["properties"][key])
+        elif schema["type"] == "array":
+            for item in value:
+                check(item, schema["items"])
+    check(verdict, json.loads((ind / "schema.json").read_text()))
+    if "hypotheses" in verdict and bool(verdict["hypotheses"]) != \
+            (verdict["verdict"] == "unnecessary_hypothesis_found"):
+        raise ValueError("Hypotheses disagree with the verdict")
+
+
+def select_samples(samples: list[dict], args) -> list[dict]:
+    if args.libs:
+        samples = [s for s in samples if s["lib"] in args.libs.split(",")]
+    if args.ids:
+        samples = [s for s in samples if s["id"] in args.ids.split(",")]
+    if args.limit is not None:
+        per: dict[str, int] = {}
+        kept = []
+        for s in samples:
+            per[s["lib"]] = per.get(s["lib"], 0) + 1
+            if per[s["lib"]] <= args.limit:
+                kept.append(s)
+        samples = kept
+    return samples
 
 
 def judge_dirs(sample: dict, mathlib: str = "master") -> tuple[Path, dict[str, Path]]:
@@ -91,9 +135,11 @@ def judge_one(sample: dict, run: Path, ind: Path, out: Path, args,
               extra: dict[str, str] | None = None) -> dict:
     """Run the judge of indicator directory `ind` on one sample."""
     cwd, dirs, message = build_message(sample, run, ind, extra)
+    if getattr(args, "backend", "claude") == "codex":
+        return codex_judge.judge(sample, ind, out, args, cwd, dirs, message)
     cmd = [args.claude, "-p", "--model", args.model, "--effort", args.effort,
            "--tools", "Read,Grep,Glob", "--permission-mode", "dontAsk",
-           "--safe-mode", "--no-session-persistence",
+           "--safe-mode", "--restricted", "--no-session-persistence",
            "--system-prompt-file", str(ind / "prompt.md"),
            "--json-schema", (ind / "schema.json").read_text(),
            "--max-budget-usd", str(args.max_budget),
@@ -102,8 +148,13 @@ def judge_one(sample: dict, run: Path, ind: Path, out: Path, args,
         cmd += ["--add-dir", str(d)]
     last_err = None
     for attempt in range(args.retries + 1):
-        p = subprocess.run(cmd, input=message, capture_output=True, text=True, cwd=cwd,
-                           timeout=args.timeout)
+        try:
+            p = codex_judge.run_process(cmd, message, cwd, args.timeout)
+        except subprocess.TimeoutExpired:
+            last_err = f"timeout after {args.timeout}s"
+            continue
+        (out / f"{sample['id']}.attempt-{attempt + 1}.transcript.jsonl").write_text(p.stdout)
+        (out / f"{sample['id']}.attempt-{attempt + 1}.stderr.log").write_text(p.stderr)
         events = []
         for line in p.stdout.splitlines():
             try:
@@ -115,19 +166,27 @@ def judge_one(sample: dict, run: Path, ind: Path, out: Path, args,
             last_err = f"exit {p.returncode}: {p.stdout[-500:]} {p.stderr[-500:]}"
             continue
         verdict = raw.get("structured_output")
-        if raw.get("is_error") or not isinstance(verdict, dict):
+        if p.returncode or raw.get("is_error") or not isinstance(verdict, dict):
             last_err = f"{raw.get('subtype')}: {str(raw.get('result'))[:500]}"
+            continue
+        try:
+            validate_verdict(verdict, ind)
+        except (ValueError, KeyError, TypeError) as exc:
+            last_err = f"Invalid verdict: {exc}"
             continue
         # Full session (tool calls and their results), for auditing the judge.
         (out / f"{sample['id']}.transcript.jsonl").write_text(p.stdout)
         (out / f"{sample['id']}.raw.json").write_text(json.dumps(raw, indent=1) + "\n")
         res = {"id": sample["id"], "lib": sample["lib"], **verdict,
                "model": args.model, "effort": args.effort,
+               "backend": "claude", "usage": raw.get("usage"),
                "cost_usd": raw.get("total_cost_usd"), "duration_ms": raw.get("duration_ms"),
                "turns": raw.get("num_turns"), "attempts": attempt + 1,
                "judged": datetime.datetime.now().isoformat(timespec="seconds")}
-        (out / f"{sample['id']}.json").write_text(
-            json.dumps(res, indent=1, ensure_ascii=False) + "\n")
+        destination = out / f"{sample['id']}.json"
+        temporary = destination.with_suffix(".tmp")
+        temporary.write_text(json.dumps(res, indent=1, ensure_ascii=False) + "\n")
+        temporary.replace(destination)
         return res
     raise RuntimeError(last_err)
 
@@ -137,6 +196,8 @@ def main() -> None:
     ap.add_argument("--run", required=True)
     ap.add_argument("--indicator", default="unnecessary-hypotheses")
     ap.add_argument("--model", default="claude-opus-5-5")
+    ap.add_argument("--backend", choices=["claude", "codex"], default="claude")
+    ap.add_argument("--codex", default=os.environ.get("CODEX_BIN", "codex"))
     ap.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     ap.add_argument("--label", help="results subdirectory (default: <model>-<effort>)")
     ap.add_argument("--jobs", type=int, default=4, help="parallel judge sessions")
@@ -154,11 +215,14 @@ def main() -> None:
     ap.add_argument("--export", metavar="DIR",
                     help="write the judge inputs to DIR instead of judging")
     args = ap.parse_args()
+    if args.jobs < 1 or (args.limit is not None and args.limit < 1):
+        ap.error("--jobs and --limit must be positive")
 
     run = ROOT / "runs" / args.run
     ind = ROOT / "indicators" / args.indicator
     skip = indicator.config(ind)["skip_libraries"]
     samples = [s for s in map(json.loads, (run / "samples.jsonl").open()) if s["lib"] not in skip]
+    samples = select_samples(samples, args)
     if args.export:
         exp = Path(args.export)
         (exp / "messages").mkdir(parents=True, exist_ok=True)
@@ -175,18 +239,24 @@ def main() -> None:
         return
     out = run / args.indicator / (args.label or f"{args.model}-{args.effort}") / "results"
     out.mkdir(parents=True, exist_ok=True)
-    if args.libs:
-        samples = [s for s in samples if s["lib"] in args.libs.split(",")]
-    if args.ids:
-        samples = [s for s in samples if s["id"] in args.ids.split(",")]
-    if args.limit:
-        per: dict[str, int] = {}
-        kept = []
-        for s in samples:
-            per[s["lib"]] = per.get(s["lib"], 0) + 1
-            if per[s["lib"]] <= args.limit:
-                kept.append(s)
-        samples = kept
+    manifest = {"backend": args.backend, "model": args.model, "effort": args.effort,
+                "indicator": args.indicator,
+                "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                "backend_sha256": hashlib.sha256(Path(codex_judge.__file__).read_bytes()).hexdigest(),
+                "source_tools_sha256": hashlib.sha256(
+                    Path(__file__).with_name("source_tools.py").read_bytes()).hexdigest(),
+                "prompt_sha256": hashlib.sha256((ind / "prompt.md").read_bytes()).hexdigest(),
+                "schema_sha256": hashlib.sha256((ind / "schema.json").read_bytes()).hexdigest(),
+                "corpus_sha256": hashlib.sha256((ROOT / "libraries.lock.json").read_bytes()).hexdigest()}
+    manifest_path = out.parent / "judge.json"
+    if manifest_path.exists() and json.loads(manifest_path.read_text())["protocol"] != manifest:
+        ap.error("This label already uses a different judge protocol; choose a new --label")
+    if not manifest_path.exists():
+        executable = args.codex if args.backend == "codex" else args.claude
+        version = subprocess.run([executable, "--version"], capture_output=True, text=True, check=True)
+        manifest_path.write_text(json.dumps({"protocol": manifest, "cli_version": version.stdout.strip(),
+                                            "argv": sys.argv[1:],
+            "sample_ids": [s["id"] for s in samples]}, indent=2) + "\n")
     todo = [s for s in samples if not (out / f"{s['id']}.json").exists()]
     if args.order == "interleave":
         by_lib: dict[str, list[dict]] = {}
@@ -209,8 +279,9 @@ def main() -> None:
                     cost += r.get("cost_usd") or 0
                     flag = "FOUND" if r["verdict"] == "unnecessary_hypothesis_found" else \
                         "none" if r["verdict"] in ("none_found", "none") else r["verdict"]
+                    cost_text = f"${cost:.2f} total" if args.backend == "claude" else "tokens recorded"
                     print(f"[{int(done)}/{len(todo)}] {s['id']:24} {flag:6} "
-                          f"${cost:.2f} total", flush=True)
+                          f"{cost_text}", flush=True)
                 except Exception as e:  # noqa: BLE001
                     failed.append(s["id"])
                     (out.parent / "errors.log").open("a").write(f"{s['id']}\t{e}\n")
@@ -218,6 +289,7 @@ def main() -> None:
     if failed:
         print(f"{len(failed)} failed (see errors.log); rerun the same command to retry them",
               file=sys.stderr)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,11 @@ def main() -> None:
     positive = cfg["positive"]
     samples = [s for s in map(json.loads, (run / "samples.jsonl").open())
                if s["lib"] not in cfg["skip_libraries"]]
+    if (lab / "judge.json").exists():
+        selected = json.loads((lab / "judge.json").read_text()).get("sample_ids")
+        if selected is not None:
+            selected = set(selected)
+            samples = [s for s in samples if s["id"] in selected]
     results, mtimes = {}, []
     for p in (lab / "results").glob("*.json"):
         if not p.name.endswith(".raw.json"):
@@ -52,12 +57,14 @@ def main() -> None:
               f"{sum(i in failed for i in ids):6}")
     total, done = len(samples), sum(s["id"] in results for s in samples)
     cost = sum(r.get("cost_usd") or 0 for r in results.values())
+    cost_text = f"${cost:.2f} at API rates" if all(r.get("cost_usd") is not None
+                                                for r in results.values()) else "cost unknown"
     now = time.time()
     recent = sum(t > now - 600 for t in mtimes) / 10
     running = subprocess.run(["pgrep", "-f", f"judge.py --run {args.run}"],
                              capture_output=True).returncode == 0
     eta = f", ETA {(total - done) / recent:.0f} min" if recent and done < total else ""
-    print(f"\n{done}/{total} judged, ${cost:.2f} at API rates, "
+    print(f"\n{done}/{total} judged, {cost_text}, "
           f"{recent:.1f}/min over the last 10 min{eta}; judge "
           f"{'running' if running else 'NOT running'}")
 

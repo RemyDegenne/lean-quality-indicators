@@ -21,7 +21,7 @@ import indicator  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 META = {"id", "lib", "verdict", "model", "effort", "cost_usd", "duration_ms", "turns",
-        "attempts", "judged"}
+        "attempts", "judged", "backend", "usage", "prompt_sha256"}
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -77,12 +77,13 @@ def main() -> None:
         n = len(rs)
         lo, hi = wilson(k, n)
         cost = sum(r.get("cost_usd") or 0 for r in rs)
+        cost_display = f"${cost:.2f}" if all(r.get("cost_usd") is not None for r in rs) else "unknown"
         rate = f"{k / n:.1%}" if n else "–"
         kinds = "".join(f"{sum(r['verdict'] == v for r in rs)} | " for v in split)
         if field:
             kinds += f"{sum(r['verdict'] in positive and bool(r.get(field)) for r in rs)} | "
         row = (f"| {names.get(lib, lib)} | {len(ss)} | {n} | {k} | {kinds}{rate} | "
-               f"{lo:.1%}–{hi:.1%} | ${cost:.2f} |")
+               f"{lo:.1%}–{hi:.1%} | {cost_display} |")
         lines.append(row)
         table.append(row)
     lines.append("")

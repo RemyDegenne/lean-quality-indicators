@@ -21,6 +21,63 @@ Indicators (one directory each in `indicators/`):
 All results come from experiment `runs/main`: corpus pinned in October 2026, judge
 `claude-opus-5-5` at effort `high`, theorems sampled uniformly per library.
 
+### Sol, Luna and Sonnet reproduction
+
+This fork adds a Codex backend while retaining the Claude Code backend. The comparison
+uses **the original first 300 samples per library**, not all 1000 now stored in `runs/main`.
+No sampling or corpus update is needed. Fetch exactly the locked source commits:
+
+```sh
+python3 scripts/fetch.py
+python3 -m unittest discover -s scripts -v
+python3 -u scripts/benchmark.py --jobs 12 --passes 2
+```
+
+The benchmark runs `gpt-6.1-sol`, `gpt-6-luna` and `claude-sonnet-5-5`, all at `high`
+effort, twice independently: 9000 judgments. `--jobs` is concurrency **per model**; the
+three models run concurrently. It uses saved Codex and Claude Code login credentials.
+Install Codex CLI (tested with 0.163.0), Claude Code (tested with 2.1.304), Python 3.11+
+and ripgrep. For complete Lean core access, install the four toolchains listed below.
+No Lean code is executed or built. Keep the same toolchains installed throughout the run.
+
+To pilot a single model on five samples per library, or resume its full pass:
+
+```sh
+python3 scripts/judge.py --run main --backend codex --model gpt-6.1-sol \
+  --label pilot-sol --limit 5 --jobs 4
+python3 scripts/judge.py --run main --backend codex --model gpt-6-luna \
+  --label gpt-6-luna-high --limit 300 --jobs 12
+python3 scripts/judge.py --run main --model claude-sonnet-5-5 \
+  --label claude-sonnet-5-5-high --limit 300 --jobs 12
+```
+
+Each Codex theorem starts a fresh ephemeral session with the indicator prompt replacing
+the built-in coding instructions. The only prompt text change replaces
+`with the Read, Grep and Glob tools` with `with the sources MCP tools Read, Grep and Glob`.
+The source MCP server exposes those three tools and resolves every requested path against
+the explicit permitted roots, including protection against symlink escapes. Read defaults
+to 400 lines (up to 2000 per call), Glob to 1000 files, and tool output to 60000 characters;
+the judge can paginate or narrow its search. There is no shell or web access. Automatic
+project instructions, skills, memory, plugins and unrelated integrations are disabled.
+The judge cannot read previous verdicts or reports through the source tools. Claude uses
+the original three built-in tools and prompt, plus `--restricted` to enforce its source
+directory boundary. A denied Codex source tool approval invalidates the judgment.
+
+Each label saves `judge.json` with the model, effort, CLI version and hashes of the
+prompt, schema, corpus lock and runner code. Changing this protocol requires a new label.
+Results are written atomically; interrupted runs resume by skipping completed verdicts.
+Failed calls produce logs, never negative verdicts. Attempt transcripts and stderr are
+kept locally and ignored by git. Codex token usage is recorded; its dollar cost is
+unknown rather than reported as zero. Claude reports API-equivalent cost even when its
+subscription supplies the quota.
+
+The benchmark produces per-pass reports, disagreement reports against both Opus passes,
+and `runs/main/unnecessary-hypotheses/model-comparison.md`: flag rates with Wilson
+intervals and all pairwise comparisons (both/either flags, disagreements, matching
+hypotheses and Cohen's kappa). It refuses to publish that comparison until every selected
+theorem has a verdict. Rerun the same benchmark command to resume after failures.
+Pilot labels are separate and are excluded from the final comparison.
+
 ## Results so far: unnecessary hypotheses
 
 400 theorems per library:
