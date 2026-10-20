@@ -1,6 +1,6 @@
 """Run Sol 6.1, Luna 6 and Sonnet 5.5 on the original samples, then compare with Opus.
 
-    python3 -u scripts/benchmark.py --jobs 12 --passes 2
+    python3 -u scripts/benchmark.py --sol-jobs 10 --luna-jobs 5 --sonnet-jobs 2 --passes 2
 
 Each model runs independently; --jobs is concurrency PER MODEL. Rerunning resumes
 completed labels and samples. Calls use subscription authentication from the CLIs.
@@ -19,14 +19,24 @@ MODELS = [("codex", "gpt-6.1-sol"), ("codex", "gpt-6-luna"), ("claude", "claude-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--jobs", type=int, default=12)
+    parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--codex-jobs", type=int,
                         help="override concurrency per Codex model (defaults to --jobs)")
+    parser.add_argument("--sol-jobs", type=int, help="override Sol concurrency")
+    parser.add_argument("--luna-jobs", type=int, help="override Luna concurrency")
+    parser.add_argument("--sonnet-jobs", type=int, help="override Sonnet concurrency")
     parser.add_argument("--passes", type=int, default=2)
     parser.add_argument("--limit", type=int, default=300)
     args = parser.parse_args()
-    if min(args.jobs, args.codex_jobs or args.jobs, args.passes, args.limit) < 1:
+    requested = [args.jobs, args.codex_jobs, args.sol_jobs, args.luna_jobs, args.sonnet_jobs,
+                 args.passes, args.limit]
+    if any(value is not None and value < 1 for value in requested):
         parser.error("jobs, passes and limit must be positive")
+    concurrency = {
+        "gpt-6.1-sol": args.sol_jobs or args.codex_jobs or args.jobs,
+        "gpt-6-luna": args.luna_jobs or args.codex_jobs or args.jobs,
+        "claude-sonnet-5-5": args.sonnet_jobs or args.jobs,
+    }
     base = ROOT / "runs/main/unnecessary-hypotheses"
     labels = ["claude-opus-5-5-high", "rejudge-claude-opus-5-5-high"]
     labels += [f"{model}-high" + (f"-repeat-{n}" if n > 1 else "")
@@ -38,8 +48,8 @@ def main():
             cmd = [sys.executable, "-u", "scripts/judge.py", "--run", "main",
                    "--backend", backend, "--model", model, "--effort", "high",
                    "--label", label, "--limit", str(args.limit), "--jobs",
-                   str((args.codex_jobs or args.jobs) if backend == "codex" else args.jobs)]
-            print(f"Starting {label}", flush=True)
+                   str(concurrency[model])]
+            print(f"Starting {label} with {concurrency[model]} sessions", flush=True)
             log = base / f"{label}.log"
             with log.open("a") as output:
                 result = subprocess.run(cmd, cwd=ROOT, stdout=output, stderr=subprocess.STDOUT)

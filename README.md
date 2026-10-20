@@ -30,12 +30,14 @@ No sampling or corpus update is needed. Fetch exactly the locked source commits:
 ```sh
 python3 scripts/fetch.py
 python3 -m unittest discover -s scripts -v
-python3 -u scripts/benchmark.py --jobs 12 --passes 2
+python3 -u scripts/benchmark.py --sol-jobs 10 --luna-jobs 5 --sonnet-jobs 2 --passes 2
 ```
 
 The benchmark runs `gpt-6.1-sol`, `gpt-6-luna` and `claude-sonnet-5-5`, all at `high`
-effort, twice independently: 9000 judgments. `--jobs` is concurrency **per model**; the
-three models run concurrently. It uses saved Codex and Claude Code login credentials.
+effort, twice independently: 9000 judgments. `--jobs` is default concurrency **per model**
+(default 1); `--sol-jobs`, `--luna-jobs` and `--sonnet-jobs` override each model separately.
+The example runs 17 judgments concurrently: 10 Sol, 5 Luna and 2 Sonnet. The three models
+run concurrently. It uses saved Codex and Claude Code login credentials.
 Install Codex CLI (tested with 0.163.0), Claude Code (tested with 2.1.304), Python 3.11+
 and ripgrep. For complete Lean core access, install the four toolchains listed below.
 No Lean code is executed or built. Keep the same toolchains installed throughout the run.
