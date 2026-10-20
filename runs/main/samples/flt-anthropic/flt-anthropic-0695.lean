@@ -1,0 +1,46 @@
+namespace P2MW.S_LanglandsTunnell_exists_agreesAwayFromFinite_twist_archCasimir_eigenvector_minimalWeight_mem_isCuspConstituent_whittaker_diagOne_ne_zero_of_whittakerCoefficient_fibre_eq_archW_of_isCasimirEigen
+
+attribute [-instance] instFiniteResidueFieldAdicCompletionRingOfIntegersWithZeroMultiplicativeInt_definitions NumberField.instCompactSpaceAdicCompletionIntegers Rat.adicCompletion.locallyCompactSpace NumberField.instFiniteResidueFieldAdicCompletionIntegers instWeaklyLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions instLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions instCountableOfNumberField_definitions RestrictedProduct.SecondCountableTopology_of_principal instCountableElemSetSetsCofinite_definitions AutomorphicForm.compactSpace_maximalCompactAway AutomorphicForm.compactSpace_adelicMaximalCompact AutomorphicForm.isProbabilityMeasure_maximalCompactHaar AutomorphicForm.isHaarMeasure_maximalCompactHaar AutomorphicForm.compactSpace_maximalCompactAt AutomorphicForm.isProbabilityMeasure_maximalCompactAwayHaar AutomorphicForm.isHaarMeasure_maximalCompactAwayHaar AutomorphicForm.isProbabilityMeasure_maximalCompactAtHaar AutomorphicForm.isHaarMeasure_maximalCompactAtHaar LanglandsTunnell.isScalarTower_fixFldDetKer_fixFldQuatH_L LanglandsTunnell.isScalarTower_rat_fixFldSylowH_fixFldQuatH LanglandsTunnell.detKer_normal LanglandsTunnell.isScalarTower_rat_fixFldDetKer_fixFldQuatH LanglandsTunnell.algebra_fixFldDetKer_fixFldQuatH LanglandsTunnell.isScalarTower_fixFldSylowH_fixFldQuatH_L LanglandsTunnell.algebra_fixFldSylowH_fixFldQuatH LanglandsTunnell.Lift48.instDecidablePredMatIsProjOrder LanglandsTunnell.Lift48.instDecidablePredMatIsPM1 FLT.SpectralSide.instCompactSpaceMatrix
+
+set_option autoImplicit false
+
+set_option linter.unusedVariables false
+
+set_option linter.unusedSectionVars false
+
+set_option maxHeartbeats 3200000
+
+set_option autoImplicit false
+
+p2m_open
+
+open NumberField.TateGlobal NumberField.AdelicLevel NumberField.AdelicBox NumberField.InfinitePlace.Completion
+
+open AutomorphicForm.WindowedSiegel AutomorphicForm.SiegelCovering NumberField.InfinitePlace LanglandsTunnell.RealArchParam
+
+open scoped nonZeroDivisors
+
+set_option maxHeartbeats 800000
+
+set_option synthInstance.maxHeartbeats 80000
+
+namespace Ws47
+
+namespace PIN
+
+namespace Parity
+
+open NumberField.AdelicVolume MeasureTheory Matrix
+
+variable {w : InfinitePlace ℚ} (hw : w.IsReal)
+
+theorem centralScalar_comm (zz : (AdeleRing (𝓞 ℚ) ℚ)ˣ) (g : AdelicGL2 (𝓞 ℚ) ℚ) :
+    g * centralScalar (𝓞 ℚ) ℚ zz = centralScalar (𝓞 ℚ) ℚ zz * g := by
+  apply Units.ext
+  rw [Units.val_mul, Units.val_mul, centralScalar_val, ← Matrix.scalar_apply]
+  exact (Matrix.scalar_commute (zz : AdeleRing (𝓞 ℚ) ℚ) (Commute.all _) _).eq.symm
+
+end Parity
+end PIN
+end Ws47
+end P2MW.S_LanglandsTunnell_exists_agreesAwayFromFinite_twist_archCasimir_eigenvector_minimalWeight_mem_isCuspConstituent_whittaker_diagOne_ne_zero_of_whittakerCoefficient_fibre_eq_archW_of_isCasimirEigen

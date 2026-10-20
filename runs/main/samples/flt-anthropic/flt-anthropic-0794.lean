@@ -1,0 +1,27 @@
+namespace P2MW.S_ModularCurve_ord_cuspInftyBar_coeffEmb_modularUnitSeries
+
+attribute [-instance] ModularCurve.PhiGen.instNeZeroPhiGenCosetA AlgebraicCurve.IsCurveOver.instNontrivialKaehler AlgebraicCurve.IsCurveOver.instFreeKaehler AlgebraicCurve.IsCurveOver.toHasPrincipalDivisors AlgebraicCurve.IsCurveOver.instFiniteResidue AlgebraicCurve.instFundamentalIdentityOfSumRamificationInertia AlgebraicCurve.Place.instIsScalarTowerResidueFieldRestrictPushforward AlgebraicCurve.Place.instAlgebraResidueFieldRestrictPushforward AlgebraicCurve.Place.instIsLocalHomRestrictInclusion AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation instDecEqAlgebraicClosureRat WeierstrassCurve.Affine.Point.instDistribMulActionAlgEquiv WeierstrassCurve.Affine.Point.instModuleZModTorsionBy WeierstrassCurve.Affine.Point.instSMulTorsionBy WeierstrassCurve.Affine.Point.instDistribMulActionTorsionBy WeierstrassCurve.Affine.Point.instSMulAlgEquiv WeierstrassCurve.Affine.Point.instSMulCommClassAlgEquivZModTorsionBy AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt
+
+open ModularCurve AlgebraicCurve IntermediateField
+
+open scoped Pointwise
+
+noncomputable section
+
+namespace DivUSol
+
+local notation "𝕂" => AlgebraicClosure ℚ
+
+variable (ℓ : ℕ)
+
+variable [Fact ℓ.Prime]
+
+attribute [local instance] isScalarTower_rat
+
+theorem isPrincipal_smul_cuspidalDivisor : Divisor.IsPrincipal (((ℓ : ℤ) - 1) • cuspidalDivisor ℓ) :=
+  ⟨ubar ℓ (modularUnitSeries_mem_modularFunctionFieldFull ℓ), ubar_ne_zero ℓ _,
+    smul_cuspidalDivisor_apply ℓ _⟩
+
+end DivUSol
+end
+end P2MW.S_ModularCurve_ord_cuspInftyBar_coeffEmb_modularUnitSeries

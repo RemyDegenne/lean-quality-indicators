@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import itertools
 import json
 import os
 import subprocess
@@ -35,17 +36,31 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fetch  # noqa: E402
+import indicator  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 REPOS = ROOT / "repos"
 
 
-def judge_dirs(sample: dict) -> tuple[Path, dict[str, Path]]:
-    """Working directory of the judge, and the other directories it may read."""
+def judge_dirs(sample: dict, mathlib: str = "master") -> tuple[Path, dict[str, Path]]:
+    """Working directory of the judge, and the other directories it may read.
+
+    `mathlib` is "master" (the Mathlib clone) or "pinned" (the Mathlib and Batteries versions
+    the sample's repository pins, cloned by `fetch.py --deps`)."""
     repo = REPOS / sample["dir"]
     dirs = {}
     if sample["lib"] == "formal-frontier":
         dirs["the other Formal Frontier libraries"] = REPOS / "formal-frontier"
-    if sample["lib"] != "mathlib":
+    if mathlib == "pinned":
+        for name, (_, rev) in sorted(fetch.pinned_deps(sample["dir"]).items(), reverse=True):
+            d = fetch.dep_dir(name, rev)
+            if not d.is_dir():
+                raise SystemExit(f"{d} is missing: run `python3 scripts/fetch.py --deps`")
+            label = "Mathlib" if name == "mathlib" else "Batteries"
+            dirs[f"{label} (the version this library depends on, commit {rev[:12]})"] = d
+    elif sample["lib"] != "mathlib":
         dirs["Mathlib (current master, possibly newer than the version the library uses)"] = \
             REPOS / "mathlib"
     toolchain = (repo / "lean-toolchain").read_text().strip()
@@ -60,7 +75,7 @@ def build_message(sample: dict, run: Path, ind: Path,
                   extra: dict[str, str] | None = None) -> tuple[Path, dict[str, Path], str]:
     """Working directory, readable directories and user message of one judge session;
     `extra` fills further `{placeholders}` of the indicator's message.md."""
-    cwd, dirs = judge_dirs(sample)
+    cwd, dirs = judge_dirs(sample, indicator.config(ind)["mathlib"])
     message = (ind / "message.md").read_text()
     for key, val in {
         "{snippet}": (run / sample["file"]).read_text().rstrip("\n"),
@@ -133,13 +148,17 @@ def main() -> None:
     ap.add_argument("--max-budget", type=float, default=5.0, help="USD cap per judge call")
     ap.add_argument("--claude", default=os.environ.get("CLAUDE_BIN", "claude"),
                     help="Claude Code executable (default: $CLAUDE_BIN, else `claude`)")
+    ap.add_argument("--order", choices=["interleave", "file"], default="interleave",
+                    help="interleave: one sample of each library in turn, so that progress is "
+                         "even across libraries (default); file: the order of samples.jsonl")
     ap.add_argument("--export", metavar="DIR",
                     help="write the judge inputs to DIR instead of judging")
     args = ap.parse_args()
 
     run = ROOT / "runs" / args.run
     ind = ROOT / "indicators" / args.indicator
-    samples = [json.loads(line) for line in (run / "samples.jsonl").open()]
+    skip = indicator.config(ind)["skip_libraries"]
+    samples = [s for s in map(json.loads, (run / "samples.jsonl").open()) if s["lib"] not in skip]
     if args.export:
         exp = Path(args.export)
         (exp / "messages").mkdir(parents=True, exist_ok=True)
@@ -169,6 +188,11 @@ def main() -> None:
                 kept.append(s)
         samples = kept
     todo = [s for s in samples if not (out / f"{s['id']}.json").exists()]
+    if args.order == "interleave":
+        by_lib: dict[str, list[dict]] = {}
+        for s in todo:
+            by_lib.setdefault(s["lib"], []).append(s)
+        todo = [s for group in itertools.zip_longest(*by_lib.values()) for s in group if s]
     print(f"{len(samples) - len(todo)} already judged, {len(todo)} to go -> {out}")
 
     lock = threading.Lock()
@@ -183,7 +207,8 @@ def main() -> None:
                 try:
                     r = f.result()
                     cost += r.get("cost_usd") or 0
-                    flag = "FOUND" if r["verdict"] == "unnecessary_hypothesis_found" else "none"
+                    flag = "FOUND" if r["verdict"] == "unnecessary_hypothesis_found" else \
+                        "none" if r["verdict"] in ("none_found", "none") else r["verdict"]
                     print(f"[{int(done)}/{len(todo)}] {s['id']:24} {flag:6} "
                           f"${cost:.2f} total", flush=True)
                 except Exception as e:  # noqa: BLE001

@@ -1,0 +1,36 @@
+namespace P2MW.S_ModularCurve_DRModelPackage_exists_isDomain_ringHom_functionField_and_ringHom_modularFunctionFieldC_of_residueField_compZero
+
+attribute [-instance] ModularCurve.PhiGen.instNeZeroPhiGenCosetA AlgebraicCurve.CurveModel.locallyOfFiniteType_gluedToBase AlgebraicCurve.CurveModel.isFractionRing_overlap AlgebraicCurve.CurveModel.isLocallyNoetherian_glued AlgebraicCurve.CurveModel.jacobsonSpace_glued AlgebraicCurve.CurveModel.isOpenImmersion_ι₀ AlgebraicCurve.CurveModel.isIntegral_glued AlgebraicCurve.CurveModel.quasiSeparated_gluedToBase AlgebraicCurve.CurveModel.compactSpace_glued AlgebraicCurve.CurveModel.isIntegral_adjoin_chartRing AlgebraicCurve.CurveModel.isFractionRing_overlap_functionField AlgebraicCurve.CurveModel.isProper_gluedToBase AlgebraicCurve.CurveModel.isOpenImmersion_ιU AlgebraicCurve.CurveModel.isOpenImmersion_f₀ AlgebraicCurve.CurveModel.isOpenImmersion_fInf AlgebraicCurve.CurveModel.isOpenImmersion_ιInf AlgebraicCurve.CurveModel.algebra_overlap_functionField AlgebraicCurve.CurveModel.quasiCompact_gluedToBase AlgebraicCurve.CurveModel.algebraAdjoin AlgebraicCurve.CurveModel.isDedekindDomain_chartRing AlgebraicCurve.CurveModel.isIntegralClosure AlgebraicCurve.CurveModel.finite_chartRing AlgebraicCurve.CurveModel.centre_isPrime AlgebraicCurve.CurveModel.isFractionRing_chartRing AlgebraicCurve.CurveModel.finiteType_chartRing AlgebraicCurve.CurveModel.isNoetherianRing_chartRing AlgebraicCurve.CurveModel.isScalarTower_base_adjoin AlgebraicCurve.CurveModel.isScalarTower_adjoin AlgebraicCurve.CurveModel.chartRing_finitePresentation WeierstrassCurve.instIsEllipticBaseChange WeierstrassCurve.Univ.Affine.instAddGroupPointFieldBaseChangeMvPolynomialCoeffIntCurve WeierstrassCurve.Univ.instIsEllipticFieldPointedCurve WeierstrassCurve.Univ.instCommRingPoly AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.RationalFunctionField.instNontrivialSubtypeUnitsWithZeroMultiplicativeIntMemSubgroupValueGroupRatFuncValuationInftyValuation_definitions
+
+set_option autoImplicit false
+
+set_option maxHeartbeats 3200000
+
+set_option synthInstance.maxHeartbeats 1600000
+
+open CategoryTheory CategoryTheory.Limits AlgebraicGeometry ModularCurve AlgebraicCurve
+
+open IsLocalRing
+
+open scoped TensorProduct
+
+p2m_reactivate
+
+noncomputable section
+
+namespace Dock
+
+section OpenPiece
+
+variable (p : ℕ) [Fact p.Prime] (𝔛 : DRModelPackage p) (k₀ : Type) [Field k₀] [CharP k₀ p]
+  (k : Type) [Field k] [CharP k p] [IsAlgClosed k] (i : k₀ →+* k)
+
+theorem preimage_closure_ζ₁ : (bck p k₀ k i).base ⁻¹' closure {ζ₁ p 𝔛 k₀ k i} = Set.range (𝔛.compInf k).base := by
+  rw [closure_ζ₁_eq]
+  exact (ModularCurve.DRModelPackage.preimage_closure_image_range_compInf_eq_of_comp_fst_eq p 𝔛 k₀ k
+    (bck p k₀ k i) (baseChangeMap_fst p i)).1
+
+end OpenPiece
+end Dock
+end
+end P2MW.S_ModularCurve_DRModelPackage_exists_isDomain_ringHom_functionField_and_ringHom_modularFunctionFieldC_of_residueField_compZero

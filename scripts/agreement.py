@@ -20,10 +20,10 @@ import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import indicator  # noqa: E402
 from report import wilson  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-FOUND = "unnecessary_hypothesis_found"
 
 
 def hyp_keys(r: dict) -> set[str]:
@@ -57,6 +57,7 @@ def main() -> None:
     args = ap.parse_args()
     run = ROOT / "runs" / args.run
     base = run / args.indicator
+    positive = indicator.config(ROOT / "indicators" / args.indicator)["positive"]
     names = {lib["id"]: lib["name"] for lib in
              tomllib.loads((ROOT / "libraries.toml").read_text())["library"]}
     samples = {json.loads(line)["id"]: json.loads(line) for line in (run / "samples.jsonl").open()}
@@ -73,7 +74,7 @@ def main() -> None:
         for i, s in samples.items():
             a = load(args.first, i)
             if a:
-                grp = "flagged" if a["verdict"] == FOUND else "controls"
+                grp = "flagged" if a["verdict"] in positive else "controls"
                 sel.setdefault(s["lib"], {"flagged": [], "controls": []})[grp].append(i)
         others = "Non-flags flagged"
 
@@ -89,11 +90,11 @@ def main() -> None:
         for grp in ("flagged", "controls"):
             judged = [(i, load(args.first, i), load(args.second, i)) for i in groups[grp]]
             judged = [(i, a, b) for i, a, b in judged if a and b]
-            k = sum(b["verdict"] == FOUND for _, _, b in judged)
+            k = sum(b["verdict"] in positive for _, _, b in judged)
             lo, hi = wilson(k, len(judged))
             cells[grp] = f"{k}/{len(judged)} ({lo:.0%}–{hi:.0%})" if judged else "–"
             for i, a, b in judged:
-                fa, fb = a["verdict"] == FOUND, b["verdict"] == FOUND
+                fa, fb = a["verdict"] in positive, b["verdict"] in positive
                 pairs.append((fa, fb))
                 if fa and fb:
                     both += 1
@@ -111,9 +112,9 @@ def main() -> None:
         lines += [f"## {names.get(lib, lib)}: {len(rows)} disagreements", ""]
         for _, i, a, b in rows:
             s = samples[i]
-            who = "flagged first, not again" if a["verdict"] == FOUND else "flagged only second"
+            who = "flagged first, not again" if a["verdict"] in positive else "flagged only second"
             lines += [f"### [`{s['name']}`]({s['url']}) — `{i}`: {who}", ""]
-            for h in (a if a["verdict"] == FOUND else b)["hypotheses"]:
+            for h in (a if a["verdict"] in positive else b).get("hypotheses", []):
                 lines.append(f"- `{h['binder']}`: {h['justification']}")
             lines.append("")
     out = base / args.second / ("agreement.md" if args.ids_file else "agreement-full.md")

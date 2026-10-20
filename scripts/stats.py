@@ -11,8 +11,12 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import indicator  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -25,7 +29,10 @@ def main() -> None:
     args = ap.parse_args()
     run = ROOT / "runs" / args.run
     lab = run / args.indicator / args.label
-    samples = [json.loads(line) for line in (run / "samples.jsonl").open()]
+    cfg = indicator.config(ROOT / "indicators" / args.indicator)
+    positive = cfg["positive"]
+    samples = [s for s in map(json.loads, (run / "samples.jsonl").open())
+               if s["lib"] not in cfg["skip_libraries"]]
     results, mtimes = {}, []
     for p in (lab / "results").glob("*.json"):
         if not p.name.endswith(".raw.json"):
@@ -39,7 +46,7 @@ def main() -> None:
     for lib in dict.fromkeys(s["lib"] for s in samples):
         ids = [s["id"] for s in samples if s["lib"] == lib]
         rs = [results[i] for i in ids if i in results]
-        k = sum(r["verdict"] == "unnecessary_hypothesis_found" for r in rs)
+        k = sum(r["verdict"] in positive for r in rs)
         rate = f"{k / len(rs):.1%}" if rs else "-"
         print(f"{lib:16} {len(ids):7} {len(rs):6} {k:7} {rate:>6} "
               f"{sum(i in failed for i in ids):6}")

@@ -1,0 +1,65 @@
+namespace P2MW.S_CerednikDrinfeld_natCard_ofFiniteIdele_primeHeckeSet_eq_natCard_subgroup_dualPair_ker_of_inf_conjByFiniteIdele
+
+attribute [-instance] WeierstrassCurve.instIsEllipticBaseChange WeierstrassCurve.Univ.Affine.instAddGroupPointFieldBaseChangeMvPolynomialCoeffIntCurve WeierstrassCurve.Univ.instIsEllipticFieldPointedCurve WeierstrassCurve.Univ.instCommRingPoly AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt WeierstrassCurve.Affine.instIsScalarTowerPolynomialRatFuncFunctionField_definitions WeierstrassCurve.Affine.instAlgebraRatFuncFunctionField_definitions WeierstrassCurve.Affine.instIsScalarTowerRatFuncFunctionField_definitions WeierstrassCurve.Affine.CoordinateRing.moduleFinite WeierstrassCurve.Affine.instDecidableEqFunctionField WeierstrassCurve.Affine.CoordinateRing.isIntegral IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instDimensionLEOneSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.instLiesOverSubtypeAdicCompletionMemValuationSubringAdicCompletionIntegersCompletionIdealAsIdeal IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsPrincipalIdealRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemSubringIntegerWithZeroMultiplicativeInt_definitions IsDedekindDomain.HeightOneSpectrum.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicCompletionV_definitions
+
+set_option autoImplicit false
+
+set_option linter.unusedVariables false
+
+set_option linter.unusedSectionVars false
+
+open scoped Quaternion TensorProduct NumberField Pointwise
+
+p2m_open
+
+set_option autoImplicit false
+
+open scoped Quaternion TensorProduct NumberField Pointwise
+
+p2m_open
+
+set_option autoImplicit false
+
+open IsDedekindDomain NumberField
+
+set_option autoImplicit false
+
+open scoped TensorProduct Quaternion Pointwise
+
+open IsDedekindDomain NumberField
+
+set_option autoImplicit false
+
+open scoped TensorProduct Quaternion Pointwise
+
+open IsDedekindDomain NumberField
+
+set_option autoImplicit false
+
+open scoped TensorProduct Quaternion Pointwise
+
+open IsDedekindDomain NumberField
+
+p2m_reactivate
+
+p2m_reactivate
+
+noncomputable section
+
+namespace CerednikDrinfeld
+
+namespace LevelTransport
+
+p2m_open
+
+variable {A B : Type*} [AddCommGroup A] [AddCommGroup B]
+
+theorem ker_comp_eq_sup_of_ker_eq_map {C' : Type*} [AddCommGroup C'] (φ : A →+ B) (χ : B →+ C')
+    (H : AddSubgroup A) (hχ : χ.ker = H.map φ) :
+    (χ.comp φ).ker = H ⊔ φ.ker := by
+  rw [← AddMonoidHom.comap_ker, hχ, comap_map_eq_sup_ker]
+
+end LevelTransport
+end CerednikDrinfeld
+end
+end P2MW.S_CerednikDrinfeld_natCard_ofFiniteIdele_primeHeckeSet_eq_natCard_subgroup_dualPair_ker_of_inf_conjByFiniteIdele

@@ -6,14 +6,24 @@ Mathlib: Mathlib itself, [Tau Ceti](https://github.com/TauCetiProject/TauCeti),
 [FLT formalization](https://github.com/anthropics/fermats-last-theorem) and the 43 libraries
 of [Formal Frontier](https://github.com/FormalFrontier).
 
-The first indicator is **unnecessary hypotheses**: a hypothesis of a theorem (one of its
-binders, or one it takes from a `variable` command) that can be deleted, leaving a statement
-that is still true and provable, possibly with a different proof.
+Indicators (one directory each in `indicators/`):
 
-## Results so far
+- **`unnecessary-hypotheses`**: a hypothesis of a theorem (one of its binders, or one it
+  takes from a `variable` command) that can be deleted, leaving a statement that is still
+  true and provable, possibly with a different proof. Results below.
+- **`duplicates-mathlib`**: the theorem is already in Mathlib (with Batteries and Lean core),
+  either as the same statement up to presentation (`duplicate`) or as an instantiation of a
+  single Mathlib declaration provable from it in one or two short lines (`special_case`).
+  General principles of logic, equality and structure (`Eq.subst`, `map_add`, ext lemmas, …)
+  applied to the library's own definitions do not count. Judged against the Mathlib version
+  each library pins; not run on Mathlib itself. Results below.
 
-Experiment `runs/main` (corpus pinned in October 2026, judge `claude-opus-5-5` at effort
-`high`, 400 theorems sampled uniformly per library):
+All results come from experiment `runs/main`: corpus pinned in October 2026, judge
+`claude-opus-5-5` at effort `high`, theorems sampled uniformly per library.
+
+## Results so far: unnecessary hypotheses
+
+400 theorems per library:
 
 | Library | Flagged / 400 | Rate | 95% CI |
 |---|---:|---:|---:|
@@ -38,13 +48,28 @@ These are the judges' verdicts. Their correctness has been checked by hand only 
 of flags (all correct), not by compiling the proposed changes in Lean; two runs of the same
 model can share blind spots.
 
+## Results so far: duplicates of Mathlib
+
+1000 theorems per library. A *wrapper* is a finding whose proof already applies the Mathlib
+declaration (the library restates a Mathlib result in its own terms); a *re-derived* finding
+proves the Mathlib result another way.
+
+| Library | Findings / 1000 | Rate (95% CI) | `duplicate` | `special_case` | Wrappers | Re-derived (95% CI) |
+|---|---:|---:|---:|---:|---:|---:|
+| Formal Frontier | 46 | 4.6% (3.5–6.1%) | 5 | 41 | 29 | 17: 1.7% (1.1–2.7%) |
+| Tau Ceti | 50 | 5.0% (3.8–6.5%) | 0 | 50 | 34 | 16: 1.6% (1.0–2.6%) |
+| Lean Pool | 68 | 6.8% (5.4–8.5%) | 8 | 60 | 28 | 40: 4.0% (3.0–5.4%) |
+| FLT (Anthropic) | 137 | 13.7% (11.7–16.0%) | 12 | 125 | 51 | 86: 8.6% (7.0–10.5%) |
+
+Judge verdicts, not yet audited beyond a 40-theorem test, and not yet test-retested.
+
 ## Repository layout
 
 | Path | Content |
 |---|---|
 | `libraries.toml` | The corpus: each library as a set of git sources, with included directories and exclusions |
 | `libraries.lock.json` | The commit of each of the 47 source repositories |
-| `scripts/fetch.py` | Clones the sources into `repos/` at the pinned commits |
+| `scripts/fetch.py` | Clones the sources into `repos/` at the pinned commits, and with `--deps` the Mathlib and Batteries versions they pin |
 | `scripts/leanscan.py` | Syntactic Lean scanner: finds the theorems and rebuilds the context of each |
 | `scripts/sample.py` | Builds the population of each library and draws a seeded uniform sample |
 | `scripts/judge.py` | Runs a judge (headless Claude Code) on each sampled theorem, or exports its inputs |
@@ -52,13 +77,15 @@ model can share blind spots.
 | `scripts/report.py` | Flag rates, confidence intervals and the list of flags of a judge run |
 | `scripts/agreement.py` | Compares two judge runs on the same theorems (test-retest) |
 | `scripts/verify.py` | Adversarial second judge that sees the first judge's claims |
-| `indicators/<name>/` | Judge prompt (`prompt.md`), per-theorem message (`message.md`), answer schema (`schema.json`) |
+| `scripts/indicator.py` | Reads an indicator's `config.toml` |
+| `indicators/<name>/` | Judge prompt (`prompt.md`), per-theorem message (`message.md`), answer schema (`schema.json`), settings (`config.toml`) |
 | `runs/main/` | The current experiment: sample, snippets, verdicts and reports |
 
 ## Requirements
 
 - Python ≥ 3.11 (standard library only) and git.
-- About 1.5 GB of disk for the clones.
+- About 1.5 GB of disk for the clones, plus 0.8 GB for the pinned Mathlib and Batteries
+  versions (`fetch.py --deps`, needed by indicators with `mathlib = "pinned"`).
 - To run the judges as we did: [Claude Code](https://claude.com/claude-code) ≥ 2.1.280,
   logged in (the runner calls `claude -p`; no API key needed with a subscription).
 - Optional: the Lean toolchains the libraries use, installed with
@@ -70,20 +97,21 @@ model can share blind spots.
 
 1. **Corpus.** `python3 scripts/fetch.py` clones every source at its pinned commit.
    `python3 scripts/fetch.py --update` moves every source to its latest commit and rewrites
-   the lock instead (a new corpus, so start a new run). To add a library, add it to
-   `libraries.toml` and run `fetch.py`.
+   the lock instead (a new corpus, so start a new run). `--deps` also clones, under
+   `repos/deps/`, the Mathlib and Batteries commits that each source pins in its
+   `lake-manifest.json`. To add a library, add it to `libraries.toml` and run `fetch.py`.
 2. **Sample.** `python3 scripts/sample.py --run NAME --n N --seed S` draws N theorems per
    library into `runs/NAME/`. `--extend --n M` adds M more per library to an existing run,
    from the same seeded draw, so the union is exactly what one draw of N + M would give.
    `--population-only` prints the population sizes; `--diagnose` also lists column-0 words
    the scanner does not recognise as commands.
 3. **Judge.** `python3 scripts/judge.py --run NAME --jobs 8` judges every sample with the
-   `unnecessary-hypotheses` indicator. Options: `--model`, `--effort`, `--label` (results go
+   `unnecessary-hypotheses` indicator (`--indicator NAME` for another). Options: `--model`, `--effort`, `--label` (results go
    to `runs/NAME/<indicator>/<label>/results/`, default label `<model>-<effort>`), `--libs`,
    `--ids`, `--limit`, `--claude PATH` (Claude Code executable). Rerunning the same command
    resumes: judged samples are skipped and failed calls retried.
-   `python3 scripts/stats.py --run NAME --label LABEL` shows progress.
-4. **Report.** `python3 scripts/report.py --run NAME --label LABEL` writes
+   `python3 scripts/stats.py --run NAME [--indicator NAME] --label LABEL` shows progress.
+4. **Report.** `python3 scripts/report.py --run NAME [--indicator NAME] --label LABEL` writes
    `runs/NAME/<indicator>/LABEL/report.md`.
 5. **Checks.** For a test-retest, judge the same run again under another label and compare:
    `python3 scripts/agreement.py --run NAME --first LABEL1 --second LABEL2` (all theorems
@@ -92,32 +120,48 @@ model can share blind spots.
 
 A new indicator is a directory `indicators/<name>/` with `prompt.md` (system prompt),
 `message.md` (user message, with the placeholders `{snippet}`, `{name}`, `{line}`, `{path}`
-and `{dirs}`) and `schema.json` (answer schema), used with `judge.py --indicator <name>`.
-`report.py`, `stats.py` and `agreement.py` currently count the verdict
-`unnecessary_hypothesis_found`; adapt them for an indicator with other verdicts.
+and `{dirs}`), `schema.json` (answer schema, with a string field `verdict`) and
+`config.toml`:
+
+```toml
+positive = ["duplicate", "special_case"]  # verdicts that count as findings
+mathlib = "pinned"  # Mathlib the judge reads: "master" (repos/mathlib) or "pinned"
+skip_libraries = ["mathlib"]  # libraries the indicator does not apply to
+```
+
+`report.py`, `stats.py` and `agreement.py` count the `positive` verdicts; the report lists
+the other fields of each finding.
 
 ## Reproducing the current experiment
 
-`runs/main` was drawn with seed 0 in four batches of 100 theorems per library
-(`--n 100`, then `--extend --n 100` three times), which gives exactly the sample of a single
-`--n 400` draw. The first judge run (`claude-opus-5-5-high`) covers all 2000 theorems; the
-blind second run (`rejudge-claude-opus-5-5-high`) covers the first 300 per library.
+`runs/main` holds 1000 theorems per library (5000 in all), drawn with seed 0 in batches
+(`--n 100`, then `--extend` with 100, 100, 100, 300 and 300 per library), which gives exactly
+the sample of a single `--n 1000` draw. Coverage of the judge runs:
 
-1. Clone this repository and fetch the corpus at the pinned commits:
+| Indicator | Label | Theorems |
+|---|---|---|
+| `unnecessary-hypotheses` | `claude-opus-5-5-high` | the first 400 per library |
+| `unnecessary-hypotheses` | `rejudge-claude-opus-5-5-high` (blind second run) | the first 300 per library |
+| `duplicates-mathlib` | `claude-opus-5-5-high` | all 1000 per library, Mathlib excepted |
+
+1. Clone this repository and fetch the corpus at the pinned commits, with the pinned Mathlib
+   and Batteries versions that `duplicates-mathlib` needs:
 
    ```sh
-   python3 scripts/fetch.py
+   python3 scripts/fetch.py --deps
    ```
 
 2. Optionally, check that the sample is what the scripts draw (scanning the corpus takes
    about a minute on a multicore machine):
 
    ```sh
-   python3 scripts/sample.py --run check --n 400 --seed 0
+   python3 scripts/sample.py --run check --n 1000 --seed 0
    python3 -c "import json; k=lambda f: sorted((r['id'], r['path'], r['line']) for r in map(json.loads, open(f))); print(k('runs/main/samples.jsonl') == k('runs/check/samples.jsonl'))"
    ```
 
-3. Judge the same 2000 theorems with your judge, under a new label.
+3. Judge the same theorems with your judge, under a new label (add `--indicator
+   duplicates-mathlib` for the second indicator, and `--limit 400` to judge only the first
+   400 per library).
 
    - **With Claude Code**, using our runner:
 
@@ -128,7 +172,7 @@ blind second run (`rejudge-claude-opus-5-5-high`) covers the first 300 per libra
    - **With another agent**, export what each judge session receives:
 
      ```sh
-     python3 scripts/judge.py --run main --export export/
+     python3 scripts/judge.py --run main --export export/ [--indicator ...]
      ```
 
      This writes `export/system-prompt.md`, `export/schema.json`, one user message per
@@ -141,7 +185,7 @@ blind second run (`rejudge-claude-opus-5-5-high`) covers the first 300 per libra
      `schema.json`. The prompt names the tools Read, Grep and Glob; if your agent's tools are
      different, change that sentence and record the change. Save each answer, with the
      theorem's `id` and `lib` added, as
-     `runs/main/unnecessary-hypotheses/my-run/results/<id>.json`:
+     `runs/main/<indicator>/my-run/results/<id>.json`:
 
      ```json
      {"id": "mathlib-0000", "lib": "mathlib", "verdict": "none_found", "hypotheses": []}
@@ -150,8 +194,8 @@ blind second run (`rejudge-claude-opus-5-5-high`) covers the first 300 per libra
 4. Compare with our runs:
 
    ```sh
-   python3 scripts/report.py --run main --label my-run
-   python3 scripts/agreement.py --run main --first claude-opus-5-5-high --second my-run
+   python3 scripts/report.py --run main [--indicator ...] --label my-run
+   python3 scripts/agreement.py --run main [--indicator ...] --first claude-opus-5-5-high --second my-run
    ```
 
 LLM verdicts vary between runs even with the same model and prompt: our two runs of the same
@@ -162,7 +206,7 @@ reproduction should be read as matching rates and high agreement, not identical 
 
 All under `runs/main/`:
 
-- `samples.jsonl`: the 2000 sampled theorems (library, repository, commit, path, lines,
+- `samples.jsonl`: the 5000 sampled theorems (library, repository, commit, path, lines,
   name, GitHub link); `samples/<lib>/<id>.lean`: the snippet each judge received; `run.json`:
   seed, population sizes, commits, batches.
 - `unnecessary-hypotheses/claude-opus-5-5-high/`: first run. `results/<id>.json` per theorem;
@@ -175,6 +219,10 @@ All under `runs/main/`:
   per library. `report.md`; `agreement-full.md` (comparison with the first run, every
   disagreement); `agreement.md` (the 157 flags plus 157 random non-flags, selected in
   `rejudge-ids.json`).
+- `duplicates-mathlib/claude-opus-5-5-high/`: `results/<id>.json` per theorem; `report.md`
+  (1000 per library), `report-400.md`, `report-700.md`. The first 10 theorems per library
+  were judged in the test of the final prompt, the rest in the full run (the runner judges
+  the libraries in turn, so progress is even across them).
 
 The full session transcripts of the judges (about 140 MB: every file each judge read or
 searched) are not in the repository; ask for them if you need them.
@@ -209,11 +257,12 @@ searched) are not in the repository; ask for them if you need them.
   commands and the `variable`, `open`, `universe`, `include`, `omit`, `set_option`, local
   attribute/instance and notation commands in effect, then the theorem and its proof, with
   its docstring removed. The judge can read the library's source (docstring included),
-  Mathlib (the pinned master commit) and Lean core.
+  Mathlib and Lean core: for `unnecessary-hypotheses` the pinned Mathlib master commit, for
+  `duplicates-mathlib` the Mathlib and Batteries versions each library depends on.
 
 ## Costs
 
 The `cost_usd` fields are what the same tokens would cost at API rates, as reported by
 `claude -p`; with a Claude subscription, the runs draw on its usage quota instead. The first
-run cost about $146 for 2000 theorems (a median of 3 agent turns per theorem), the second
-$108 for 1500.
+`unnecessary-hypotheses` run cost about $146 for 2000 theorems (a median of 3 agent turns
+per theorem), its second run $108 for 1500; the `duplicates-mathlib` run about $216 for 4000.

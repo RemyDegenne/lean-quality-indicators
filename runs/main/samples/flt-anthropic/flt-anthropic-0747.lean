@@ -1,0 +1,38 @@
+namespace P2MW.S_AutomorphicForm_ratio_mul_eq_splitOrbital_of_isTwistedOrbitalIntegral_of_normString_diagUnits2_eq_of_areMatchingLocal
+
+attribute [-instance] AutomorphicForm.compactSpace_maximalCompactAway AutomorphicForm.compactSpace_adelicMaximalCompact AutomorphicForm.isProbabilityMeasure_maximalCompactHaar AutomorphicForm.isHaarMeasure_maximalCompactHaar AutomorphicForm.compactSpace_maximalCompactAt AutomorphicForm.isProbabilityMeasure_maximalCompactAwayHaar AutomorphicForm.isHaarMeasure_maximalCompactAwayHaar AutomorphicForm.isProbabilityMeasure_maximalCompactAtHaar AutomorphicForm.isHaarMeasure_maximalCompactAtHaar instFiniteResidueFieldAdicCompletionRingOfIntegersWithZeroMultiplicativeInt_definitions NumberField.instCompactSpaceAdicCompletionIntegers Rat.adicCompletion.locallyCompactSpace NumberField.instFiniteResidueFieldAdicCompletionIntegers instWeaklyLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions instLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions instCountableOfNumberField_definitions
+
+set_option autoImplicit false
+
+open MeasureTheory NumberField IsDedekindDomain
+
+attribute [local instance] AutomorphicForm.twistedCentralizerBorel
+
+open LanglandsTunnell.CubicInduction (diagUnits2)
+
+open scoped TensorProduct TensorProduct.RightActions
+
+noncomputable section
+
+namespace L3D1
+
+open AutomorphicForm
+
+section Centralizer
+
+variable (K : Type) [Field K] [NumberField K] (v : HeightOneSpectrum (𝓞 K))
+
+attribute [local instance] AutomorphicForm.locallyCompactSpace_localGL
+  AutomorphicForm.localGLBorel AutomorphicForm.borelSpace_localGLBorel AutomorphicForm.isHaarMeasure_localHaar
+  AutomorphicForm.localCentralizerBorel
+
+attribute [local instance] locallyCompactSpace_localCentralizer borelSpace_localCentralizer
+
+theorem one_mem_centralizerUnits (γ : GL (Fin 2) (v.adicCompletion K)) : (1 : localCentralizer K v γ) ∈
+    centralizerUnits K v γ :=
+  one_mem_localIntegralSet K v
+
+end Centralizer
+end L3D1
+end
+end P2MW.S_AutomorphicForm_ratio_mul_eq_splitOrbital_of_isTwistedOrbitalIntegral_of_normString_diagUnits2_eq_of_areMatchingLocal
