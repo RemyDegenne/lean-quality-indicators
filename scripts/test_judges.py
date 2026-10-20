@@ -3,14 +3,19 @@
 import argparse
 import io
 import json
+import os
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
 import codex_judge
+import codex_rate_guard
+from codex_rate_guard import rate_error
 import judge
 from source_tools import Sources, serve
 
@@ -61,6 +66,30 @@ class SourceTests(unittest.TestCase):
 
 
 class JudgeTests(unittest.TestCase):
+    def test_rate_guard_aborts_attempt_and_sets_shared_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            state = base / "state.log"
+            script = 'import time; print(\'{"type":"error","message":"HTTP 429 Too Many Requests"}\', flush=True); time.sleep(60)'
+            with patch.object(codex_rate_guard, "BASE", base), \
+                 patch.object(codex_rate_guard, "STATE", state), \
+                 patch.object(codex_rate_guard, "EVENTS", base / "events.log"), \
+                 patch.dict(os.environ, {"CODEX_REAL_BIN": sys.executable}), \
+                 patch.object(sys, "argv", ["codex_rate_guard.py", "-c", script]), \
+                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(codex_rate_guard.main(), 75)
+            self.assertGreater(json.loads(state.read_text())["not_before"], time.time() + 290)
+            self.assertEqual(json.loads((base / "events.log").read_text())["event"], "429")
+
+    def test_rate_guard_detects_errors_without_matching_source_numbers(self):
+        error = json.dumps({"type": "error", "message":
+                            "Reconnecting... 2/5 (last status: 429 Too Many Requests)"})
+        self.assertTrue(rate_error(error, "stdout"))
+        self.assertTrue(rate_error("HTTP status code: 429", "stderr"))
+        self.assertFalse(rate_error(json.dumps({"type": "item.completed", "item": {
+            "type": "mcp_tool_call", "result": "429 Too Many Requests in a source comment"}}), "stdout"))
+        self.assertFalse(rate_error('{"type":"turn.completed"}', "stdout"))
+
     def test_original_300_selection(self):
         samples = [{"id": f"{lib}-{i:04}", "lib": lib} for i in range(1000)
                    for lib in ["mathlib", "tauceti", "lean-pool", "flt", "ff"]]
