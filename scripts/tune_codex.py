@@ -59,6 +59,9 @@ def main():
     # A higher setting must beat the preceding stable rate by at least 5%.
     previous_rate = None
     while time.time() < end:
+        if (guard.BASE / "benchmark-complete.json").exists():
+            print("Benchmark complete; stopping tuner", flush=True)
+            break
         now = time.time()
         events = read_events()
         finished, errors = window(events, start)
@@ -76,6 +79,7 @@ def main():
         counts = collections.Counter(e["model"] for e in finished)
         status = {"utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
                   "elapsed_minutes": round((now-start)/60, 1), "limit": state["limit"],
+                  "spacing_seconds": state["spacing"],
                   "active": len(state["active"]), "queued": len(state["queue"]),
                   "cooldown_seconds": round(max(0, state["not_before"] - now)),
                   "completed": dict(counts), "429s": errors,
@@ -83,6 +87,7 @@ def main():
         print(json.dumps(status), flush=True)
         if elapsed >= args.stage_seconds and len(stage_finished) >= 4:
             stage = {"time": now, "limit": current, "minutes": elapsed/60,
+                     "spacing_seconds": state["spacing"],
                      "completed": len(stage_finished), "per_minute": rate, "429s": 0}
             with stage_log.open("a") as output:
                 output.write(json.dumps(stage) + "\n")

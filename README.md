@@ -65,6 +65,16 @@ finds a demonstrated stable setting for the observed workload, not a permanent r
 guarantee. The guard continues to back off on 429s after tuning ends. Detailed session
 and tuning events remain in the ignored log files alongside the results.
 
+After choosing a validated ceiling, the same controller can maintain it for the rest
+of the run, for example `python3 -u scripts/tune_codex.py --minutes 720 --max-sessions 9
+--spacing 3`. It never raises above that ceiling, backs off on rate errors, and exits
+when the benchmark's completion marker appears.
+
+The [2026-10-20 tuning measurements](runs/main/unnecessary-hypotheses/rate-tuning.json)
+selected nine shared Sol/Luna sessions with three-second start spacing: 16 theorems/minute
+combined, versus 16.2 at ten sessions. No 429s were observed during 61.6 minutes of
+supervised tuning. These are throughput measurements, not completed quality-audit results.
+
 Install Codex CLI (tested with 0.163.0), Claude Code (tested with 2.1.304), Python 3.11+
 and ripgrep. For complete Lean core access, install the four toolchains listed below.
 No Lean code is executed or built. Keep the same toolchains installed throughout the run.
