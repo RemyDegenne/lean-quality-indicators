@@ -23,15 +23,15 @@ All results come from experiment `runs/main`: corpus pinned in October 2026, jud
 
 ## Results so far: unnecessary hypotheses
 
-400 theorems per library:
+1000 theorems per library:
 
-| Library | Flagged / 400 | Rate | 95% CI |
+| Library | Flagged / 1000 | Rate | 95% CI |
 |---|---:|---:|---:|
-| Mathlib | 15 | 3.8% | 2.3%–6.1% |
-| Formal Frontier | 17 | 4.2% | 2.7%–6.7% |
-| Tau Ceti | 23 | 5.8% | 3.9%–8.5% |
-| Lean Pool | 61 | 15.2% | 12.1%–19.1% |
-| FLT (Anthropic) | 82 | 20.5% | 16.8%–24.7% |
+| Mathlib | 31 | 3.1% | 2.2%–4.4% |
+| Formal Frontier | 34 | 3.4% | 2.4%–4.7% |
+| Tau Ceti | 68 | 6.8% | 5.4%–8.5% |
+| Lean Pool | 150 | 15.0% | 12.9%–17.3% |
+| FLT (Anthropic) | 203 | 20.3% | 17.9%–22.9% |
 
 A second, independent run of the same judge on the first 300 theorems per library, blind to
 the first verdicts, reproduces these rates within 1.3 points per library (Cohen's κ = 0.92):
@@ -140,7 +140,7 @@ the sample of a single `--n 1000` draw. Coverage of the judge runs:
 
 | Indicator | Label | Theorems |
 |---|---|---|
-| `unnecessary-hypotheses` | `claude-opus-5-5-high` | the first 400 per library |
+| `unnecessary-hypotheses` | `claude-opus-5-5-high` | all 1000 per library |
 | `unnecessary-hypotheses` | `rejudge-claude-opus-5-5-high` (blind second run) | the first 300 per library |
 | `duplicates-mathlib` | `claude-opus-5-5-high` | all 1000 per library, Mathlib excepted |
 
@@ -210,8 +210,8 @@ All under `runs/main/`:
   name, GitHub link); `samples/<lib>/<id>.lean`: the snippet each judge received; `run.json`:
   seed, population sizes, commits, batches.
 - `unnecessary-hypotheses/claude-opus-5-5-high/`: first run. `results/<id>.json` per theorem;
-  `report.md` (400 per library), `report-batch1.md`, `report-batch2.md`, `report-batch3.md`
-  (100, 200, 300 per library).
+  `report.md` (1000 per library), `report-400.md`, `report-batch3.md`, `report-batch2.md`,
+  `report-batch1.md` (400, 300, 200, 100 per library).
 - `unnecessary-hypotheses/claude-opus-5-5-high/verify/claude-opus-5-5-high/`: adversarial
   verification of the 157 flags among the first 300 per library (it confirmed all 235
   claims, so it does not discriminate; kept for the record).
@@ -264,5 +264,5 @@ searched) are not in the repository; ask for them if you need them.
 
 The `cost_usd` fields are what the same tokens would cost at API rates, as reported by
 `claude -p`; with a Claude subscription, the runs draw on its usage quota instead. The first
-`unnecessary-hypotheses` run cost about $146 for 2000 theorems (a median of 3 agent turns
+`unnecessary-hypotheses` run cost about $374 for 5000 theorems (a median of 3 agent turns
 per theorem), its second run $108 for 1500; the `duplicates-mathlib` run about $216 for 4000.
