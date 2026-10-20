@@ -66,6 +66,37 @@ class SourceTests(unittest.TestCase):
 
 
 class JudgeTests(unittest.TestCase):
+    def test_shared_limit_is_adjustable_without_restarting_sessions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            with patch.object(codex_rate_guard, "BASE", base), \
+                 patch.object(codex_rate_guard, "STATE", base / "state.log"), \
+                 patch.object(codex_rate_guard, "EVENTS", base / "events.log"), \
+                 patch.object(codex_rate_guard, "alive", return_value=True):
+                codex_rate_guard.configure(2, 0, "test")
+                self.assertIsNotNone(codex_rate_guard.admit("101", "sol"))
+                self.assertIsNotNone(codex_rate_guard.admit("102", "luna"))
+                self.assertIsNone(codex_rate_guard.admit("103", "sol"))
+                codex_rate_guard.configure(3, 0, "test increase")
+                self.assertIsNotNone(codex_rate_guard.admit("103", "sol"))
+                self.assertEqual(len(codex_rate_guard.snapshot()["active"]), 3)
+
+    def test_rate_limit_halves_limit_and_blocks_both_models(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            with patch.object(codex_rate_guard, "BASE", base), \
+                 patch.object(codex_rate_guard, "STATE", base / "state.log"), \
+                 patch.object(codex_rate_guard, "EVENTS", base / "events.log"), \
+                 patch.object(codex_rate_guard, "alive", return_value=True):
+                codex_rate_guard.configure(8, 0, "test")
+                epoch, _ = codex_rate_guard.admit("101", "sol")
+                codex_rate_guard.backoff("sol")
+                state = codex_rate_guard.snapshot()
+                self.assertEqual(state["limit"], 4)
+                self.assertNotEqual(state["epoch"], epoch)
+                self.assertGreater(state["not_before"], time.time() + 290)
+                self.assertIsNone(codex_rate_guard.admit("102", "luna"))
+
     def test_rate_guard_aborts_attempt_and_sets_shared_cooldown(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -79,7 +110,8 @@ class JudgeTests(unittest.TestCase):
                  redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 self.assertEqual(codex_rate_guard.main(), 75)
             self.assertGreater(json.loads(state.read_text())["not_before"], time.time() + 290)
-            self.assertEqual(json.loads((base / "events.log").read_text())["event"], "429")
+            events = [json.loads(line) for line in (base / "events.log").read_text().splitlines()]
+            self.assertTrue(any(e["event"] == "rate_limit" for e in events))
 
     def test_rate_guard_detects_errors_without_matching_source_numbers(self):
         error = json.dumps({"type": "error", "message":

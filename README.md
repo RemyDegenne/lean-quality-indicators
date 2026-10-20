@@ -38,12 +38,33 @@ The benchmark runs `gpt-6.1-sol`, `gpt-6-luna` and `claude-sonnet-5-5`, all at `
 effort, twice independently: 9000 judgments. `--jobs` is default concurrency **per model**
 (default 1); `--sol-jobs`, `--luna-jobs` and `--sonnet-jobs` override each model separately.
 The example uses a shared rate guard: Sol and Luna share **one active Codex session**,
-with a ten-second gap between sessions. A runtime HTTP 429 aborts the attempt and sets
+with starts spaced at least ten seconds apart. A runtime HTTP 429 aborts active attempts,
+halves the concurrency limit, and sets
 a five-minute cooldown shared by both models. Internal Codex reconnect errors are
 checked even when a later retry might have succeeded. Sonnet runs two sessions separately.
 Without the wrapper, `--jobs` counts independent sessions for each model. Use saved Codex
 and Claude Code login credentials. The guard state and events are stored in ignored
 `codex-rate-guard-*.log` files beside the results.
+
+To tune concurrency, start larger worker pools behind the guard; these are queued
+workers, not simultaneous model sessions. In another terminal run the controller:
+
+```sh
+CODEX_BIN="$PWD/scripts/codex_rate_guard.py" \
+  python3 -u scripts/benchmark.py --sol-jobs 8 --luna-jobs 8 --sonnet-jobs 2 --passes 2
+python3 -u scripts/tune_codex.py --minutes 45 --max-sessions 8 --spacing 5
+```
+
+The controller raises shared Sol/Luna concurrency by one after five clean minutes with
+at least four completed judgments. Starts are staggered. A 429 immediately halves the
+shared limit, cancels active Codex attempts and imposes a five-minute cooldown; waiting
+workers make no requests. The controller records throughput at each stage and retains
+the fastest validated setting, backing down if additional concurrency stops improving it.
+It does not raise past a setting that produced a 429 during that tuning period. This
+finds a demonstrated stable setting for the observed workload, not a permanent rate-limit
+guarantee. The guard continues to back off on 429s after tuning ends. Detailed session
+and tuning events remain in the ignored log files alongside the results.
+
 Install Codex CLI (tested with 0.163.0), Claude Code (tested with 2.1.304), Python 3.11+
 and ripgrep. For complete Lean core access, install the four toolchains listed below.
 No Lean code is executed or built. Keep the same toolchains installed throughout the run.
