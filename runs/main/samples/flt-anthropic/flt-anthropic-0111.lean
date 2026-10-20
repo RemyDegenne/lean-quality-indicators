@@ -1,0 +1,24 @@
+namespace P2MW.S_AutomorphicForm_exists_measure_fundamentalDomain_centralizer_inter_ideleNorm_det_Icc_eq_mul_log_of_mem_ellipticCell
+
+attribute [-instance] instFiniteResidueFieldAdicCompletionRingOfIntegersWithZeroMultiplicativeInt_definitions NumberField.instCompactSpaceAdicCompletionIntegers Rat.adicCompletion.locallyCompactSpace NumberField.instFiniteResidueFieldAdicCompletionIntegers instWeaklyLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions instLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions instCountableOfNumberField_definitions instMeasurableSpaceRestrictedProduct_definitions instBorelSpaceRestrictedProduct_definitions RestrictedProduct.SecondCountableTopology_of_principal instCountableElemSetSetsCofinite_definitions MeasureTheory.instMeasurableNegSubtypeMemAddSubgroup_definitions MeasureTheory.instMeasurableMulSubtypeMemSubgroup_definitions MeasureTheory.instMeasurableMul₂SubtypeMemSubgroup_definitions MeasureTheory.instMeasurableMul₂SubtypeMemAddSubgroup_definitions MeasureTheory.instMeasurableAddSubtypeMemAddSubgroup_definitions MeasureTheory.instMeasurableInvSubtypeMemSubgroup_definitions
+
+set_option autoImplicit false
+
+open scoped TensorProduct
+
+open Polynomial Matrix NumberField
+
+namespace R3M4Torus
+
+section Alg
+
+variable {K : Type*} [Field K] (γ₀ : Matrix (Fin 2) (Fin 2) K)
+
+variable [Fact (Irreducible γ₀.charpoly)]
+
+theorem ι₀_root : ι₀ γ₀ (AdjoinRoot.root γ₀.charpoly) = γ₀ := by
+  rw [AdjoinRoot.root, ι₀_mk, Polynomial.aeval_X]
+
+end Alg
+end R3M4Torus
+end P2MW.S_AutomorphicForm_exists_measure_fundamentalDomain_centralizer_inter_ideleNorm_det_Icc_eq_mul_log_of_mem_ellipticCell

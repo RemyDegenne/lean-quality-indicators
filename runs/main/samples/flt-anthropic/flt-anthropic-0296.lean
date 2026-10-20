@@ -1,0 +1,32 @@
+namespace P2MW.S_ModularCurve_principal_le_closure_divisor_laurentIntegral_diamondAutHBar
+
+attribute [-instance] ModularCurve.instIsDomainTensorProduct AlgebraicClosure.Rat.isGalois AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation ModularCurve.PhiGen.instNeZeroPhiGenCosetA ModularCurve.instFiniteProjectiveLine ModularCurve.unimodularRowSetoid AlgebraicCurve.RationalFunctionField.instNontrivialSubtypeUnitsWithZeroMultiplicativeIntMemSubgroupValueGroupRatFuncValuationInftyValuation_definitions
+
+set_option linter.unusedSectionVars false
+
+set_option autoImplicit false
+
+set_option synthInstance.maxHeartbeats 1600000
+
+set_option maxHeartbeats 3200000
+
+noncomputable section
+
+open scoped MatrixGroups ModularForm Classical
+
+open IntermediateField AlgebraicCurve ModularCurve
+
+namespace PLCDSol
+
+section Forms
+
+open ModularForm UpperHalfPlane EisensteinSeries
+
+variable (Γ : Subgroup (Matrix.SpecialLinearGroup (Fin 2) ℤ))
+
+theorem coe_e4cube : (e4cube Γ : ℍ → ℂ) = e4cube1 := rfl
+
+end Forms
+end PLCDSol
+end
+end P2MW.S_ModularCurve_principal_le_closure_divisor_laurentIntegral_diamondAutHBar

@@ -1,0 +1,30 @@
+namespace P2MW.S_NumberField_TateGlobal_exists_finite_forall_exists_isUnramifiedCharAt_mul_mul_pow_two_mem_abs_archParam_le_of_localChar_eq
+
+attribute [-instance] instCountableOfNumberField_definitions instFiniteResidueFieldAdicCompletionRingOfIntegersWithZeroMultiplicativeInt_definitions NumberField.instCompactSpaceAdicCompletionIntegers Rat.adicCompletion.locallyCompactSpace NumberField.instFiniteResidueFieldAdicCompletionIntegers instWeaklyLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions instLocallyCompactSpaceAdicCompletionRingOfIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instDimensionLEOneSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.instLiesOverSubtypeAdicCompletionMemValuationSubringAdicCompletionIntegersCompletionIdealAsIdeal IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsPrincipalIdealRingSubtypeMemValuationSubringAdicCompletionIntegers_definitions IsDedekindDomain.HeightOneSpectrum.adicCompletion.instIsDiscreteValuationRingSubtypeMemSubringIntegerWithZeroMultiplicativeInt_definitions IsDedekindDomain.HeightOneSpectrum.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicCompletionV_definitions
+
+set_option autoImplicit false
+
+set_option linter.unusedSectionVars false
+
+set_option linter.unusedVariables false
+
+open IsDedekindDomain NumberField
+
+open NumberField.AdelicLevel NumberField.AdelicVolume AutomorphicForm NumberField.TateGlobal
+
+open NumberField.InfinitePlace NumberField.InfinitePlace.Completion
+
+open scoped Classical
+
+namespace R4TwistNorm
+
+variable {K : Type} [Field K] [NumberField K]
+
+section Elementary
+
+theorem localChar_pow_two (χ : (AdeleRing (𝓞 K) K)ˣ →* ℂˣ) (v : HeightOneSpectrum (𝓞 K)) (u : (v.adicCompletion K)ˣ) :
+    localChar (χ ^ 2) v u = localChar χ v u ^ 2 := rfl
+
+end Elementary
+end R4TwistNorm
+end P2MW.S_NumberField_TateGlobal_exists_finite_forall_exists_isUnramifiedCharAt_mul_mul_pow_two_mem_abs_archParam_le_of_localChar_eq
