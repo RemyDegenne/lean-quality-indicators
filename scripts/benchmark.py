@@ -20,10 +20,12 @@ MODELS = [("codex", "gpt-6.1-sol"), ("codex", "gpt-6-luna"), ("claude", "claude-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jobs", type=int, default=12)
+    parser.add_argument("--codex-jobs", type=int,
+                        help="override concurrency per Codex model (defaults to --jobs)")
     parser.add_argument("--passes", type=int, default=2)
     parser.add_argument("--limit", type=int, default=300)
     args = parser.parse_args()
-    if min(args.jobs, args.passes, args.limit) < 1:
+    if min(args.jobs, args.codex_jobs or args.jobs, args.passes, args.limit) < 1:
         parser.error("jobs, passes and limit must be positive")
     base = ROOT / "runs/main/unnecessary-hypotheses"
     labels = ["claude-opus-5-5-high", "rejudge-claude-opus-5-5-high"]
@@ -35,7 +37,8 @@ def main():
             label = f"{model}-high" + (f"-repeat-{n}" if n > 1 else "")
             cmd = [sys.executable, "-u", "scripts/judge.py", "--run", "main",
                    "--backend", backend, "--model", model, "--effort", "high",
-                   "--label", label, "--limit", str(args.limit), "--jobs", str(args.jobs)]
+                   "--label", label, "--limit", str(args.limit), "--jobs",
+                   str((args.codex_jobs or args.jobs) if backend == "codex" else args.jobs)]
             print(f"Starting {label}", flush=True)
             log = base / f"{label}.log"
             with log.open("a") as output:
