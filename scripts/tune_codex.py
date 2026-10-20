@@ -13,6 +13,7 @@ import argparse
 import collections
 import datetime
 import json
+from pathlib import Path
 import time
 
 import codex_rate_guard as guard
@@ -43,6 +44,9 @@ def main():
     parser.add_argument("--stage-seconds", type=int, default=300)
     parser.add_argument("--spacing", type=float, default=5)
     parser.add_argument("--interval", type=int, default=30)
+    parser.add_argument("--completion-marker", type=Path,
+                        default=guard.BASE / "benchmark-complete.json",
+                        help="stop when this benchmark's success marker exists")
     args = parser.parse_args()
     if args.minutes <= 0 or not 1 <= args.max_sessions <= 16 or args.stage_seconds < 60:
         parser.error("Positive duration, max sessions 1..16 and stage at least 60 seconds required")
@@ -59,7 +63,7 @@ def main():
     # A higher setting must beat the preceding stable rate by at least 5%.
     previous_rate = None
     while time.time() < end:
-        if (guard.BASE / "benchmark-complete.json").exists():
+        if args.completion_marker.exists():
             print("Benchmark complete; stopping tuner", flush=True)
             break
         now = time.time()

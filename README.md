@@ -117,6 +117,40 @@ hypotheses and Cohen's kappa). It refuses to publish that comparison until every
 theorem has a verdict. Rerun the same benchmark command to resume after failures.
 Pilot labels are separate and are excluded from the final comparison.
 
+### Duplicate reproduction including Mathlib
+
+`duplicates-mathlib-inclusive` retains the original pinned-Mathlib duplicate and
+special-case criteria and includes Mathlib's own samples. A match must be a distinct
+declaration: the target itself, alternative spellings or re-exports of it, and circular
+justifications through declarations that depend on the target are excluded. Judges must
+inspect candidate proofs to establish independence. This is an LLM judgment, without Lean
+execution, and requires later auditing. The original `duplicates-mathlib` protocol is intact.
+
+The queued reproduction uses the same 1000 samples per library, once each for Sol 6.1,
+Luna 6 and Sonnet 5.5, all at high effort: 15,000 judgments including the new Mathlib arm.
+
+```sh
+python3 scripts/fetch.py --deps
+python3 -u scripts/duplicates_benchmark.py --slow-spacing 180 --limit 1000
+```
+
+Before the hypothesis benchmark writes its success marker, each model starts at most one
+duplicate session per three minutes, with one active duplicate session per model. The full
+sample selection is recorded from the outset; early judgments are retained. After the
+marker, waiting workers automatically use the full profile: eight queued workers per Codex
+model behind the existing **nine-session shared guard**, and two Sonnet sessions. Hypothesis
+and duplicate Codex sessions share that same guard throughout, including live 429 detection,
+halving of the shared limit and a five-minute cooldown. Maintenance checks run every minute
+and recover gradually within the ceiling after backoff.
+
+`runs/main/duplicates-mathlib-inclusive/status.json` records progress and worker status
+every minute. `pace-events.log` records slow/full admissions. Each label retains its own
+protocol manifest, verdicts and transcripts. Completion generates per-model reports and a
+comparison against the saved Opus duplicate judgments on the four external libraries;
+Opus has no Mathlib baseline. Because the prompt adds self-match and circularity exclusions,
+this is an explicitly modified replication. A success marker is written only when every
+selected judgment and report is complete. Resuming skips saved verdicts.
+
 ## Results so far: unnecessary hypotheses
 
 400 theorems per library:
