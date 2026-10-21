@@ -57,14 +57,14 @@ class ParallelTests(unittest.TestCase):
             (root/'protocol').mkdir()
             (root/'protocol/schema.json').write_bytes((file_audits.SUITE/'schema.json').read_bytes())
             tasks=[]
-            for i in range(2):
+            for i in range(4):
                 text=f'theorem target{i} : True := by trivial\n'
                 (root/f'{i}.lean').write_text(text)
                 row={'id':f'test-file-{i:04d}','lib':'test','file':f'{i}.lean',
                      'source_sha256':hashlib.sha256(text.encode()).hexdigest()}
                 tasks.append({'row':row,'unit':'file','run':'.','indicator':'protocol','output':'judge',
                               'audit':'concept-reinvention'})
-            barrier=threading.Barrier(2)
+            barrier=threading.Barrier(4)
             def judge(row,ind,*args):
                 validate=args[-1]
                 expected=(root/row['file']).read_text()
@@ -77,10 +77,10 @@ class ParallelTests(unittest.TestCase):
             with patch.object(pilot,'ROOT',root), \
                  patch.object(file_audits,'build_message',return_value=(root,{},'source')), \
                  patch.object(backend,'judge',judge):
-                with ThreadPoolExecutor(2) as workers:
+                with ThreadPoolExecutor(4) as workers:
                     results=list(workers.map(lambda task:pilot.evaluate(task,'key',None),tasks))
             self.assertEqual({r['id'] for r in results},{t['row']['id'] for t in tasks})
-            self.assertEqual(len(list((root/'judge/results').glob('*.json'))),2)
+            self.assertEqual(len(list((root/'judge/results').glob('*.json'))),4)
 
 
 if __name__=='__main__':

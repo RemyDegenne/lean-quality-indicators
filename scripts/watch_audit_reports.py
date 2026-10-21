@@ -18,15 +18,39 @@ def save(path, value):
     temporary.replace(path)
 
 
+def boot_id():
+    return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+
+
+def process_start_ticks(pid):
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().split(") ", 1)[1].split()[19]
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+
+
+def same_process(info):
+    if info.get("boot_id") and info["boot_id"] != boot_id():
+        return False
+    expected = info.get("process_start_ticks")
+    return expected is None or expected == process_start_ticks(info["pid"])
+
+
 def supervise(info, status_path, command, log_path):
     status = json.loads(status_path.read_text()) if status_path.exists() else {}
     if status.get("stage") in ["complete", "budget-complete"]:
         return False
+    current_boot = boot_id()
+    if info.get("boot_id") and info["boot_id"] != current_boot:
+        info.setdefault("boot_recoveries", []).append({"previous_boot_id": info["boot_id"],
+                                                      "boot_id": current_boot, "epoch": time.time()})
+        info.update(automatic_restarts=0, restart_after=0)
+    matched = same_process(info)
     try:
-        finished, _ = os.waitpid(info["pid"], os.WNOHANG)
+        finished, _ = os.waitpid(info["pid"], os.WNOHANG) if matched else (1, 0)
     except ChildProcessError:
         finished = 0
-    if not finished:
+    if not finished and matched:
         try:
             os.kill(info["pid"], 0)
             return True
@@ -46,7 +70,8 @@ def supervise(info, status_path, command, log_path):
     with log_path.open("a") as log:
         process = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
                                    start_new_session=True)
-    info.update(pid=process.pid, automatic_restarts=info.get("automatic_restarts", 0) + 1)
+    info.update(pid=process.pid, automatic_restarts=info.get("automatic_restarts", 0) + 1,
+                boot_id=boot_id(), process_start_ticks=process_start_ticks(process.pid))
     info.pop("restart_after", None)
     status.update(stage="restarting", pid=process.pid)
     save(status_path, status)

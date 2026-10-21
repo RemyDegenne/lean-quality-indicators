@@ -423,12 +423,12 @@ searched) are not in the repository; ask for them if you need them.
 ## DeepSeek pilot
 
 The matched eight-audit pilot uses DeepSeek V4.1 Flash via OpenRouter on InferenceNet FP8,
-with two independent sessions sharing a $20 inference cap. It selects 100 theorems per library for each
+with four independent sessions sharing a $20 inference cap. It selects 100 theorems per library for each
 of the two theorem audits and 10 files per library for each of the six file audits:
 1,440 judgments. Selection, launch, status and billed-cost budget are saved under
 `runs/deepseek-pilot-2026-10-21/`; results join the existing audit reports.
 
-Resume with `python3 scripts/deepseek_pilot.py --jobs 2`. The runner verifies the saved protocol
+Resume with `python3 scripts/deepseek_pilot.py --jobs 4`. The runner verifies the saved protocol
 and rejects invalid judgments. API requests use a shared adaptive gap recorded in the budget ledger;
 HTTP 429 doubles the spacing and triggers an increasing cooldown. It exposes only
 Read, Grep and Glob source tools. Interrupted sessions resume from saved responses
@@ -455,3 +455,10 @@ This checks the fixed selection, pinned source commits, prompt/schema hashes, ac
 verdicts against saved API responses, file evidence, generation IDs and billed costs.
 It exits unsuccessfully until every selected target has an accepted judgment. Raw local
 session transcripts are required for this check; they are excluded from Git.
+
+The local monitor is installed as the enabled user service
+`lean-quality-deepseek-monitor.service` (template: `scripts/deepseek-monitor.service`).
+It restarts after failures and starts when the user's service manager starts after a
+reboot. This machine denies enabling user lingering, so startup before login requires
+an administrator; the existing account session runs it normally. Worker identities
+include boot IDs and process start times to avoid mistaking a reused PID for a judge.

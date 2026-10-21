@@ -1,0 +1,118 @@
+{
+  "id": "openai-math-file-0000",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 126 lines of the target. Inspected `positiveUnivariate`, `positiveUnivariate_zero`, `eval_zero_eq_coefficient`, `VectorPolynomial.eval`/`eval_tmul`, `monomialScale`, `monomialScale_zero`, `polynomialOrbitEval_coord`, and representative downstream uses in `NativeCoveredCommonFactorization.lean`, `NativeSubspaceFreeModel.lean`, `SharedFreeAffineOrbitFamily.lean`, and `PolynomialKernelDirectionBudget.lean`. The target itself declares no simp lemmas or attributes, so the review concerns the simplification interface of imported canonical lemmas that its proofs explicitly enumerate. I did not execute Lean; claims about simplifier matching and absence of cycles are based on source inspection, not observed runs.",
+  "findings": [
+    {
+      "declaration": "Erdos3.NativeRankRelation.CommonData.exists_native_freeCoefficientPolynomialOrbit",
+      "start_line": 48,
+      "end_line": 49,
+      "excerpt": "  change eval (fun _ : Unit => (0 : ℚ)) (positiveUnivariate v) = 0\n  rw [eval_zero_eq_coefficient, positiveUnivariate_zero]",
+      "problem": "The canonical zero normal form for evaluating a vector polynomial at zero is not available to `simp`. Both facts used here, `eval (fun _ => 0) p = coefficients p 0` and `coefficients (positiveUnivariate v) 0 = 0`, are stated as plain theorems rather than `@[simp]` lemmas, so this proof has to change the goal and then rewrite with both names explicitly. The same pattern recurs downstream: `NativeCoveredCommonFactorization.lean` lines 22-23 and `NormalizedComparisonOrbit.lean` line 91 list `eval_zero_eq_coefficient` in `simp only`, while `NativeSubspaceFreeModel.lean` line 226 repeats the exact two-step rewrite used here. `VectorPolynomial.eval` is defined through a tensor product, so the existing `[simp]` lemma `eval_tmul` only reduces tensor-factor terms; there is no default simp rule for `eval (fun _ => 0) p` with arbitrary `p`.",
+      "proposed_change": "Add `[simp]` to the declaration of `Erdos3.VectorPolynomial.eval_zero_eq_coefficient` in `WeightedOrbitNormalization.lean`, and add `[simp]` to `Erdos3.VectorPolynomial.positiveUnivariate_zero` in `QuantitativeOuterPolynomialProducts.lean`. With both attributes, `eval (fun _ => 0) (positiveUnivariate v)` rewrites to `coefficients (positiveUnivariate v) 0` and then to `0`, so the last step of this theorem can use `simpa`/`simp` instead of the explicit `change` and `rw`. No reverse simp rule for either identity was found in the inspected sources, so this does not introduce a rewrite cycle.",
+      "benefit": "This establishes the desired normal form `eval (fun _ => 0) p` to `coefficients p 0`, and `coefficients (positiveUnivariate v) 0` to `0`, once for all users. It removes repeated `simp only` lists and explicit two-step rewrites in the native and polynomial-orbit developments, and makes goals produced by `polynomialOrbitEval_coord` simplify uniformly without unfolding `VectorPolynomial.eval` or relying on tensor-factor lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/WeightedOrbitNormalization.lean",
+          "declaration": "Erdos3.VectorPolynomial.eval_zero_eq_coefficient",
+          "excerpt": "theorem eval_zero_eq_coefficient (p : VectorPolynomial σ R V) :\n    eval (fun _ => 0) p = coefficients p 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/QuantitativeOuterPolynomialProducts.lean",
+          "declaration": "Erdos3.VectorPolynomial.positiveUnivariate_zero",
+          "excerpt": "theorem positiveUnivariate_zero (v : Fin s → V) : coefficients (positiveUnivariate v) 0 = 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/NativeCoveredCommonFactorization.lean",
+          "declaration": "Erdos3.NilpotentLieFiltration.polynomialOrbitEval_zero_iff_coefficient_zero",
+          "excerpt": "    simpa only [F.polynomialOrbitEval_coord, Pi.zero_apply, Int.cast_zero,\n      eval_zero_eq_coefficient, NilpotentLieBCHGroup.coord_one] using hc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/VectorPolynomialReconstruction.lean",
+          "declaration": "Erdos3.VectorPolynomial.eval_tmul",
+          "excerpt": "@[simp] theorem eval_tmul (x : σ → R) (q : MvPolynomial σ R) (v : V) :\n    eval x (q ⊗ₜ[R] v) = MvPolynomial.aeval x q • v := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "Erdos3.NativeRankRelation.CommonData.exists_native_freeCoefficient_corrections",
+      "start_line": 112,
+      "end_line": 116,
+      "excerpt": "    rw [hε]\n    apply positiveUnivariate_coefficientBound (E.basis.baseChange ℝ) e\n      (fun _ : Unit => (N : ℝ)) (fun _ => by exact_mod_cast NeZero.pos N) (Real.exp_pos L).le\n    intro d\n    simpa only [monomialScale, Finsupp.prod_single_index, pow_zero] using herr d",
+      "problem": "The proof must unfold the definition `monomialScale` and then use the non-simp Finsupp lemma `Finsupp.prod_single_index` merely to evaluate `monomialScale` at a single-index exponent. The hypothesis of `positiveUnivariate_coefficientBound` is stated with `monomialScale T (Finsupp.single () (d.val + 1))`, so callers are forced into this definitional expansion. The identical `simpa only [monomialScale, Finsupp.prod_single_index, pow_zero]` appears in `SharedFreeAffineOrbitFamily.lean` line 520, and `PolynomialKernelDirectionBudget.lean` lines 35-36 separately re-derive the single-index case as `monomialScale T (Finsupp.single i 1) = T i`. `monomialScale` currently has only `monomialScale_zero` as a simp lemma, so there is no canonical rule for `monomialScale T (Finsupp.single i n)`.",
+      "proposed_change": "Add a canonical single-index lemma next to `monomialScale` in `VectorPolynomialReconstruction.lean`, for example:\n\n```lean\n@[simp] theorem monomialScale_single {σ : Type*} (T : σ → ℝ) (i : σ) (n : ℕ) :\n    monomialScale T (Finsupp.single i n) = T i ^ n := by\n  rw [monomialScale, Finsupp.prod_single_index (by simp)]\n```\n\nThen replace line 116 by `simpa only [monomialScale_single] using herr d` (or let default `simp` use the new rule). The `n = 0` case is not a cycle: `Finsupp.single_zero`/`monomialScale_zero` and `monomialScale_single` both reduce to `1`, and the right-hand side contains no `monomialScale`.",
+      "benefit": "The desired normal form is `monomialScale T (Finsupp.single i n) = T i ^ n`, so users no longer unfold `monomialScale` or depend on the internals of `Finsupp.prod`. This directly discharges the bound hypothesis in this theorem and the same pattern in the shared-free-affine family, and it turns the separately re-derived single-index identity in `PolynomialKernelDirectionBudget` into an instance of a general simp lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/VectorPolynomialReconstruction.lean",
+          "declaration": "Erdos3.monomialScale",
+          "excerpt": "noncomputable def monomialScale {σ : Type*} (T : σ → ℝ) (α : σ →₀ ℕ) : ℝ :=\n  α.prod (fun i n => T i ^ n)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/VectorPolynomialReconstruction.lean",
+          "declaration": "Erdos3.monomialScale_zero",
+          "excerpt": "@[simp] theorem monomialScale_zero {σ : Type*} (T : σ → ℝ) : monomialScale T 0 = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Lattices/SharedFreeAffineOrbitFamily.lean",
+          "declaration": "Erdos3.NativeRankRelation.CommonData.exists_shared_free_affine_orbit_family",
+          "excerpt": "    simpa only [monomialScale, Finsupp.prod_single_index, pow_zero] using herr d"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/PolynomialKernelDirectionBudget.lean",
+          "declaration": "Erdos3.polynomialKernelDirection_norm",
+          "excerpt": "  have hs : monomialScale T (Finsupp.single i 1) = T i := by\n    simp only [monomialScale, Finsupp.prod_single_index, pow_zero, pow_one]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1395741,
+    "cached_input_tokens": 1319168,
+    "output_tokens": 32035,
+    "reasoning_output_tokens": 26975
+  },
+  "cost_usd": 0.032696684,
+  "generation_ids": [
+    "gen-1792619834-FqOSWfJOs5CVytsLUanQ",
+    "gen-1792619838-THBqvwCuvDqw4ac2jVEN",
+    "gen-1792619846-fTdNB9UvfO9aj7bh1ZtM",
+    "gen-1792619850-ES8x8YDi3OVkr0mvJIS9",
+    "gen-1792619854-su7NhAjheCs4wFJZHh3j",
+    "gen-1792619876-NUWVe8LNJAyXrmvlfb3K",
+    "gen-1792619884-sHCa3ws6QUcABw3X7fpC",
+    "gen-1792619892-SMax4nkDCtNzQzz37wcX",
+    "gen-1792619896-mhbjGdNMCLCwHTh3iT5w",
+    "gen-1792619912-dZ9tKOqKm7JAUwn81E0q",
+    "gen-1792619920-hOWSJmr7lITqwE0yXvtM",
+    "gen-1792619936-IGSWwhgYlH7aQay3Hfaw",
+    "gen-1792619944-ZtQrjg3DE58Ru69XCmke",
+    "gen-1792619977-MegU2KG72wsN1AxDXvnR",
+    "gen-1792619981-ssq7DVpxfSdghwEbE9CN",
+    "gen-1792619996-aAQSR7frBBoL0zlLrn7R",
+    "gen-1792620004-QSnxAmzAVBWbkujTG7NG",
+    "gen-1792620068-wnDT1nOlFKROnesDtWHx",
+    "gen-1792620076-4vkU7b20Gdz45vt22kw2",
+    "gen-1792620084-WeJcC0ud52w0HXOL3qMZ",
+    "gen-1792620100-W6LDFVRk3QfgdBSTOwGg",
+    "gen-1792620104-6yNNdQw7EeSHKJaAL5d5"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 22,
+  "duration_ms": 297544,
+  "judged": "2026-10-21T22:02:06+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "6f1f31b13f46ad202c07b0f55e14b3edbd7391bb06838b798be1c5d100698997"
+}
