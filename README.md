@@ -444,3 +444,14 @@ The `cost_usd` fields are what the same tokens would cost at API rates, as repor
 `claude -p`; with a Claude subscription, the runs draw on its usage quota instead. The first
 `unnecessary-hypotheses` run cost about $146 for 2000 theorems (a median of 3 agent turns
 per theorem), its second run $108 for 1500; the `duplicates-mathlib` run about $216 for 4000.
+
+Verify the DeepSeek run without making API calls:
+
+```sh
+python3 scripts/verify_deepseek_pilot.py --require-complete
+```
+
+This checks the fixed selection, pinned source commits, prompt/schema hashes, accepted
+verdicts against saved API responses, file evidence, generation IDs and billed costs.
+It exits unsuccessfully until every selected target has an accepted judgment. Raw local
+session transcripts are required for this check; they are excluded from Git.
