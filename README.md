@@ -423,13 +423,13 @@ searched) are not in the repository; ask for them if you need them.
 ## DeepSeek pilot
 
 The matched eight-audit pilot uses DeepSeek V4.1 Flash via OpenRouter on InferenceNet FP8,
-with one worker and a $20 inference cap. It selects 100 theorems per library for each
+with two independent sessions sharing a $20 inference cap. It selects 100 theorems per library for each
 of the two theorem audits and 10 files per library for each of the six file audits:
 1,440 judgments. Selection, launch, status and billed-cost budget are saved under
 `runs/deepseek-pilot-2026-10-21/`; results join the existing audit reports.
 
-Resume with `python3 scripts/deepseek_pilot.py`. The runner verifies the saved protocol
-and rejects invalid judgments. API requests currently use a five-second baseline gap after a stable ten-second calibration;
+Resume with `python3 scripts/deepseek_pilot.py --jobs 2`. The runner verifies the saved protocol
+and rejects invalid judgments. API requests use a shared adaptive gap recorded in the budget ledger;
 HTTP 429 doubles the spacing and triggers an increasing cooldown. It exposes only
 Read, Grep and Glob source tools. Interrupted sessions resume from saved responses
 and source-tool results. A final JSON phase follows at most 32 source-inspection turns.

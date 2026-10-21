@@ -1,6 +1,6 @@
 # unnecessary-hypotheses
 
-Generated 2026-10-21T21:41:26+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-21T21:56:55+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 Original five libraries: Opus 400 then 300 targets/library; Sol, Sonnet and Luna 300 per pass.
 

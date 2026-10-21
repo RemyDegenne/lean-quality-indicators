@@ -1,5 +1,6 @@
 """Matched eight-audit DeepSeek pilot: 1440 judgments, $20 API inference cap."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 import datetime
 import hashlib
 import json
@@ -162,13 +163,60 @@ def evaluate(task, key, budget):
             del duplicates_judge.context.sample
 
 
+def run_tasks(tasks, key, budget, jobs=1):
+    """Independent source contexts; all sessions share atomic API pacing and budget."""
+    pending = iter(tasks)
+    failures = []
+    stopped = None
+    with ThreadPoolExecutor(max_workers=jobs) as workers:
+        active = {}
+        while True:
+            while len(active) < jobs and stopped is None:
+                task = next(pending, None)
+                if task is None:
+                    break
+                if (ROOT / task["output"] / "results" / f"{task['row']['id']}.json").exists():
+                    continue
+                active[workers.submit(evaluate, task, key, budget)] = task
+            if not active:
+                break
+            current = next(iter(active.values()))
+            status("running", tasks, budget, failures=failures, jobs=jobs,
+                   current_audit=current["audit"], current_id=current["row"]["id"],
+                   active_targets=[{"audit": t["audit"], "id": t["row"]["id"]} for t in active.values()])
+            ready, _ = wait(active, timeout=5, return_when=FIRST_COMPLETED)
+            for future in ready:
+                task = active.pop(future)
+                try:
+                    result = future.result()
+                except backend.BudgetExhausted:
+                    stopped = "budget-complete"
+                except backend.RateLimited:
+                    stopped = "rate-limit-cooldown"
+                except Exception as error:
+                    failure = {"audit": task["audit"], "id": task["row"]["id"], "error": str(error)}
+                    failures.append(failure)
+                    print(json.dumps({"failed": failure}), flush=True)
+                    backend.write_json(ROOT / task["output"] / "results" / f"{task['row']['id']}.failure.json", failure)
+                else:
+                    (ROOT / task["output"] / "results" / f"{task['row']['id']}.failure.json").unlink(missing_ok=True)
+                    print(json.dumps({"audit": task["audit"], "id": task["row"]["id"],
+                                      "verdict": result["verdict"], "cost_usd": result["cost_usd"]}), flush=True)
+    done = status("running", tasks, budget, failures=failures, jobs=jobs, active_targets=[])
+    stage = "complete" if done == len(tasks) else stopped or "incomplete"
+    status(stage, tasks, budget, failures=failures, jobs=jobs, active_targets=[])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--update-runner-only", action="store_true")
     parser.add_argument("--budget", default="20")
+    parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--accept-harness-update", action="store_true")
     args = parser.parse_args()
+    if not 1 <= args.jobs <= 8:
+        parser.error("jobs must be between one and eight")
     if args.update_runner_only:
         update_runner()
         return
@@ -180,39 +228,9 @@ def main():
         return
     judge.judge_dirs = sources
     key = backend.api_key(Path.home() / ".secrets")
-    failures = []
     with (BASE / "controller.log").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        for task in tasks:
-            if (ROOT / task["output"] / "results" / f"{task['row']['id']}.json").exists():
-                continue
-            done = status("running", tasks, budget, failures=failures,
-                          current_audit=task["audit"], current_id=task["row"]["id"])
-            while backend.PROVIDER == "DeepSeek" and (done >= 36 or float(budget.read()["billed_usd"]) >= 1) and not off_peak(datetime.datetime.now(datetime.timezone.utc)):
-                status("waiting-for-off-peak", tasks, budget, failures=failures, resume_utc_hour=10)
-                time.sleep(30)
-            try:
-                result = evaluate(task, key, budget)
-                print(json.dumps({"audit": task["audit"], "id": task["row"]["id"],
-                                  "verdict": result["verdict"], "cost_usd": result["cost_usd"]}), flush=True)
-            except backend.BudgetExhausted:
-                status("budget-complete", tasks, budget, failures=failures)
-                return
-            except backend.RateLimited:
-                status("rate-limit-cooldown", tasks, budget)
-                time.sleep(300)
-                raise  # Stop admission after cooldown; never repeatedly hammer a limited endpoint.
-            except Exception as error:
-                failures.append({"audit": task["audit"], "id": task["row"]["id"], "error": str(error)})
-                print(json.dumps({"failed": failures[-1]}), flush=True)
-                status("failed", tasks, budget, failures=failures)
-                backend.write_json(ROOT / task["output"] / "results" / f"{task['row']['id']}.failure.json", failures[-1])
-                continue  # Preserve rejection and let other selected targets complete.
-            (ROOT / task["output"] / "results" / f"{task['row']['id']}.failure.json").unlink(missing_ok=True)
-            status("running", tasks, budget, failures=failures)
-            time.sleep(budget.read().get("judgment_spacing_seconds", 10))
-        done = status("running", tasks, budget, failures=failures)
-        status("complete" if done == len(tasks) else "incomplete", tasks, budget, failures=failures)
+        run_tasks(tasks, key, budget, args.jobs)
 
 
 if __name__ == "__main__":

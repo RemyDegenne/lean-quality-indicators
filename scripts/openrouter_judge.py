@@ -71,20 +71,24 @@ class Budget:
     def read(self):
         return json.loads(self.path.read_text())
 
-    def reserve(self, payload, target):
+    def reserve(self, payload, target, pace=False):
         amount = reservation(payload)
-        with self.path.with_suffix(".lock.log").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            state = self.read()
-            pending = sum((Decimal(row["reserved_usd"]) for row in state["requests"] if row["billed_usd"] is None), Decimal(0))
-            if Decimal(state["billed_usd"]) + pending + amount > self.limit:
-                raise BudgetExhausted("Remaining budget cannot cover this request's worst-case reservation")
-            number = len(state["requests"])
-            state["next_request_at"] = time.time() + state.get("request_spacing_seconds", 10)
-            state["requests"].append({"target": target, "reserved_usd": str(amount), "billed_usd": None,
-                                      "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()})
-            write_json(self.path, state)
-        return number
+        while True:
+            with self.path.with_suffix(".lock.log").open("a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                state = self.read()
+                pending = sum((Decimal(row["reserved_usd"]) for row in state["requests"] if row["billed_usd"] is None), Decimal(0))
+                if Decimal(state["billed_usd"]) + pending + amount > self.limit:
+                    raise BudgetExhausted("Remaining budget cannot cover this request's worst-case reservation")
+                delay = max(state.get("next_request_at", 0), state.get("not_before", 0)) - time.time() if pace else 0
+                if delay <= 0:
+                    number = len(state["requests"])
+                    state["next_request_at"] = time.time() + state.get("request_spacing_seconds", 10)
+                    state["requests"].append({"target": target, "reserved_usd": str(amount), "billed_usd": None,
+                                              "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+                    write_json(self.path, state)
+                    return number
+            time.sleep(min(30, delay))
 
     def wait_for_slot(self):
         while True:
@@ -139,7 +143,7 @@ class Budget:
 
 
 def request_once(payload, key, budget, target, transcript):
-    number = budget.reserve(payload, target)
+    number = budget.reserve(payload, target, pace=True)
     request = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions",
         data=json.dumps(payload).encode(), headers={"Authorization": "Bearer " + key,
         "Content-Type": "application/json", "X-Title": "Lean quality audit comparison"}, method="POST")

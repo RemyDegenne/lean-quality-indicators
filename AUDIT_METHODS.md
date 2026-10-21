@@ -80,7 +80,7 @@ All 42 dependencies are pinned to the source manifest and available as read-only
 The DeepSeek pilot uses DeepSeek V4.1 Flash through OpenRouter, pinned to
 InferenceNet FP8 with fallbacks disabled. The first five accepted judgments used
 DeepInfra FP8; one resumed judgment spans both providers, recorded per generation. Costs are the billed `usage.cost` returned for every
-request, including failed judgment attempts. One worker selects 100 theorems per library
+request, including failed judgment attempts. The pilot selects 100 theorems per library
 for each theorem audit and 10 files per library for each file audit (1,440 judgments).
 The endpoint has flat rates, so no off-peak wait is needed.
 A persistent $20 inference budget reserves conservative peak-rate input and maximum
@@ -100,5 +100,12 @@ source-tool outputs. It preserves one representation of the model's reasoning co
 supplies the actual source working directory, and reserves a final JSON phase after
 32 source-inspection turns, with at most three finalization/validation attempts.
 These are recorded harness changes; the audit rubrics and selected targets are unchanged.
-Twenty successful API requests halve elevated spacing back toward the configured baseline (currently five seconds).
+Twenty successful API requests halve elevated spacing back toward the configured baseline. Further pacing changes are recorded in the
+budget ledger’s `rate_changes`; the baseline is reduced only after successful requests
+without new rate limits.
 Unsettled requests retain their conservative budget reservation and are not called spend.
+
+The pilot began with one judgment session and increased to two after InferenceNet's
+stable calibration. Sessions have separate source-validation contexts, and share one
+atomic request limiter and spending ledger. Parallel sessions cannot admit simultaneous
+requests inside the configured gap or reserve more than the shared budget.

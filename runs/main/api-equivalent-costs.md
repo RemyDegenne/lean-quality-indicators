@@ -1,6 +1,6 @@
 # API-equivalent costs
 
-Generated 2026-10-21T21:41:31+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-21T21:57:00+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 | Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |
 |---|---|---:|---:|---:|---:|
@@ -23,17 +23,17 @@ Generated 2026-10-21T21:41:31+00:00 · [Methods and notation](../../AUDIT_METHOD
 | statement-generality | Sol | 100 | 130 | $13.16 / $17.11 | $131.61 |
 | statement-generality | Sonnet | 130 | 130 | $16.38 / $16.38 | $125.96 |
 | statement-generality | Luna | 130 | 130 | $0.63 / $0.63 | $4.83 |
-| statement-generality | DeepSeek | 1 | 130 | $0.02 / $2.56 | $19.65 |
+| statement-generality | DeepSeek | 4 | 130 | $0.06 / $2.05 | $15.74 |
 | vacuity-and-misstatement | Opus | 100 | 130 | $21.38 / $27.79 | $213.77 |
 | vacuity-and-misstatement | Sol | 100 | 130 | $9.89 / $12.85 | $98.86 |
 | vacuity-and-misstatement | Sonnet | 130 | 130 | $12.33 / $12.33 | $94.88 |
 | vacuity-and-misstatement | Luna | 130 | 130 | $0.58 / $0.58 | $4.49 |
-| vacuity-and-misstatement | DeepSeek | 0 | 130 | $0.00 / — | $0.00 |
+| vacuity-and-misstatement | DeepSeek | 3 | 130 | $0.06 / $2.69 | $20.71 |
 | simp-interface | Opus | 100 | 130 | $24.70 / $32.11 | $246.97 |
 | simp-interface | Sol | 100 | 130 | $9.98 / $12.97 | $99.78 |
 | simp-interface | Sonnet | 130 | 130 | $12.54 / $12.54 | $96.42 |
 | simp-interface | Luna | 130 | 130 | $0.59 / $0.59 | $4.57 |
-| simp-interface | DeepSeek | 0 | 130 | $0.00 / — | $0.00 |
+| simp-interface | DeepSeek | 1 | 130 | $0.01 / $1.39 | $10.69 |
 | repeated-proof-machinery | Opus | 100 | 130 | $26.18 / $34.04 | $261.84 |
 | repeated-proof-machinery | Sol | 100 | 130 | $8.15 / $10.60 | $81.55 |
 | repeated-proof-machinery | Sonnet | 130 | 130 | $11.00 / $11.00 | $84.65 |
@@ -53,8 +53,8 @@ Generated 2026-10-21T21:41:31+00:00 · [Methods and notation](../../AUDIT_METHOD
 | Sol | $534.09 |
 | Sonnet | $318.02 |
 | Luna | $26.56 |
-| DeepSeek | $0.18 |
-| **Total** | **$1520.69** |
+| DeepSeek | $0.29 |
+| **Total** | **$1520.81** |
 
 ## Rate sources
 

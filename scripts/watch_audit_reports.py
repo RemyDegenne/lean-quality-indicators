@@ -103,7 +103,7 @@ def main():
             if (deepseek / "launch.json").exists():
                 info = json.loads((deepseek / "launch.json").read_text())
                 active |= supervise(info, deepseek / "status.json",
-                    [sys.executable, "-u", "scripts/deepseek_pilot.py"], deepseek / "worker.log")
+                    [sys.executable, "-u", "scripts/deepseek_pilot.py", "--jobs", str(info.get("jobs", 1))], deepseek / "worker.log")
                 save(deepseek / "launch.json", info)
                 deepseek_health(deepseek)
             if not active:
