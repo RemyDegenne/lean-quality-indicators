@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0002",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all four proofs in the file (lines 1–58), plus the definitions and lemmas they use: `PlanarAngle` (TorusDouble.lean), `planarCharacter`, `planarCos`, `planarEnergy` and `planarCharacter_add` (PlanarAlgebra.lean), `planarMean` and `planar_edge_covariance_nonneg` (PlanarGinibre.lean), `edgeMean_nonneg` and `EdgeCovarianceNonneg` (FerromagneticMean.lean). I also read Mathlib's `AddCircle.homeomorphCircle`, `homeomorphCircle_apply`, `toCircle_apply_mk` and `Homeomorph.apply_symm_apply`.\n\n- **`planarCos_add_antipode`** is already a one-line `simp`. Nothing to change.\n- **`planar_reference_mean_nonneg`** uses a sensible translation-invariance argument. The `by_cases` on `left e = right e` is needed: in the degenerate case (a self-loop edge) the energy is the constant `cos 0 = 1`, and the shift trick does not apply. I found no clear simplification that keeps it as readable.\n\nI looked for a Mathlib lemma giving `toCircle (1/2) = -1` (e.g. a `Circle.exp_pi`) as a more direct witness for `planar_antipode_exists`. I found only `Complex.exp_pi_mul_I` and `Circle.exp_pi_ne_one`, so I kept the existing homeomorphism-based witness.\n\nRemaining uncertainty: neither replacement has been compiled. In particular, the final `simp` in finding 1 depends on `Homeomorph.apply_symm_apply` firing once the `let` is removed.",
+  "findings": [
+    {
+      "declaration": "planar_antipode_exists",
+      "start_line": 11,
+      "end_line": 17,
+      "excerpt": "  change (AddCircle.toCircle (h.symm (-1)) : ℂ)= -1\n  rw [← AddCircle.homeomorphCircle_apply one_ne_zero]\n  change (h (h.symm (-1)) : ℂ)= -1\n  simp",
+      "problem": "The proof restates the goal twice with `change`. The first `change` only unfolds the definition `planarCharacter`. The second only re-folds `AddCircle.homeomorphCircle one_ne_zero` back into the local `let h`, so that `simp` can see the pattern `h (h.symm _)`. A reader has to check two goal restatements that carry no mathematical content, and the `let` exists only to support them.",
+      "proposed_change": "Drop the `let` and both `change` steps, and unfold `planarCharacter` with `rw`:\n```lean\ntheorem planar_antipode_exists : ∃ t : PlanarAngle, planarCharacter t = -1 := by\n  refine ⟨(AddCircle.homeomorphCircle (T := (1 : ℝ)) one_ne_zero).symm (-1), ?_⟩\n  rw [planarCharacter, ← AddCircle.homeomorphCircle_apply one_ne_zero]\n  simp  -- `Homeomorph.apply_symm_apply`\n```\nThis has not been compiled. If the final `simp` does not fire, `rw [Homeomorph.apply_symm_apply]` followed by `simp` is the explicit fallback.",
+      "benefit": "The idea stays visible: take the preimage of `-1` under the circle homeomorphism, then use that the homeomorphism agrees with `toCircle` and that `h (h.symm y) = y`. Removing the two goal restatements and the helper `let` leaves three lines, each doing one meaningful step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/PlanarAlgebra.lean",
+          "declaration": "planarCharacter",
+          "excerpt": "def planarCharacter (t : PlanarAngle) : ℂ := AddCircle.toCircle t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/SpecialFunctions/Complex/Circle.lean",
+          "declaration": "AddCircle.homeomorphCircle_apply",
+          "excerpt": "homeomorphCircle hT x = toCircle x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/Homeomorph/Defs.lean",
+          "declaration": "Homeomorph.apply_symm_apply",
+          "excerpt": "theorem apply_symm_apply (h : X ≃ₜ Y) (y : Y) : h (h.symm y) = y :="
+        }
+      ]
+    },
+    {
+      "declaration": "planar_edge_mean_nonneg",
+      "start_line": 46,
+      "end_line": 52,
+      "excerpt": "  apply edgeMean_nonneg planarReference (planarEnergy left right)\n    (continuous_planarEnergy left right)\n  · exact planar_edge_covariance_nonneg left right\n  · exact planar_reference_mean_nonneg left right\n  · exact hb",
+      "problem": "`apply` is used with a partial application. Each of the three remaining goals is then closed by an `exact` of a term that is already in hand. The bullets suggest separate proof obligations needing work, but this is just a direct application of `edgeMean_nonneg` to known hypotheses. A reader also has to match each bullet to the argument order of `edgeMean_nonneg` (hCov, h0, hb) by hand.",
+      "proposed_change": "Supply every argument in one term, as AmplitudeLaw.lean already does with the same lemmas:\n```lean\n  exact edgeMean_nonneg planarReference (planarEnergy left right)\n    (continuous_planarEnergy left right) (planar_edge_covariance_nonneg left right)\n    (planar_reference_mean_nonneg left right) b hb e\n```",
+      "benefit": "The proof now reads in one place as \"apply the general edge-mean positivity theorem to the planar model, using continuity, edge covariance and nonnegative reference means.\" It also matches the argument layout used for the same lemmas in `planarAmplitudePartition_logSupermodular`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/FerromagneticMean.lean",
+          "declaration": "edgeMean_nonneg",
+          "excerpt": "theorem edgeMean_nonneg (hT : ∀ e,Continuous (T e)) (hCov : EdgeCovarianceNonneg μ T)\n    (h0 : ∀ e,0≤∫ x,T e x ∂μ) (b : E → ℝ) (hb : ∀ e,0≤b e) (e : E) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/AmplitudeLaw.lean",
+          "declaration": "planarAmplitudePartition_logSupermodular",
+          "excerpt": "(continuous_planarEnergy _ _) (planar_edge_covariance_nonneg left right)\n    (planar_reference_mean_nonneg left right) hb"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 19492,
+    "cache_read_input_tokens": 88381,
+    "output_tokens": 7646,
+    "output_tokens_details": {
+      "thinking_tokens": 3544
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19492,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3644,
+        "cache_read_input_tokens": 22141,
+        "cache_creation_input_tokens": 1394,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1394
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3265802,
+  "duration_ms": 87680,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T06:06:43",
+  "unit": "file",
+  "source_sha256": "3b0baa35da869b1e5462101f7a26264d6f6b041a5f2b3d471aba4350c2c1be22",
+  "rubric": "readable-proof-simplification"
+}

@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the repeated-proof candidates. Two have enough support. (1) `sum_cubeFlip` and `sum_cubeToggle` have the same `Finset.sum_bij` argument for an involution. (2) `majority_exists` and `majorityBit_count` have the same 'count g + count (!g) = 48' argument. `majority_exists` is not used anywhere else in this file. I did not report the smaller duplicates: `pairedEquations_acceptedCount`/`pairedEquations_failureCount`, the `cases … <;> norm_num [bitSign]` blocks, `count_union_le`/`count_remove`, and the three induction proofs over `cloneList`. These are short or only loosely similar. The same two duplications also appear in sibling files such as MaxCut/PCP/Folding.lean and BinPacking/Reductions/CloneGap.lean, so a fix could go in a shared module. I did not assess that. I could not compile any replacement, so the Lean snippets below are unchecked. `Equiv.prod_comp` is in Mathlib and `Equiv.sum_comp` is its to_additive form. `Function.Involutive.toPerm` is used elsewhere in Mathlib, for example in Cardinal/Arithmetic.lean.",
+  "findings": [
+    {
+      "declaration": "sum_cubeFlip / sum_cubeToggle",
+      "start_line": 25,
+      "end_line": 137,
+      "excerpt": "refine Finset.sum_bij (fun f _ => cubeToggle i f) ?_ ?_ ?_ ?_",
+      "problem": "Both lemmas prove that a sum over `Cube I` is unchanged under an involution of `Cube I`. They use the same four-goal `Finset.sum_bij` proof: membership in `univ`, injectivity via `congrArg` and the involution law, surjectivity via the preimage `σ g`, and `rfl`. The involution is the only thing that changes (`cubeFlip` vs `cubeToggle i`). Any further involution would need another copy.",
+      "proposed_change": "Add one general lemma and define both sums from it:\n\ntheorem sum_involutive (σ : Cube I → Cube I) (hσ : Function.Involutive σ) (F : Cube I → ℝ) :\n    (∑ f, F (σ f)) = ∑ f, F f :=\n  Equiv.sum_comp hσ.toPerm F\n\nThe proof sketch is that an involution is a permutation of the finite type, and sums are invariant under `Equiv`. Then use it for both:\n\ntheorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f :=\n  sum_involutive cubeFlip cubeFlip_cubeFlip F\n\ntheorem sum_cubeToggle (i : I) (F : Cube I → ℝ) : (∑ f, F (cubeToggle i f)) = ∑ f, F f :=\n  sum_involutive (cubeToggle i) (cubeToggle_twice i) F\n\nThe hypotheses match what the file has. `cubeFlip_cubeFlip` and `cubeToggle_twice` are the pointwise statements `σ (σ f) = f`, which is `Function.Involutive σ`. The `Fintype I` assumption is already in scope. `cubeFlip_cubeFlip` has its instances omitted, which is harmless. The downstream uses at lines 43 and 160 are unchanged.",
+      "benefit": "About 20 lines of duplicated bijection bookkeeping become one reusable lemma and two one-line corollaries. A reader sees that both lemmas are the same fact, namely invariance under a permutation, and a bug fix or later involution lemma needs no new bijection proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "cubeToggle_twice",
+          "excerpt": "cubeToggle i (cubeToggle i f) = f"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "cubeFlip_cubeFlip",
+          "excerpt": "cubeFlip (cubeFlip f) = f"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/NumberTheory/NumberField/Units/Regulator.lean",
+          "declaration": "Equiv.prod_comp (used in Regulator.lean)",
+          "excerpt": "Equiv.prod_comp f"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/SetTheory/Cardinal/Arithmetic.lean",
+          "declaration": "Involutive.toPerm (used in Arithmetic.lean)",
+          "excerpt": "Involutive.toPerm (fun x ↦ ⟨x.1, xor (f x.1) x.2⟩)"
+        }
+      ]
+    },
+    {
+      "declaration": "majority_exists / majorityBit_count",
+      "start_line": 315,
+      "end_line": 413,
+      "excerpt": "have h := List.length_eq_countP_add_countP g (l := indices)",
+      "problem": "Both theorems prove that one of the two values of a Boolean predicate on `indices` has at least 24 agreeing indices out of 48. Each derives `countP g + countP (!g) = 48` with `List.length_eq_countP_add_countP`, repeats the identical `hn` rewrite of `decide (¬g i = true)` to `!g i`, and then does the same `by_cases 24 ≤ countP g` plus `omega`. `majority_exists` is the existential form and `majorityBit_count` is the explicit-witness form. `majority_exists` is not referenced elsewhere in the file. Only `majorityBit_count` is used, in `clone_gap`.",
+      "proposed_change": "Prove the counting argument once. Keep `majorityBit` and `majorityBit_count` (move their definitions before `majority_exists`), then derive the existential from them:\n\ntheorem majority_exists (g : Index → Bool) :\n    ∃ b : Bool, 24 ≤ indices.countP (fun i => g i == b) :=\n  ⟨majorityBit g, majorityBit_count g⟩\n\nIf `majority_exists` has no users, delete it instead. The `hn` rewrite and `length_eq_countP_add_countP` step then live only in `majorityBit_count`. The hypotheses are identical (`g : Index → Bool`) and only `length_indices` is needed, so no new imports are involved.",
+      "benefit": "This removes about 13 duplicated lines of case-splitting and arithmetic. The majority fact then has a single proof, so a change to the threshold 24 or the index count 48 is made in one place and the two statements cannot drift apart.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "majorityBit_count",
+          "excerpt": "24 ≤ indices.countP (fun i => g i == majorityBit g)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "clone_gap",
+          "excerpt": "fun v => majorityBit_count (fun i => g (v, i))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 32590,
+    "cache_read_input_tokens": 129045,
+    "output_tokens": 5429,
+    "output_tokens_details": {
+      "thinking_tokens": 1375
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32590,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2799,
+        "cache_read_input_tokens": 35233,
+        "cache_creation_input_tokens": 1286,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1286
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1975745,
+  "duration_ms": 40011,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T06:08:17",
+  "unit": "file",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034",
+  "rubric": "repeated-proof-machinery"
+}

@@ -1,0 +1,169 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 794 lines of Folding.lean against the simp-interface rubric. I also checked the definitions it depends on in MinUncut/PCP/Walsh.lean (`Cube`, `bitSign`, `bitSign_xor`, `cubeXor`, `walsh`, `coefficient`) and ThreeBitTest.lean (`thirdQuery`). I grepped the MinUncut tree for downstream uses of `cubeFlip`, `representative`, `canonicalInput`, `restrictQuery`, the flip lemmas and the EmptyContext `equation`. The main pattern is that the file's new `def`s on cubes (`cubeFlip`, `restrictQuery`, `canonicalInput`/`representative`) have no pointwise or projection simp lemmas. As a result, both this file and later files (Occurrences.lean, TemplateExpressions.lean) unfold the definitions by name inside `simp`. Separately, the one projection simp lemma on the EmptyContext `equation` rewrites one projection into another instead of giving a normal form, and nothing uses it.\n\nConsidered and not reported:\n- The flip lemmas (`foldedAnswer_flip`, `canonicalInput_flip`, `equation_satisfied_flip`) could take `@[simp]`, but nothing outside this file uses them, so the benefit is speculative.\n- The CloneGap list-counting lemmas (`count_const`, `count_cart*`) are bespoke arithmetic facts used by explicit `rw`, with no evident simp-set conflict.\n- `pairedEquations_length` and `cubeToggle_twice` are reasonable simp lemmas.\n\nRemaining uncertainty: I did not compile anything. Whether each proposed `simp` call closes its goal without the extra unfold hints is a reasoned expectation, not something I tested.",
+  "findings": [
+    {
+      "declaration": "cubeFlip",
+      "start_line": 15,
+      "end_line": 20,
+      "excerpt": "def cubeFlip (f : Cube I) : Cube I := fun i => !(f i)",
+      "problem": "`cubeFlip` is a plain `def` and has no pointwise simp lemma. Every proof that needs `cubeFlip f i` to simplify has to unfold the definition by hand: `simp [cubeFlip]` at line 20, `simp [representative, cubeFlip, hf]` at lines 59 and 64, and `simp [foldedAnswer, canonicalInput, representative, cubeFlip, hf, hi]` at line 97. Later files do the same: TemplateExpressions.lean has `simp [cubeFlip]` and `simp [representative,restrictQuery,cubeFlip,h₀]`. The normal form of `cubeFlip f i` should be `!f i`, but the library never states it.",
+      "proposed_change": "Add right after the definition:\n`omit [Fintype I] [DecidableEq I] in\n@[simp] theorem cubeFlip_apply (f : Cube I) (i : I) : cubeFlip f i = !f i := rfl`\nThen remove `cubeFlip` from the simp argument lists at lines 20, 59, 64, 97 and in the TemplateExpressions.lean proofs. The LHS `cubeFlip f i` is strictly larger than `!f i`, so the rule terminates. It does not overlap with `cubeFlip_cubeFlip` or `sum_cubeFlip`, which match the unapplied `cubeFlip f`.",
+      "benefit": "Simp gets a canonical pointwise form for the flip operation. Users no longer need to know (or unfold) how `cubeFlip` is implemented, and the unapplied lemmas (`cubeFlip_cubeFlip`, `canonicalInput_flip`, `foldedAnswer_flip`) stay usable because the definition is not unfolded wholesale.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "foldedAnswer_dictator",
+          "excerpt": "simp [foldedAnswer, canonicalInput, representative, cubeFlip, hf, hi]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/Estimates/TemplateExpressions.lean",
+          "declaration": "MinUncut.Preprocess.UEncoding.map_representative",
+          "excerpt": "cases f p x (i p x) <;> simp [cubeFlip]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/Estimates/TemplateExpressions.lean",
+          "declaration": "MinUncut.SourceTemplate.extend_representative",
+          "excerpt": "cases h₀:g j₀ <;> simp [representative,restrictQuery,cubeFlip,h₀]"
+        }
+      ]
+    },
+    {
+      "declaration": "representative / representative_at / canonicalInput",
+      "start_line": 53,
+      "end_line": 69,
+      "excerpt": "def canonicalInput (i₀ : I) (f : Cube I) : HalfCube i₀ :=\n  ⟨representative i₀ f, representative_at i₀ f⟩",
+      "problem": "`canonicalInput` builds a subtype value, but there is no simp lemma for its `.val` projection. `representative_at` (`representative i₀ f i₀ = false`) is a natural closed-form rewrite but is not tagged `@[simp]`. As a result, Occurrences.lean's `canonicalInput_half` must unfold both definitions (`simp [canonicalInput, representative, f.property]`), and line 97 of this file unfolds `canonicalInput` and `representative` together. Unfolding `representative` produces a `if f i₀ then cubeFlip f else f` term that each proof then has to case-split.",
+      "proposed_change": "Add\n`omit [Fintype I] [DecidableEq I] in\n@[simp] theorem canonicalInput_val (i₀ : I) (f : Cube I) : (canonicalInput i₀ f).val = representative i₀ f := rfl`\nand mark `representative_at` as `@[simp]`. Optionally add the two branch lemmas `representative_of_false (h : f i₀ = false) : representative i₀ f = f` and `representative_of_true (h : f i₀ = true) : representative i₀ f = cubeFlip f`, so proofs can rewrite conditionally instead of unfolding the `if`. With these, `canonicalInput_half` becomes `Subtype.ext (representative_of_false _ _ f.property)`. Line 97 can then use the branch lemmas instead of unfolding three definitions.",
+      "benefit": "Gives a stable interface for the folding representative. Later proofs no longer unfold the subtype constructor or the `if`, which avoids unwanted expansion. If `representative` changes its implementation, only the two branch lemmas need updating.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Occurrences.lean",
+          "declaration": "canonicalInput_half",
+          "excerpt": "simp [canonicalInput, representative, f.property]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "representative_at",
+          "excerpt": "representative i₀ f i₀ = false := by"
+        }
+      ]
+    },
+    {
+      "declaration": "restrictQuery",
+      "start_line": 139,
+      "end_line": 152,
+      "excerpt": "def restrictQuery (valid : I → Bool) (f : Cube I) :\n    Cube {i : I // valid i = true} := fun i => f i.val",
+      "problem": "`restrictQuery valid f j` has the obvious normal form `f j.val`, but no apply lemma exists. Proofs unfold the definition instead: `simp [restrictQuery, cubeToggle, cubeXor, coordinateMask, hj]` at line 152, and `simp [representative,restrictQuery,cubeFlip,h₀]` in TemplateExpressions.lean. Occurrences.lean's `restrictQuery_extendRestricted` relies on definitional unfolding through `exact extendRestricted_valid ...` after `funext`.",
+      "proposed_change": "Add\n`omit [Fintype I] [DecidableEq I] in\n@[simp] theorem restrictQuery_apply (valid : I → Bool) (f : Cube I) (j : {i : I // valid i = true}) : restrictQuery valid f j = f j.val := rfl`\nThen drop `restrictQuery` from the explicit simp sets. The unapplied rewrites `restrictQuery_cubeToggle`, `restrict_thirdQuery` and `restrictQuery_extendRestricted` still match the unapplied term, so they keep working.",
+      "benefit": "Simp can reduce restricted queries pointwise without unfolding the definition. This makes the pointwise argument at line 152 and the later TemplateExpressions proof shorter and less brittle.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "restrictQuery_cubeToggle",
+          "excerpt": "simp [restrictQuery, cubeToggle, cubeXor, coordinateMask, hj]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/Estimates/TemplateExpressions.lean",
+          "declaration": "MinUncut.SourceTemplate.extend_representative",
+          "excerpt": "simp [representative,restrictQuery,cubeFlip,h₀]"
+        }
+      ]
+    },
+    {
+      "declaration": "EmptyContext.equation_second_eq_third",
+      "start_line": 693,
+      "end_line": 694,
+      "excerpt": "@[simp] theorem equation_second_eq_third (i₀ : I) (f : Cube I) :\n    (equation i₀ f).second = (equation i₀ f).third := rfl",
+      "problem": "This simp lemma rewrites one opaque projection, `(equation i₀ f).second`, into another opaque projection, `(equation i₀ f).third`. That is not a normal form: both are definitionally `Sum.inr ()`, and the rewrite only moves the term sideways. If a user adds the natural projection lemmas (`equation_third : (equation i₀ f).third = .inr ()`, or `@[simps]` on `equation`), this lemma competes with them. Nothing uses it: the only place the fact is needed (line 699, `satisfied_repeated_right ... rfl`) passes `rfl`. Meanwhile `equation_flip_first` (lines 709–712) has to `change` into `Sum.inl (canonicalInput ...)`, because no projection lemma for `.first` exists.",
+      "proposed_change": "Remove `@[simp] equation_second_eq_third`. Instead tag the definition `@[simps] def equation ...`, or add the projection lemmas by hand: `@[simp] theorem equation_first : (equation i₀ f).first = .inl (canonicalInput i₀ f) := rfl`, `@[simp] equation_second : (equation i₀ f).second = .inr () := rfl`, `@[simp] equation_third : (equation i₀ f).third = .inr () := rfl` and `@[simp] equation_rhs : (equation i₀ f).rhs = f i₀ := rfl`. `equation_flip_first` then follows by `simp [canonicalInput_flip]` without a `change`.",
+      "benefit": "Each projection gets a single canonical form (constructor applications) instead of a sideways projection-to-projection rule. This removes a potential conflict with future projection lemmas and lets proofs such as `equation_flip_first` and `equation_satisfied` rewrite instead of using `change`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "EmptyContext.equation_flip_first",
+          "excerpt": "change Sum.inl (canonicalInput i₀ (cubeFlip f)) = Sum.inl (canonicalInput i₀ f)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "EmptyContext.equation_satisfied",
+          "excerpt": "rw [FoldedEquation.satisfied_repeated_right (equation i₀ f) assignment rfl]"
+        }
+      ]
+    },
+    {
+      "declaration": "bitSign_not",
+      "start_line": 22,
+      "end_line": 23,
+      "excerpt": "@[simp] theorem bitSign_not (b : Bool) : bitSign (!b) = -bitSign b := by\n  cases b <;> norm_num [bitSign]",
+      "problem": "`bitSign` is defined in Walsh.lean as `if b then -1 else 1`, and there are no simp lemmas for its values at `true` and `false`. This file adds a `@[simp]` lemma `bitSign_not` far from the definition but still unfolds `bitSign` itself (`simp [coordinateMask, hj, bitSign]` at line 117, `simp [bitSign]` at line 124, `simp [coefficient, walsh, bitSign, ...]` at line 44). Unfolding turns each `bitSign b` into an `ite`. Files that import Walsh.lean but not Folding.lean do not get `bitSign_not`, and they also fall back to `simp [bitSign]`/`norm_num [bitSign]`.",
+      "proposed_change": "Move `bitSign_not` to Walsh.lean next to `bitSign_xor`. Add `@[simp] theorem bitSign_false : bitSign false = 1 := by simp [bitSign]` and `@[simp] theorem bitSign_true : bitSign true = -1 := by simp [bitSign]`. Then line 117 can become `simp [coordinateMask, hj]` (the factor is `bitSign (s j && false)` → `bitSign false` → `1`), and line 124 needs only `simp` after `rw [..., hs]`.",
+      "benefit": "Simp gets value-level normal forms for the sign map wherever `bitSign` is available, so proofs stop expanding it into `if`-terms. Placing the simp lemmas with the definition gives every importer the same simp set, instead of one that depends on whether Folding.lean happens to be imported.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Walsh.lean",
+          "declaration": "bitSign",
+          "excerpt": "def bitSign (b : Bool) : ℝ := if b then -1 else 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "walsh_coordinateMask",
+          "excerpt": "simp [coordinateMask, hj, bitSign]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "walsh_cubeToggle",
+          "excerpt": "rw [cubeToggle, walsh_xor, walsh_coordinateMask, hs]\n  simp [bitSign]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 49076,
+    "cache_read_input_tokens": 301513,
+    "output_tokens": 12623,
+    "output_tokens_details": {
+      "thinking_tokens": 4931
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 49076,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 6562,
+        "cache_read_input_tokens": 47157,
+        "cache_creation_input_tokens": 5037,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5037
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.7054426000000001,
+  "duration_ms": 120508,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-21T06:21:39",
+  "unit": "file",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034",
+  "rubric": "simp-interface"
+}

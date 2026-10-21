@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0001",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 75 lines of the target file. I also read the upstream file SpectralOverlapPaths.lean, which defines spectralPathDensity, spectralGroupPath and spectralGroupDiagonal and states the nonnegativity, integrability and monotonicity facts for them. I searched the InvariantIsing tree for uses of `intervalIntegral.integral_mono_interval` and checked its signature in Mathlib, along with `Set.monotone_projIcc`.\n\nTwo proofs in the target file run the same argument, and the upstream file runs it twice more: `spectralGroupPath_monotone` and `spectralGroupPath_le_diagonal`. The argument is that the primitive r ↦ ∫ 0..r of the density only grows on [0,1], combining nonnegativity, integrability on [0,y] and monotonicity in the interval. CavityFieldPath.lean already factors exactly this argument out for a different density (`cavityFieldPrimitive_mono`), so there is precedent in the codebase.\n\nOther proofs I considered and rejected:\n- `_nonneg` is a single API call.\n- `continuous_cavityCanonicalCoordinate` uses its argument only once.\n- `_at_path` is routine unfolding.\n- `cavityCanonicalLabel` and `continuous_cavityCanonicalLabel` are thin wrappers.\n\nUncertainty: I could not compile anything, so the proposed rewrites are untested. They rely on two definitional unfoldings: that `spectralGroupDiagonal` is defeq to `∫ r in 0..1, …`, and that the subtype `≤` coming from `Set.monotone_projIcc` is defeq to `≤` on the coerced values. Either step might need an explicit `show` or `Subtype.coe_le_coe`.",
+  "findings": [
+    {
+      "declaration": "cavityCanonicalCoordinate_le_diagonal, cavityCanonicalCoordinate_monotone",
+      "start_line": 25,
+      "end_line": 41,
+      "excerpt": "  intervalIntegral.integral_mono_interval le_rfl (Set.projIcc 0 1 zero_le_one t).property.1\n    (Set.projIcc 0 1 zero_le_one t).property.2\n    (Eventually.of_forall (spectralPathDensity_nonneg ρ eig hρ hρsum p a))\n    (spectralPathDensity_intervalIntegrable ρ eig hρ hρsum p a ⟨zero_le_one, le_rfl⟩)",
+      "problem": "Both proofs re-derive the same fact by hand: for 0 ≤ x ≤ y ≤ 1, ∫ 0..x of the spectral density is at most ∫ 0..y of it. Each one builds its own `integral_mono_interval` call from three pieces: the bound x ≥ 0, an `Eventually.of_forall (spectralPathDensity_nonneg …)` witness, and a `spectralPathDensity_intervalIntegrable … ⟨_, _⟩` witness for [0,y]. `_monotone` also re-proves monotonicity of `projIcc` by hand with `max_le_max le_rfl (min_le_min le_rfl hst)`, which is exactly the body of Mathlib's `Set.monotone_projIcc`. The same four-part call appears twice more upstream, in `spectralGroupPath_monotone` and `spectralGroupPath_le_diagonal`. That makes four copies of the same reasoning, differing only in where x and y come from.",
+      "proposed_change": "Add one helper to SpectralOverlapPaths.lean, which the target already imports:\n\ntheorem spectralPathDensity_integral_mono (ρ eig : ι → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : ι) {x y : ℝ}\n    (hx : 0 ≤ x) (hxy : x ≤ y) (hy : y ≤ 1) :\n    ∫ r in 0..x, spectralPathDensity ρ eig hρ hρsum p a r ≤\n      ∫ r in 0..y, spectralPathDensity ρ eig hρ hρsum p a r :=\n  intervalIntegral.integral_mono_interval le_rfl hx hxy\n    (Eventually.of_forall (spectralPathDensity_nonneg ρ eig hρ hρsum p a))\n    (spectralPathDensity_intervalIntegrable ρ eig hρ hρsum p a ⟨hx.trans hxy, hy⟩)\n\nProof sketch: this is the existing four-part call, stated once with x and y as parameters. The two target proofs then become the following (untested):\n\nlemma cavityCanonicalCoordinate_le_diagonal … :=\n  spectralPathDensity_integral_mono ρ eig hρ hρsum p a\n    (Set.projIcc 0 1 zero_le_one t).property.1 (Set.projIcc 0 1 zero_le_one t).property.2 le_rfl\n\nlemma cavityCanonicalCoordinate_monotone … :=\n  fun s t hst => spectralPathDensity_integral_mono ρ eig hρ hρsum p a\n    (Set.projIcc 0 1 zero_le_one s).property.1 (Set.monotone_projIcc zero_le_one hst)\n    (Set.projIcc 0 1 zero_le_one t).property.2\n\nThe upstream proofs collapse the same way. `spectralGroupPath_monotone` becomes `… (p.nonneg s) (p.monotone hst) (p.le_one t)`, and `spectralGroupPath_le_diagonal` becomes `… (p.nonneg s) (p.le_one s) le_rfl`. The hypotheses are unchanged, because every caller already has 0 ≤ x, x ≤ y and y ≤ 1 available.",
+      "benefit": "The monotonicity of the density's primitive on [0,1] gets one name and one proof instead of four copies spread over two files. Each proof that uses it shrinks to a single line that says which interval endpoints are compared, and the hand-written `max_le_max`/`min_le_min` step is replaced by the Mathlib lemma. If the integrability or nonnegativity API for `spectralPathDensity` changes later, for example to an a.e. hypothesis or to a new integrability domain, only the helper needs updating. Readers also see directly that `_le_diagonal` is just the y = 1 case of `_monotone`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralGroupPath_monotone",
+          "excerpt": "  exact intervalIntegral.integral_mono_interval le_rfl (p.nonneg s) (p.monotone hst)\n    (Eventually.of_forall (spectralPathDensity_nonneg ρ eig hρ hρsum p a))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralGroupPath_le_diagonal",
+          "excerpt": "  intervalIntegral.integral_mono_interval le_rfl (p.nonneg s) (p.le_one s)\n    (Eventually.of_forall (spectralPathDensity_nonneg ρ eig hρ hρsum p a))\n    (spectralPathDensity_intervalIntegrable ρ eig hρ hρsum p a ⟨zero_le_one, le_rfl⟩)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityCanonicalLabels.lean",
+          "declaration": "cavityCanonicalCoordinate_monotone",
+          "excerpt": "    max_le_max le_rfl (min_le_min le_rfl hst)\n  exact intervalIntegral.integral_mono_interval le_rfl (Set.projIcc 0 1 zero_le_one s).property.1 hc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Interval/Set/ProjIcc.lean",
+          "declaration": "Set.monotone_projIcc",
+          "excerpt": "theorem monotone_projIcc : Monotone (projIcc a b h) := fun _ _ hxy =>\n  max_le_max le_rfl <| min_le_min le_rfl hxy"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityFieldPath.lean",
+          "declaration": "cavityFieldPrimitive_mono",
+          "excerpt": "    (hsum : ∑ a, rho a = 1) (p : OverlapPath) {a b : ℝ} (ha : 0 ≤ a) (hab : a ≤ b) :\n    cavityFieldPrimitive rho lam hrho hsum p a ≤ cavityFieldPrimitive rho lam hrho hsum p b :=\n  intervalIntegral.integral_mono_interval le_rfl ha hab"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 21352,
+    "cache_read_input_tokens": 116215,
+    "output_tokens": 6291,
+    "output_tokens_details": {
+      "thinking_tokens": 1720
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21352,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3364,
+        "cache_read_input_tokens": 24463,
+        "cache_creation_input_tokens": 818,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 818
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.31993499999999997,
+  "duration_ms": 51885,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T06:00:55",
+  "unit": "file",
+  "source_sha256": "b390cf2c9c89d26b73b1c451d9d8b912a7c85e5c016d5f1a9120804b70a4843b",
+  "rubric": "repeated-proof-machinery"
+}

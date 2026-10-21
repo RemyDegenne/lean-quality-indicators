@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 794 lines against the rubric. I also checked the definitions the file relies on: `Cube`, `bitSign`, `cubeXor`, `walsh`, `walsh_xor` and `coefficient` in PCP/Walsh.lean, and `support`, `noiseWeight`, `thirdQuery` and `testAcceptance` in Encoding/ThreeBitTest.lean. I grepped for callers of the two summation lemmas.\n\n**Not reported:**\n- **Fourier lemmas (`coefficient_*`, `conditioned_coefficient_*`, `foldedMean_eq_zero`, `equationAcceptance_eq_half`, …):** these have to be over ℝ, because `coefficient`, `walsh` and `bitSign` are defined with values in ℝ.\n- **CloneGap section (48 indices, thresholds 24/6912/110592, the 4→64 gap):** the constants are hard-coded by design. Parameterising them would take real new arithmetic, so it falls outside this rubric.\n- **`valid : I → Bool` in `restrictQuery`:** using a Bool test rather than a Prop is a consistent design choice. A Prop version would be no more general in practice.\n- **Constructions specific to `Equation`/`Address`:** these are concrete encodings with no useful generalisation.\n\nThe only clear cases are the two reindexing lemmas `sum_cubeFlip` and `sum_cubeToggle`. They fix the codomain to ℝ even though their proofs never use anything about ℝ. Both have exactly one caller in this file, and the codomain would be inferred from the function argument there. I did not compile the proposed versions. My claim that they elaborate unchanged rests on reading the proofs: they use only `Finset.sum_bij`, `Finset.mem_univ`, `rfl` and the involution lemmas.",
+  "findings": [
+    {
+      "declaration": "OAI.MinUncutGames.Foundations.Hastad.sum_cubeFlip",
+      "start_line": 25,
+      "end_line": 35,
+      "excerpt": "theorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f := by",
+      "problem": "This lemma is a pure reindexing statement: summing over the cube is unchanged when the inputs are complemented. Its proof uses only `Finset.sum_bij`, `Finset.mem_univ`, `cubeFlip_cubeFlip` and `rfl`, none of which needs anything about ℝ. Restricting the codomain to ℝ stops it being used for ℕ- or ℚ-valued counts, `Finset.prod`-style statements, or vector-valued sums over the cube.",
+      "proposed_change": "Generalise the codomain to an arbitrary additive commutative monoid:\n\n```lean\ntheorem sum_cubeFlip {M : Type*} [AddCommMonoid M] (F : Cube I → M) :\n    (∑ f, F (cubeFlip f)) = ∑ f, F f\n```\n\nThe current proof should go through unchanged, since `Finset.sum_bij` is stated for any `AddCommMonoid`. A shorter proof is `(Function.Involutive.toPerm cubeFlip cubeFlip_cubeFlip).sum_comp F` (both declarations are defined in Mathlib), or `@[to_additive]` on a product version. The empty case `I` empty is fine: the cube then has one point, which `cubeFlip` fixes. The single caller, `sum_cubeFlip F` in `coefficient_zero_of_odd`, infers `M := ℝ` from `F`.",
+      "benefit": "The lemma becomes reusable for any summand type, for example Boolean-count sums in ℕ elsewhere in the MinUncut development, at no cost in readability. It also states the fact for what it really is: invariance of `∑` under an involution.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "OAI.MinUncutGames.Foundations.Hastad.coefficient_zero_of_odd",
+          "excerpt": "have h := sum_cubeFlip F"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Logic/Equiv/Basic.lean",
+          "declaration": "Function.Involutive.toPerm",
+          "excerpt": "def toPerm (f : α → α) (h : Involutive f) : Equiv.Perm α :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Walsh.lean",
+          "declaration": "OAI.MinUncutGames.Foundations.Hastad.Cube",
+          "excerpt": "abbrev Cube (I : Type*) := I → Bool"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.MinUncutGames.Foundations.Hastad.sum_cubeToggle",
+      "start_line": 126,
+      "end_line": 137,
+      "excerpt": "theorem sum_cubeToggle (i : I) (F : Cube I → ℝ) :\n    (∑ f, F (cubeToggle i f)) = ∑ f, F f := by",
+      "problem": "This has the same over-specialisation as `sum_cubeFlip`. Toggling coordinate `i` is an involution, by `cubeToggle_twice`, so the sum is invariant for any summand type. The proof (`Finset.sum_bij`, `cubeToggle_twice`, `rfl`) never uses ℝ, yet the statement forces `F : Cube I → ℝ`.",
+      "proposed_change": "Restate with a general codomain:\n\n```lean\ntheorem sum_cubeToggle {M : Type*} [AddCommMonoid M] (i : I) (F : Cube I → M) :\n    (∑ f, F (cubeToggle i f)) = ∑ f, F f\n```\n\nThe existing `sum_bij` proof should carry over as is. Alternatively, use `(Function.Involutive.toPerm (cubeToggle i) (cubeToggle_twice i)).sum_comp F`. No degenerate case arises: `i : I` is given, so the index type is nonempty. The only caller is in `conditioned_coefficient_zero_invalid`, which passes `fun f => B (restrictQuery valid f) * walsh s f`, an ℝ-valued function, so `M := ℝ` is inferred and the following `simp_rw … ; linarith` step is unaffected.",
+      "benefit": "The lemma becomes reusable for sums of any type over the Boolean cube, not just real-valued Fourier sums. For example, it could serve counting arguments with ℕ-valued indicators. The proof and the existing caller stay the same.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "OAI.MinUncutGames.Foundations.Hastad.conditioned_coefficient_zero_invalid",
+          "excerpt": "have hsum := sum_cubeToggle i (fun f => B (restrictQuery valid f) * walsh s f)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "OAI.MinUncutGames.Foundations.Hastad.cubeToggle_twice",
+          "excerpt": "cubeToggle i (cubeToggle i f) = f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Logic/Equiv/Basic.lean",
+          "declaration": "Function.Involutive.toPerm",
+          "excerpt": "⟨f, f, h.leftInverse, h.rightInverse⟩"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 37604,
+    "cache_read_input_tokens": 129046,
+    "output_tokens": 5630,
+    "output_tokens_details": {
+      "thinking_tokens": 1998
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37604,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3057,
+        "cache_read_input_tokens": 36926,
+        "cache_creation_input_tokens": 3796,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3796
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.43928120000000004,
+  "duration_ms": 57058,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T06:18:57",
+  "unit": "file",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034",
+  "rubric": "statement-generality"
+}

@@ -1,0 +1,122 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 794 lines of the file, checking against the proof-simplification rubric. I also read the related definitions in MinUncut/PCP/Walsh.lean (`Cube`, `bitSign`, `walsh`, `coefficient`). In Mathlib I read the full statements of every replacement lemma I propose: `Function.Bijective.prod_comp` (whose additive form is `sum_comp`), `Function.Involutive.bijective`, `Function.Involutive.toPerm` and `Fintype.prod_eq_single`. I grepped for uses of `sum_cubeFlip`, `sum_cubeToggle` and `majority_exists`. `majority_exists` is not used in this file, and no use of it under this name appears elsewhere in `lean/`. The same helpers are copied, with the same proofs, into several sibling files (e.g. MaxCut/PCP/Folding.lean and VertexCover/Fourier/Folding.lean), so these simplifications would apply there too. I considered and left out other candidates, either because the gain was too small or the readability benefit was unclear. These were: `count_index_eq_le` (rewriting `beq_comm` and then `count_range`), `conditioned_coefficient_support` (`cases` on `valid i`), `foldedAnswer_flip` (`change` followed by Bool case analysis), `length_cart` (`have` then `simpa using this`), and `clone_gap` (`by exact`). The long counting proofs that end in `omega` and the Bool-truth-table `cases … <;> rfl` proofs are already direct and readable. None of the replacements has been compiled. The most likely point to check is whether elaboration infers `f` in `Function.Involutive.bijective`; I pass it explicitly with `(f := …)` so that inference is not needed.",
+  "findings": [
+    {
+      "declaration": "sum_cubeFlip (and sum_cubeToggle, lines 126–137)",
+      "start_line": 25,
+      "end_line": 35,
+      "excerpt": "theorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f := by\n  refine Finset.sum_bij (fun f _ => cubeFlip f) ?_ ?_ ?_ ?_\n  · intro f _\n    exact Finset.mem_univ _\n  · intro f _ g _ h\n    have h' := congrArg cubeFlip h\n    simpa only [cubeFlip_cubeFlip] using h'",
+      "problem": "Both `sum_cubeFlip` and `sum_cubeToggle` re-derive by hand that reindexing a sum over `univ` by an involution leaves it unchanged. Each one spends four bullets (membership, injectivity, surjectivity, `rfl`) on a generic fact that Mathlib already has. The real reason the lemma holds is that the map is its own inverse (`cubeFlip_cubeFlip` / `cubeToggle_twice`), and that gets buried in the `Finset.sum_bij` bookkeeping.",
+      "proposed_change": "theorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f :=\n  (Function.Involutive.bijective (f := cubeFlip) cubeFlip_cubeFlip).sum_comp F\n\ntheorem sum_cubeToggle (i : I) (F : Cube I → ℝ) :\n    (∑ f, F (cubeToggle i f)) = ∑ f, F f :=\n  (Function.Involutive.bijective (f := cubeToggle i) (cubeToggle_twice i)).sum_comp F",
+      "benefit": "Each proof shrinks from eleven lines to one, and that line states the mathematical reason directly: an involution is a bijection, and a sum over the whole type is invariant under composing with a bijection. The lemma names `Involutive.bijective` and `Bijective.sum_comp` describe exactly that, so the reader no longer has to check four separate side goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean",
+          "declaration": "Function.Bijective.prod_comp",
+          "excerpt": "lemma _root_.Function.Bijective.prod_comp {e : ι → κ} (he : e.Bijective) (g : κ → M) :\n    ∏ i, g (e i) = ∏ i, g i := prod_bijective _ he _ _ fun _ ↦ rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Logic/Function/Basic.lean",
+          "declaration": "Function.Involutive.bijective",
+          "excerpt": "protected theorem bijective : Bijective f := ⟨h.injective, h.surjective⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "cubeToggle_twice",
+          "excerpt": "@[simp] theorem cubeToggle_twice (i : I) (f : Cube I) :\n    cubeToggle i (cubeToggle i f) = f := by"
+        }
+      ]
+    },
+    {
+      "declaration": "walsh_coordinateMask",
+      "start_line": 111,
+      "end_line": 119,
+      "excerpt": "  rw [Finset.prod_eq_single i]\n  · simp [coordinateMask]\n  · intro j _ hj\n    simp [coordinateMask, hj, bitSign]\n  · intro h\n    exact False.elim (h (Finset.mem_univ _))",
+      "problem": "`walsh` is a product over `Finset.univ` (`∏ i, bitSign (s i && x i)`). The proof uses the general `Finset.prod_eq_single`, which leaves a third goal, `i ∉ univ → …`. That goal is vacuous and gets its own bullet with a `False.elim` argument. The second bullet also introduces an unused membership hypothesis.",
+      "proposed_change": "theorem walsh_coordinateMask (s : Cube I) (i : I) :\n    walsh s (coordinateMask i) = bitSign (s i) := by\n  unfold walsh\n  rw [Fintype.prod_eq_single i]\n  · simp [coordinateMask]\n  · intro j hj\n    simp [coordinateMask, hj, bitSign]",
+      "benefit": "The proof is left with only the two meaningful steps: the factor at `i` is `bitSign (s i)`, and every other factor equals 1. The irrelevant 'i is not in univ' case disappears, so the one-hot argument is easier to see.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Fintype/BigOperators.lean",
+          "declaration": "Fintype.prod_eq_single",
+          "excerpt": "theorem prod_eq_single {f : α → M} (a : α) (h : ∀ x ≠ a, f x = 1) : ∏ x, f x = f a :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Walsh.lean",
+          "declaration": "walsh",
+          "excerpt": "∏ i, bitSign (s i && x i)"
+        }
+      ]
+    },
+    {
+      "declaration": "majority_exists (duplicated by majorityBit_count, lines 403–413)",
+      "start_line": 315,
+      "end_line": 327,
+      "excerpt": "theorem majority_exists (g : Index → Bool) :\n    ∃ b : Bool, 24 ≤ indices.countP (fun i => g i == b) := by\n  have h := List.length_eq_countP_add_countP g (l := indices)\n  have hn : (fun i => decide (¬g i = true)) = (fun i => !g i) := by",
+      "problem": "`majority_exists` and `majorityBit_count` contain the same nine-line argument. Both use `length_eq_countP_add_countP`, the same `hn` rewrite, a `by_cases` on `24 ≤ indices.countP g`, and an `omega` step. `majorityBit_count` proves the stronger, constructive statement that the explicit witness `majorityBit g` works. `majority_exists` is its existential corollary but is proved from scratch, and it is not used anywhere in the file.",
+      "proposed_change": "Move `majority_exists` after `majorityBit_count` and prove it from that lemma:\n\ntheorem majority_exists (g : Index → Bool) :\n    ∃ b : Bool, 24 ≤ indices.countP (fun i => g i == b) :=\n  ⟨majorityBit g, majorityBit_count g⟩\n\nAlternatively, remove `majority_exists`, since nothing here uses it.",
+      "benefit": "The counting argument then appears once, and the existential statement visibly follows from the explicit majority witness. Readers no longer have to compare two near-identical proofs to see that they agree.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "majorityBit_count",
+          "excerpt": "theorem majorityBit_count (g : Index → Bool) :\n    24 ≤ indices.countP (fun i => g i == majorityBit g) := by\n  have h := List.length_eq_countP_add_countP g (l := indices)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "majorityBit",
+          "excerpt": "def majorityBit (g : Index → Bool) : Bool := decide (24 ≤ indices.countP g)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 48236,
+    "cache_read_input_tokens": 342534,
+    "output_tokens": 9461,
+    "output_tokens_details": {
+      "thinking_tokens": 3225
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 48236,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4028,
+        "cache_read_input_tokens": 51112,
+        "cache_creation_input_tokens": 1167,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1167
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.6436947999999999,
+  "duration_ms": 84217,
+  "turns": 16,
+  "attempts": 1,
+  "judged": "2026-10-21T06:24:21",
+  "unit": "file",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034",
+  "rubric": "readable-proof-simplification"
+}

@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0004",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 112 lines of the target file. I also checked the definitions and lemmas it uses: `dualEvalLie`, `dualEvalLie_base`, `dualEvalLie_tangent` and `polynomialFirstJetHom` in RealPolynomialChartSubstitution.lean, `eval_mem_iff_coefficients` in ExtendedPolynomialValues.lean, `dualLogDerivative_mem_of_invariant` in DualIdealSteps.lean, and `derivative_removal_preserves_quotient_layers` in DualDerivativeRemoval.lean. A search of the OAI sources found no existing lemma that already gives the U/V membership of the base and tangent of `polynomialFirstJetHom`. The only repetition that meets the rubric is the four-fold first-jet membership argument. `directionalDerivative_mem_coefficientSubmodule` is already a shared helper. `polynomialDerivativeSystem_remove` is a single `simpa` transport and repeats nothing nontrivial. Remaining uncertainty: I could not compile the proposed helper. The main risk is whether `hAU : coefficients A.coord α ∈ U` (U a `LieSubalgebra`) elaborates against `U.toSubmodule` inside the helper. The current proofs already pass `hAU` to `(eval_mem_iff_coefficients U.toSubmodule _).mpr`, so this should carry over unchanged.",
+  "findings": [
+    {
+      "declaration": "NilpotentLieBCHGroup.polynomialLogDerivative_mem_of_coefficients and NilpotentLieFiltration.polynomial_removal_preserves_derivative_layers",
+      "start_line": 37,
+      "end_line": 101,
+      "excerpt": "  have haV : dualTangentLinear (polynomialFirstJetHom t h A).coord ∈ V := by\n    change dualTangentLinear (dualEvalLie t h A.coord) ∈ V\n    rw [dualEvalLie_tangent]\n    exact (eval_mem_iff_coefficients V _).mpr\n      (directionalDerivative_mem_coefficientSubmodule V h A.coord hAV) t",
+      "problem": "The same argument appears four times. It shows that if a polynomial group element's coefficients lie in U (resp. V), then the base part of its first jet lies in U (resp. the tangent part lies in V). Each copy unfolds `polynomialFirstJetHom` to `dualEvalLie` with `change`, rewrites with `dualEvalLie_base`/`dualEvalLie_tangent`, and turns the coefficient condition into an evaluation condition with `eval_mem_iff_coefficients`; the tangent case also goes through `directionalDerivative_mem_coefficientSubmodule`. It is written out once for A in `polynomialLogDerivative_mem_of_coefficients` (lines 38–44) and again for both A and C in `polynomial_removal_preserves_derivative_layers` (lines 84–101). That is four base/tangent blocks with the same structure, and they differ only in the group element.",
+      "proposed_change": "Add one lemma in `NilpotentLieBCHGroup`, right after `polynomialLogDerivative_mem_of_coefficients`'s variables (`[Fintype σ]` and implicit `hnil` are already in scope there):\n\n```lean\ntheorem polynomialFirstJet_mem_of_coefficients\n    (U : LieSubalgebra ℚ L) (V : Submodule ℚ L) (t h : σ → ℚ)\n    (A : PolynomialGroup σ hnil)\n    (hAU : ∀ α, coefficients A.coord α ∈ U)\n    (hAV : ∀ α, coefficients A.coord α ∈ V) :\n    dualBaseLinear (polynomialFirstJetHom t h A).coord ∈ U ∧\n      dualTangentLinear (polynomialFirstJetHom t h A).coord ∈ V := by\n  constructor\n  · change dualBaseLinear (dualEvalLie t h A.coord) ∈ U\n    rw [dualEvalLie_base]\n    exact (eval_mem_iff_coefficients U.toSubmodule _).mpr hAU t\n  · change dualTangentLinear (dualEvalLie t h A.coord) ∈ V\n    rw [dualEvalLie_tangent]\n    exact (eval_mem_iff_coefficients V _).mpr\n      (directionalDerivative_mem_coefficientSubmodule V h A.coord hAV) t\n```\n\nThen the first proof becomes\n```lean\n  obtain ⟨hb, ht⟩ := polynomialFirstJet_mem_of_coefficients U V t h A hAU hAV\n  exact dualLogDerivative_mem_of_invariant U V hUV _ hb ht\n```\nThe current proof already closes the goal with `apply dualLogDerivative_mem_of_invariant ... (polynomialFirstJetHom t h A)`, so the two sides match definitionally. The second proof becomes\n```lean\n  obtain ⟨haU, haV⟩ := polynomialFirstJet_mem_of_coefficients U V t h A hAU hAV\n  obtain ⟨hcU, hcV⟩ := polynomialFirstJet_mem_of_coefficients U V t h C hCU hCV\n  have he := F.derivative_removal_preserves_quotient_layers U V hUV j\n    (polynomialFirstJetHom t h A) (polynomialFirstJetHom t h C)\n    haU hcU haV hcV small rational hsmall hrational\n  simpa only [polynomialFirstJet_base, polynomialLogDerivative] using he\n```\nThe helper is generic in `hnil`, so it applies with `hnil := F.lowerCentralSeries_eq_bot` in the filtration namespace, which already opens `NilpotentLieBCHGroup`. No new imports are needed.",
+      "benefit": "About 25 lines of identical `change`/`rw`/`exact` steps collapse into one named lemma. The helper names the fact both theorems rely on: coefficient-wise U/V membership passes to the first jet. Each main proof then reads as a short call to the corresponding dual-group theorem. If `polynomialFirstJetHom`, `dualEvalLie_base`/`dualEvalLie_tangent` or `eval_mem_iff_coefficients` change, only one proof needs fixing instead of four.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/PolynomialDerivativeInvariant.lean",
+          "declaration": "NilpotentLieBCHGroup.polynomialLogDerivative_mem_of_coefficients",
+          "excerpt": "  · change dualBaseLinear (dualEvalLie t h A.coord) ∈ U\n    rw [dualEvalLie_base]\n    exact (eval_mem_iff_coefficients U.toSubmodule A.coord).mpr hAU t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/PolynomialDerivativeInvariant.lean",
+          "declaration": "NilpotentLieFiltration.polynomial_removal_preserves_derivative_layers",
+          "excerpt": "  have hcU : dualBaseLinear (polynomialFirstJetHom t h C).coord ∈ U := by\n    change dualBaseLinear (dualEvalLie t h C.coord) ∈ U"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "NilpotentLieBCHGroup.polynomialFirstJetHom",
+          "excerpt": "noncomputable def polynomialFirstJetHom (t h : σ → ℚ) : PolynomialGroup σ hnil →* DualGroup hnil :=\n  NilpotentLieBCHGroup.map (dualEvalLie t h)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Linear/DualDerivativeRemoval.lean",
+          "declaration": "NilpotentLieFiltration.derivative_removal_preserves_quotient_layers",
+          "excerpt": "    (haU : dualBaseLinear a.coord ∈ U) (hcU : dualBaseLinear c.coord ∈ U)\n    (haV : dualTangentLinear a.coord ∈ V) (hcV : dualTangentLinear c.coord ∈ V)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Linear/DualIdealSteps.lean",
+          "declaration": "dualLogDerivative_mem_of_invariant",
+          "excerpt": "    (hb : dualBaseLinear z.coord ∈ U) (ht : dualTangentLinear z.coord ∈ V) :\n    dualLogDerivative z ∈ V := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 17918,
+    "cache_read_input_tokens": 36834,
+    "output_tokens": 4720,
+    "output_tokens_details": {
+      "thinking_tokens": 852
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17918,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4014,
+        "cache_read_input_tokens": 20868,
+        "cache_creation_input_tokens": 979,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 979
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2451348,
+  "duration_ms": 44382,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T06:15:21",
+  "unit": "file",
+  "source_sha256": "b2e8207b59a75174242e56fe2118ca15f24e76d29d476173872ffe792af84c08",
+  "rubric": "repeated-proof-machinery"
+}

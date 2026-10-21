@@ -1,0 +1,142 @@
+{
+  "id": "openai-math-file-0001",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 75 lines of the target file, the definitions it depends on (`spectralPathDensity`, `spectralGroupPath` and `spectralGroupDiagonal` in Spectral/SpectralOverlapPaths.lean) and Mathlib's `projIcc` lemmas (`coe_projIcc`, the `@[simp]` lemma `projIcc_right`, and `projIcc_of_mem`). I then grepped every downstream use of `cavityCanonicalCoordinate` and `cavityCanonicalLabel` in the OAI tree and read the files that unfold these definitions inside `simp`/`simpa` calls: CavitySpinObservable, CavityOverlapObservable, CavityFiniteGroupSelection, CavityFiniteHeightContinuity, CavityCanonicalContinuity, CavityRecalculatedLabels and CavityFiniteReplicaCovariance.\n\nThe target file has no simp lemmas or attributes at all. Its only equation lemma is `cavityCanonicalCoordinate_at_path`, which is not tagged simp and is used once, with `.symm`. As a result, downstream files keep handling the two definitions by unfolding them inside `simp only [...]` and then rewriting `Set.projIcc_of_mem`, with membership proofs built by hand. I found three concrete gaps:\n- There is no lemma for the coercion of the label.\n- There is no lemma for evaluating the coordinate on [0,1].\n- There is no lemma for the endpoint t = 1.\n\nNone of the proposed lemmas could cause a rewrite loop: each rewrites an applied or coerced definition to something structurally smaller or already named. I could not compile anything, so the replacement proofs are suggestions and have not been tested. I make no claim that any current proof fails. Making `cavityCanonicalCoordinate_at_path` a simp lemma is plausible, but it has a single use, so I did not report it.",
+  "findings": [
+    {
+      "declaration": "cavityCanonicalLabel",
+      "start_line": 59,
+      "end_line": 64,
+      "excerpt": "def cavityCanonicalLabel {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : Fin m) (t : ℝ) : Icc (-1 : ℝ) 1 :=\n  ⟨cavityCanonicalCoordinate ρ eig hρ hρsum p a t,",
+      "problem": "`cavityCanonicalLabel` packages `cavityCanonicalCoordinate` as a subtype value, but the file gives no lemma for its coercion to ℝ. Downstream files that need `((cavityCanonicalLabel ρ eig hρ hρsum p a t : Icc (-1) 1) : ℝ)` written in terms of `cavityCanonicalCoordinate ρ eig hρ hρsum p a t` add the definition itself to `simp only`/`simp`. This happens at four sites: CavitySpinObservable:48, CavityOverlapObservable:33 and CavityFiniteGroupSelection:54 and :85. Unfolding the def exposes the anonymous-constructor term with its proof components instead of using a stated projection lemma, so each caller relies on `simp` reducing `Subtype.val ⟨_, _⟩`.",
+      "proposed_change": "Add right after the definition:\n```lean\n@[simp] lemma coe_cavityCanonicalLabel {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : Fin m) (t : ℝ) :\n    (cavityCanonicalLabel ρ eig hρ hρsum p a t : ℝ) =\n      cavityCanonicalCoordinate ρ eig hρ hρsum p a t := rfl\n```\nThen replace `cavityCanonicalLabel` with `coe_cavityCanonicalLabel` in the downstream `simp only` lists; it can be omitted where full `simp` is used.",
+      "benefit": "The label gets a canonical projection lemma: its coercion normalizes to the coordinate. That is the form the downstream `sum_cavityCanonicalCoordinate` and `cavityCanonicalCoordinate_*` lemmas expect, and callers no longer need to unfold a subtype-valued definition with embedded proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavitySpinObservable.lean",
+          "declaration": "cavitySpinObservable_finite",
+          "excerpt": "simp only [cavityFiniteReplicaSpectralBlock, cavitySynchronizedBlock, Fin.zero_ne_one,\n      ↓reduceIte, cavityCanonicalLabel]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityOverlapObservable.lean",
+          "declaration": "cavityOverlapObservable_finite",
+          "excerpt": "↓reduceIte, cavityCanonicalLabel]\n    exact sum_cavityCanonicalCoordinate rho lam hrho hsum p (hq _)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityFiniteGroupSelection.lean",
+          "declaration": "cavity_selected_group_covariance",
+          "excerpt": "cavitySynchronizedBlock, cavityCanonicalDiagonal, cavityCanonicalLabel, heg, hij]"
+        }
+      ]
+    },
+    {
+      "declaration": "cavityCanonicalCoordinate",
+      "start_line": 15,
+      "end_line": 17,
+      "excerpt": "∫ r in 0..(Set.projIcc 0 1 zero_le_one t : ℝ), spectralPathDensity ρ eig hρ hρsum p a r",
+      "problem": "The definition clamps `t` with `Set.projIcc`, but the file has no lemma that removes the clamp on the unit interval. The only such lemma, `cavityCanonicalCoordinate_at_path`, covers only arguments of the form `p s`. Downstream proofs therefore unfold the definition and rewrite `Set.projIcc_of_mem zero_le_one h` by hand to reach `∫ r in 0..t, …`. This happens at CavitySpinObservable:18, CavityFiniteHeightContinuity:20-21 and CavityFiniteReplicaCovariance:85-87. In each case the desired normal form for `t ∈ Icc 0 1` is the unclamped interval integral.",
+      "proposed_change": "Add a conditional equation lemma and use it in place of the unfold-plus-`projIcc_of_mem` pattern:\n```lean\nlemma cavityCanonicalCoordinate_of_mem {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : Fin m) {t : ℝ} (ht : t ∈ Icc 0 1) :\n    cavityCanonicalCoordinate ρ eig hρ hρsum p a t =\n      ∫ r in 0..t, spectralPathDensity ρ eig hρ hρsum p a r := by\n  rw [cavityCanonicalCoordinate, Set.projIcc_of_mem zero_le_one ht]\n```\n`cavityCanonicalCoordinate_at_path` can then be proved from it. The lemma does not need a simp attribute, since its hypothesis is not dischargeable in general; callers would write `simp only [cavityCanonicalCoordinate_of_mem _ _ _ _ _ _ hs]` or use `rw`.",
+      "benefit": "The clamping becomes an implementation detail of the definition. Callers rewrite with one stated lemma instead of unfolding the definition and knowing that `projIcc_of_mem` with `zero_le_one` is the matching follow-up rewrite, and they become robust to changes in how the clamp is written.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavitySpinObservable.lean",
+          "declaration": "sum_cavityCanonicalCoordinate",
+          "excerpt": "simp only [cavityCanonicalCoordinate, Set.projIcc_of_mem zero_le_one ht]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityFiniteHeightContinuity.lean",
+          "declaration": "cavityCanonicalCoordinate_dist_le",
+          "excerpt": "simp only [cavityCanonicalCoordinate, Set.projIcc_of_mem zero_le_one hs,\n    Set.projIcc_of_mem zero_le_one ht]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityFiniteReplicaCovariance.lean",
+          "declaration": "cavity_finite_replica_covariance_canonical",
+          "excerpt": "· simp only [hij, ite_false, add_zero, cavityCanonicalCoordinate]\n      rw [Set.projIcc_of_mem zero_le_one"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Interval/Set/ProjIcc.lean",
+          "declaration": "Set.projIcc_of_mem",
+          "excerpt": "theorem projIcc_of_mem (hx : x ∈ Icc a b) : projIcc a b h x = ⟨x, hx⟩ := by"
+        }
+      ]
+    },
+    {
+      "declaration": "cavityCanonicalCoordinate_le_diagonal",
+      "start_line": 25,
+      "end_line": 31,
+      "excerpt": "cavityCanonicalCoordinate ρ eig hρ hρsum p a t ≤ spectralGroupDiagonal ρ eig hρ hρsum p a :=",
+      "problem": "The file states the coordinate is bounded by `spectralGroupDiagonal`, and the docstring says the diagonal bound is built in. However, it never states that this bound is attained at t = 1, i.e. that `cavityCanonicalCoordinate ρ eig hρ hρsum p a 1` normalizes to `spectralGroupDiagonal ρ eig hρ hρsum p a`. Two downstream proofs rebuild this equality inline by unfolding both definitions and supplying a hand-made proof of `(1 : ℝ) ∈ Icc 0 1` to `projIcc_of_mem`: CavityCanonicalContinuity:59-60 and CavityRecalculatedLabels:46-47. Mathlib already has `@[simp] Set.projIcc_right`, so this endpoint is a canonical closed form that suits an unconditional simp lemma.",
+      "proposed_change": "Add\n```lean\n@[simp] lemma cavityCanonicalCoordinate_one {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : Fin m) :\n    cavityCanonicalCoordinate ρ eig hρ hρsum p a 1 = spectralGroupDiagonal ρ eig hρ hρsum p a := by\n  simp [cavityCanonicalCoordinate, spectralGroupDiagonal]\n```\nThis should follow from `Set.projIcc_right`; alternatively, prove it with `projIcc_of_mem`. Then replace the downstream `simpa only [cavityCanonicalCoordinate, spectralGroupDiagonal, Set.projIcc_of_mem zero_le_one (show (1 : ℝ) ∈ Icc 0 1 from ...)] using hn 1` with `simpa only [cavityCanonicalCoordinate_one] using hn 1`. An analogous `cavityCanonicalCoordinate_zero` (value 0) is optional.",
+      "benefit": "The rewrite is oriented toward the named diagonal quantity rather than toward two unfolded integrals. That avoids unfolding `spectralGroupDiagonal` just to compare it with an unfolded coordinate, removes repeated ad-hoc membership proofs, and lets `simp` use the endpoint value automatically wherever the coordinate is evaluated at 1.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityCanonicalContinuity.lean",
+          "declaration": "cavity_spectralGroupDiagonal_tendsto_of_L1",
+          "excerpt": "simpa only [Real.dist_eq, cavityCanonicalCoordinate, spectralGroupDiagonal,\n    Set.projIcc_of_mem zero_le_one (show (1 : ℝ) ∈ Icc 0 1 from ⟨zero_le_one, le_rfl⟩)] using hn 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityRecalculatedLabels.lean",
+          "declaration": "cavity_recalculated_label_test_uniform",
+          "excerpt": "simpa only [cavityCanonicalCoordinate, spectralGroupDiagonal,\n      Set.projIcc_of_mem zero_le_one (show (1 : ℝ) ∈ Icc 0 1 from ⟨zero_le_one, le_rfl⟩)] using hn a 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralGroupDiagonal",
+          "excerpt": "∫ r in 0..1, spectralPathDensity ρ eig hρ hρsum p a r"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Interval/Set/ProjIcc.lean",
+          "declaration": "Set.projIcc_right",
+          "excerpt": "theorem projIcc_right : projIcc a b h b = ⟨b, right_mem_Icc.2 h⟩ :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 36477,
+    "cache_read_input_tokens": 181886,
+    "output_tokens": 8045,
+    "output_tokens_details": {
+      "thinking_tokens": 1229
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36477,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5363,
+        "cache_read_input_tokens": 39305,
+        "cache_creation_input_tokens": 1185,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1185
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.48914919999999995,
+  "duration_ms": 79403,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T05:59:58",
+  "unit": "file",
+  "source_sha256": "b390cf2c9c89d26b73b1c451d9d8b912a7c85e5c016d5f1a9120804b70a4843b",
+  "rubric": "simp-interface"
+}

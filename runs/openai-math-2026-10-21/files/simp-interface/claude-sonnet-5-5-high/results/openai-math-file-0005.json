@@ -1,0 +1,127 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the supporting definitions (bitSign, cubeXor, walsh, thirdQuery in Walsh.lean and ThreeBitTest.lean). I grepped the repo for the names involved. The same Folding material is copy-pasted into other files (MaxCut, VertexCover, UniqueGames), so the same simp-interface fixes apply there. I could not run Lean, so every proposed lemma is untested. The `@[simp]` lemmas `cubeFlip_cubeFlip`, `bitSign_not` and `cubeToggle_twice` look fine: they are oriented to shrink the term and cannot loop. I did not recommend simp attributes on the many `satisfied`/`equation_*` identities that need case analysis or whose use sites rewrite explicitly, because adding them would risk unwanted expansion. The `omit … in` placement before `@[simp]` is fine.",
+  "findings": [
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.FoldedEquation... EmptyContext.equation_second_eq_third",
+      "start_line": 693,
+      "end_line": 694,
+      "excerpt": "@[simp] theorem equation_second_eq_third (i₀ : I) (f : Cube I) :\n    (equation i₀ f).second = (equation i₀ f).third := rfl",
+      "problem": "The simp lemma rewrites one projection of `equation i₀ f` into another projection of the same term, so its normal form is still a projection of the opaque def `equation`. It does not expose the actual field values, `.inr ()` for `second` and `third`, or `.inl (canonicalInput i₀ f)` for `first`. Simp therefore cannot reduce `(equation i₀ f).second` or `.third` to a constructor form, and what the attribute does is arbitrary: it rewrites `.second` to `.third`. The file does not use the lemma through simp. `equation_satisfied` at line 699 passes `rfl` explicitly to `satisfied_repeated_right`.",
+      "proposed_change": "Replace the lemma with per-field projection lemmas, all proved by `rfl`: `@[simp] theorem equation_first : (equation i₀ f).first = .inl (canonicalInput i₀ f)`, `@[simp] theorem equation_second : (equation i₀ f).second = .inr ()`, `@[simp] theorem equation_third : (equation i₀ f).third = .inr ()`, and `@[simp] theorem equation_rhs : (equation i₀ f).rhs = f i₀`. Keep the equality `second = third` as a plain, non-simp theorem if callers need it. After that, `equation_flip_first`, `equation_flip_rhs` and the `change` steps at lines 700 and 711 can be closed by `simp`.",
+      "benefit": "Simp reaches a canonical constructor form for the fields of `equation`. This removes the `change`/`rfl` workarounds at lines 700, 711 and 715, and it stops simp rewriting `.second` into `.third` arbitrarily.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.EmptyContext.equation_satisfied",
+          "excerpt": "rw [FoldedEquation.satisfied_repeated_right (equation i₀ f) assignment rfl]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.EmptyContext.equation",
+          "excerpt": "first := .inl (canonicalInput i₀ f)\n  second := .inr ()\n  third := .inr ()"
+        }
+      ]
+    },
+    {
+      "declaration": "cubeFlip / coordinateMask / cubeToggle / restrictQuery (definitions without pointwise simp lemmas)",
+      "start_line": 99,
+      "end_line": 109,
+      "excerpt": "def coordinateMask (i : I) : Cube I := fun j => decide (j = i)\n\ndef cubeToggle (i : I) (f : Cube I) : Cube I :=\n  cubeXor f (coordinateMask i)",
+      "problem": "Four helper functions are defined as lambdas: `cubeFlip` at line 15, `coordinateMask` at 99, `cubeToggle` at 101 and `restrictQuery` at 139. None has a simp lemma for its pointwise value, such as `cubeFlip f i = !f i`, `coordinateMask i j = decide (j = i)`, `cubeToggle i f j = (f j ^^ decide (j = i))` or `restrictQuery valid f j = f j.val`. As a result every proof either unfolds the definition by name in the simp set or uses `change` to expose the body. Examples are `simp [representative, cubeFlip, hf]` (lines 59 and 64), `simp [... cubeFlip, hf, hi]` (line 97), `change ((f j ^^ coordinateMask i j) ^^ coordinateMask i j) = f j` (line 108), `change (table ... ^^ !(f i₀)) = ...` (line 85), and `simp [restrictQuery, cubeToggle, cubeXor, coordinateMask, hj]` (line 152). Unfolding by name is brittle: it depends on the definitions staying reducible to the right shape, and it forces every client to know the internals. `cubeXor` has the same gap, and the nearby file Analysis/FactorGeneration/Convolution.lean does provide a `coordinateMask_apply` simp lemma for its own `coordinateMask`.",
+      "proposed_change": "Add `@[simp] theorem cubeFlip_apply (f : Cube I) (i : I) : cubeFlip f i = !f i := rfl`. Add the analogous `coordinateMask_apply`, `cubeToggle_apply` (which would use a `cubeXor_apply`) and `restrictQuery_apply`, each stated pointwise with `rfl` proofs. Then shorten proofs such as `cubeToggle_twice` to `funext j; simp`, and `representative_at` and `foldedAnswer_dictator` to `cases hf : f i₀ <;> simp [representative, hf]`. Do not make the definitions `@[simp]`.",
+      "benefit": "Simp gets a canonical pointwise normal form for these cube operations. That removes the `change`/unfold-by-name boilerplate and makes later proofs more robust. The lemmas apply to the other files that copy this development.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.cubeToggle_twice",
+          "excerpt": "change ((f j ^^ coordinateMask i j) ^^ coordinateMask i j) = f j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.restrictQuery_cubeToggle",
+          "excerpt": "simp [restrictQuery, cubeToggle, cubeXor, coordinateMask, hj]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FactorGeneration/Convolution.lean",
+          "declaration": "coordinateMask_apply",
+          "excerpt": "@[simp] theorem coordinateMask_apply"
+        }
+      ]
+    },
+    {
+      "declaration": "representative_at, representative_flip, canonicalInput_flip, foldedAnswer_flip (and conditionedFoldedAnswer_flip, equation_satisfied_flip)",
+      "start_line": 56,
+      "end_line": 87,
+      "excerpt": "theorem foldedAnswer_flip (i₀ : I) (table : HalfCube i₀ → Bool) (f : Cube I) :\n    foldedAnswer i₀ table (cubeFlip f) = !(foldedAnswer i₀ table f) := by",
+      "problem": "`cubeFlip_cubeFlip` and `bitSign_not` are simp lemmas, but the lemmas that say how `cubeFlip` interacts with folding are not. These are `representative_at` (`representative i₀ f i₀ = false`), `representative_flip`, `canonicalInput_flip`, `foldedAnswer_flip`, `conditionedFoldedAnswer_flip` and, at line 717, `equation_satisfied_flip`. Each has a smaller right-hand side and cannot loop. Each is currently applied only by explicit `rw`, for example `rw [canonicalInput_flip]` at 84 and 712, and `rw [equation_satisfied, foldedAnswer_flip, equation_satisfied]` at 721. Because the user's other flip-style lemmas are simp, a goal containing `foldedAnswer i₀ table (cubeFlip f)` or `bitSign (foldedAnswer … (cubeFlip f))` is not simplified to `bitSign_not` form. The proofs at 91, 190 and 735 must then supply these lemmas by hand.",
+      "proposed_change": "Tag `representative_at`, `representative_flip`, `canonicalInput_flip`, `foldedAnswer_flip`, `conditionedFoldedAnswer_flip` and `equation_satisfied_flip` with `@[simp]`. Each removes a `cubeFlip` or strictly simplifies. `representative_at` removes the `representative … i₀` projection, so it cannot compete with the others. Keep `equation_satisfied` itself non-simp, because its right-hand side introduces `foldedAnswer`.",
+      "benefit": "Simp then handles `A (cubeFlip f)` for folded answers together with the existing `bitSign_not` and `cubeFlip_cubeFlip` rules. That gives a consistent flip normal form, so proofs such as `equation_satisfied_flip`, `pairedEquations_acceptedCount` and `pairedEquations_failureCount` become `simp` calls instead of ordered `rw` chains.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.EmptyContext.equation_satisfied_flip",
+          "excerpt": "rw [equation_satisfied, foldedAnswer_flip, equation_satisfied]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.canonicalInput_flip",
+          "excerpt": "theorem canonicalInput_flip (i₀ : I) (f : Cube I) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.cubeFlip_cubeFlip",
+          "excerpt": "@[simp] theorem cubeFlip_cubeFlip (f : Cube I) : cubeFlip (cubeFlip f) = f := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 46432,
+    "cache_read_input_tokens": 120412,
+    "output_tokens": 8039,
+    "output_tokens_details": {
+      "thinking_tokens": 3107
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 46432,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4505,
+        "cache_read_input_tokens": 47970,
+        "cache_creation_input_tokens": 2475,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2475
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2781752,
+  "duration_ms": 57708,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T06:07:31",
+  "unit": "file",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034",
+  "rubric": "simp-interface"
+}

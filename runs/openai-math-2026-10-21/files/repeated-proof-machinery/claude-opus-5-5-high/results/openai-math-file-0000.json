@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0000",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (two theorems: `exists_native_freeCoefficientPolynomialOrbit` and `exists_native_freeCoefficient_corrections`). Inside the file itself, nothing is repeated: the second theorem already calls the first one three times. Across the library, though, the second proof is copied almost line for line in `exists_shared_free_affine_orbit_family` in Lattices/SharedFreeAffineOrbitFamily.lean, which imports the target file directly. That copy covers the common-multiple product bound (target lines 101–110 = SharedFree lines 485–494) and the ε/ρ orbit, coefficient-bound and grid argument (target lines 99–100 and 112–120 = SharedFree lines 510–513 and 516–523). SharedFree cannot simply call the target theorem. It must choose `m` before `intro h hh`, while γ depends on `x`, which depends on `h`. So the target theorem bundles two separable pieces of reasoning, and a downstream user had to copy both by hand. The same common-multiple calculation also appears in `exists_fullTaggedRationalChart_common_grid` (Sampling/FullTaggedRationalChartGrid.lean, lines 45–54) and in `exists_fixed_kernel_retained_common_cover` (Linear/FixedKernelGeometricCover.lean, lines 49–56). I did not check whether those two files can import a helper placed in the target file, so a lower-level home may be better for that lemma. `product_denominator_le_budget` in FiniteProductBudget.lean only gives the weaker bound `exp (p^2)`, so it does not replace this block. I could not compile anything: the proposed rewrites follow the existing proof terms, but they have not been checked by Lean.",
+  "findings": [
+    {
+      "declaration": "exists_native_freeCoefficient_corrections",
+      "start_line": 101,
+      "end_line": 110,
+      "excerpt": "  let m := ∏ d, l d\n  have hm : 0 < m := Finset.prod_pos (fun d _ => hl d)\n  have hdiv (d : Fin s) : l d ∣ m := Finset.dvd_prod_of_mem l (Finset.mem_univ d)",
+      "problem": "This 10-line argument builds a common multiple of the bounded positive denominators `l d`. It proves the multiple is positive, that each `l d` divides it, and that its cast to ℝ is at most `exp (s * L)` (cast the product, compare it with a constant product, then apply `exp_nat_mul`). The same block appears verbatim in `exists_shared_free_affine_orbit_family`, a file that imports this one. Up to variable names it also appears in `exists_fullTaggedRationalChart_common_grid` and `exists_fixed_kernel_retained_common_cover`. SharedFree cannot reuse it because the argument exists only as local `have`s inside the bundled theorem.",
+      "proposed_change": "Add a standalone lemma before `exists_native_freeCoefficient_corrections` (or in a lower-level file):\n\ntheorem exists_fin_commonMultiple_le_exp {s : ℕ} (l : Fin s → ℕ) (hl : ∀ d, 0 < l d) {L : ℝ}\n    (hlb : ∀ d, (l d : ℝ) ≤ Real.exp L) :\n    ∃ m : ℕ, 0 < m ∧ (m : ℝ) ≤ Real.exp ((s : ℝ) * L) ∧ ∀ d, l d ∣ m :=\n  ⟨∏ d, l d, Finset.prod_pos (fun d _ => hl d), by\n    rw [Nat.cast_prod]\n    calc _ ≤ ∏ _d : Fin s, Real.exp L :=\n          Finset.prod_le_prod₀ (fun d _ => Nat.cast_nonneg (l d)) (fun d _ => hlb d)\n      _ = _ := by rw [Finset.prod_const, Finset.card_univ, Fintype.card_fin, Real.exp_nat_mul],\n    fun d => Finset.dvd_prod_of_mem l (Finset.mem_univ d)⟩\n\nIn the target, replace lines 101–110 with `obtain ⟨m, hm, hmb, hdiv⟩ := exists_fin_commonMultiple_le_exp l hl hlb`; the existing `refine` and grid bullet are unchanged. In SharedFreeAffineOrbitFamily, replace lines 485–494 with `obtain ⟨m, hm, hmb, hdiv⟩ := exists_fin_commonMultiple_le_exp l (fun d => (hl d).1) (fun d => (hl d).2)`. That proof uses `m` only through `hm`, `hmb` and `hdiv` (lines 496 and 523), so nothing else needs to change.",
+      "benefit": "The common-denominator estimate gets one name and one proof instead of several copied `calc` blocks. Readers see a one-line statement of the arithmetic fact instead of rereading the cast and product manipulation. Any later change to the bound, such as a different budget form, is made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Lattices/SharedFreeAffineOrbitFamily.lean",
+          "declaration": "exists_shared_free_affine_orbit_family",
+          "excerpt": "  let m := ∏ d, l d\n  have hm : 0 < m := Finset.prod_pos (fun d _ => (hl d).1)\n  have hdiv (d : Fin s) : l d ∣ m := Finset.dvd_prod_of_mem l (Finset.mem_univ d)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Sampling/FullTaggedRationalChartGrid.lean",
+          "declaration": "exists_fullTaggedRationalChart_common_grid",
+          "excerpt": "  let d := ∏ j, D j\n  have hdiv (j : Fin m) : D j ∣ d := Finset.dvd_prod_of_mem D (Finset.mem_univ j)\n  have hd : 0 < d := Finset.prod_pos (fun j _ => hD j)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Linear/FixedKernelGeometricCover.lean",
+          "declaration": "exists_fixed_kernel_retained_common_cover",
+          "excerpt": "        Finset.prod_le_prod₀ (fun j _ => Nat.cast_nonneg _) (fun j _ => hDP j)"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_native_freeCoefficient_corrections",
+      "start_line": 99,
+      "end_line": 120,
+      "excerpt": "  · rw [hρ]\n    apply positiveUnivariate_coefficientGrid\n    intro d\n    exact realDenominatorGrid_subset_of_dvd (hl d) (hdiv d) (hgrid d)",
+      "problem": "This proof turns the error vector `e` and grid vector `q` into polynomial orbits ε and ρ. It then proves `CoefficientBound … (Real.exp L) ε.log` from the per-degree bound `herr`, using `positiveUnivariate_coefficientBound` and the `monomialScale` simp step. It also proves `CoefficientGrid … m ρ.log` from `hgrid` and `l d ∣ m`. `exists_shared_free_affine_orbit_family` repeats this argument verbatim (two `obtain`s plus both bullets). It cannot call this theorem because here `m` is chosen inside the statement, while SharedFree must fix `m` before quantifying over `h ∈ J`.",
+      "proposed_change": "Factor out a lemma that takes the common multiple as input:\n\ntheorem exists_native_freeCoefficient_errorGrid (e q : Fin s → ℝ ⊗[ℚ] D.CoefficientFreeLieAlgebra)\n    (he : ∀ d, e d ∈ (D.coefficientFreeSpan d).baseChange ℝ)\n    (hq : ∀ d, q d ∈ (D.coefficientFreeSpan d).baseChange ℝ)\n    (l : Fin s → ℕ) (hl : ∀ d, 0 < l d) {L : ℝ} {m : ℕ} (hdiv : ∀ d, l d ∣ m)\n    (herr : ∀ d, ‖(E.basis.baseChange ℝ).equivFun (e d)‖ ≤ Real.exp L / (N : ℝ) ^ (d.val + 1))\n    (hgrid : ∀ d, (E.basis.baseChange ℝ).equivFun (q d) ∈ realDenominatorGrid (l d)) :\n    ∃ ε ρ : E.filtration.realification.PolynomialOrbit (fun _ : Unit => 1),\n      ε.log = positiveUnivariate e ∧ ρ.log = positiveUnivariate q ∧\n      E.filtration.realification.polynomialOrbitEval (fun _ : Unit => 1) 0 ε = 1 ∧\n      E.filtration.realification.polynomialOrbitEval (fun _ : Unit => 1) 0 ρ = 1 ∧\n      CoefficientBound (E.basis.baseChange ℝ) (fun _ : Unit => (N : ℝ)) (Real.exp L) ε.log ∧\n      CoefficientGrid (E.basis.baseChange ℝ) m ρ.log\n\nIt sits in the same section, so the `include T hT` variables apply. Its proof is lines 99–100 plus the two bullets at lines 112–120, unchanged. The target proof then becomes: obtain Γ as now, obtain `m` (via the common-multiple lemma or the existing lines), `obtain ⟨ε, ρ, hε, hρ, hε0, hρ0, hb, hg⟩ := D.exists_native_freeCoefficient_errorGrid E T hT e q he hq l hl hdiv herr hgrid`, and `exact ⟨m, hm, hmb, hdiv, Γ, ε, ρ, hΓ, hε, hρ, hΓ0, hε0, hρ0, hb, hg⟩`. In SharedFree, replace lines 510–513 and the bullets at 516–523 with `obtain ⟨ε, ρ, hε, hρ, hε0, hρ0, hb, hg⟩ := D.exists_native_freeCoefficient_errorGrid E T hTfil e q (fun d => hdep d (he d)) (fun d => hdep d (hq d)) l (fun d => (hl d).1) hdiv herr hgrid` and pass `hb`, `hg` to its `refine`. Its third bullet still uses `hε` and `hρ`.",
+      "benefit": "Separating 'choose a common multiple' from 'build the correction orbits for a given multiple' matches how the downstream proof has to use the result, so that proof no longer copies the coefficient-bound and grid argument. The target theorem shrinks to assembling named facts. Any later change to `CoefficientBound`, `monomialScale` or `realDenominatorGrid` handling then needs editing in one proof instead of two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Lattices/SharedFreeAffineOrbitFamily.lean",
+          "declaration": "exists_shared_free_affine_orbit_family",
+          "excerpt": "  · rw [hρ]\n    apply positiveUnivariate_coefficientGrid\n    exact fun d => realDenominatorGrid_subset_of_dvd (hl d).1 (hdiv d) (hgrid d)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Lattices/SharedFreeAffineOrbitFamily.lean",
+          "declaration": "exists_shared_free_affine_orbit_family",
+          "excerpt": "    apply positiveUnivariate_coefficientBound (E.basis.baseChange ℝ) e\n      (fun _ : Unit => (N : ℝ)) (fun _ => by exact_mod_cast NeZero.pos N) (Real.exp_pos L).le\n    intro d\n    simpa only [monomialScale, Finsupp.prod_single_index, pow_zero] using herr d"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Lattices/SharedFreeAffineOrbitFamily.lean",
+          "declaration": "exists_shared_free_affine_orbit_family",
+          "excerpt": "  intro h hh\n  obtain ⟨x, hx, hspace, hcoeff⟩ := hrepr h hh\n  choose e q u he hq hu heq herr hgrid using hcoeff"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Nilpotent/RationalBCHProducts.lean",
+          "declaration": "realDenominatorGrid_subset_of_dvd",
+          "excerpt": "theorem realDenominatorGrid_subset_of_dvd {ι : Type*} {l m : ℕ} (hl : 0 < l) (hlm : l ∣ m) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 26,
+    "cache_creation_input_tokens": 44163,
+    "cache_read_input_tokens": 349859,
+    "output_tokens": 11174,
+    "output_tokens_details": {
+      "thinking_tokens": 4019
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 44163,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4900,
+        "cache_read_input_tokens": 45739,
+        "cache_creation_input_tokens": 1542,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1542
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.6468598000000001,
+  "duration_ms": 102561,
+  "turns": 16,
+  "attempts": 1,
+  "judged": "2026-10-21T05:55:39",
+  "unit": "file",
+  "source_sha256": "6f1f31b13f46ad202c07b0f55e14b3edbd7391bb06838b798be1c5d100698997",
+  "rubric": "repeated-proof-machinery"
+}

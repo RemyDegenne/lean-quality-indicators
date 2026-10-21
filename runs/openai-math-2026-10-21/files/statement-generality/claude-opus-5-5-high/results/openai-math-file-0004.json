@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0004",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 112 lines of the target file. I also read the definitions and lemmas it relies on: `VectorPolynomial` (VectorPolynomialReconstruction.lean); `directionalDerivative`, `dualEvalLie_base` and `dualEvalLie_tangent` (RealPolynomialChartSubstitution.lean); `coefficients_pderiv` and `coefficients_directionalDerivative` (ShiftedGradedCalculus.lean); `eval_mem_iff_coefficients` (ExtendedPolynomialValues.lean); `dualLogDerivative_mem_of_invariant` (DualIdealSteps.lean); and `derivative_removal_preserves_quotient_layers` (DualDerivativeRemoval.lean). Nothing else in the OAI tree uses the target declarations.\n\nI considered replacing ℚ with a general field. I did not report it, because the definitions `directionalDerivative`, `dualEvalLie`, `NilpotentLieBCHGroup` and `PolynomialGroup` are themselves fixed to ℚ upstream, so that change cannot be made locally in this file. `polynomialDerivativeSystem_remove` is a transport of a general identity and has no hypothesis that could be weakened.\n\nThe one finding is that the V-membership hypotheses are stronger than needed: a directional derivative never involves the constant coefficient. I checked this against `coefficients_directionalDerivative`. The proposed proof uses `Finsupp.add_eq_zero_iff` and `Finsupp.single_eq_zero`, which I read in Mathlib, but I could not compile it, so the exact `simp` call may need adjusting.",
+  "findings": [
+    {
+      "declaration": "VectorPolynomial.directionalDerivative_mem_coefficientSubmodule; NilpotentLieBCHGroup.polynomialLogDerivative_mem_of_coefficients; NilpotentLieFiltration.polynomial_removal_preserves_derivative_layers",
+      "start_line": 13,
+      "end_line": 101,
+      "excerpt": "    (hP : ∀ α, coefficients P α ∈ V) :\n    ∀ α, coefficients (directionalDerivative h P) α ∈ V := by",
+      "problem": "`coefficients_directionalDerivative` writes coefficient α of the directional derivative as a sum of scaled coefficients of P at the exponents `α + Finsupp.single i 1`. None of these exponents is 0, so the constant coefficient of P never enters. The hypothesis `∀ α, coefficients P α ∈ V` still requires the constant coefficient to lie in V. The same over-strong condition is passed on to `hAV` (line 35) in `polynomialLogDerivative_mem_of_coefficients` and to `hAV`/`hCV` (line 77) in `polynomial_removal_preserves_derivative_layers`. Both lemmas use these hypotheses only to feed `directionalDerivative_mem_coefficientSubmodule` (lines 44, 96, 101). In practice this means the lemmas apply only when A(t) ∈ V for every t. They do not cover the natural case where A is constant modulo V, i.e. A(t) = a₀ + (V-valued polynomial) with a₀ ∈ U but a₀ ∉ V.",
+      "proposed_change": "Weaken the hypothesis to the non-constant coefficients:\n\ntheorem directionalDerivative_mem_coefficientSubmodule (V : Submodule ℚ L)\n    (h : σ → ℚ) (P : VectorPolynomial σ ℚ L)\n    (hP : ∀ α, α ≠ 0 → coefficients P α ∈ V) :\n    ∀ α, coefficients (directionalDerivative h P) α ∈ V := by\n  intro α\n  rw [coefficients_directionalDerivative]\n  exact V.sum_mem (fun i _ => V.smul_mem _ (V.smul_mem _\n    (hP _ (by simp [Finsupp.add_eq_zero_iff, Finsupp.single_eq_zero]))))\n\nThe side goal `α + Finsupp.single i 1 ≠ 0` follows from `Finsupp.add_eq_zero_iff` (σ →₀ ℕ is canonically ordered) and `Finsupp.single_eq_zero`, since 1 ≠ 0. Make the matching change in the other two lemmas: `(hAV : ∀ α, α ≠ 0 → coefficients A.coord α ∈ V)` on line 35, and the same form for `hAV`/`hCV` on line 77. Their proofs are unchanged, because they pass these hypotheses straight to the lemma above. The old hypotheses imply the new ones via `fun α _ => hAV α`, so existing call sites still work. Degenerate case: for a constant polynomial the new hypothesis is vacuous and the derivative is 0 ∈ V, which agrees with the conclusion.",
+      "benefit": "The lemmas then state their real content: if A's values lie in U and A is constant modulo V, then its log-derivative lies in V. A user can apply them to polynomial group elements whose constant term is an arbitrary element of U. Under the current statements that case is excluded, even though the proofs already cover it. The new forms are strictly more general and remain just as easy to apply when all coefficients are in V.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/ShiftedGradedCalculus.lean",
+          "declaration": "OAI.Erdos3.VectorPolynomial.coefficients_directionalDerivative",
+          "excerpt": "∑ i, h i • ((α i + 1 : ℚ) • coefficients p (α + Finsupp.single i 1))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Finsupp/Order.lean",
+          "declaration": "Finsupp.add_eq_zero_iff",
+          "excerpt": "theorem add_eq_zero_iff (f g : ι →₀ α) : f + g = 0 ↔ f = 0 ∧ g = 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Finsupp/Single.lean",
+          "declaration": "Finsupp.single_eq_zero",
+          "excerpt": "theorem single_eq_zero : single a b = 0 ↔ b = 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/PolynomialDerivativeInvariant.lean",
+          "declaration": "OAI.Erdos3.NilpotentLieBCHGroup.polynomialLogDerivative_mem_of_coefficients",
+          "excerpt": "(directionalDerivative_mem_coefficientSubmodule V h A.coord hAV) t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/PolynomialDerivativeInvariant.lean",
+          "declaration": "OAI.Erdos3.NilpotentLieFiltration.polynomial_removal_preserves_derivative_layers",
+          "excerpt": "(hAV : ∀ α, coefficients A.coord α ∈ V) (hCV : ∀ α, coefficients C.coord α ∈ V)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 31860,
+    "cache_read_input_tokens": 166319,
+    "output_tokens": 6351,
+    "output_tokens_details": {
+      "thinking_tokens": 2199
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31860,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2738,
+        "cache_read_input_tokens": 34731,
+        "cache_creation_input_tokens": 1153,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1153
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4152198,
+  "duration_ms": 71675,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T06:13:10",
+  "unit": "file",
+  "source_sha256": "b2e8207b59a75174242e56fe2118ca15f24e76d29d476173872ffe792af84c08",
+  "rubric": "statement-generality"
+}

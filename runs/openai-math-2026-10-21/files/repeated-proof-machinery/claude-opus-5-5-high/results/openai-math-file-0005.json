@@ -1,0 +1,116 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 794 lines of the target file, looking for nontrivial reasoning that appears in more than one proof.\n\n**Findings**\n1. Two proofs repeat the same \"sum over an involution\" argument, and two more repeat the \"odd function sums to zero\" argument built on it.\n2. Two proofs repeat the same majority-counting argument.\n\n**Mathlib lemmas relied on**\n- `Function.Involutive.toPerm`, in Mathlib/Logic/Equiv/Basic.lean.\n- `Function.Bijective.prod_comp` and `Equiv.prod_comp`, in Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean. Both carry `@[to_additive]`, so `Function.Bijective.sum_comp` and `Equiv.sum_comp` should exist. I inferred those additive names; I did not find them by grep.\n- `Function.Involutive.bijective` is standard Mathlib API, but I did not locate it in this checkout.\n\n**Use checks**\n- I grepped the `lean/` tree: neither `majority_exists` nor `sum_cubeToggle`/`sum_cubeFlip` is referenced outside their own files. Each of those files has its own copy, so this file can be changed without breaking callers elsewhere.\n- The same blocks are copied verbatim into several sibling files, for example VertexCover/Fourier/Folding.lean and MaxCut/PCP/Folding.lean. That cross-file duplication is outside this one-file review, but it means the fix would pay off more than once.\n\n**Considered but not reported**\nThese are either short `cases`/`rfl` calculations or thin wrappers, which the rubric excludes:\n- The conditioned and unconditioned `_satisfied_iff`/`_indicator` lemmas.\n- `pairedEquations_acceptedCount`/`pairedEquations_failureCount`.\n- `EmptyContext.equation_indicator` vs. the `hi` step inside `equationBias_eq_zero`.\n- The `h12`/`h13` steps inside `count_collision_le` (both in the same proof).\n- The three `flatMap` inductions over `cloneList`.\n\n**Uncertainty:** none of the proposed rewrites has been compiled.",
+  "findings": [
+    {
+      "declaration": "sum_cubeFlip / coefficient_zero_of_odd / sum_cubeToggle / conditioned_coefficient_zero_invalid",
+      "start_line": 25,
+      "end_line": 162,
+      "excerpt": "  refine Finset.sum_bij (fun f _ => cubeFlip f) ?_ ?_ ?_ ?_",
+      "problem": "Two proofs (lines 25–35 and 126–137) repeat the same 10-line `Finset.sum_bij` argument showing that a sum is unchanged when you precompose with an involution; one uses `cubeFlip`, the other `cubeToggle i`. Building on these, `coefficient_zero_of_odd` (lines 40–43) and `conditioned_coefficient_zero_invalid` (lines 158–161) repeat the same follow-up step. Each one rewrites the involuted sum with a sign-reversal identity, applies `Finset.sum_neg_distrib`, and finishes with `linarith` to conclude S = -S, hence S = 0. Only the involution and the anti-invariance fact change between the two copies.",
+      "proposed_change": "Add one shared lemma (the variable context `[Fintype I] [DecidableEq I]` already holds):\n```lean\ntheorem sum_eq_zero_of_involutive_neg {σ : Cube I → Cube I}\n    (hσ : Function.Involutive σ) (F : Cube I → ℝ)\n    (hF : ∀ f, F (σ f) = -F f) : ∑ f, F f = 0 := by\n  have h := hσ.bijective.sum_comp F   -- ∑ F (σ f) = ∑ F f\n  simp_rw [hF, Finset.sum_neg_distrib] at h\n  linarith\n```\nIf the involution-invariance lemmas are still wanted, they become one-liners:\n- `sum_cubeFlip F := (Function.Involutive.bijective (f := cubeFlip) cubeFlip_cubeFlip).sum_comp F`\n- `sum_cubeToggle i F := (Function.Involutive.bijective (cubeToggle_twice i)).sum_comp F`\n\nThe two zero-coefficient proofs then become:\n```lean\ntheorem coefficient_zero_of_odd (F) (hF : ∀ f, F (cubeFlip f) = -F f) : ... := by\n  have hs := sum_eq_zero_of_involutive_neg cubeFlip_cubeFlip F hF\n  simp [coefficient, walsh, bitSign, Fintype.expect_eq_sum_div_card, hs]\n\ntheorem conditioned_coefficient_zero_invalid ... (hi : valid i = false) (hs : s i = true) : ... := by\n  have hz := sum_eq_zero_of_involutive_neg (cubeToggle_twice i)\n    (fun f => B (restrictQuery valid f) * walsh s f)\n    (fun f => by rw [restrictQuery_cubeToggle valid i hi, walsh_cubeToggle s i f hs, mul_neg])\n  simp [coefficient, Fintype.expect_eq_sum_div_card, hz]\n```",
+      "benefit": "The Fourier cancellation principle (an odd function under a fixed-point-free symmetry averages to zero) is stated once. Each proof then reads as \"this is anti-invariant under this involution\", instead of re-deriving a bijection and a `linarith` step. It also drops two hand-written `sum_bij` proofs in favour of existing Mathlib API, and a future third symmetry (for example, toggling a set of coordinates) only needs its anti-invariance fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "sum_cubeToggle",
+          "excerpt": "  refine Finset.sum_bij (fun f _ => cubeToggle i f) ?_ ?_ ?_ ?_"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "conditioned_coefficient_zero_invalid",
+          "excerpt": "    mul_neg, Finset.sum_neg_distrib] at hsum"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "coefficient_zero_of_odd",
+          "excerpt": "    simp_rw [hF, Finset.sum_neg_distrib] at h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean",
+          "declaration": "Function.Bijective.prod_comp",
+          "excerpt": "lemma _root_.Function.Bijective.prod_comp {e : ι → κ} (he : e.Bijective) (g : κ → M) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Logic/Equiv/Basic.lean",
+          "declaration": "Function.Involutive.toPerm",
+          "excerpt": "def toPerm (f : α → α) (h : Involutive f) : Equiv.Perm α :="
+        }
+      ]
+    },
+    {
+      "declaration": "majority_exists / majorityBit_count",
+      "start_line": 315,
+      "end_line": 413,
+      "excerpt": "  have h := List.length_eq_countP_add_countP g (l := indices)",
+      "problem": "`majority_exists` (lines 315–327) and `majorityBit_count` (lines 403–413) repeat the same majority-counting argument. Each proof:\n- splits `indices.length` into `countP g + countP (¬g)`;\n- normalises the `decide (¬g i = true)` predicate to `!g i` with a `funext`/`cases` block;\n- rewrites with `length_indices`;\n- does `by_cases` on `24 ≤ indices.countP g` and finishes with `omega`/`simpa`.\n\nThe only difference is that `majority_exists` gives the bit existentially, while `majorityBit_count` uses the explicit witness `majorityBit g` (which is `decide (24 ≤ indices.countP g)`, exactly the `by_cases` condition). `majority_exists` is not referenced anywhere in `lean/`, and the downstream `clone_gap` uses `majorityBit_count`.",
+      "proposed_change": "Keep the counting argument only in `majorityBit_count`. Move `majority_exists` below it and derive it from it:\n```lean\ntheorem majority_exists (g : Index → Bool) :\n    ∃ b : Bool, 24 ≤ indices.countP (fun i => g i == b) :=\n  ⟨majorityBit g, majorityBit_count g⟩\n```\nSince the existential is unused, deleting it is also an option.",
+      "benefit": "The pigeonhole step (one of the two values occurs at least 24 times among 48 indices) is proved once, by the version with the explicit witness. If `indices` or the threshold 24 changes, only one proof needs updating. Readers also see directly that the existential follows from the computable `majorityBit`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "majorityBit_count",
+          "excerpt": "  have h := List.length_eq_countP_add_countP g (l := indices)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "majorityBit",
+          "excerpt": "def majorityBit (g : Index → Bool) : Bool := decide (24 ≤ indices.countP g)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "clone_gap",
+          "excerpt": "    fun v => majorityBit_count (fun i => g (v, i))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 41847,
+    "cache_read_input_tokens": 170811,
+    "output_tokens": 7614,
+    "output_tokens_details": {
+      "thinking_tokens": 2412
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 41847,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3904,
+        "cache_read_input_tokens": 37992,
+        "cache_creation_input_tokens": 6973,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6973
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5212662,
+  "duration_ms": 66701,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T06:22:51",
+  "unit": "file",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034",
+  "rubric": "repeated-proof-machinery"
+}

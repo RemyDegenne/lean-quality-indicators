@@ -1,0 +1,117 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Cube/Walsh/ThreeBitTest definitions it depends on. I also searched Mathlib for the bijection-sum lemmas (Equiv.sum_comp, Fintype.sum_equiv). Most of the file is deliberately concrete: the clone-gap constants 48, 24, 64 and 6912, and the three-variable XOR equations. I did not flag these. The ℝ-valued coefficient lemmas depend on the ℝ-valued `coefficient`, so I left them alone. I did not compile the proposed statements. The universe finding assumes no downstream code relies on `Equation` living in `Type 0`, and I did not check every use in the repository. The same sum_cubeFlip/sum_cubeToggle lemmas are copied into several other files, so a general version would pay off more widely.",
+  "findings": [
+    {
+      "declaration": "sum_cubeFlip",
+      "start_line": 25,
+      "end_line": 35,
+      "excerpt": "theorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f := by\n  refine Finset.sum_bij (fun f _ => cubeFlip f) ?_ ?_ ?_ ?_",
+      "problem": "The statement is an invariance of a finite sum under a bijection of the index set, but it is specialised to ℝ-valued F. The proof uses no property of ℝ beyond addition and commutativity, and it re-proves a bijection by hand with Finset.sum_bij. Any user who needs the same reindexing for ℕ-, ℂ- or vector-valued functions has to redo it.",
+      "proposed_change": "State it as `theorem sum_cubeFlip {M : Type*} [AddCommMonoid M] (F : Cube I → M) : (∑ f, F (cubeFlip f)) = ∑ f, F f`. Prove it from an involution-as-equivalence: `(Function.Involutive.toPerm cubeFlip (cubeFlip_cubeFlip)).sum_comp F`, which is Equiv.sum_comp applied to the equivalence given by the involution `cubeFlip` (this form is untested). Alternatively keep the existing Finset.sum_bij proof unchanged; it type-checks for any AddCommMonoid. The existing ℝ call in coefficient_zero_of_odd is an instance of the general statement.",
+      "benefit": "The lemma works for any additive commutative monoid, so downstream files can use it directly. The same copy-pasted lemma appears in several sibling Folding files. The proof also becomes shorter and does not repeat the bijection obligations.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean",
+          "declaration": "Equiv.prod_comp",
+          "excerpt": "lemma _root_.Equiv.prod_comp (e : ι ≃ κ) (g : κ → M) : ∏ i, g (e i) = ∏ i, g i :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "cubeFlip_cubeFlip",
+          "excerpt": "theorem cubeFlip_cubeFlip (f : Cube I) : cubeFlip (cubeFlip f) = f"
+        }
+      ]
+    },
+    {
+      "declaration": "sum_cubeToggle",
+      "start_line": 126,
+      "end_line": 137,
+      "excerpt": "theorem sum_cubeToggle (i : I) (F : Cube I → ℝ) :\n    (∑ f, F (cubeToggle i f)) = ∑ f, F f := by",
+      "problem": "This is the same bijection-invariance statement, specialised to ℝ-valued F although the proof only uses the fact that cubeToggle i is an involution. The two bijection-sum lemmas could be one general reindexing principle.",
+      "proposed_change": "State it as `theorem sum_cubeToggle {M : Type*} [AddCommMonoid M] (i : I) (F : Cube I → M) : (∑ f, F (cubeToggle i f)) = ∑ f, F f`. Prove it with `(Function.Involutive.toPerm (cubeToggle i) (cubeToggle_twice i)).sum_comp F`, or keep the existing Finset.sum_bij proof, which does not use ℝ. The use in conditioned_coefficient_zero_invalid is an ℝ instance, so it still elaborates.",
+      "benefit": "Users get a reusable reindexing lemma for any additive commutative monoid at no cost to the current ℝ call site. The proof can also be shortened by using Mathlib's Equiv.sum_comp.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean",
+          "declaration": "Equiv.prod_comp",
+          "excerpt": "lemma _root_.Equiv.prod_comp (e : ι ≃ κ) (g : κ → M) : ∏ i, g (e i) = ∏ i, g i :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "cubeToggle_twice",
+          "excerpt": "cubeToggle i (cubeToggle i f) = f"
+        }
+      ]
+    },
+    {
+      "declaration": "Equation / CloneGap and FoldedEquation universe-restricted variables",
+      "start_line": 349,
+      "end_line": 353,
+      "excerpt": "structure Equation (Name : Type) where\n  first : Name",
+      "problem": "`Equation`, the variable `{Name : Type}`, `{I J : Type}` in FoldedEquation, `{I : Type}` in EmptyContext, and the `{Name Name' : Type}` binders in mapEquation, satisfied_mapEquation, satisfied_repeated_right and mapped_equationAcceptance_eq_half are all fixed at `Type`. The lemmas they depend on (Cube, walsh, coefficient, thirdQuery, and the first Hastad section's `{I : Type*}`) are universe-polymorphic. Nothing in the proofs uses the universe. Equation, satisfied, clone and the folded-equation lemmas therefore cannot be used with names or index types from a higher universe, even though the first Hastad section of this same file handles `Type*`.",
+      "proposed_change": "Change `structure Equation (Name : Type)` to `structure Equation (Name : Type*)`, and replace `{Name : Type}` (line 203), `{I J : Type}` (line 488), `{I : Type}` (line 680) and the `{Name Name' : Type}` binders (lines 549, 667, 674, 783) by `Type*`. The proofs are by rfl, cases or simp and do not depend on universes. Address uses HalfCube (a subtype) and Sum, which are universe-polymorphic. CloneGap's `Name × Index` with `Index = Nat` stays valid at `max u 0`.",
+      "benefit": "The equation and folding API works for arbitrary universe levels, consistent with the first section of the file and with the Walsh/ThreeBitTest dependencies. This avoids universe-lifting workarounds in downstream reductions that use larger types.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/Encoding/ThreeBitTest.lean",
+          "declaration": "thirdQuery (variable binder)",
+          "excerpt": "variable {I J : Type*} [Fintype I] [DecidableEq I] [Fintype J] [DecidableEq J]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/VertexCover/Fourier/Walsh.lean",
+          "declaration": "walsh",
+          "excerpt": "def walsh {I : Type*} [Fintype I] [DecidableEq I] (s x : Cube I) : ℝ :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 37517,
+    "cache_read_input_tokens": 210146,
+    "output_tokens": 6226,
+    "output_tokens_details": {
+      "thinking_tokens": 1375
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37517,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2957,
+        "cache_read_input_tokens": 40481,
+        "cache_creation_input_tokens": 1060,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1060
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2333706,
+  "duration_ms": 48744,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T06:05:48",
+  "unit": "file",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034",
+  "rubric": "statement-generality"
+}

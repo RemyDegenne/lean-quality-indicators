@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0009",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all 99 lines of PermutationDistance.lean against the simp-interface rubric and found two improvements, both small.\n\nFiles and declarations checked:\n- Downstream uses in GramCounting.lean and WeingartenDecay.lean (the only consumers in the repo).\n- `LinearMap.funLeft` / `LinearMap.funLeft_apply` in Mathlib's Algebra/Module/Equiv/Basic.lean.\n- `dist_self` in Mathlib's Topology/MetricSpace/Pseudo/Defs.lean, as the precedent for a simp-tagged `_self` lemma on a distance.\n\nWhat downstream code uses:\n- `permutationDistance_self`, `permutationDistance_eq_zero` and `permutationDistance_triangle` are only passed as explicit term arguments.\n- `permutationDistance_add_classes` is only used with `omega` or rewriting.\n- `matchingEquiv` is only used through `Fintype.card_congr`.\n\nSo simp attributes on the metric lemmas would mostly help future simp calls rather than any current proof.\n\nDeclarations with no finding:\n- `matchingEquiv` and `matchingLinearEquiv` have no apply lemmas, but nothing outside them needs one: their own proofs close by `rfl`, and the only outside use is through cardinality.\n- `matching_respects`, `permutationDistance_add_classes`, `permutationDistance_symm` and `permutationDistance_triangle` are not suitable as simp rules. A commutativity lemma like `_symm` would loop under simp, and the others are an inequality or relate two unrelated quantities.\n\nRemaining uncertainty: I could not run Lean, so neither the `@[simps]` change nor the `funLeft` redefinition has been compiled.",
+  "findings": [
+    {
+      "declaration": "permutationLinear",
+      "start_line": 13,
+      "end_line": 16,
+      "excerpt": "def permutationLinear {ι : Type*} (π : Equiv.Perm ι) : (ι → ℂ) →ₗ[ℂ] (ι → ℂ) where\n  toFun f := f ∘ π",
+      "problem": "`permutationLinear` is a structure-built linear map with no simp lemma for applying it. To simplify an expression like `permutationLinear π f i`, the only option is to unfold the definition, as the proof of `permutationDistance_eq_zero` does at line 77 (`simp [permutationLinear,Ne.symm hn] at hv`). That exposes the raw structure and depends on simp seeing through the `toFun` field. The definition is the same as Mathlib's `LinearMap.funLeft ℂ ℂ π`, which already has a canonical simp lemma `funLeft_apply : funLeft R M f g i = g (f i)`, but none of that coverage applies to this definition.",
+      "proposed_change": "Either tag the definition `@[simps]`, or add `@[simp] theorem permutationLinear_apply (π : Equiv.Perm ι) (f : ι → ℂ) (i : ι) : permutationLinear π f i = f (π i) := rfl`. The target form is `f (π i)`. Alternatively, define it as `LinearMap.funLeft ℂ ℂ π` (or make it an abbreviation for that) so `LinearMap.funLeft_apply` handles it. Line 77 could then use `simp [Ne.symm hn] at hv` without unfolding the definition.",
+      "benefit": "Proofs that evaluate the map pointwise get a stable target form `f (π i)` without exposing the structure. The map also connects to Mathlib's existing `funLeft` simp set (for example, the lemmas that sit next to `funLeft_apply`).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Module/Equiv/Basic.lean",
+          "declaration": "LinearMap.funLeft_apply",
+          "excerpt": "theorem funLeft_apply (f : m → n) (g : n → M) (i : m) : funLeft R M f g i = g (f i) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Module/Equiv/Basic.lean",
+          "declaration": "LinearMap.funLeft",
+          "excerpt": "def funLeft (f : m → n) : (n → M) →ₗ[R] m → M where\n  toFun := (· ∘ f)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "permutationDistance_eq_zero",
+          "excerpt": "simp [permutationLinear,Ne.symm hn] at hv"
+        }
+      ]
+    },
+    {
+      "declaration": "permutationDistance_self / permutationDistance_eq_zero",
+      "start_line": 62,
+      "end_line": 66,
+      "excerpt": "theorem permutationDistance_self {r : ℕ} (π : Equiv.Perm (Fin r)) :\n    permutationDistance π π=0 := by simp [permutationDistance]",
+      "problem": "`permutationDistance` is built to be a metric: there are lemmas for the self case, symmetry, the triangle inequality and the zero case. But its basic normalisation lemmas are not simp rules. `permutationDistance π π` should simplify to `0`, and `permutationDistance π σ = 0` should simplify to `π = σ`. Without simp attributes, a simp call on a goal containing `permutationDistance π π` (for example after `subst`, or in diagonal terms such as `distanceMatrix permutationDistance t π π`) leaves it untouched unless the user passes the lemma by hand or unfolds into `finrank`/`range`. Mathlib's matching lemma `dist_self` is `@[simp]`. Neither statement needs a hypothesis, and each rewrites to a strictly simpler form, so there is no termination risk. `permutationDistance_symm` should stay non-simp, since a commutativity rule would loop.",
+      "proposed_change": "Add `@[simp]` to `permutationDistance_self` (target form `0`) and to `permutationDistance_eq_zero` (target form `π = σ`).",
+      "benefit": "Users simplifying expressions such as diagonal entries of `distanceMatrix permutationDistance t` or `(d:ℂ)^(r - permutationDistance π π)` (from `permutationGram_distance`) get the expected result from plain `simp`. They no longer need to remember the lemma names or unfold the rank definition. Current downstream uses pass these lemmas as explicit terms and are not affected.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/MetricSpace/Pseudo/Defs.lean",
+          "declaration": "dist_self",
+          "excerpt": "@[simp]\ntheorem dist_self (x : α) : dist x x = 0 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/GramCounting.lean",
+          "declaration": "permutationGram_distance",
+          "excerpt": "permutationGram r d π σ=(d : ℂ)^(r-permutationDistance π σ) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "permutationDistance_eq_zero",
+          "excerpt": "permutationDistance π σ=0 ↔ π=σ := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 18169,
+    "cache_read_input_tokens": 72333,
+    "output_tokens": 4723,
+    "output_tokens_details": {
+      "thinking_tokens": 1083
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18169,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3114,
+        "cache_read_input_tokens": 20903,
+        "cache_creation_input_tokens": 1279,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1279
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2543186,
+  "duration_ms": 47965,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T06:38:33",
+  "unit": "file",
+  "source_sha256": "a647a7dbecf8ae05a4a6fcbeb5312383a14e8778510dfe9b90bc3fad8c9927ec",
+  "rubric": "simp-interface"
+}

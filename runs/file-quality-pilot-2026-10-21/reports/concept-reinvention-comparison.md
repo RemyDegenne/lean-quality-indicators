@@ -1,6 +1,6 @@
 # concept-reinvention
 
-Generated 2026-10-21T05:54:53+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-21T06:58:55+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## Library comparison
 
@@ -9,7 +9,7 @@ Generated 2026-10-21T05:54:53+00:00 · [Methods and notation](../../../AUDIT_MET
 | Mathlib | — | — | 2/10<br>20.0% [5.7%, 51.0%] | 0/10<br>0.0% [0.0%, 27.8%] |
 | Tau Ceti | — | — | 0/10<br>0.0% [0.0%, 27.8%] | 0/10<br>0.0% [0.0%, 27.8%] |
 | Lean Pool | — | — | 4/10<br>40.0% [16.8%, 68.7%] | 0/10<br>0.0% [0.0%, 27.8%] |
-| OpenAI Math | 0/1<br>0.0% [0.0%, 79.3%] | 0/1<br>0.0% [0.0%, 79.3%] | 0/2<br>0.0% [0.0%, 65.8%] | 0/2<br>0.0% [0.0%, 65.8%] |
+| OpenAI Math | 2/15<br>13.3% [3.7%, 37.9%] | 1/9<br>11.1% [2.0%, 43.5%] | 3/22<br>13.6% [4.7%, 33.3%] | 1/20<br>5.0% [0.9%, 23.6%] |
 
 ## All libraries
 
@@ -17,21 +17,21 @@ Full-pass reference: **30 targets**.
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Opus | 100 | 0/1 | 1/100 | 0 | 0 | 0.0% [0.0%, 79.3%] | $0.13 / $3.78 |
-| Sol | 100 | 0/1 | 1/100 | 0 | 0 | 0.0% [0.0%, 79.3%] | $0.09 / $2.57 |
-| Sonnet | 130 | 0/1 | 32/130 | 6 | 6 | 18.8% [8.9%, 35.3%] | $2.29 / $2.15 |
-| Luna | 130 | 0/1 | 32/130 | 0 | 0 | 0.0% [0.0%, 10.7%] | $0.16 / $0.15 |
+| Opus | 100 | 0/1 | 15/100 | 2 | 2 | 13.3% [3.7%, 37.9%] | $2.19 / $4.37 |
+| Sol | 100 | 0/1 | 9/100 | 1 | 1 | 11.1% [2.0%, 43.5%] | $0.80 / $2.65 |
+| Sonnet | 130 | 0/1 | 52/130 | 9 | 9 | 17.3% [9.4%, 29.7%] | $3.90 / $2.25 |
+| Luna | 130 | 0/1 | 50/130 | 1 | 1 | 2.0% [0.4%, 10.5%] | $0.26 / $0.15 |
 
 ### Correlation matrix
 
 | Model | Opus | Sol | Sonnet | Luna |
 |---|---:|---:|---:|---:|
-| Opus | — | —; n=1 | —; n=1 | —; n=1 |
-| Sol | —; n=1 | — | —; n=1 | —; n=1 |
-| Sonnet | —; n=1 | —; n=1 | — | —; n=32 |
-| Luna | —; n=1 | —; n=1 | —; n=32 | — |
+| Opus | — | 1.00 [—]; n=9 | 1.00 [—]; n=15 | 0.68 [—]; n=15 |
+| Sol | 1.00 [—]; n=9 | — | 1.00 [—]; n=9 | 1.00 [—]; n=9 |
+| Sonnet | 1.00 [—]; n=15 | 1.00 [—]; n=9 | — | 0.33 [—]; n=50 |
+| Luna | 0.68 [—]; n=15 | 1.00 [—]; n=9 | 0.33 [—]; n=50 | — |
 
-Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 1 not applicable; Sonnet: 0 partial, 6 not applicable; Luna: 0 partial, 0 not applicable.
+Coverage annotations: Opus: 0 partial, 7 not applicable; Sol: 0 partial, 3 not applicable; Sonnet: 0 partial, 12 not applicable; Luna: 0 partial, 0 not applicable.
 
 ## Mathlib
 
@@ -105,18 +105,18 @@ Full-pass reference: **0 targets**.
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Opus | 100 | 0/1 | 1/100 | 0 | 0 | 0.0% [0.0%, 79.3%] | $0.13 / $0.00 |
-| Sol | 100 | 0/1 | 1/100 | 0 | 0 | 0.0% [0.0%, 79.3%] | $0.09 / $0.00 |
-| Sonnet | 100 | 0/1 | 2/100 | 0 | 0 | 0.0% [0.0%, 65.8%] | $0.10 / $0.00 |
-| Luna | 100 | 0/1 | 2/100 | 0 | 0 | 0.0% [0.0%, 65.8%] | $0.01 / $0.00 |
+| Opus | 100 | 0/1 | 15/100 | 2 | 2 | 13.3% [3.7%, 37.9%] | $2.19 / $0.00 |
+| Sol | 100 | 0/1 | 9/100 | 1 | 1 | 11.1% [2.0%, 43.5%] | $0.80 / $0.00 |
+| Sonnet | 100 | 0/1 | 22/100 | 3 | 3 | 13.6% [4.7%, 33.3%] | $1.72 / $0.00 |
+| Luna | 100 | 0/1 | 20/100 | 1 | 1 | 5.0% [0.9%, 23.6%] | $0.10 / $0.00 |
 
 ### Correlation matrix
 
 | Model | Opus | Sol | Sonnet | Luna |
 |---|---:|---:|---:|---:|
-| Opus | — | —; n=1 | —; n=1 | —; n=1 |
-| Sol | —; n=1 | — | —; n=1 | —; n=1 |
-| Sonnet | —; n=1 | —; n=1 | — | —; n=2 |
-| Luna | —; n=1 | —; n=1 | —; n=2 | — |
+| Opus | — | 1.00 [—]; n=9 | 1.00 [—]; n=15 | 0.68 [—]; n=15 |
+| Sol | 1.00 [—]; n=9 | — | 1.00 [—]; n=9 | 1.00 [—]; n=9 |
+| Sonnet | 1.00 [—]; n=15 | 1.00 [—]; n=9 | — | 0.69 [—]; n=20 |
+| Luna | 0.68 [—]; n=15 | 1.00 [—]; n=9 | 0.69 [—]; n=20 | — |
 
-Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 1 not applicable; Sonnet: 0 partial, 1 not applicable; Luna: 0 partial, 0 not applicable.
+Coverage annotations: Opus: 0 partial, 7 not applicable; Sol: 0 partial, 3 not applicable; Sonnet: 0 partial, 7 not applicable; Luna: 0 partial, 0 not applicable.

@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0008",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 88 lines of the target file. Then I grepped the project for every use of `enorm_setIntegral_le_good_kernel`, `distanceDifferenceKernel` and `fourPairGood`, and read the three files that use them: ActualComparableShellRebin.lean, ComparableComplexRebin.lean and PositiveDistanceRebinBound.lean. I also read the statements of `original_spatial_kernel_max` and `uniform_actual_stationary_product_kernel`.\n\nMost of the file is not a target for this rubric. `distanceDifferenceKernel_measurable` and `measurable_fourPairGood` are one-line facts. `enorm_setIntegral_le_good_kernel` is itself shared machinery: both `original_complex_kernel_max` and `angular_complex_shell_rebin` call it.\n\nI found two blocks inside `original_complex_kernel_max` that are repeated almost verbatim in other proofs. One converts a real pointwise kernel bound into the ENNReal form. The other moves the set S ∩ fourPairGood through `fourSpatialPairEquiv` and then applies `original_spatial_kernel_max`.\n\nUncertainty: I could not run Lean, so none of the proposed rewrites has been compiled. In `cell_shell_positive_kernel_max`, the rewritten use relies on `D.good`/`E.good` reducing to `d.good`/`e.good`. The current proof already relies on this when it unfolds `good`, but the exact simp set may need adjusting.",
+  "findings": [
+    {
+      "declaration": "PositiveDistanceData.original_complex_kernel_max",
+      "start_line": 63,
+      "end_line": 71,
+      "excerpt": "rw [← ofReal_norm]\n      have hh := ENNReal.ofReal_le_ofReal hx\n      convert hh using 1\n      dsimp [distanceDifferenceKernel]\n      rw [← ENNReal.ofReal_mul hH,← ENNReal.ofReal_mul (mul_nonneg hH (by positivity))]",
+      "problem": "The `hb` argument passed to `enorm_setIntegral_le_good_kernel` converts a real bound `‖F x‖ ≤ H*2^s/(1+2^v*|dist (x 0) (x 1)-dist (x 2) (x 3)|)^2` into the ENNReal form `‖F x‖ₑ ≤ (ofReal H * ofReal (2^s)) * distanceDifferenceKernel v x`. `uniform_actual_comparable_shell_rebin` repeats the same steps line for line: `ofReal_norm`, `ofReal_le_ofReal`, `convert … using 1`, unfolding the kernel, two `ofReal_mul` rewrites, `congr 1` and `ring`. This is the standard step for turning a stationary-phase bound into the hypothesis this file's majorant needs, but nothing in the file states it once.",
+      "proposed_change": "Add this lemma to this file, next to `distanceDifferenceKernel`:\n\ntheorem enorm_le_ofReal_mul_distanceDifferenceKernel {z : ℂ} {x : Fin 4 → Plane} {H s v : ℝ} (hH : 0 ≤ H)\n    (h : ‖z‖ ≤ H*(2:ℝ)^s/(1+(2:ℝ)^v*|dist (x 0) (x 1)-dist (x 2) (x 3)|)^2) :\n    ‖z‖ₑ ≤ ENNReal.ofReal H*ENNReal.ofReal ((2:ℝ)^s)*distanceDifferenceKernel v x := by\n  rw [← ofReal_norm]\n  convert ENNReal.ofReal_le_ofReal h using 1\n  dsimp [distanceDifferenceKernel]\n  rw [← ENNReal.ofReal_mul hH, ← ENNReal.ofReal_mul (mul_nonneg hH (by positivity))]\n  congr 1; ring\n\nIn `original_complex_kernel_max`, lines 63–71 would become `filter_upwards [hb] with x hx; exact enorm_le_ofReal_mul_distanceDifferenceKernel hH (by rw [Real.rpow_natCast]; exact hx)`. Here `hb` uses the natural-number power `(2:ℝ)^d.t`, which `Real.rpow_natCast` matches to the lemma's real power. In `uniform_actual_comparable_shell_rebin`, after the `simp only … at he` on line 99, lines 100–106 would become `exact enorm_le_ofReal_mul_distanceDifferenceKernel hH he`. That works because `he` already has the form `H*(2:ℝ)^(-(v-bdepth))/(1+(2:ℝ)^v*|…|)^2`, with `v` cast to ℝ.",
+      "benefit": "About seven lines of ENNReal coercion work in each proof become one call to a named lemma. The lemma states the exact interface between real kernel bounds and `distanceDifferenceKernel`, so readers see the intent immediately. If the kernel's definition changes (for example its exponent or normalisation), only one proof needs updating.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Shells/ActualComparableShellRebin.lean",
+          "declaration": "uniform_actual_comparable_shell_rebin",
+          "excerpt": "rw [← ofReal_norm]\n    have he' := ENNReal.ofReal_le_ofReal he\n    convert he' using 1\n    dsimp [distanceDifferenceKernel]\n    rw [← ENNReal.ofReal_mul hH,← ENNReal.ofReal_mul (mul_nonneg hH (by positivity))]\n    congr 1\n    ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Angular/ActualStationaryProductKernel.lean",
+          "declaration": "uniform_actual_stationary_product_kernel",
+          "excerpt": "H*(2:ℝ)^(-(v-bdepth))/(1+(2:ℝ)^v*|‖x 0-y 0‖-‖x 1-y 1‖|)^2"
+        }
+      ]
+    },
+    {
+      "declaration": "PositiveDistanceData.original_complex_kernel_max",
+      "start_line": 72,
+      "end_line": 82,
+      "excerpt": "let T := fourSpatialPairEquiv.symm ⁻¹' S\n  have hT : MeasurableSet T := hS.preimage fourSpatialPairEquiv.symm.measurable\n  have he : S ∩ fourPairGood d.good e.good =\n      fourSpatialPairEquiv ⁻¹' (T ∩ (d.good ×ˢ e.good)) := by",
+      "problem": "This block bounds `∫⁻ x in S ∩ fourPairGood d.good e.good, distanceDifferenceKernel d.t x ∂Measure.pi (fourCells d e)`. It pulls S back to `T := fourSpatialPairEquiv.symm ⁻¹' S`, proves the set identity with `fourSpatialPairEquiv ⁻¹' (T ∩ (d.good ×ˢ e.good))` by `ext`/`simp`, and applies `original_spatial_kernel_max` after unfolding `distanceDifferenceKernel` and `Real.rpow_natCast`. `cell_shell_positive_kernel_max` in PositiveDistanceRebinBound.lean does the same steps with S = `angularLengthShell b`: the same `T`, the same measurability proof, the same set identity (with the intersection in the other order), and the same `simpa … using original_spatial_kernel_max`. The fact both proofs actually need, the spatial kernel bound on a measurable four-point set intersected with `fourPairGood`, has no statement of its own.",
+      "proposed_change": "Add this lemma to this file (it already imports PositiveDistanceOriginalSpatial):\n\ntheorem PositiveDistanceData.fourPairGood_kernel_max (d e : PositiveDistanceData) [IsFiniteMeasure d.ρ] [IsFiniteMeasure e.ρ]\n    (ht : d.t = e.t) (hn : d.normalization = e.normalization) (S : Set (Fin 4 → Plane)) (hS : MeasurableSet S) :\n    ENNReal.ofReal ((2:ℝ)^(-((d.t:ℝ)-d.a))) * ∫⁻ x in S ∩ fourPairGood d.good e.good, distanceDifferenceKernel d.t x ∂Measure.pi (fourCells d e) ≤\n      binKernelConstant * ENNReal.ofReal (d.levelMass^4*(2:ℝ)^(-2*((d.t:ℝ)-d.a))) * max d.coincidence e.coincidence\n\nIts proof is lines 72–78 (define `T`, prove `hT` and `he`), then `rw [he]; simpa only [distanceDifferenceKernel, Real.rpow_natCast] using original_spatial_kernel_max d e ht hn T hT`.\n\nIn `original_complex_kernel_max`, lines 72–82 would become `rw [mul_assoc] at hg; exact hg.trans (by simpa only [mul_assoc] using mul_le_mul_right (fourPairGood_kernel_max d e ht hn S hS) (ENNReal.ofReal H))`. In `cell_shell_positive_kernel_max`, after `rw [lintegral_indicator …, Measure.restrict_restrict …, inter_comm, angularFourCellMeasure_eq]`, the proof would end with `simpa only [D, E, atCells, levelMass, good] using fourPairGood_kernel_max D E ht hn _ (measurable_angularLengthShell b)`. The local `T`, `hT` and `he` would no longer be needed.",
+      "benefit": "The pull-back through `fourSpatialPairEquiv` and the set identity are proved once. Both kernel-max proofs then read as one step: specialise the spatial bound. Each currently re-derives a ten-line change-of-variables bridge. Any future rebinning variant can reuse the lemma, and a change to `fourPairGood` or to the statement of `original_spatial_kernel_max` needs only one fix.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Estimates/PositiveDistanceRebinBound.lean",
+          "declaration": "PositiveDistanceData.cell_shell_positive_kernel_max",
+          "excerpt": "let T := fourSpatialPairEquiv.symm ⁻¹' angularLengthShell b\n  have hT : MeasurableSet T := (measurable_angularLengthShell b).preimage fourSpatialPairEquiv.symm.measurable\n  have he : fourPairGood d.good e.good ∩ angularLengthShell b =\n      fourSpatialPairEquiv ⁻¹' (T ∩ (D.good ×ˢ E.good)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Estimates/PositiveDistanceRebinBound.lean",
+          "declaration": "PositiveDistanceData.cell_shell_positive_kernel_max",
+          "excerpt": "simpa only [D,E,atCells,levelMass,distanceDifferenceKernel,Real.rpow_natCast] using\n    original_spatial_kernel_max D E ht hn T hT"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Estimates/PositiveDistanceOriginalSpatial.lean",
+          "declaration": "PositiveDistanceData.original_spatial_kernel_max",
+          "excerpt": "(∫⁻ x in fourSpatialPairEquiv ⁻¹' (S ∩ (d.good ×ˢ e.good)), ENNReal.ofReal\n        (1/(1+(2:ℝ)^d.t*|dist (x 0) (x 1)-dist (x 2) (x 3)|)^2)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 24480,
+    "cache_read_input_tokens": 77568,
+    "output_tokens": 8944,
+    "output_tokens_details": {
+      "thinking_tokens": 3724
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24480,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 6885,
+        "cache_read_input_tokens": 26685,
+        "cache_creation_input_tokens": 1724,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1724
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3902736,
+  "duration_ms": 77526,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T06:34:26",
+  "unit": "file",
+  "source_sha256": "41cf9edf78c0bf4d2c5d8d76c94bf84a4eb7673e011e9bbd71b1598b78b86a6d",
+  "rubric": "repeated-proof-machinery"
+}

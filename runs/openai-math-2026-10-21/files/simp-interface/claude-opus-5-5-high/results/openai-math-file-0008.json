@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0008",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 88 lines of the target file. I also read the definition of `fourSpatialPairEquiv` in FourSpatialPairMeasure.lean and every downstream use of `fourPairGood` and `distanceDifferenceKernel`, which are in PositiveDistanceRebinBound.lean and ActualComparableShellRebin.lean.\n\nThere are no `@[simp]` lemmas in the file, and none exist anywhere else for either new definition. At every use site, both definitions get unfolded by hand: `fourPairGood` with `simp only [fourPairGood, mem_preimage, ...]`, and `distanceDifferenceKernel` with `dsimp`/`simpa only [distanceDifferenceKernel, Real.rpow_natCast]`.\n\nI looked for rewrite cycles and competing rules and found none. `enorm_setIntegral_le_good_kernel` and `measurable_fourPairGood` are not simp candidates.\n\nRemaining uncertainty: I could not compile anything, so the proposed lemmas, and the claim that they would shorten the `he` proofs or the conversion steps, are untested. In particular, if `fourPairGood` gets the simp lemma, the `he` proofs may also need `fourSpatialPairEquiv`'s coercion to unfold, or `mem_prod`, on the right-hand side. A small `fourSpatialPairEquiv_apply` simp lemma would cover that.",
+  "findings": [
+    {
+      "declaration": "fourPairGood",
+      "start_line": 17,
+      "end_line": 18,
+      "excerpt": "def fourPairGood (G H : Set (Plane × Plane)) : Set (Fin 4 → Plane) :=\n  fourSpatialPairEquiv ⁻¹' (G ×ˢ H)",
+      "problem": "`fourPairGood` is a plain `def` with no membership lemma. Callers state their hypotheses in the coordinate form `(x 0,x 1) ∈ d.good ∧ (x 2,x 3) ∈ e.good`, as in `hs` of `original_complex_kernel_max`. The only way to reach that form, or to get from it to `x ∈ fourPairGood G H`, is to unfold the definition and lean on defeq through the `MeasurableEquiv` coercion. In this file, `hs` is passed straight to `enorm_setIntegral_le_good_kernel`, so the match happens silently by defeq, and the `he` proof at lines 76-78 unfolds `fourPairGood` by name. Downstream, `cell_shell_positive_kernel_max` repeats the same unfolding (`simp only [T,D,E,good,fourPairGood,mem_inter_iff,mem_preimage, ...]`). Simp has no canonical normal form for `x ∈ fourPairGood G H`.",
+      "proposed_change": "Add a membership lemma right after the definition:\n```lean\n@[simp] theorem mem_fourPairGood {G H : Set (Plane × Plane)} {x : Fin 4 → Plane} :\n    x ∈ fourPairGood G H ↔ (x 0, x 1) ∈ G ∧ (x 2, x 3) ∈ H := Iff.rfl\n```\nIt may also help to add a companion `@[simp] fourSpatialPairEquiv_apply : fourSpatialPairEquiv x = ((x 0,x 1),(x 2,x 3))` in FourSpatialPairMeasure.lean. Then use `mem_fourPairGood` instead of `fourPairGood` in the `simp only` calls. The `hs` argument can then be stated as, or converted to, `x ∈ fourPairGood ...` explicitly rather than by defeq.",
+      "benefit": "The coordinate condition becomes the simp normal form for membership. That is exactly the form the hypotheses `hs` in this file and in ActualComparableShellRebin.lean are written in. Callers would no longer unfold the definition or depend on defeq through the equivalence's coercion, so proofs survive changes to how `fourPairGood` or `fourSpatialPairEquiv` is implemented.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Estimates/PositiveDistanceRebinBound.lean",
+          "declaration": "OAI.PlanarFalconer.PositiveDistanceData.cell_shell_positive_kernel_max",
+          "excerpt": "simp only [T,D,E,good,fourPairGood,mem_inter_iff,mem_preimage,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Measures/FourSpatialPairMeasure.lean",
+          "declaration": "OAI.PlanarFalconer.fourSpatialPairEquiv",
+          "excerpt": "toFun x := ((x 0,x 1),(x 2,x 3))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Fourier/GoodSupportedKernelMajorant.lean",
+          "declaration": "OAI.PlanarFalconer.PositiveDistanceData.original_complex_kernel_max",
+          "excerpt": "F x ≠ 0 → (x 0,x 1) ∈ d.good ∧ (x 2,x 3) ∈ e.good) :"
+        }
+      ]
+    },
+    {
+      "declaration": "distanceDifferenceKernel",
+      "start_line": 10,
+      "end_line": 11,
+      "excerpt": "noncomputable def distanceDifferenceKernel (v : ℝ) (x : Fin 4 → Plane) : ℝ≥0∞ :=\n  ENNReal.ofReal (1/(1+(2:ℝ)^v*|dist (x 0) (x 1)-dist (x 2) (x 3)|)^2)",
+      "problem": "The kernel takes a real exponent `v`, so `(2:ℝ)^v` is `rpow`. Every caller in the repository passes a natural number, though: `d.t` here, and `v : ℕ` in ActualComparableShellRebin.lean. The callers' bounds use `(2:ℝ)^d.t` (monoid power). There is no apply or natCast lemma for the kernel, so each use unfolds the definition and then rewrites `Real.rpow_natCast` by hand. That happens at lines 67-68 (`dsimp [distanceDifferenceKernel]` … `rw [Real.rpow_natCast]`), at line 82 (`simpa only [distanceDifferenceKernel,Real.rpow_natCast,mul_assoc]`), and in PositiveDistanceRebinBound.lean (`simpa only [D,E,atCells,levelMass,distanceDifferenceKernel,Real.rpow_natCast]`). The definition gets expanded wholesale whenever callers only need the ℕ-exponent value.",
+      "proposed_change": "Add a `@[simp]` evaluation lemma in the normal form the callers use:\n```lean\n@[simp] theorem distanceDifferenceKernel_natCast (n : ℕ) (x : Fin 4 → Plane) :\n    distanceDifferenceKernel n x =\n      ENNReal.ofReal (1/(1+(2:ℝ)^n*|dist (x 0) (x 1)-dist (x 2) (x 3)|)^2) := by\n  simp [distanceDifferenceKernel]\n```\nAlternatively, take `v : ℕ` in the definition, since no caller uses a non-integer exponent. Then replace `distanceDifferenceKernel, Real.rpow_natCast` in the `dsimp`/`simpa only` calls with this lemma.",
+      "benefit": "Callers get the kernel straight in the `pow` form their hypotheses use, with one rewrite instead of unfolding plus a cast rewrite at each of the three proof sites. The definition's body can then change without breaking those proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Estimates/PositiveDistanceRebinBound.lean",
+          "declaration": "OAI.PlanarFalconer.PositiveDistanceData.cell_shell_positive_kernel_max",
+          "excerpt": "simpa only [D,E,atCells,levelMass,distanceDifferenceKernel,Real.rpow_natCast] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Fourier/GoodSupportedKernelMajorant.lean",
+          "declaration": "OAI.PlanarFalconer.PositiveDistanceData.original_complex_kernel_max",
+          "excerpt": "simpa only [distanceDifferenceKernel,Real.rpow_natCast,mul_assoc] using hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Shells/ActualComparableShellRebin.lean",
+          "declaration": "OAI.PlanarFalconer (theorem containing `∀ (m : Fin 2 → ℝ → ℝ) (q a₀ t₀ a d n v : ℕ)`)",
+          "excerpt": "∀ (m : Fin 2 → ℝ → ℝ) (q a₀ t₀ a d n v : ℕ),"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 21156,
+    "cache_read_input_tokens": 90291,
+    "output_tokens": 6094,
+    "output_tokens_details": {
+      "thinking_tokens": 1844
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21156,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3671,
+        "cache_read_input_tokens": 23494,
+        "cache_creation_input_tokens": 1675,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1675
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3092342,
+  "duration_ms": 60484,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T06:33:03",
+  "unit": "file",
+  "source_sha256": "41cf9edf78c0bf4d2c5d8d76c94bf84a4eb7673e011e9bbd71b1598b78b86a6d",
+  "rubric": "simp-interface"
+}

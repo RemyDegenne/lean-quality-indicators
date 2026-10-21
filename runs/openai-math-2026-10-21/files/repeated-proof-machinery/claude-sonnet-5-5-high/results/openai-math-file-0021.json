@@ -1,0 +1,91 @@
+{
+  "id": "openai-math-file-0021",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and grepped the repo for uses of phaseBelt, exists_bounds_cutoff_and_phase, exists_uniform_angular_bound and related lemmas. All of them are used only inside this file. I could not compile any proposed rewrite, so the sketches are untested. Two repetitions looked substantial. The first is the sphere-bound and belt-bounding proof, written once on the sphere and again for a general compact K. The second is the \"horizontal = 0 on the unit sphere forces x 2 = ±1\" argument, written twice. I did not report the low/high pairs of small lemmas, because each is short and its helper would be mostly thin.",
+  "findings": [
+    {
+      "declaration": "exists_uniform_angular_bound (with exists_bounds_cutoff_and_phase, phaseBelt, isCompact_phaseBelt)",
+      "start_line": 217,
+      "end_line": 238,
+      "excerpt": "obtain ⟨A, B, hA0, hB0, hA, hB⟩ := exists_bounds_cutoff_and_phase",
+      "problem": "The sphere-only bound repeats the proof of `exists_uniform_angular_bound_on_compact` (lines 240-279), which handles a general compact K inside `regularDomain`. Both proofs do the same things. They get a compact bound A on the cutoff's fderiv. They get a compact bound B on `fderiv ℝ phase` over a belt where `horizontal ≠ 0`. They take `max 0 _` of both bounds. They split on belt membership and use `norm_fderiv_angularAmbient_le_at` inside it, and the two `fderiv_angularAmbient_eq_zero_of_*` lemmas outside it. They finish with the same `nlinarith [mul_nonneg hA0 hk]`. The sphere version needs its own belt `phaseBelt`, its own `isCompact_phaseBelt`, its own `horizontal_ne_zero_on_phaseBelt` and its own `exists_bounds_cutoff_and_phase`. These are used nowhere else in the repo, so they are pure duplication. Any change to the bound argument has to be made twice.",
+      "proposed_change": "Delete `phaseBelt`, `isCompact_phaseBelt`, `horizontal_ne_zero_on_phaseBelt` and `exists_bounds_cutoff_and_phase`. Prove the sphere bound as a corollary of the compact one. For example: `obtain ⟨C, hC, h⟩ := exists_uniform_angular_bound_on_compact (isCompact_sphere (0 : SphereAmbient) 1) (fun x hx => sphere_mem_regularDomain ⟨x, hx⟩); exact ⟨C, hC, fun k x => h k x.1 x.2⟩`. Here `x.2 : x.1 ∈ Metric.sphere 0 1` should be the membership proof, and `norm_angular_le_one` already shows `‖angular k x‖ = ‖angularAmbient k x.1‖` by definition. The imports and hypotheses are unchanged. The compact lemma needs only `IsCompact K` and `K ⊆ regularDomain`, and `sphere_mem_regularDomain` provides the second. If a sphere-specific statement is wanted, the existing `exists_uniform_angular_neighborhood` already supplies the needed uniform bound near the sphere.",
+      "benefit": "The file loses roughly 50 lines and four auxiliary declarations. It keeps one proof of the bound that is linear in k, so the duplicated belt, compactness and case-split argument is maintained in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "exists_uniform_angular_bound_on_compact",
+          "excerpt": "obtain ⟨A, hA⟩ := hK.exists_bound_of_continuousOn"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "exists_bounds_cutoff_and_phase",
+          "excerpt": "obtain ⟨A, hA⟩ := (isCompact_sphere (0 : SphereAmbient) 1).exists_bound_of_continuousOn"
+        }
+      ]
+    },
+    {
+      "declaration": "sphere_mem_regularDomain and horizontal_ne_zero_on_phaseBelt",
+      "start_line": 83,
+      "end_line": 94,
+      "excerpt": "have hs := PiLp.norm_sq_eq_of_L2 (fun _ : Fin 3 => ℝ) x.1",
+      "problem": "Both proofs repeat the same argument. If `horizontal x = 0` and ‖x‖ = 1, take real and imaginary parts to get x 0 = 0 and x 1 = 0. Then expand `PiLp.norm_sq_eq_of_L2` over `Fin 3` to get `(x 2)^2 = 1`, and split with `sq_eq_one_iff`. The `simpa [Fin.sum_univ_succ, hn, h0, h1, Real.norm_eq_abs] using hs.symm` computation is word-for-word identical in the two places. Only the final inequality step differs.",
+      "proposed_change": "Add a lemma before `sphere_mem_regularDomain`: `theorem eq_one_or_neg_one_of_horizontal_eq_zero {x : SphereAmbient} (hn : ‖x‖ = 1) (hh : horizontal x = 0) : x 2 = 1 ∨ x 2 = -1`. Its proof is the shared block: get h0 and h1, apply `PiLp.norm_sq_eq_of_L2`, simplify to `(x 2)^2 = 1`, then use `sq_eq_one_iff`. `sphere_mem_regularDomain` then becomes `by_cases hh : horizontal x.1 = 0`. In the zero case it does `rcases eq_one_or_neg_one_of_horizontal_eq_zero (by simp) hh with hp | hm` and finishes with the two existing `rw; norm_num` branches. `horizontal_ne_zero_on_phaseBelt` becomes `intro hh; rcases eq_one_or_neg_one_of_horizontal_eq_zero (by simpa [Metric.mem_sphere, dist_zero_right] using hx.1) hh with hp | hm`, followed by the two existing `linarith` branches. If the previous finding is applied and `phaseBelt` is removed, the second use goes away and this finding no longer applies. Applying it alone is still worthwhile.",
+      "benefit": "The Fin 3 norm computation and the parts-of-a-complex-number extraction live in one lemma. Each caller shrinks to its own inequality reasoning, and the geometric fact that the horizontal part vanishes only at the poles gets a name.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "horizontal_ne_zero_on_phaseBelt",
+          "excerpt": "have hh2 : (x 2) ^ 2 = 1 := by\n    simpa [Fin.sum_univ_succ, hn, h0, h1, Real.norm_eq_abs] using hs.symm"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19618,
+    "cache_read_input_tokens": 65381,
+    "output_tokens": 4095,
+    "output_tokens_details": {
+      "thinking_tokens": 858
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19618,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2657,
+        "cache_read_input_tokens": 22999,
+        "cache_creation_input_tokens": 548,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 548
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1259761,
+  "duration_ms": 34103,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T06:58:33",
+  "unit": "file",
+  "source_sha256": "b27a02fe74022900cd863f97f1dd19f2a1f9e9ec78e12ae1cd22de3d650d8e7e",
+  "rubric": "repeated-proof-machinery"
+}

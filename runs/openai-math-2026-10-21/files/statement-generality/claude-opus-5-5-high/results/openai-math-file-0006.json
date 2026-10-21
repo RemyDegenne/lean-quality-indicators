@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0006",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 73 lines of the target file and the file it builds on, HomogeneousLogJetBound.lean. That file defines `HasLogJetBound` for any real normed space and proves `const`, `add`, `neg` and `smul`. It proves `mul` for any `[NormedRing R] [NormedAlgebra ℝ R]`. I also checked how the target lemmas are used in HomogeneousLogCoefficients.lean (`hq.pow m`, `hq.conj.pow`, `.const_mul`) and in SpectralRemoteIncomingDecay.lean.\n\n- **`map` and `pair`:** already stated for general real normed spaces.\n- **`twoColumns`:** a deliberate wrapper for the specific matrix `spectralTwoColumns`, so it is not a defect.\n- **`conj`:** could in principle become a `star` lemma for normed star-modules. It would need a continuous linear `star` map, and I did not confirm a suitable Mathlib API: my grep for `starL'` in Topology/Algebra/Star.lean found nothing. Its only use is on ℂ, so I did not report it.\n\nThe one finding covers `const_mul` and `pow`. Their proofs use only `HasLogJetBound.const`, `HasLogJetBound.mul`, `zero_add`, `pow_zero` and `pow_succ`, and all of these already hold for the general ring `R`. I could not compile the proposed statements, so the claim that the proofs carry over unchanged is based on reading the source.",
+  "findings": [
+    {
+      "declaration": "OAI.DefocusingNLS.HasLogJetBound.const_mul, OAI.DefocusingNLS.HasLogJetBound.pow",
+      "start_line": 49,
+      "end_line": 60,
+      "excerpt": "theorem pow {g : ℝ → ℂ} (hg : HasLogJetBound σ g) (m : ℕ) :\n    HasLogJetBound ((m : ℝ) * σ) (fun t => (g t) ^ m) := by",
+      "problem": "`const_mul` and `pow` only accept functions `ℝ → ℂ`, but nothing in their proofs is specific to ℂ.\n\n- `const_mul` is `(HasLogJetBound.const c).mul hg` followed by `zero_add`.\n- `pow` is an induction using `HasLogJetBound.const 1`, `pow_zero`, `pow_succ` and `ih.mul hg`.\n\n`HasLogJetBound.mul`, which both proofs rely on, is already proved for any `[NormedRing R] [NormedAlgebra ℝ R]`. Fixing ℂ here creates an unnecessary asymmetry within the jet-bound API. For example, the file uses matrix-valued jets (`End`), where `mul` applies but `pow` and `const_mul` do not.",
+      "proposed_change": "Put these two lemmas in a section with `variable {R : Type*} [NormedRing R] [NormedAlgebra ℝ R]` and state them as:\n\n```lean\ntheorem const_mul {g : ℝ → R} (hg : HasLogJetBound σ g) (c : R) :\n    HasLogJetBound σ (fun t => c * g t) := by\n  simpa only [zero_add] using (HasLogJetBound.const c).mul hg\n\ntheorem pow {g : ℝ → R} (hg : HasLogJetBound σ g) (m : ℕ) :\n    HasLogJetBound ((m : ℝ) * σ) (fun t => (g t) ^ m) := by\n  induction m with\n  | zero => simpa only [Nat.cast_zero, zero_mul, pow_zero] using HasLogJetBound.const (1 : R)\n  | succ m ih =>\n      have he : ((m + 1 : ℕ) : ℝ) * σ = (m : ℝ) * σ + σ := by push_cast; ring\n      simpa only [he, pow_succ] using ih.mul hg\n```\n\nThe proofs are unchanged except that `(1 : ℂ)` becomes `(1 : R)`. `NormedAlgebra ℝ R` provides the `NormedSpace ℝ R` instance that `const` needs. `pow_succ` holds in any monoid.\n\nDegenerate cases:\n- `m = 0` gives exponent `0 * σ = 0`, which `const 1` covers even when `‖1‖ ≠ 1`, because `const` uses the bound `‖c‖`.\n- `c = 0` is covered as before.\n\nExisting callers such as `hq.pow m` and `.const_mul (m + 1)` in HomogeneousLogCoefficients.lean still elaborate, because `R` is inferred as ℂ from `g`.",
+      "benefit": "Users get power and left-multiplication-by-a-constant rules for any normed ℝ-algebra, such as matrix or endomorphism-valued coefficients like the `End`-valued jets already used in HomogeneousLogCoefficients. This matches the generality of the existing `mul` lemma and needs no new proof work, and the current ℂ uses are unaffected.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousLogJetBound.lean",
+          "declaration": "OAI.DefocusingNLS.HasLogJetBound.mul",
+          "excerpt": "variable {R : Type*} [NormedRing R] [NormedAlgebra ℝ R]\nvariable {σ τ : ℝ} {f g : ℝ → R}\n\ntheorem mul (hf : HasLogJetBound σ f) (hg : HasLogJetBound τ g) :\n    HasLogJetBound (σ + τ) (fun t => f t * g t) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousLogJetBound.lean",
+          "declaration": "OAI.DefocusingNLS.HasLogJetBound.const",
+          "excerpt": "theorem const (c : A) : HasLogJetBound 0 (fun _ : ℝ => c) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousLogCoefficients.lean",
+          "declaration": "OAI.DefocusingNLS.HasLogJetBound.spectralDiagonal",
+          "excerpt": "have hp := ((hq.pow m).mul (hq.conj.pow m)).const_mul (m + 1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousLogJetOperations.lean",
+          "declaration": "OAI.DefocusingNLS.HasLogJetBound.const_mul",
+          "excerpt": "simpa only [zero_add] using (HasLogJetBound.const c).mul hg"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 21174,
+    "cache_read_input_tokens": 111554,
+    "output_tokens": 5339,
+    "output_tokens_details": {
+      "thinking_tokens": 1253
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21174,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2939,
+        "cache_read_input_tokens": 22988,
+        "cache_creation_input_tokens": 2210,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2210
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2985388,
+  "duration_ms": 47012,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T06:25:52",
+  "unit": "file",
+  "source_sha256": "3c8c595a98c335d3c7cd82721e3de0270278d462e0a5dd83beee99867d14f6b5",
+  "rubric": "statement-generality"
+}

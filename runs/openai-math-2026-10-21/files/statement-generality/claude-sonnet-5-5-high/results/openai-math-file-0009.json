@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0009",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and grepped for uses (only WeingartenDecay.lean uses permutationDistance, all with Fin r and ℂ, so generalizing does not break callers). Checked Mathlib's Module.finrank_pi (needs only Fintype ι over a ring with StrongRankCondition) and LinearMap.finrank_range_add_finrank_ker (division ring/field K, finite-dimensional source). I did not compile the proposed generalizations. The proofs use only 1 ≠ 0, sub_eq_zero, rank-nullity and finrank lemmas, so I expect them to go through, with DecidableEq ι added for the indicator-function argument. The matching_respects/matchingEquiv layer is already general over ι and β.",
+  "findings": [
+    {
+      "declaration": "permutationLinear / permutationDistance (and downstream lemmas)",
+      "start_line": 13,
+      "end_line": 19,
+      "excerpt": "def permutationLinear {ι : Type*} (π : Equiv.Perm ι) : (ι → ℂ) →ₗ[ℂ] (ι → ℂ) where",
+      "problem": "The linear operator and the rank-based distance are fixed to the scalar field ℂ, although the construction f ↦ f ∘ π is linear over any semiring and none of the proofs use any property of ℂ. The rank-nullity step needs only a division ring, the dimension count needs Module.finrank_pi (Fintype ι, strong rank condition), and eq_zero needs only 1 ≠ 0. The distance does not depend on the field, which is hidden by the concrete ℂ.",
+      "proposed_change": "Make the scalar field a parameter: `def permutationLinear (K : Type*) [Semiring K] {ι : Type*} (π : Equiv.Perm ι) : (ι → K) →ₗ[K] (ι → K)` and `def permutationDistance (K : Type*) [Field K] {r : ℕ} (π σ : Equiv.Perm (Fin r)) : ℕ := Module.finrank K (LinearMap.range (permutationLinear K π - permutationLinear K σ))`. Likewise generalize `matchingLinearEquiv` to `LinearMap.ker (...) ≃ₗ[K] (Quotient (matchingSetoid π σ) → K)`. The lemmas `_add_classes`, `_self`, `_eq_zero` (using `one_ne_zero` for the indicator argument), `_symm` and `_triangle` then hold verbatim for any field K. Alternatively, state a general-K version and keep `abbrev permutationDistance := permutationDistance ℂ` for the existing caller.",
+      "benefit": "The result that the rank distance equals r minus the number of matching classes, and is a metric, becomes available over ℚ, finite fields, ℝ, etc. It also shows that the distance is characteristic-independent. The existing ℂ use in WeingartenDecay.lean is recovered by instantiating K = ℂ.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/Dimension/Constructions.lean",
+          "declaration": "Module.finrank_pi",
+          "excerpt": "theorem Module.finrank_pi {ι : Type v} [Fintype ι] :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/FiniteDimensional/Lemmas.lean",
+          "declaration": "LinearMap.finrank_range_add_finrank_ker",
+          "excerpt": "theorem finrank_range_add_finrank_ker [FiniteDimensional K V] (f : V →ₗ[K] V₂) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/WeingartenDecay.lean",
+          "declaration": "permutation Weingarten decay use",
+          "excerpt": "have hh := permutationDistance_add_classes π σ"
+        }
+      ]
+    },
+    {
+      "declaration": "permutationDistance_add_classes (and permutationDistance, _self, _eq_zero, _symm, _triangle)",
+      "start_line": 56,
+      "end_line": 57,
+      "excerpt": "theorem permutationDistance_add_classes {r : ℕ} (π σ : Equiv.Perm (Fin r)) :",
+      "problem": "The distance and its metric lemmas are stated only for `Equiv.Perm (Fin r)`, while the supporting layer (`permutationLinear`, `matchingSetoid`, `matchingLinearEquiv`) is already for an arbitrary index type ι. The proof of the key identity uses `Fintype.card_fin` only in its final rewrite. `Module.finrank_pi` gives `Fintype.card ι` for any finite ι, and the other lemmas never use `Fin`. The `Fin r` restriction is therefore artificial.",
+      "proposed_change": "Generalize to `{ι : Type*} [Fintype ι] [DecidableEq ι]`: `def permutationDistance (π σ : Equiv.Perm ι) : ℕ := Module.finrank ℂ (LinearMap.range (permutationLinear π - permutationLinear σ))` and `theorem permutationDistance_add_classes (π σ : Equiv.Perm ι) : permutationDistance π σ + Fintype.card (Quotient (matchingSetoid π σ)) = Fintype.card ι`. The same proof works, with `Fintype.card_fin` dropped. `_eq_zero` already uses `classical` and indicator functions, which work for any ι. `_self`, `_symm` and `_triangle` need no change. The `Fin r` statement is the special case `Fintype.card_fin r`.",
+      "benefit": "The distance becomes usable for permutations of arbitrary finite sets, such as blocks or Finset subtypes, without transporting through `Fin (card ι)` equivalences. It also states the identity more clearly as cardinality of ι minus number of matching classes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "permutationDistance_add_classes",
+          "excerpt": "rw [(matchingLinearEquiv π σ).finrank_eq,Module.finrank_pi,Module.finrank_pi,Fintype.card_fin] at h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "matchingLinearEquiv",
+          "excerpt": "def matchingLinearEquiv {ι : Type*} (π σ : Equiv.Perm ι) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 13696,
+    "cache_read_input_tokens": 30582,
+    "output_tokens": 3881,
+    "output_tokens_details": {
+      "thinking_tokens": 816
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13696,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2458,
+        "cache_read_input_tokens": 15864,
+        "cache_creation_input_tokens": 950,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 950
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0966642,
+  "duration_ms": 26946,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T06:17:37",
+  "unit": "file",
+  "source_sha256": "a647a7dbecf8ae05a4a6fcbeb5312383a14e8778510dfe9b90bc3fad8c9927ec",
+  "rubric": "statement-generality"
+}

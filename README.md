@@ -170,9 +170,9 @@ Luna has completed all six audits on the same thirty files (180 blind reviews).
 
 OpenAI Math has fixed selections of 2,000 theorem targets and 2,000 whole files from
 `lean/OAI/`. Opus, Sol, Sonnet and Luna are judging the first 100 targets on each audit,
-with one session per model and the shared Codex rate guard. Samples, protocols and
+with two Sol sessions, one session each for the other models, and the shared Codex rate guard. Samples, protocols and
 results live in `runs/openai-math-2026-10-21/`; all 42 pinned dependencies are available
-as read-only sources. Resume with `python3 scripts/corpus_pilot.py judge --model Sol`.
+as read-only sources. Resume with `python3 scripts/corpus_pilot.py judge --model Sol --jobs 2`.
 
 ## Results so far: unnecessary hypotheses
 

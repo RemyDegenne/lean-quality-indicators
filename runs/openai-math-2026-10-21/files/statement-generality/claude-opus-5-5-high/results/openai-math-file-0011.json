@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0011",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, which contains one theorem, `eventually_class_budget_assembly`. I also read the definitions it relies on in DivisorClasses.lean (`LargeClass`, `SmallClass`, `BandClass`, `band_scale_lt`, and the generic `sum_le_class_bounds`) and its only consumer, `eventually_uniform_divisor_moment_exp` in UniformDivisorMoment.lean.\n\nI found two ways to state the theorem more generally:\n1. **Weaker band hypothesis.** The theorem requires a bound for every band index `j`. It could require one only for bands that can actually be occupied. Right now the consumer has to prove the empty-band case itself.\n2. **Generic index type.** The theorem fixes the index type to ℕ, although the summation lemma it wraps works over any index type.\n\nNeither replacement has been compiled. For the second one, there is some uncertainty about how `filter_upwards` handles a new outer type binder, so I suggest putting the quantifier inside the `∀ᶠ`, using a named universe.\n\nThe numeric constants (2 * Y, exp(-v/100), etc.) are fitted to the specific downstream budget lemma. I did not count them as unnecessary specialisation.",
+  "findings": [
+    {
+      "declaration": "OAI.Problem337.DivisorClasses.eventually_class_budget_assembly",
+      "start_line": 28,
+      "end_line": 28,
+      "excerpt": "(∀ j : ℕ, (∑ i ∈ H with BandClass (n i) S v Y j, w i) ≤ 2 * Y) →",
+      "problem": "The band hypothesis demands a bound for every `j : ℕ`. However, a band class with `v ^ (15/16) < 4 * log S * 2 ^ j` is always empty, by `band_scale_lt`. So the only band bounds that carry information are for admissible scales. The only caller, `eventually_uniform_divisor_moment_exp`, has an intermediate-band estimate that holds only under the hypothesis `4 * Real.log S * 2 ^ j ≤ v ^ (15 / 16 : ℝ)`. Because of that, the caller has to redo the empty-filter argument (`by_cases hj`, `hempty`, `Finset.filter_eq_empty_iff`, `band_scale_lt`) just to meet this over-strong hypothesis.",
+      "proposed_change": "Weaken the hypothesis to\n`(∀ j : ℕ, 4 * Real.log S * 2 ^ j ≤ v ^ (15 / 16 : ℝ) → (∑ i ∈ H with BandClass (n i) S v Y j, w i) ≤ 2 * Y) →`.\nIn the proof, replace the final argument `(fun j _ => hband j)` with a function `fun j _ => ...` that does a case split. If `hj : 4 * Real.log S * 2 ^ j ≤ v ^ (15/16)` holds, use `hband j hj`. Otherwise, show the filtered set is empty with `Finset.filter_eq_empty_iff.mpr fun i _ hb => hj (band_scale_lt hb).le`; the sum is then `0 ≤ 2 * Y`, which follows from `hY0`. This is the same argument the consumer currently uses at lines 48–57. The consumer's last bullet then becomes `fun j hj => hband v Y N j hvlo hvhi hYlo hYhi hN hj`.",
+      "benefit": "Callers only need to bound the bands that can be occupied, which is exactly what the intermediate-band estimate gives. The empty-band reasoning then lives once in the assembly lemma instead of in every caller. The statement also matches the dyadic cover it encodes more closely. The theorem's conclusion and all existing uses are unchanged in strength.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/EgyptianFractions/DivisorClasses.lean",
+          "declaration": "OAI.Problem337.DivisorClasses.band_scale_lt",
+          "excerpt": "    4 * Real.log S * 2 ^ j < v ^ (15 / 16 : ℝ) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/EgyptianFractions/UniformDivisorMoment.lean",
+          "declaration": "OAI.Problem337.DivisorMoment.eventually_uniform_divisor_moment_exp",
+          "excerpt": "    by_cases hj : 4 * Real.log S * 2 ^ j ≤ v ^ (15 / 16 : ℝ)\n    · exact hband v Y N j hvlo hvhi hYlo hYhi hN hj"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/EgyptianFractions/UniformDivisorMoment.lean",
+          "declaration": "OAI.Problem337.DivisorMoment.eventually_uniform_divisor_moment_exp",
+          "excerpt": "        exact hj (DivisorClasses.band_scale_lt hb).le"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/EgyptianFractions/DivisorClasses.lean",
+          "declaration": "OAI.Problem337.DivisorClasses.sum_le_class_bounds",
+          "excerpt": "(hband : ∀ j < J, (∑ i ∈ H with BandClass (n i) S v Y j, w i) ≤ A) :"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.Problem337.DivisorClasses.eventually_class_budget_assembly",
+      "start_line": 21,
+      "end_line": 22,
+      "excerpt": "∀ (H : Finset ℕ) (n : ℕ → ℕ) (w : ℕ → ℝ),",
+      "problem": "The family being summed is indexed by `ℕ`. Nothing in the proof uses that: `H`, `n` and `w` are passed unchanged to `sum_le_class_bounds`, which is already stated for an arbitrary index type `ι : Type*`. The wrapper therefore loses generality the underlying lemma has. A user who wants to sum over, say, a `Finset (Fin k)`, a set of residues, or pairs would have to reindex into ℕ first.",
+      "proposed_change": "Quantify over a generic index type inside the eventually statement. Declare `universe u` and use `∀ {ι : Type u} (H : Finset ι) (n : ι → ℕ) (w : ι → ℝ), (∀ i ∈ H, 0 ≤ w i) → ...`, keeping the rest of the statement as it is. The proof is unchanged, since `sum_le_class_bounds H n w S v Y J ...` is already generic in `ι`. The existing consumer's `apply hassemble v Y hvlo hvhi hYlo hYhi (Finset.Icc 1 ⌊Y⌋₊) ...` infers `ι := ℕ` from `H`. Putting the binder inside the `∀ᶠ`, rather than as an outer implicit, means `filter_upwards` never sees an unresolved type metavariable.",
+      "benefit": "The assembly lemma becomes as general as the summation lemma it packages, so it can be used for any finite family of integers with nonnegative weights without reindexing. The mathematics and the existing call site are unaffected.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/EgyptianFractions/DivisorClasses.lean",
+          "declaration": "OAI.Problem337.DivisorClasses.sum_le_class_bounds",
+          "excerpt": "theorem sum_le_class_bounds {ι : Type*} (H : Finset ι) (n : ι → ℕ)\n    (w : ι → ℝ) (S v Y : ℝ) (J : ℕ) (L M A : ℝ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/EgyptianFractions/DivisorClassAssembly.lean",
+          "declaration": "OAI.Problem337.DivisorClasses.eventually_class_budget_assembly",
+          "excerpt": "  have hsum := sum_le_class_bounds H n w S v Y J"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 16948,
+    "cache_read_input_tokens": 31233,
+    "output_tokens": 5023,
+    "output_tokens_details": {
+      "thinking_tokens": 1611
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16948,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3878,
+        "cache_read_input_tokens": 15994,
+        "cache_creation_input_tokens": 4978,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4978
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2423146,
+  "duration_ms": 44191,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T06:43:43",
+  "unit": "file",
+  "source_sha256": "b309743f16d4812baddffae9048775448f54ca86f8a56a5318e5db0cc8a06b91",
+  "rubric": "statement-generality"
+}

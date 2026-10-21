@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0004",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and the upstream definitions in RealPolynomialChartSubstitution.lean (dualEvalLie, dualEvalLie_base/tangent, polynomialFirstJetHom, polynomialFirstJet_base, polynomialLogDerivative), plus a grep of other uses. I did not run Lean. The `change` steps rely on defeq of `.coord` of `polynomialFirstJetHom` (a `NilpotentLieBCHGroup.map`) with `dualEvalLie ... coord`; that is assumed from the code compiling, and I did not inspect `NilpotentLieBCHGroup.map`. The proposed lemmas would likely need a `rfl`/`change`-based proof, and I have not checked it compiles. I did not make claims about loops. Only two findings, both about the simp interface.",
+  "findings": [
+    {
+      "declaration": "NilpotentLieFiltration.polynomial_removal_preserves_derivative_layers (also NilpotentLieBCHGroup.polynomialLogDerivative_mem_of_coefficients)",
+      "start_line": 84,
+      "end_line": 101,
+      "excerpt": "change dualBaseLinear (dualEvalLie t h A.coord) ∈ U\n    rw [dualEvalLie_base]",
+      "problem": "Four near-identical blocks (and two more in polynomialLogDerivative_mem_of_coefficients, lines 38-44) each use `change` to expose `dualEvalLie`, then `rw` with the non-simp lemmas `dualEvalLie_base` and `dualEvalLie_tangent`. The simp interface has `polynomialFirstJet_base` for `dualBaseHom (polynomialFirstJetHom t h P)`. It has nothing for the coordinate-level terms `dualBaseLinear (polynomialFirstJetHom t h P).coord` and `dualTangentLinear (polynomialFirstJetHom t h P).coord`, which are what the dual lemmas' hypotheses actually mention. So simp cannot normalise these terms. Callers must unfold by `change` through `NilpotentLieBCHGroup.map`, which is fragile and repeated. `dualEvalLie_base` and `dualEvalLie_tangent` are also left without `@[simp]`, although the neighbouring `dualEvalLie_tmul` and `directionalDerivative_tmul` are simp.",
+      "proposed_change": "In RealPolynomialChartSubstitution.lean, next to `polynomialFirstJet_base`, add simp lemmas for the packaged form. One is `dualBaseLinear (polynomialFirstJetHom t h P).coord = eval t P.coord`, proved by `dualEvalLie_base t h P.coord`. The other is `dualTangentLinear (polynomialFirstJetHom t h P).coord = eval t (directionalDerivative h P.coord)`, proved by `dualEvalLie_tangent t h P.coord`. Both are oriented towards the simpler `eval` form, so nothing loops. Consider also tagging `dualEvalLie_base` and `dualEvalLie_tangent` `@[simp]`. Then each `have haU/hcU/haV/hcV` collapses to `by simpa using (eval_mem_iff_coefficients U.toSubmodule _).mpr hAU t`, or a direct `exact` with the rewritten statement. The two bullets of `polynomialLogDerivative_mem_of_coefficients` shrink the same way.",
+      "benefit": "Removes six copies of the `change … rw …` boilerplate and the reliance on definitional unfolding of `.coord`. Future uses of the first-jet homomorphism get the base and tangent components in canonical `eval` form from `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "VectorPolynomial.dualEvalLie_base",
+          "excerpt": "theorem dualEvalLie_base (t h : σ → ℚ) (p : VectorPolynomial σ ℚ L) :\n    dualBaseLinear (dualEvalLie t h p) = eval t p"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "NilpotentLieBCHGroup.polynomialFirstJet_base",
+          "excerpt": "@[simp] theorem polynomialFirstJet_base (t h : σ → ℚ) (P : PolynomialGroup σ hnil) :\n    dualBaseHom (polynomialFirstJetHom t h P) = polynomialValueHom t P"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "VectorPolynomial.dualEvalLie_tangent",
+          "excerpt": "dualTangentLinear (dualEvalLie t h p) = eval t (directionalDerivative h p)"
+        }
+      ]
+    },
+    {
+      "declaration": "NilpotentLieBCHGroup.polynomialDerivativeSystem_remove (and polynomial_removal_preserves_derivative_layers)",
+      "start_line": 58,
+      "end_line": 61,
+      "excerpt": "simpa only [polynomialFirstJet_base, polynomialLogDerivative] using hsystem",
+      "problem": "`polynomialLogDerivative` is a plain `def` with no unfolding or simp lemma. Every transfer from the dual-group statements to the polynomial statements therefore needs `simpa only [..., polynomialFirstJet_base, polynomialLogDerivative]`, with the definition name passed to simp to unfold it. This happens here at lines 58, 61 and 105, and also in `polynomialFirstJet_insertion` in RealPolynomialChartSubstitution.lean (line 193). The user must remember which simp set bridges `dualLogDerivative (polynomialFirstJetHom …)` and `polynomialLogDerivative`. The unfolding direction also exposes `dualLogDerivative` for any caller using plain `simp`. The canonical form is the opposite direction, folding into `polynomialLogDerivative`.",
+      "proposed_change": "Add one equation lemma, e.g. `polynomialLogDerivative_eq : polynomialLogDerivative t h P = dualLogDerivative (polynomialFirstJetHom t h P) := rfl`. Use it as a named bridge in these `simpa only` calls instead of the bare definition. Optionally add a `@[simp]` lemma that folds `dualLogDerivative (polynomialFirstJetHom t h P)` back to `polynomialLogDerivative t h P`. Together with `polynomialFirstJet_base` this gives a single normal form. Make sure the fold direction and the unfold lemma are not both simp.",
+      "benefit": "The bridge between the dual and polynomial layers becomes a documented rewrite rule, not an unfold of a definition repeated in four proofs. Plain `simp` would then normalise to the polynomial-level notation that the theorem statements use.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "NilpotentLieBCHGroup.polynomialLogDerivative",
+          "excerpt": "noncomputable def polynomialLogDerivative (t h : σ → ℚ) (P : PolynomialGroup σ hnil) : L :=\n  dualLogDerivative (polynomialFirstJetHom t h P)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "polynomialFirstJet_insertion",
+          "excerpt": "simpa only [polynomialFirstJet_base, polynomialLogDerivative] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/PolynomialDerivativeInvariant.lean",
+          "declaration": "NilpotentLieFiltration.polynomial_removal_preserves_derivative_layers",
+          "excerpt": "simpa only [polynomialFirstJet_base, polynomialLogDerivative] using he"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 25486,
+    "cache_read_input_tokens": 64384,
+    "output_tokens": 4829,
+    "output_tokens_details": {
+      "thinking_tokens": 923
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25486,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3083,
+        "cache_read_input_tokens": 27565,
+        "cache_creation_input_tokens": 1934,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1934
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.15668839999999998,
+  "duration_ms": 33915,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T06:02:51",
+  "unit": "file",
+  "source_sha256": "b2e8207b59a75174242e56fe2118ca15f24e76d29d476173872ffe792af84c08",
+  "rubric": "simp-interface"
+}

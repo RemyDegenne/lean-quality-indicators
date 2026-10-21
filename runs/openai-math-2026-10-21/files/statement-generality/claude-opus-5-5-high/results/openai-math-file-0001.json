@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0001",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 75 lines of the target file. I also read the whole of SpectralOverlapPaths.lean, which supplies every lemma the target uses (spectralPathDensity_nonneg, spectralPathDensity_intervalIntegrable, spectralGroupDiagonal_le_one, spectralGroupPath, spectralGroupDiagonal), and the OverlapPath structure in Core/Variational.lean. I grepped the downstream uses of cavityCanonicalCoordinate and cavityCanonicalLabel. The only justified finding concerns the label index. Every declaration here fixes it to `Fin m`, while the spectral API these declarations wrap is stated for any `{ι : Type*} [Fintype ι]`. The proofs never use anything specific to `Fin`. I considered and rejected two other changes:\n- Narrowing the label codomain from `Icc (-1) 1` to `Icc 0 1`. This would give a stronger result, not a more general one. Many consumers, such as cavitySynchronizedBlock and the cascade lemmas, appear to expect labels in `Icc (-1) 1`, so the current choice looks deliberate.\n- Changing the clamp interval in `projIcc 0 1`. This is fixed by the mathematics, because the density is only controlled on [0,1].\n\nRemaining uncertainty: I cannot compile Lean, so the proposed generalisation has not been compiled. It is a direct change of binders, though. Downstream callers currently instantiate with `Fin m`, and since `Fin m` has a `Fintype` instance, unification should let them elaborate unchanged.",
+  "findings": [
+    {
+      "declaration": "cavityCanonicalCoordinate, cavityCanonicalCoordinate_nonneg, cavityCanonicalCoordinate_le_diagonal, cavityCanonicalCoordinate_monotone, continuous_cavityCanonicalCoordinate, cavityCanonicalCoordinate_at_path, cavityCanonicalLabel, continuous_cavityCanonicalLabel",
+      "start_line": 15,
+      "end_line": 69,
+      "excerpt": "def cavityCanonicalCoordinate {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)",
+      "problem": "All eight declarations in the file fix the group index type to `Fin m`. Each one is a thin wrapper around the spectral overlap-path API in SpectralOverlapPaths.lean, and that API is stated for an arbitrary finite type (`variable {ι : Type*} [Fintype ι]`). The proofs use only spectralPathDensity_nonneg, spectralPathDensity_intervalIntegrable, spectralGroupDiagonal_le_one, Set.projIcc lemmas and interval-integral lemmas. None of these needs `Fin`. So the specialisation silently loses the generality of the underlying construction.",
+      "proposed_change": "Replace the `{m : ℕ}` binder and the `Fin m` index with a finite index type in every declaration. For example, add a file-level `variable {ι : Type*} [Fintype ι]` and state:\n`def cavityCanonicalCoordinate (ρ eig : ι → ℝ) (hρ : ∀ a, 0 < ρ a) (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : ι) (t : ℝ) : ℝ := ∫ r in 0..(Set.projIcc 0 1 zero_le_one t : ℝ), spectralPathDensity ρ eig hρ hρsum p a r`\nUse the same pattern for `_nonneg`, `_le_diagonal`, `_monotone`, `continuous_…`, `_at_path`, `cavityCanonicalLabel … (a : ι) (t : ℝ) : Icc (-1 : ℝ) 1` and `continuous_cavityCanonicalLabel`. The proof terms should carry over verbatim, because every lemma they call is already ι-generic. The `Fintype` instance is needed only because `hρsum` uses `∑` and because the spectral lemmas require it. Degenerate case: an empty ι is already excluded by `hρsum` (the sum would be 0 ≠ 1), just as with `Fin 0`, so the mathematics does not change. Existing callers that pass `ρ : Fin m → ℝ` will instantiate `ι := Fin m` by unification.",
+      "benefit": "The canonical-label API would then match the generality of the spectral path API it wraps. Users with labels indexed by another finite type (for example a subtype or a `Finset` coercion) could use these lemmas without reindexing through `Fin (Fintype.card ι)` and the equivalence bookkeeping that brings. The extra `m` would also no longer appear in every signature.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralPathDensity",
+          "excerpt": "variable {ι : Type*} [Fintype ι]\n\ndef spectralPathDensity (ρ eig : ι → ℝ) (hρ : ∀ a, 0 < ρ a)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralPathDensity_intervalIntegrable",
+          "excerpt": "theorem spectralPathDensity_intervalIntegrable (ρ eig : ι → ℝ) (hρ : ∀ a, 0 < ρ a)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralGroupDiagonal_le_one",
+          "excerpt": "theorem spectralGroupDiagonal_le_one (ρ eig : ι → ℝ) (hρ : ∀ a, 0 < ρ a)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityCanonicalLabels.lean",
+          "declaration": "cavityCanonicalCoordinate_le_diagonal",
+          "excerpt": "(spectralPathDensity_intervalIntegrable ρ eig hρ hρsum p a ⟨zero_le_one, le_rfl⟩)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 26964,
+    "cache_read_input_tokens": 31050,
+    "output_tokens": 3594,
+    "output_tokens_details": {
+      "thinking_tokens": 651
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26964,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2797,
+        "cache_read_input_tokens": 15114,
+        "cache_creation_input_tokens": 15874,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 15874
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.293826,
+  "duration_ms": 30605,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T05:58:04",
+  "unit": "file",
+  "source_sha256": "b390cf2c9c89d26b73b1c451d9d8b912a7c85e5c016d5f1a9120804b70a4843b",
+  "rubric": "statement-generality"
+}

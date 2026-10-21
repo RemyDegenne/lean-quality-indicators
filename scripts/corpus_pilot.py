@@ -4,10 +4,11 @@ python3 scripts/corpus_pilot.py prepare
 python3 scripts/corpus_pilot.py dependencies
 python3 scripts/corpus_pilot.py judge --model Sol
 
-Each model has one serial worker. Prompts and common validators are reused unchanged;
+Each model defaults to one worker; --jobs increases concurrent independent sessions. Prompts and common validators are reused unchanged;
 source/dependency roots and protocol hashes belong to this corpus, not runs/main.
 """
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 import datetime
 import fcntl
 import hashlib
@@ -175,11 +176,28 @@ def rows_for(unit):
     return [json.loads(line) for line in (BASE / ("files" if unit == "file" else "theorems") / "samples.jsonl").read_text().splitlines()]
 
 
-def run_model(name, limit):
+def task_belongs(index, worker, jobs):
+    return index % jobs == worker
+
+
+def model_status(name, limit, **extra):
+    """Serialize status writes and count saved judgments across all workers."""
+    with (BASE / f"{name}-status-lock.log").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        label = MODELS[name][1] + "-high"
+        done = sum(p.stem.rsplit("-", 1)[-1].isdigit()
+                   for p in BASE.glob(f"*/*/{label}/results/*.json"))
+        expected = limit * len(AUDITS)
+        save(BASE / f"{name}-status.json", {"utc": utc(), "pid": os.getpid(),
+             "new_judgments": done, "planned": expected,
+             "stage": "complete" if done == expected else "running", **extra})
+
+
+def run_model(name, limit, worker=0, jobs=1):
     setup()
     backend, model = MODELS[name]
     label = model + "-high"
-    with (BASE / f"{name}-controller.log").open("a") as lock:
+    with (BASE / f"{name}-worker-{worker}-controller.log").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         args = argparse.Namespace(backend=backend, model=model, effort="high", timeout=1800, retries=2,
                   max_budget=5, claude=os.environ.get("CLAUDE_BIN", "claude"),
@@ -202,15 +220,19 @@ def run_model(name, limit):
                         "code_hashes": hashes, "dependencies": dependency_records(),
                         "artifacts": {p.name: digest(p.read_bytes()) for p in ind.iterdir() if p.is_file()}}
             manifest = directory / "judge.json"
-            if manifest.exists() and json.loads(manifest.read_text())["protocol"] != protocol:
-                raise ValueError("Saved judge protocol differs; use a new label")
-            save(manifest, {"protocol": protocol, "cli_version": version})
+            with (directory / "manifest-lock.log").open("a") as manifest_lock:
+                fcntl.flock(manifest_lock, fcntl.LOCK_EX)
+                if manifest.exists():
+                    if json.loads(manifest.read_text())["protocol"] != protocol:
+                        raise ValueError("Saved judge protocol differs; use a new label")
+                else:
+                    save(manifest, {"protocol": protocol, "cli_version": version})
             tasks.extend((i, audit, unit, row, run, ind, directory) for i, row in enumerate(selected))
-        count = 0
-        save(BASE / f"{name}-status.json", {"utc": utc(), "pid": os.getpid(),
-             "stage": "running", "planned": limit * len(AUDITS), "new_judgments": 0})
+        model_status(name, limit, jobs=jobs)
         # Interleave audits so each gets early data before a larger pass completes.
-        for _, audit, unit, row, run, ind, directory in sorted(tasks, key=lambda task: task[0]):
+        for index, audit, unit, row, run, ind, directory in sorted(tasks, key=lambda task: task[0]):
+            if not task_belongs(index, worker, jobs):
+                continue
             destination = directory / "results" / f"{row['id']}.json"
             if destination.exists():
                 continue
@@ -228,14 +250,10 @@ def run_model(name, limit):
                     save(destination, result)
                 finally:
                     del duplicates_judge.context.sample
-            count += 1
-            save(BASE / f"{name}-status.json", {"utc": utc(), "pid": os.getpid(), "new_judgments": count,
-                 "latest_audit": audit, "latest_id": row["id"], "planned": limit * len(AUDITS),
-                 "stage": "running"})
+            model_status(name, limit, jobs=jobs, latest_audit=audit, latest_id=row["id"])
             print(json.dumps({"audit": audit, "id": row["id"], "verdict": result["verdict"]}), flush=True)
             time.sleep(5)
-        save(BASE / f"{name}-status.json", {"utc": utc(), "stage": "complete",
-                                           "planned": limit * len(AUDITS)})
+        model_status(name, limit, jobs=jobs)
 
 
 def main():
@@ -244,7 +262,10 @@ def main():
     parser.add_argument("--selected", type=int, default=2000)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--model", choices=MODELS)
+    parser.add_argument("--jobs", type=int, default=1)
     args = parser.parse_args()
+    if args.jobs < 1:
+        parser.error("jobs must be positive")
     if not 1 <= args.limit <= args.selected:
         parser.error("Require 1 <= limit <= selected")
     if args.action == "prepare":
@@ -253,8 +274,14 @@ def main():
         dependencies()
     elif not args.model:
         parser.error("judge requires --model")
-    else:
+    elif args.jobs == 1:
         run_model(args.model, args.limit)
+    else:
+        with ProcessPoolExecutor(args.jobs) as pool:
+            futures = [pool.submit(run_model, args.model, args.limit, worker, args.jobs)
+                       for worker in range(args.jobs)]
+            for future in futures:
+                future.result()
 
 
 if __name__ == "__main__":

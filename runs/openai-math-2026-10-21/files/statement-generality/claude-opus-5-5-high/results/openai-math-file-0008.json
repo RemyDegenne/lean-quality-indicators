@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0008",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file (lines 1–88). I also checked the Mathlib lemmas the proof of `enorm_setIntegral_le_good_kernel` relies on: `enorm_integral_le_lintegral_enorm`, whose type variables are `{G} [NormedAddCommGroup G] [NormedSpace ℝ G]` over an arbitrary measurable space `α`, and the generic `lintegral_const_mul'`, `lintegral_indicator`, `Measure.restrict_restrict` and `Set.indicator_of_mem`. I looked at both call sites, at lines 59–61 of this file and in Estimates/ComparableComplexRebin.lean.\n\nThe one finding is that this lemma fixes its domain and codomain types even though the proof never uses them. I considered and rejected two other changes:\n- `distanceDifferenceKernel`/`fourPairGood`: these are definitions for the planar Falconer setting. Making them generic would add abstraction with no clear payoff.\n- `original_complex_kernel_max`: this ties directly to `PositiveDistanceData` and `original_spatial_kernel_max`.\n\nI also kept `hc : c ≠ ∞`. `K` is not assumed measurable, so `lintegral_const_mul'` needs that hypothesis. I could not compile the proposed generalisation, so it is untested. The claim that it works rests on reading the lemma signatures and the proof.",
+  "findings": [
+    {
+      "declaration": "OAI.PlanarFalconer.enorm_setIntegral_le_good_kernel",
+      "start_line": 24,
+      "end_line": 43,
+      "excerpt": "theorem enorm_setIntegral_le_good_kernel (μ : Measure (Fin 4 → Plane))\n    (S G : Set (Fin 4 → Plane)) (hG : MeasurableSet G)\n    (F : (Fin 4 → Plane) → ℂ) (K : (Fin 4 → Plane) → ℝ≥0∞) (c : ℝ≥0∞) (hc : c ≠ ∞)",
+      "problem": "This is a general measure-theory bound: an integrand bounded a.e. by `c * K` and supported a.e. in a measurable set `G` has its set integral bounded by `c * ∫⁻ x in S ∩ G, K x ∂μ`. Yet the statement fixes the domain to `Fin 4 → Plane` and the codomain to `ℂ`. The proof uses nothing about either type. It only needs `enorm_integral_le_lintegral_enorm`, which holds for any measurable space and any real normed space, plus `lintegral_const_mul'`, `lintegral_indicator`, `Measure.restrict_restrict` and `enorm_zero`, all of which are type-generic.",
+      "proposed_change": "Generalise the binders and keep the proof unchanged:\n\n```lean\ntheorem enorm_setIntegral_le_good_kernel {α E : Type*} [MeasurableSpace α]\n    [NormedAddCommGroup E] [NormedSpace ℝ E] (μ : Measure α)\n    (S G : Set α) (hG : MeasurableSet G)\n    (F : α → E) (K : α → ℝ≥0∞) (c : ℝ≥0∞) (hc : c ≠ ∞)\n    (hb : ∀ᵐ x ∂μ.restrict S, ‖F x‖ₑ ≤ c*K x)\n    (hs : ∀ᵐ x ∂μ.restrict S, F x ≠ 0 → x ∈ G) :\n    ‖∫ x in S, F x ∂μ‖ₑ ≤ c*(∫⁻ x in S ∩ G, K x ∂μ)\n```\n\nThe proof still goes through step by step:\n- `enorm_integral_le_lintegral_enorm F` applies at type `E`.\n- In the `F x = 0` case, `enorm_zero` closes the goal; otherwise `indicator_of_mem` does.\n- `lintegral_const_mul' c _ hc`, `lintegral_indicator hG` and `Measure.restrict_restrict hG` are generic in `α`.\n\nBoth call sites pass an explicit measure and integrand, so `α` and `E` are inferred and the call sites need no changes. Degenerate cases: `S = ∅`, `G = ∅`, `c = 0` and a non-integrable `F` all work as before; for non-integrable `F` the left side is 0.",
+      "benefit": "The lemma can then be reused for real-valued or vector-valued integrands and for other configuration spaces, such as the two-point spaces `Plane × Plane` used elsewhere in the Falconer development. Callers would no longer need to state a copy for each type. The statement also says more plainly that the bound is a generic support-plus-majorant fact, not something about planar four-point configurations.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/Bochner/Basic.lean",
+          "declaration": "MeasureTheory.enorm_integral_le_lintegral_enorm",
+          "excerpt": "theorem enorm_integral_le_lintegral_enorm (f : α → G) : ‖∫ a, f a ∂μ‖ₑ ≤ ∫⁻ a, ‖f a‖ₑ ∂μ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/Bochner/Basic.lean",
+          "declaration": "MeasureTheory (section variables)",
+          "excerpt": "{G : Type*} [NormedAddCommGroup G] [NormedSpace ℝ G]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Fourier/GoodSupportedKernelMajorant.lean",
+          "declaration": "OAI.PlanarFalconer.enorm_setIntegral_le_good_kernel",
+          "excerpt": "rw [lintegral_const_mul' c _ hc,lintegral_indicator hG,Measure.restrict_restrict hG]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Estimates/ComparableComplexRebin.lean",
+          "declaration": "(use site in ComparableComplexRebin)",
+          "excerpt": "have he := enorm_setIntegral_le_good_kernel (angularFourCellMeasure Q₁ Q₂ ρ ν row col)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 15579,
+    "cache_read_input_tokens": 51222,
+    "output_tokens": 4360,
+    "output_tokens_details": {
+      "thinking_tokens": 1078
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15579,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2475,
+        "cache_read_input_tokens": 18457,
+        "cache_creation_input_tokens": 1146,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1146
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22210840000000004,
+  "duration_ms": 44743,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T06:31:26",
+  "unit": "file",
+  "source_sha256": "41cf9edf78c0bf4d2c5d8d76c94bf84a4eb7673e011e9bbd71b1598b78b86a6d",
+  "rubric": "statement-generality"
+}

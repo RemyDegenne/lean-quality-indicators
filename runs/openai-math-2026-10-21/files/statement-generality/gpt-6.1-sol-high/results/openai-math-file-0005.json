@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Reviewed all lines 1–794, including definitions, structures, statements and proofs. Inspected the underlying Walsh and expectation definitions, relevant Mathlib summation lemmas, and local uses. The findings concern straightforward generalisations; the reduction-specific numerical constants were not treated as defects. Proposed statements were not typechecked.",
+  "findings": [
+    {
+      "declaration": "sum_cubeFlip; the same restriction occurs in sum_cubeToggle (lines 126–137)",
+      "excerpt": "theorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f := by\n  refine Finset.sum_bij (fun f _ => cubeFlip f) ?_ ?_ ?_ ?_",
+      "problem": "These reindexing identities unnecessarily require real-valued summands. Their proofs use only finite sums and the involutivity of the corresponding cube operation.",
+      "proposed_change": "Under the existing assumptions on I, generalise to:\n`theorem sum_cubeFlip {M : Type*} [AddCommMonoid M] (F : Cube I → M) : (∑ f, F (cubeFlip f)) = ∑ f, F f`\nand\n`theorem sum_cubeToggle {M : Type*} [AddCommMonoid M] (i : I) (F : Cube I → M) : (∑ f, F (cubeToggle i f)) = ∑ f, F f`.\nThe existing sum_bij arguments require no scalar-specific changes. Existing real-valued applications infer M = ℝ. No nonemptiness assumption is needed: cubeFlip is still involutive when I is empty, and cubeToggle already receives an index i.",
+      "benefit": "Users can reindex natural-number counts, rational weights, or vector-valued sums without converting to ℝ or repeating the bijection proof.",
+      "start_line": 25,
+      "end_line": 35,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "sum_cubeToggle",
+          "excerpt": "theorem sum_cubeToggle (i : I) (F : Cube I → ℝ) :\n    (∑ f, F (cubeToggle i f)) = ∑ f, F f := by\n  refine Finset.sum_bij (fun f _ => cubeToggle i f) ?_ ?_ ?_ ?_"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean",
+          "declaration": "Finset.prod_bij, whose to_additive declaration is Finset.sum_bij",
+          "excerpt": "theorem prod_bij (i : ∀ a ∈ s, κ) (hi : ∀ a ha, i a ha ∈ t)\n    (i_inj : ∀ a₁ ha₁ a₂ ha₂, i a₁ ha₁ = i a₂ ha₂ → a₁ = a₂)\n    (i_surj : ∀ b ∈ t, ∃ a ha, i a ha = b) (h : ∀ a ha, f a = g (i a ha)) :\n    ∏ x ∈ s, f x = ∏ x ∈ t, g x :="
+        }
+      ]
+    },
+    {
+      "declaration": "conditioned_coefficient_zero_invalid",
+      "excerpt": "theorem conditioned_coefficient_zero_invalid (valid : I → Bool)\n    (B : Cube {i : I // valid i = true} → ℝ) (s : Cube I) (i : I)\n    (hi : valid i = false) (hs : s i = true) :\n    coefficient (fun f => B (restrictQuery valid f)) s = 0 := by",
+      "problem": "The cancellation argument only needs invariance under toggling i, but the statement requires an explicit factorisation through a particular restricted cube. This hides the reusable Fourier fact for functions known directly to ignore one coordinate.",
+      "proposed_change": "Extract the following general statement under the existing assumptions on I:\n`theorem coefficient_zero_of_toggle_invariant (F : Cube I → ℝ) (s : Cube I) (i : I) (hF : ∀ f, F (cubeToggle i f) = F f) (hs : s i = true) : coefficient F s = 0`.\nApply sum_cubeToggle to `fun f => F f * walsh s f`; rewrite with hF and walsh_cubeToggle, then use the existing sum-negation/linarith argument and coefficient expansion. Keep the current theorem as a corollary, supplying `fun f => congrArg B (restrictQuery_cubeToggle valid i hi f)`. This requires neither a nonzero function nor a nonempty valid subset; when I is empty, the required i cannot be supplied.",
+      "benefit": "Makes coordinate-independence cancellation available without constructing a subtype-valued factorisation, while preserving the convenient conditioned theorem and its support-lemma callers.",
+      "start_line": 154,
+      "end_line": 162,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "restrictQuery_cubeToggle",
+          "excerpt": "theorem restrictQuery_cubeToggle (valid : I → Bool) (i : I)\n    (hi : valid i = false) (f : Cube I) :\n    restrictQuery valid (cubeToggle i f) = restrictQuery valid f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "walsh_cubeToggle",
+          "excerpt": "theorem walsh_cubeToggle (s : Cube I) (i : I) (f : Cube I) (hs : s i = true) :\n    walsh s (cubeToggle i f) = -walsh s f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Walsh.lean",
+          "declaration": "coefficient",
+          "excerpt": "def coefficient {I : Type*} [Fintype I] [DecidableEq I] (f : Cube I → ℝ) (s : Cube I) : ℝ :=\n  𝔼 x, f x * walsh s x"
+        }
+      ]
+    },
+    {
+      "declaration": "FoldedEquation.satisfied_repeated_right",
+      "excerpt": "theorem satisfied_repeated_right {Name : Type} (e : Equation Name)\n    (assignment : Name → Bool) (h : e.second = e.third) :\n    satisfied e assignment = (assignment e.first == e.rhs) := by",
+      "problem": "Equality of the two right-hand names is stronger than the cancellation requires. Distinct names assigned the same Boolean also cancel, but the current lemma cannot handle that case.",
+      "proposed_change": "Generalise the statement to:\n`theorem satisfied_repeated_right {Name : Type} (e : Equation Name) (assignment : Name → Bool) (h : assignment e.second = assignment e.third) : satisfied e assignment = (assignment e.first == e.rhs)`.\nAfter unfolding satisfied, the existing `rw [← h]` and Boolean case split prove this formulation. Existing address-equality callers can pass their equality through `congrArg assignment`; alternatively retain the original statement as a compatibility corollary. EmptyContext's reflexive application remains reflexive. The result also holds when the first name coincides with either right-hand name.",
+      "benefit": "Provides assignment-level simplification for arbitrary equations, not only equations with repeated addresses, without requiring injectivity or distinctness assumptions.",
+      "start_line": 549,
+      "end_line": 554,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "satisfied",
+          "excerpt": "def satisfied (e : Equation Name) (g : Name → Bool) : Bool :=\n  (xor (xor (g e.first) (g e.second)) (g e.third)) == e.rhs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "FoldedEquation.equation_repeated_right",
+          "excerpt": "  apply satisfied_repeated_right\n  exact congrArg Sum.inr h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "EmptyContext.equation_satisfied",
+          "excerpt": "  rw [FoldedEquation.satisfied_repeated_right (equation i₀ f) assignment rfl]"
+        }
+      ]
+    }
+  ],
+  "backend": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "cost_usd": null,
+  "duration_ms": 169108,
+  "turns": 1,
+  "attempts": 1,
+  "usage": {
+    "input_tokens": 331821,
+    "cached_input_tokens": 284800,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 5269,
+    "reasoning_output_tokens": 2147
+  },
+  "prompt_sha256": "654adaf91e4eb042390b9a971d2e207f2406bdab998c10e00c043eca928fe232",
+  "judged": "2026-10-21T06:29:15+00:00",
+  "unit": "file",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034",
+  "rubric": "statement-generality"
+}
