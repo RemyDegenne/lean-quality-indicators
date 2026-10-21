@@ -4682,7 +4682,7 @@ Snippet: `samples/mathlib/mathlib-0723.lean`
 - **derivation**: apply weight_pos
 intro i j e; exact hw _ _
 - **proof_uses_it**: True
-- **explanation**: `weight_pos` applies to arbitrary edge weights. Instantiate its edge-weight function with the endpoint function `fun {i j} _ => w i j`; the resulting weight is definitionally `weightOfEPs w`. The theorem’s current proof already uses `weight_pos`. 
+- **explanation**: `weight_pos` applies to arbitrary edge weights. Instantiate its edge-weight function with the endpoint function `fun {i j} _ => w i j`; the resulting weight is definitionally `weightOfEPs w`. The theorem’s current proof already uses `weight_pos`.
 
 ### [`ProbabilityTheory.riskIncrease_le_iInf'`](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/Probability/Decision/Risk/RiskIncrease.lean#L83-L85) — `mathlib-0724`
 
@@ -4894,7 +4894,7 @@ Snippet: `samples/mathlib/mathlib-0750.lean`
 - **derivation**: by
   rw [← lift_inj.{u, u + 1}]; simpa [← cardinalMk_coe_sort] using Cardinal.mk_insert (SetLike.mem_coe.not.2 h)
 - **proof_uses_it**: True
-- **explanation**: `Cardinal.mk_insert` states that the cardinality of an inserted element in a set is the cardinality of the set plus one, assuming the element is not already in it. The target is the same result for the underlying set of a `ZFSet`, with `cardinalMk_coe_sort` translating between that set cardinality and `ZFSet.card`. The target proof already applies `mk_insert`. 
+- **explanation**: `Cardinal.mk_insert` states that the cardinality of an inserted element in a set is the cardinality of the set plus one, assuming the element is not already in it. The target is the same result for the underlying set of a `ZFSet`, with `cardinalMk_coe_sort` translating between that set cardinality and `ZFSet.card`. The target proof already applies `mk_insert`.
 
 ### [`IsMinOn.sup`](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/Order/Filter/Extr.lean#L511-L512) — `mathlib-0753`
 
@@ -5306,7 +5306,7 @@ Snippet: `samples/mathlib/mathlib-0828.lean`
 - **mathlib_declaration**: Equiv.prodCongr_apply
 - **file**: Mathlib/Logic/Equiv/Prod.lean
 - **derivation**: by simpa [LinearEquiv.prodCongr] using Equiv.prodCongr_apply e₁.toEquiv e₂.toEquiv p
-- **explanation**: The general equivalence theorem gives coordinatewise application for the underlying equivalences. Unfolding the linear-equivalence product definition and simplifying the coercions yields this statement. The current proof is `rfl`. 
+- **explanation**: The general equivalence theorem gives coordinatewise application for the underlying equivalences. Unfolding the linear-equivalence product definition and simplifying the coercions yields this statement. The current proof is `rfl`.
 
 ### [`ProbabilityTheory.CondIndep.condIndepSets`](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/Probability/Independence/Conditional.lean#L526-L529) — `mathlib-0829`
 
@@ -6618,7 +6618,7 @@ Snippet: `samples/tauceti/tauceti-0061.lean`
   apply BialgHom.coe_toAlgHom_injective
   simp [groupAlgebraInvariantsBialgHom_toAlgHom, groupAlgebraInvariantsAlgHom]
 - **proof_uses_it**: True
-- **explanation**: Mathlib proves that the bialgebra map induced by the identity on a monoid is the identity. Unfolding the descended map shows it is the restriction of that map to the invariant subalgebra, so the same identity result applies. The current proof uses the corresponding identity lemma for the underlying descended algebra map, whose proof invokes `MonoidAlgebra.mapDomainBialgHom_id`. 
+- **explanation**: Mathlib proves that the bialgebra map induced by the identity on a monoid is the identity. Unfolding the descended map shows it is the restriction of that map to the invariant subalgebra, so the same identity result applies. The current proof uses the corresponding identity lemma for the underlying descended algebra map, whose proof invokes `MonoidAlgebra.mapDomainBialgHom_id`.
 
 ### [`TauCeti.vertexPreReflectionList_flatten_replicate`](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/RepresentationTheory/Quiver/Reflection/Coxeter.lean#L150-L157) — `tauceti-0068`
 
@@ -7030,7 +7030,7 @@ Snippet: `samples/tauceti/tauceti-0300.lean`
 - **file**: Mathlib/RepresentationTheory/Homological/GroupCohomology/Functoriality.lean
 - **derivation**: Apply `groupCohomology.map_comp φ (MonoidHom.id G) f g n`, then transport across `TateCohomology.isoGroupCohomology n` using its naturality and cancel the comparison isomorphism.
 - **proof_uses_it**: True
-- **explanation**: Mathlib's `map_comp` gives the composite-coefficient-map identity for ordinary group cohomology. In positive degree, `posMap` is that map transported through the Tate/ordinary-cohomology comparison, so this is the corresponding special case. The current proof explicitly applies `groupCohomology.map_comp`. 
+- **explanation**: Mathlib's `map_comp` gives the composite-coefficient-map identity for ordinary group cohomology. In positive degree, `posMap` is that map transported through the Tate/ordinary-cohomology comparison, so this is the corresponding special case. The current proof explicitly applies `groupCohomology.map_comp`.
 
 ### [`TauCeti.isIdempotentElem_intCast_iff`](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/Algebra/CharZero/Idempotent.lean#L28-L34) — `tauceti-0306`
 
@@ -7254,7 +7254,7 @@ Snippet: `samples/tauceti/tauceti-0418.lean`
 - **file**: Mathlib/Algebra/Group/Subgroup/Ker.lean
 - **derivation**: simpa [principalKernel] using (AddMonoidHom.ker_eq_bot_iff S.principalHom).mp h
 - **proof_uses_it**: True
-- **explanation**: Mathlib proves that an additive homomorphism has bottom kernel iff it is injective. Instantiate it with `S.principalHom`; unfolding `principalKernel` identifies the hypothesis with that kernel being bottom. The current proof uses the same criterion through `S.principalKernel_eq_bot_iff`. This is a special case for the particular map defined by `S`. 
+- **explanation**: Mathlib proves that an additive homomorphism has bottom kernel iff it is injective. Instantiate it with `S.principalHom`; unfolding `principalKernel` identifies the hypothesis with that kernel being bottom. The current proof uses the same criterion through `S.principalKernel_eq_bot_iff`. This is a special case for the particular map defined by `S`.
 
 ### [`TauCeti.normalizedValuation_eq_one_of_isOfFinOrder`](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/NumberTheory/LocalField/NormalizedValuation.lean#L239-L243) — `tauceti-0420`
 
@@ -7808,7 +7808,7 @@ Snippet: `samples/tauceti/tauceti-0764.lean`
 - **mathlib_declaration**: Functor.mapCocone_pt
 - **file**: Mathlib/CategoryTheory/Limits/Cones.lean
 - **derivation**: by simp only [cechCocone, Functor.mapCocone_pt]
-- **explanation**: The Mathlib lemma identifies the point of any functor-mapped cocone with the functor applied to the original point. Unfolding `cechCocone` instantiates it to this cocone; the current proof instead closes by definitional equality with `rfl`. 
+- **explanation**: The Mathlib lemma identifies the point of any functor-mapped cocone with the functor applied to the original point. Unfolding `cechCocone` instantiates it to this cocone; the current proof instead closes by definitional equality with `rfl`.
 
 ### [`AddSubgroup.natDegree_additivePolynomial`](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/Algebra/Polynomial/AdditivePolynomial.lean#L80-L83) — `tauceti-0768`
 
@@ -8488,7 +8488,7 @@ Snippet: `samples/lean-pool/lean-pool-0181.lean`
 - **derivation**: change (baseBump E) (R⁻¹ • x) = 1
 exact (baseBump E).one_of_mem_closedBall (by simpa only [mem_closedBall, dist_zero_right, norm_inv_smul hR, div_le_one hR] using hx)
 - **proof_uses_it**: True
-- **explanation**: The Mathlib lemma says a ContDiffBump equals one on its inner closed ball. Instantiating it with `baseBump E` and the point `R⁻¹ • x` gives this result: the norm and inequality rewrites turn `‖x‖ ≤ R` into membership in the unit closed ball. The current proof uses this lemma through `baseCutoff_eq_one`. 
+- **explanation**: The Mathlib lemma says a ContDiffBump equals one on its inner closed ball. Instantiating it with `baseBump E` and the point `R⁻¹ • x` gives this result: the norm and inequality rewrites turn `‖x‖ ≤ R` into membership in the unit closed ball. The current proof uses this lemma through `baseCutoff_eq_one`.
 
 ### [`NavierStokesR3.LocalizedTensorBounds.continuous_component`](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/NavierStokesAndEuler/NavierStokes/R3/PressureFlux.lean#L2383-L2385) — `lean-pool-0195`
 
@@ -9808,7 +9808,7 @@ Snippet: `samples/lean-pool/lean-pool-0979.lean`
 - **file**: Mathlib/Algebra/Group/Center.lean
 - **derivation**: by simpa [PiMat] using (Set.center_pi (A := fun i => Matrix (n i) (n i) R))
 - **proof_uses_it**: True
-- **explanation**: `Set.center_pi` states that the center of a dependent function type is the set of functions whose values lie in each coordinate center. Unfolding `PiMat` and simplifying its `univ.pi` set gives the target. The current proof uses the local `Matrix.pi_center` helper, whose proof applies `Set.center_pi`. 
+- **explanation**: `Set.center_pi` states that the center of a dependent function type is the set of functions whose values lie in each coordinate center. Unfolding `PiMat` and simplifying its `univ.pi` set gives the target. The current proof uses the local `Matrix.pi_center` helper, whose proof applies `Set.center_pi`.
 
 ### [`BGS.CorvajaZannier.indexedAuxiliaryWronskian_det_eq_derivationWronskian_det`](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/MarkoffModP/BGS/CorvajaZannier/AuxiliaryFamilyIndexing.lean#L83-L105) — `lean-pool-0983`
 
@@ -12817,7 +12817,7 @@ Snippet: `samples/formal-frontier/formal-frontier-0176.lean`
 - **mathlib_declaration**: CompHausLike.coe_of
 - **file**: Mathlib/Topology/Category/CompHausLike/Basic.lean
 - **derivation**: by simpa [CompHausAddCommGrp.of] using (CompHausLike.coe_of (P := fun _ ↦ True) (X := A))
-- **explanation**: `CompHausLike.coe_of` states that the underlying type of `CompHausLike.of P X` is `X`. Specializing `P` to the trivial predicate gives the carrier equality for `CompHaus.of A`; unfolding the wrapper `CompHausAddCommGrp.of` yields the target. The current proof is `rfl`. 
+- **explanation**: `CompHausLike.coe_of` states that the underlying type of `CompHausLike.of P X` is `X`. Specializing `P` to the trivial predicate gives the carrier equality for `CompHaus.of A`; unfolding the wrapper `CompHausAddCommGrp.of` yields the target. The current proof is `rfl`.
 
 ### [`FundamentalGroup.fundamentalGroupMulEquivOfPath_comp_map_of_homotopy`](https://github.com/FormalFrontier/fundamental-groupoids/blob/2fdb99858e3feb7a6a06ae10915f286364de2cc1/FundamentalGroupoids/FundamentalGroup.lean#L108-L112) — `formal-frontier-0177`
 
@@ -14936,4 +14936,3 @@ Snippet: `samples/formal-frontier/formal-frontier-0995.lean`
 exact (Topology.IsInducing.induced (pointToPoint (K := K) (σ := σ))).isTopologicalBasis (PrimeSpectrum.isTopologicalBasis_basic_opens (R := MvPolynomial σ K))
 - **proof_uses_it**: True
 - **explanation**: The Mathlib lemma gives a topological basis consisting of the preimages of the basis sets under an inducing map. Here the map is `pointToPoint`, the basis is `PrimeSpectrum.isTopologicalBasis_basic_opens`, and `hSets` identifies those preimages with the range of `basicOpen`. The target proof applies this Mathlib lemma directly.
-

@@ -5539,4 +5539,3 @@ Snippet: `samples/formal-frontier/formal-frontier-0963.lean`
 - **derivation**: hi.injective_linearMapComp_left
 - **proof_uses_it**: True
 - **explanation**: Mathlib's `Function.Injective.injective_linearMapComp_left` says that if `f` is injective then `fun g => f.comp g` is injective. The library's `postcomp i` is an additive homomorphism whose underlying function is `fun g => i.comp g`, so the theorem is Mathlib's lemma after unfolding `postcomp`. The library's proof is already exactly `hi.injective_linearMapComp_left`. I did not find a Mathlib lemma stated directly for the library's `postcomp`. The only `postcomp` definitions I saw in Mathlib are for other structures, such as continuous linear maps and category theory.
-

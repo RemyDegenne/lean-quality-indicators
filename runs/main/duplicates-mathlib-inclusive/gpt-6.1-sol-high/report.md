@@ -16775,4 +16775,3 @@ Snippet: `samples/formal-frontier/formal-frontier-0990.lean`
     (Subgroup.mem_iSup_of_directed (elementary_stage_directed R) (x := g))
 - **proof_uses_it**: True
 - **explanation**: Instantiate the directed-supremum membership theorem with the finite elementary subgroup images. Unfolding map membership and repackaging witnesses as subtype elements gives exactly the stated equivalence.
-
