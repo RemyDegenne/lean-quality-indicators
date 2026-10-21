@@ -29,6 +29,13 @@ def process_start_ticks(pid):
         return None
 
 
+def process_state(pid):
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().split(") ", 1)[1].split()[0]
+    except OSError:
+        return None
+
+
 def same_process(info):
     if info.get("boot_id") and info["boot_id"] != boot_id():
         return False
@@ -50,7 +57,7 @@ def supervise(info, status_path, command, log_path):
         finished, _ = os.waitpid(info["pid"], os.WNOHANG) if matched else (1, 0)
     except ChildProcessError:
         finished = 0
-    if not finished and matched:
+    if not finished and matched and process_state(info["pid"]) not in ["Z", "X", "x"]:
         try:
             os.kill(info["pid"], 0)
             return True

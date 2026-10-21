@@ -1,6 +1,6 @@
 # API-equivalent costs
 
-Generated 2026-10-21T22:17:35+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-21T22:28:22+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 | Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |
 |---|---|---:|---:|---:|---:|
@@ -8,22 +8,22 @@ Generated 2026-10-21T22:17:35+00:00 · [Methods and notation](../../AUDIT_METHOD
 | unnecessary-hypotheses | Sol | 3100 | 2100 | $145.80 / $98.77 | $47.03 |
 | unnecessary-hypotheses | Sonnet | 3100 | 2100 | $110.14 / $74.61 | $35.53 |
 | unnecessary-hypotheses | Luna | 3100 | 2100 | $6.81 / $4.61 | $2.20 |
-| unnecessary-hypotheses | DeepSeek | 6 | 2100 | $0.14 / $47.91 | $22.82 |
+| unnecessary-hypotheses | DeepSeek | 12 | 2100 | $0.18 / $31.07 | $14.79 |
 | duplicates-mathlib-inclusive | Opus | 4100 | 5100 | $222.89 / $277.26 | $54.36 |
 | duplicates-mathlib-inclusive | Sol | 5100 | 5100 | $325.96 / $325.96 | $63.91 |
 | duplicates-mathlib-inclusive | Sonnet | 5100 | 5100 | $128.13 / $128.13 | $25.12 |
 | duplicates-mathlib-inclusive | Luna | 5100 | 5100 | $16.33 / $16.33 | $3.20 |
-| duplicates-mathlib-inclusive | DeepSeek | 6 | 5100 | $0.01 / $10.82 | $2.12 |
+| duplicates-mathlib-inclusive | DeepSeek | 12 | 5100 | $0.04 / $18.60 | $3.65 |
 | concept-reinvention | Opus | 100 | 130 | $15.66 / $20.36 | $156.59 |
 | concept-reinvention | Sol | 100 | 130 | $8.47 / $11.02 | $84.75 |
 | concept-reinvention | Sonnet | 130 | 130 | $8.99 / $8.99 | $69.14 |
 | concept-reinvention | Luna | 130 | 130 | $0.65 / $0.65 | $5.04 |
-| concept-reinvention | DeepSeek | 4 | 130 | $0.02 / $0.67 | $5.12 |
+| concept-reinvention | DeepSeek | 4 | 130 | $0.03 / $0.99 | $7.60 |
 | statement-generality | Opus | 100 | 130 | $32.26 / $41.93 | $322.57 |
 | statement-generality | Sol | 100 | 130 | $13.16 / $17.11 | $131.61 |
 | statement-generality | Sonnet | 130 | 130 | $16.38 / $16.38 | $125.96 |
 | statement-generality | Luna | 130 | 130 | $0.63 / $0.63 | $4.83 |
-| statement-generality | DeepSeek | 4 | 130 | $0.06 / $2.05 | $15.74 |
+| statement-generality | DeepSeek | 4 | 130 | $0.08 / $2.50 | $19.24 |
 | vacuity-and-misstatement | Opus | 100 | 130 | $21.38 / $27.79 | $213.77 |
 | vacuity-and-misstatement | Sol | 100 | 130 | $9.89 / $12.85 | $98.86 |
 | vacuity-and-misstatement | Sonnet | 130 | 130 | $12.33 / $12.33 | $94.88 |
@@ -38,12 +38,12 @@ Generated 2026-10-21T22:17:35+00:00 · [Methods and notation](../../AUDIT_METHOD
 | repeated-proof-machinery | Sol | 100 | 130 | $8.15 / $10.60 | $81.55 |
 | repeated-proof-machinery | Sonnet | 130 | 130 | $11.00 / $11.00 | $84.65 |
 | repeated-proof-machinery | Luna | 130 | 130 | $0.46 / $0.46 | $3.57 |
-| repeated-proof-machinery | DeepSeek | 3 | 130 | $0.02 / $0.80 | $6.13 |
+| repeated-proof-machinery | DeepSeek | 4 | 130 | $0.02 / $0.79 | $6.05 |
 | readable-proof-simplification | Opus | 100 | 130 | $34.58 / $44.96 | $345.81 |
 | readable-proof-simplification | Sol | 100 | 130 | $12.68 / $16.48 | $126.79 |
 | readable-proof-simplification | Sonnet | 130 | 130 | $18.52 / $18.52 | $142.44 |
 | readable-proof-simplification | Luna | 130 | 130 | $0.50 / $0.50 | $3.86 |
-| readable-proof-simplification | DeepSeek | 3 | 130 | $0.03 / $1.25 | $9.59 |
+| readable-proof-simplification | DeepSeek | 4 | 130 | $0.04 / $1.28 | $9.81 |
 
 ## Totals by model
 
@@ -53,8 +53,8 @@ Generated 2026-10-21T22:17:35+00:00 · [Methods and notation](../../AUDIT_METHOD
 | Sol | $534.09 |
 | Sonnet | $318.02 |
 | Luna | $26.56 |
-| DeepSeek | $0.43 |
-| **Total** | **$1520.95** |
+| DeepSeek | $0.55 |
+| **Total** | **$1521.06** |
 
 ## Rate sources
 

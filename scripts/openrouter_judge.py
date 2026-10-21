@@ -280,7 +280,7 @@ def judge(row, ind, cwd, dirs, message, out, key, budget, validate):
             transcript.flush()
         while True:
             billed = sum((Decimal(str(r["usage"]["cost"])) for r in responses), Decimal(0))
-            if billed >= Decimal("0.50"):
+            if restored_answer is None and billed >= Decimal("0.50"):
                 transcript.write(json.dumps({"type": "judgment_failure", "reason": "judgment cost admission limit"}) + "\n")
                 transcript.flush()
                 raise RuntimeError("Judgment reached its $0.50 admission limit without a valid verdict")

@@ -106,6 +106,6 @@ without new rate limits.
 Unsettled requests retain their conservative budget reservation and are not called spend.
 
 The pilot began with one judgment session, increased to two after InferenceNet's
-stable calibration, then four after verifying parallel source contexts and request pacing. Sessions have separate source-validation contexts, and share one
+stable calibration, then four and eight after verifying parallel source contexts and request pacing. Sessions have separate source-validation contexts, and share one
 atomic request limiter and spending ledger. Parallel sessions cannot admit simultaneous
 requests inside the configured gap or reserve more than the shared budget.

@@ -209,3 +209,18 @@ class SessionRecoveryTests(unittest.TestCase):
             self.assertEqual(result['attempts'],2)
             self.assertIn('judgment_failure',old.read_text())
             self.assertTrue((out/'test-0000.attempt-2.transcript.jsonl').exists())
+
+
+class PaidFinalRecoveryTests(unittest.TestCase):
+    def test_cost_limit_does_not_discard_already_paid_valid_final_answer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);out=root/'results';out.mkdir()
+            (root/'prompt.md').write_text('Judge')
+            (root/'schema.json').write_text('{}')
+            response={'id':'paid-final','provider':backend.PROVIDER,'usage':{'cost':.51},
+                'choices':[{'message':{'role':'assistant','content':'{"verdict":"ok"}'}}]}
+            (out/'test-0000.attempt-1.transcript.jsonl').write_text(json.dumps({'type':'api_response','response':response})+'\n')
+            with patch.object(backend,'request',side_effect=AssertionError('Repeated paid inference')):
+                result=backend.judge({'id':'test-0000','lib':'test'},root,root,{},'source',out,'key',None,lambda *a:None)
+            self.assertEqual(result['generation_ids'],['paid-final'])
+            self.assertEqual(result['cost_usd'],.51)

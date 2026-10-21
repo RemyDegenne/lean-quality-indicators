@@ -63,3 +63,17 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(info['automatic_restarts'],1)
             self.assertEqual(info['boot_id'],'new-boot')
             self.assertEqual(info['process_start_ticks'],'789')
+
+    def test_zombie_pid_is_terminal_even_when_kill_zero_would_succeed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);path=root/'status.json'
+            path.write_text(json.dumps({'stage':'running'}))
+            info={'pid':123,'restart_after':0}
+            with patch.object(monitor.os,'waitpid',side_effect=ChildProcessError), \
+                 patch.object(monitor,'same_process',return_value=True), \
+                 patch.object(monitor,'process_state',return_value='Z'), \
+                 patch.object(monitor.os,'kill') as kill, \
+                 patch.object(monitor.subprocess,'Popen',return_value=Mock(pid=456)):
+                self.assertTrue(monitor.supervise(info,path,['worker'],root/'worker.log'))
+            kill.assert_not_called()
+            self.assertEqual(info['pid'],456)
