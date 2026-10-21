@@ -139,23 +139,14 @@ def main():
             row["retry_api_usd"] = row.get("retry_api_usd", 0) + expenditure["retry_api_usd"]
             row["uncosted_attempts"] = row.get("uncosted_attempts", 0) + expenditure["uncosted_attempts"]
     lines = ["# API-equivalent costs", "",
-             f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')}. All amounts USD.", "",
-             "Standard short-context API rates, including recorded cache hits/writes and reasoning output. "
-             "These are API-equivalent estimates, not subscription charges. GLM is repriced at the frozen OpenRouter model-list rates, "
-             "which can differ from provider-specific routing prices and the pi SDK's bundled price list. "
-             "Opus baseline token counts were not retained, so its saved API-equivalent dollar amounts are used.", "",
-             "Counts below cover accepted judgments of the eight current audits and the original Opus duplicate baseline. "
-             "Expenditure also includes separately retained retry/interrupted-call usage. "
-             "Deleted experiments, this coordinating conversation, and failed calls whose usage was not saved cannot be reconstructed. "
-             "They therefore do not reconstruct the entire historical bill.", "",
-             "Each $X / $Y cell shows recorded expenditure / estimated cost of a single pass at the "
-             "largest observed pass for that audit. Y uses the model's expenditure per accepted judgment, including retained retries. "
-             "The reference target count is shown explicitly. Opus duplication is the original four-library baseline, "
-             "extrapolated to the five-library reference scale.", "",
+             f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · "
+             "[Methods and notation](../../AUDIT_METHODS.md).", "",
              "| Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |",
              "|---|---|---:|---:|---:|---:|"]
     totals = defaultdict(float)
-    for (audit, model), row in groups.items():
+    order = {name: i for i, name in enumerate(["Opus", "Sol", "Sonnet", "Luna", "GLM"])}
+    audits = {audit: i for i, audit in enumerate(dict.fromkeys(audit for audit, _ in groups))}
+    for (audit, model), row in sorted(groups.items(), key=lambda item: (audits[item[0][0]], order.get(item[0][1], 99))):
         cost = row["api_usd"]
         totals[model] += cost
         unit = cost / row["costed"] * 1000 if row["costed"] else 0

@@ -11,4 +11,4 @@ Coverage, passes, flag counts, API-equivalent expenditure / full-pass estimates,
 - [repeated-proof-machinery](runs/file-quality-pilot-2026-10-21/reports/repeated-proof-machinery-comparison.md)
 - [readable-proof-simplification](runs/file-quality-pilot-2026-10-21/reports/readable-proof-simplification-comparison.md)
 
-[API-equivalent costs](runs/main/api-equivalent-costs.md).
+[Methods and notation](AUDIT_METHODS.md) · [API-equivalent costs](runs/main/api-equivalent-costs.md).

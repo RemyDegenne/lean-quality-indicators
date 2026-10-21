@@ -18,8 +18,8 @@ MAIN = ROOT / "runs/main"
 RUBRICS = ["concept-reinvention", "statement-generality", "vacuity-and-misstatement",
            "simp-interface", "repeated-proof-machinery", "readable-proof-simplification"]
 LABELS = {"Sol": ["gpt-6.1-sol-high", "gpt-6.1-sol-high-repeat-2"],
-          "Luna": ["gpt-6-luna-high", "gpt-6-luna-high-repeat-2"],
           "Sonnet": ["claude-sonnet-5-5-high", "claude-sonnet-5-5-high-repeat-2"],
+          "Luna": ["gpt-6-luna-high", "gpt-6-luna-high-repeat-2"],
           "GLM": ["glm-5.3-openrouter-pi-high-pilot"]}
 
 
@@ -127,28 +127,13 @@ def make_report(audit, base, samples, is_file, resamples):
     names = {lib["id"]: lib["name"] for lib in tomllib.loads((ROOT / "libraries.toml").read_text())["library"]}
     libraries = [lib for lib in names if any(s["lib"] == lib for s in samples.values())]
     data = {"audit": audit, "unit": "file" if is_file else "theorem", "groups": {}}
-    lines = [f"# {audit}", "", f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')}.", "",
-             "Targets are distinct selected source files/theorems, not findings. A judgment is flagged when it reports at least one finding. "
-             "Passes show completed / planned; an unfinished pass is included in the judgment and flag counts. "
-             "The flag-rate interval uses the first pass only, with Wilson 95% limits; repeated judgments are not treated as independent targets.", "",
-             "Correlations are Pearson r on binary flag decisions (the phi coefficient). Cross-model cells use matching completed targets "
-             "from each model's first pass. Diagonal cells compare the first two independent passes, where available. "
-             f"Intervals are paired-target percentile bootstrap 95% intervals, stratified by library ({resamples:,} draws, fixed seeds). "
-             "A dash means no estimate/interval: insufficient matches, constant decisions, a boundary estimate or too many degenerate resamples. "
-             "The intervals describe sampling uncertainty, not correctness against ground truth. First-pass and repeat-pass matches need not have the same n.", ""]
-    lines += ["Expenditure cells are **$X / $Y** in USD at API-equivalent rates. X is recorded expenditure to date, "
-              "including retained retry usage. Y estimates a single pass at the largest completed pass's target count, "
-              "using this model's expenditure per completed judgment across its passes. Y is an extrapolation when coverage is smaller; "
-              "it does not assume equal token use or prices across models. Deleted or overwritten usage cannot be reconstructed. "
-              "See the [cost methods and rates](" + ("../../main/api-equivalent-costs.md" if is_file else "../api-equivalent-costs.md") + ").", ""]
+    methods = "../../../AUDIT_METHODS.md"
+    lines = [f"# {audit}", "", f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · "
+             f"[Methods and notation]({methods}) · {resamples:,} bootstrap draws.", ""]
     if audit == "duplicates-mathlib-inclusive":
-        lines += ["Opus is the original four-library baseline, without Mathlib targets and with the earlier prompt. "
-                  "Correlations involving Opus therefore also reflect the prompt difference.", ""]
+        lines += ["Opus uses the earlier prompt on four libraries, without Mathlib targets.", ""]
     if audit == "unnecessary-hypotheses":
-        lines += ["Opus selected 400 targets/library for its first pass and 300/library for its second; "
-                  "the other completed models selected 300/library for each pass. Selected targets are counted once across passes.", ""]
-    if is_file:
-        lines += ["Not-applicable judgments count as unflagged. Partial and not-applicable counts are recorded below. Sol and Opus have no file-audit runs.", ""]
+        lines += ["Opus: 400 then 300 targets/library; Sol, Sonnet and Luna: 300 per pass.", ""]
     for lib, title in [(None, "All libraries"), *[(lib, names[lib]) for lib in libraries]]:
         scoped = {i: s for i, s in samples.items() if lib is None or s["lib"] == lib}
         group = {"models": {}, "correlations": {}}
@@ -157,7 +142,7 @@ def make_report(audit, base, samples, is_file, resamples):
                            entry["selected"] & scoped.keys() <= entry["results"].keys()]
         largest = max(completed_sizes, default=0)
         group["full_pass_reference_targets"] = largest
-        lines += [f"## {title}", "", f"Full-pass cost reference: **{largest} targets**, the largest completed pass in this group.", "",
+        lines += [f"## {title}", "", f"Full-pass reference: **{largest} targets**.", "",
                   "| Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |",
                   "|---|---:|---:|---:|---:|---:|---:|---:|"]
         for name, passes in models.items():
@@ -192,7 +177,7 @@ def make_report(audit, base, samples, is_file, resamples):
                 "retry_api_usd": sum(c["retry_api_usd"] for c in costs),
                 "uncosted_attempts": sum(c["uncosted_attempts"] for c in costs)}
             lines.append(f"| {name} | {len(selected)} | {finished}/{len(passes)} | {completed}/{expected} | {flags} | {len(flagged_ids)} | {rate} | {money} |")
-        lines += ["", "### Correlation matrix", "", "Cells: r [95% CI]; n is the number of matched targets.", "",
+        lines += ["", "### Correlation matrix", "",
                   "| Model | " + " | ".join(models) + " |", "|---|" + "---:|" * len(models)]
         cache = {}
         for first, passes in models.items():
@@ -241,7 +226,7 @@ def main():
     (ROOT / "AUDIT_RESULTS.md").write_text("# Audit results\n\nCoverage, passes, flag counts, API-equivalent expenditure / full-pass estimates, "
         "and correlation matrices, with per-library breakdowns and 95% intervals. "
         "Run `python3 scripts/audit_dashboard.py` to refresh from accepted judgments.\n\n" + "\n".join(links) +
-        "\n\n[API-equivalent costs](runs/main/api-equivalent-costs.md).\n")
+        "\n\n[Methods and notation](AUDIT_METHODS.md) · [API-equivalent costs](runs/main/api-equivalent-costs.md).\n")
 
 
 if __name__ == "__main__":
