@@ -11,6 +11,9 @@ Flag rates and Wilson 95% intervals use the first pass, avoiding double-counting
 judgments as independent targets. File audits count not-applicable judgments as unflagged;
 partial and not-applicable counts appear with each table. Sol and Opus have no file-audit runs.
 
+Library-comparison cells show **flagged / completed**, followed by **rate [95% interval]**,
+separately for each model. A dash means no completed judgments; models are not pooled.
+
 ## Correlations
 
 Matrix cells show **r [95% interval]; n=matched targets**. The coefficient is Pearson

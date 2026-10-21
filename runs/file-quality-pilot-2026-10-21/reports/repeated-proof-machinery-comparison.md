@@ -1,6 +1,14 @@
 # repeated-proof-machinery
 
-Generated 2026-10-21T05:27:13+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-21T05:31:38+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+
+## Library comparison
+
+| Library | Sonnet | Luna | GLM |
+|---|---:|---:|---:|
+| Mathlib | 2/10<br>20.0% [5.7%, 51.0%] | 2/8<br>25.0% [7.1%, 59.1%] | — |
+| Tau Ceti | 2/10<br>20.0% [5.7%, 51.0%] | 0/8<br>0.0% [0.0%, 32.4%] | — |
+| Lean Pool | 6/10<br>60.0% [31.3%, 83.2%] | 3/8<br>37.5% [13.7%, 69.4%] | — |
 
 ## All libraries
 

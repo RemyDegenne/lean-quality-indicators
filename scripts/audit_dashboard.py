@@ -120,6 +120,24 @@ def models_for(audit, base, samples, is_file):
     return models
 
 
+def library_table(data, libraries, names):
+    models = data["groups"]["all"]["models"]
+    lines = ["| Library | " + " | ".join(models) + " |", "|---|" + "---:|" * len(models)]
+    for lib in libraries:
+        cells = []
+        for model in models:
+            row = data["groups"][lib]["models"][model]
+            first = row["passes"][0]
+            n, flags = first["completed"], first["flagged"]
+            if not n:
+                cells.append("—")
+                continue
+            lo, hi = row["first_pass_rate_ci95"]
+            cells.append(f"{flags}/{n}<br>{flags/n:.1%} [{lo:.1%}, {hi:.1%}]")
+        lines.append(f"| {names[lib]} | " + " | ".join(cells) + " |")
+    return lines
+
+
 def make_report(audit, base, samples, is_file, resamples):
     models = models_for(audit, base, samples, is_file)
     positive = (lambda r: bool(r.get("findings"))) if is_file else (
@@ -204,6 +222,8 @@ def make_report(audit, base, samples, is_file, resamples):
             lines += ["", "Coverage annotations: " + "; ".join(f"{name}: {row['partial_reviews']} partial, {row['not_applicable_reviews']} not applicable" for name, row in group["models"].items()) + "."]
         data["groups"][lib or "all"] = group
         lines.append("")
+    position = lines.index("## All libraries")
+    lines[position:position] = ["## Library comparison", "", *library_table(data, libraries, names), ""]
     destination = FILES / "reports" / f"{audit}-comparison" if is_file else base / "audit-comparison"
     destination.with_suffix(".md").write_text("\n".join(lines))
     destination.with_suffix(".json").write_text(json.dumps(data, indent=2) + "\n")
@@ -221,15 +241,19 @@ def main():
         run = FILES if is_file else MAIN
         samples = {s["id"]: s for s in map(json.loads, (run / "samples.jsonl").read_text().splitlines())}
         path = make_report(audit, run / audit, samples, is_file, args.resamples)
-        section = path.read_text().split("## All libraries\n", 1)[1].split("\n## ", 1)[0].strip()
+        text = path.read_text()
+        library_section = text.split("## Library comparison\n", 1)[1].split("\n## ", 1)[0].strip()
+        section = text.split("## All libraries\n", 1)[1].split("\n## ", 1)[0].strip()
+        section = section.replace("### Correlation matrix", "#### Correlation matrix")
         note = ("Opus uses the earlier prompt on four libraries, without Mathlib targets.\n\n"
                 if audit == "duplicates-mathlib-inclusive" else "")
-        sections.append(f"## {audit}\n\n[Library breakdowns]({path.relative_to(ROOT).as_posix()})\n\n" + note + section)
+        sections.append(f"## {audit}\n\n[Library breakdowns]({path.relative_to(ROOT).as_posix()})\n\n" + note +
+                        "### Library comparison\n\n" + library_section + "\n\n### Model comparison\n\n" + section)
         print(path.relative_to(ROOT), flush=True)
     (ROOT / "AUDIT_RESULTS.md").write_text("# Audit results\n\n" +
         f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · " +
         "[Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).\n\n" +
-        "All eight audits, each combining its libraries.\n\n" + "\n\n".join(sections) + "\n")
+        "All eight audits, comparing libraries first and models second.\n\n" + "\n\n".join(sections) + "\n")
 
 
 if __name__ == "__main__":
