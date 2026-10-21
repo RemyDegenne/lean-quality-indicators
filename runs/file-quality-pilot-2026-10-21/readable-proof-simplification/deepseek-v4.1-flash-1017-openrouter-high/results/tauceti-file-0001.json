@@ -1,0 +1,110 @@
+{
+  "id": "tauceti-file-0001",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 598 lines of the target file and inspected the supporting declarations it invokes: `subword`, `subword_eq_of_tprod`, `subword_congr`, `of_tprod_congr`, `of_tprod_eq_subword`, `deconcatenation_subword`, `letter_apply`, `component_of_of_ne`, `eq_of_deconcatenation_eq_of_letter_eq` (Basic.lean/Primitives.lean), `splice`, `splice_eq_of_tprod`, `splice_congr`, `splice_eq_zero_of_not_fits`, `deconcatenation_splice` (Splice.lean), and the filtration lemmas (Filtration.lean). I also checked Mathlib's `Finset.prod_eq_single_of_mem` (with `@[to_additive]`, giving `sum_eq_single_of_mem`) and the `LinearMap.comp_zero/zero_comp/comp_add/add_comp/comp_smul/smul_comp` lemmas, which the proposed rewrites rely on. Main uncertainty: the two proposed replacements were not elaborated; the `Finset.mem_range.2` membership proofs may need minor adjustment to match implicit arguments. I did not find other proofs where a simplification would clearly preserve or improve readability (`append_eq_dite`, `coderivSummand_tprod`, `isCoderivation_coderiv` are already structured around the mathematical case analysis; `coderiv_of`/`coderiv_subword` are compact).",
+  "findings": [
+    {
+      "declaration": "TauCeti.ReducedTensorWords.letter_comp_coderiv",
+      "start_line": 440,
+      "end_line": 451,
+      "excerpt": "  refine (Finset.sum_eq_single 0 ?_ ?_).trans ?_\n  · intro p _ hp\n    rw [map_sum]\n    refine Finset.sum_eq_zero fun d _ ↦ letter_splice_eq_zero_of_not_whole R x _ (by omega)\n  · intro hp\n    exact absurd (Finset.mem_range.2 hn) hp",
+      "problem": "Both nested `Finset.sum_eq_single` uses carry a side goal `a ∉ range _ → f a = 0`, which can never fire because `0` and `n.1` are in the respective ranges. The proof discharges them by contradiction (`exact absurd (Finset.mem_range.2 hn) hp` and `exact absurd (Finset.mem_range.2 (by omega)) hd`), which is noise unrelated to the mathematical point that only the whole word collapses to a letter.",
+      "proposed_change": "Use `Finset.sum_eq_single_of_mem`, whose membership hypothesis is available from `hn`, and which requires no `a ∉ s` case:\n```lean\n  refine (Finset.sum_eq_single_of_mem 0 (Finset.mem_range.2 hn) ?_).trans ?_\n  · intro p _ hp\n    rw [map_sum]\n    refine Finset.sum_eq_zero fun d _ ↦ letter_splice_eq_zero_of_not_whole R x _ (by omega)\n  · rw [map_sum]\n    refine (Finset.sum_eq_single_of_mem n.1 (Finset.mem_range.2 (by omega)) ?_).trans ?_\n    · exact fun d _ hd ↦ letter_splice_eq_zero_of_not_whole R x _ (by omega)\n    · rw [letter_splice_self R x _ hn (by omega), Nat.zero_add]\n```\n(Not compiled; the membership proofs may need adjustment to the implicit arguments of `range`.)",
+      "benefit": "The reader sees exactly the two facts being used — a summand with `p ≠ 0` or `d ≠ n` dies by `letter_splice_eq_zero_of_not_whole`, and the single surviving term is evaluated by `letter_splice_self` — without being distracted by two vacuous impossibility arguments.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Algebra/BigOperators/Group/Finset/Basic.lean",
+          "declaration": "Finset.prod_eq_single_of_mem",
+          "excerpt": "theorem prod_eq_single_of_mem {s : Finset ι} {f : ι → M} (a : ι) (h : a ∈ s)\n    (h₀ : ∀ b ∈ s, b ≠ a → f b = 1) : ∏ x ∈ s, f x = f a := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Coderivation.lean",
+          "declaration": "TauCeti.ReducedTensorWords.letter_comp_coderiv",
+          "excerpt": "  have hn : 0 < n.1 := n.2"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.ReducedTensorWords.eq_of_letter_comp_eq_of_twist",
+      "start_line": 283,
+      "end_line": 294,
+      "excerpt": "  have happly₁ : ∀ z, deconcatenation R M (b₁ z) =\n      LinearMap.rTensor (ReducedTensorWords R M) b₁ (deconcatenation R M z) +\n        LinearMap.lTensor (ReducedTensorWords R M) b₁\n          (LinearMap.rTensor (ReducedTensorWords R M) τ (deconcatenation R M z)) := fun z ↦ by\n    have h := congrArg (fun f ↦ f z) h₁\n    simpa only [LinearMap.coe_comp, Function.comp_apply, LinearMap.add_apply] using h",
+      "problem": "The pointwise form of the twisted co-Leibniz identity is proved twice, once for `b₁` and once for `b₂`, in two nearly identical twelve-line blocks that differ only in the subscript and the hypothesis used. The duplicated statement text obscures that `h₁` and `h₂` are the same hypothesis with different endomorphisms.",
+      "proposed_change": "State the pointwise form once, parameterized by the endomorphism, and instantiate it:\n```lean\n  have happly : ∀ b, deconcatenation R M ∘ₗ b =\n      LinearMap.rTensor (ReducedTensorWords R M) b ∘ₗ deconcatenation R M +\n        (LinearMap.lTensor (ReducedTensorWords R M) b ∘ₗ\n          LinearMap.rTensor (ReducedTensorWords R M) τ) ∘ₗ deconcatenation R M →\n      ∀ z, deconcatenation R M (b z) =\n        LinearMap.rTensor (ReducedTensorWords R M) b (deconcatenation R M z) +\n          LinearMap.lTensor (ReducedTensorWords R M) b\n            (LinearMap.rTensor (ReducedTensorWords R M) τ (deconcatenation R M z)) :=\n    fun _ h z ↦ by\n      have := congrArg (fun f ↦ f z) h\n      simpa only [LinearMap.coe_comp, Function.comp_apply, LinearMap.add_apply] using this\n  have happly₁ := happly _ h₁\n  have happly₂ := happly _ h₂\n```\n(Not compiled.)",
+      "benefit": "There is a single, explicit bridge from the `LinearMap`-level hypothesis to its evaluation at `z`, matching the idiom of `IsCoderivation.deconcatenation_apply`; the reader then reads the induction step without re-parsing a copy of the same block.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Coderivation.lean",
+          "declaration": "TauCeti.ReducedTensorWords.eq_of_letter_comp_eq_of_twist",
+          "excerpt": "    (h₁ : deconcatenation R M ∘ₗ b₁ =\n      LinearMap.rTensor (ReducedTensorWords R M) b₁ ∘ₗ deconcatenation R M +\n        (LinearMap.lTensor (ReducedTensorWords R M) b₁ ∘ₗ\n          LinearMap.rTensor (ReducedTensorWords R M) τ) ∘ₗ deconcatenation R M)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Coderivation.lean",
+          "declaration": "TauCeti.ReducedTensorWords.IsCoderivation.deconcatenation_apply",
+          "excerpt": "  have h := congrArg (fun f ↦ f z) hb\n  simpa only [LinearMap.coe_comp, Function.comp_apply, LinearMap.add_apply] using h"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 2300254,
+    "cached_input_tokens": 2127872,
+    "output_tokens": 26423,
+    "reasoning_output_tokens": 18924
+  },
+  "cost_usd": 0.044025036,
+  "generation_ids": [
+    "gen-1792622344-rlIKQAnMrQQwiIs6MWWZ",
+    "gen-1792622348-EJy35cDzAkmLOs8cpdW1",
+    "gen-1792622352-BamysCSp2nA4zxxZzvnt",
+    "gen-1792622358-qM4VFzQIAzgNTwsIBsRC",
+    "gen-1792622374-hfeT9HaJJJbxBOAnKr7S",
+    "gen-1792622380-DC5zdcgzLGFC5TNtZvnT",
+    "gen-1792622382-BsbUHxShysuMxLgOBVGj",
+    "gen-1792622400-X6ZnwRDlEGdW05PqJ4OF",
+    "gen-1792622404-GLqtFf3nfyeLgv0Ja3ep",
+    "gen-1792622434-OXPJdJLy9CkNi4ZapvMG",
+    "gen-1792622438-C8VzrR6QyUKWDBI9on5e",
+    "gen-1792622444-Ef4zl7LmTiBvwYBJBqTO",
+    "gen-1792622488-lqWoMZIjmAo0hSfIx2R8",
+    "gen-1792622498-LPN4dCS2ruk1epTc8Gfz",
+    "gen-1792622511-cAUKJHEeYNqCslIFe2Fk",
+    "gen-1792622513-QBD1hV47kQffTQfRALkf",
+    "gen-1792622519-nZWZH6tKcxbPDiVmAtS8",
+    "gen-1792622549-Wj3irqcsIOm1sn1VoxGd",
+    "gen-1792622555-2ALb7651M9hOYGMmh0pz",
+    "gen-1792622573-LZEOFvgn8BnHFQhowTYw",
+    "gen-1792622583-oV5LktuPpvcYRnuEyKjJ",
+    "gen-1792622617-GgIMpBBMUSf3GHFOWhVU",
+    "gen-1792622625-YGs3irqZBu5wB0yfu6MZ",
+    "gen-1792622629-rd0RTOa3MYmOYR0hubZg",
+    "gen-1792622633-ig3Qk5Y4Yle7vkW7vQo6",
+    "gen-1792622639-uz5BKqSlCTS2YC6J0Cny",
+    "gen-1792622645-9bvqSKz4aulXLjpFLOlQ",
+    "gen-1792622649-LTGodfdfJ1i7aETP6IZv",
+    "gen-1792622651-IMyqPjqUurwjayZF5v8p",
+    "gen-1792622654-88Q2b5bPQMwtHbwMXHIi",
+    "gen-1792622657-S8d4U414a9fDXJlQCZSA",
+    "gen-1792622669-5wDXSiA5oJhJqSUXITQH",
+    "gen-1792622675-tAlq6jbsJ9aM0xDq00Fi",
+    "gen-1792622703-VJY6R161WcfDJ9Xic5N1"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 34,
+  "duration_ms": 377113,
+  "judged": "2026-10-21T22:45:10+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "ccc73f2715c13a14e6dedcd3d56026f094fcd1af39f4dfa6f6fb43c5f9b5e9b8"
+}

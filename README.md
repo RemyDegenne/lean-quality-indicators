@@ -432,7 +432,8 @@ Resume with `python3 scripts/deepseek_pilot.py --jobs 8`. The runner verifies th
 and rejects invalid judgments. API requests use a shared adaptive gap recorded in the budget ledger;
 HTTP 429 doubles the spacing and triggers an increasing cooldown. It exposes only
 Read, Grep and Glob source tools. Interrupted sessions resume from saved responses
-and source-tool results. A final JSON phase follows at most 32 source-inspection turns.
+and source-tool results. Transient network/provider errors retry the same request
+with a shared pause; unfinished targets receive priority on recovery. A final JSON phase follows at most 32 source-inspection turns.
 Costs come from each response's billed amount; provider fallbacks are disabled.
 The report monitor checks worker health every five minutes and permits at most two
 automatic restarts after a cooldown. Invalid evidence remains rejected; exhausted

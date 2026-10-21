@@ -1,0 +1,103 @@
+{
+  "id": "openai-math-file-0001",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 75 lines of the target file, together with the definitions and lemmas it consumes in `Spectral/SpectralOverlapPaths.lean` (`spectralPathDensity`, `spectralGroupPath`, `spectralGroupDiagonal`, `spectralPathDensity_nonneg`, `spectralPathDensity_intervalIntegrable`, `spectralGroupPath_le_diagonal`, `spectralGroupDiagonal_le_one`), the `OverlapPath` structure in `Core/Variational.lean`, and representative consumers (`Cavity/CavityCanonicalContinuity.lean`, `Cavity/CavityCanonicalBlockLimit.lean`, `Spectral/SpectralGroupIdentification.lean`). I also checked the relevant Mathlib facts `Set.monotone_projIcc`, `Set.projIcc_of_mem`, `Set.projIcc_right` and `intervalIntegral.continuousOn_primitive_interval'` in the pinned Mathlib, plus the Mathlib idiom for transporting the primitive from `uIcc` to `Icc`. The three direct integral estimates (`_nonneg`, `_le_diagonal`) and the `unfold`/`rw` proof of `_at_path` look already minimal and were not flagged. Two small, concrete simplifications are reported; neither replacement was compiled, and for the first one the proposed proof relies on the fact that the subtype order on `Set.Icc` coerces definitionally to the ℝ order (a `simpa`/`Subtype.coe_le_coe` fallback exists if elaboration is fussy).",
+  "findings": [
+    {
+      "declaration": "cavityCanonicalCoordinate_monotone",
+      "start_line": 33,
+      "end_line": 41,
+      "excerpt": "  have hc : (Set.projIcc 0 1 zero_le_one s : ℝ) ≤ (Set.projIcc 0 1 zero_le_one t : ℝ) :=\n    max_le_max le_rfl (min_le_min le_rfl hst)",
+      "problem": "The proof re-derives monotonicity of `Set.projIcc` by unfolding it into a `max`/`min` and applying `max_le_max`/`min_le_min`. That mathematical fact is already a named Mathlib lemma, and re-deriving it forces the reader to know the definition of `projIcc` (and its `max (min x b) a` shape) to follow why `hc` holds. The very next lemma in the file already uses the named companion fact `continuous_projIcc`, so the file mixes two styles for the same object.",
+      "proposed_change": "Replace the two-line `have hc` proof by the named lemma:\n\n```\n  have hc : (Set.projIcc 0 1 zero_le_one s : ℝ) ≤ (Set.projIcc 0 1 zero_le_one t : ℝ) :=\n    Set.monotone_projIcc zero_le_one hst\n```\n\n(`Set.monotone_projIcc` yields the subtype inequality, which is definitionally the coerced ℝ inequality; if elaboration needs help, `simpa using Set.monotone_projIcc zero_le_one hst`.) The rest of the proof is unchanged.",
+      "benefit": "The key idea becomes explicit — clamping to `[0,1]` is monotone, so the integral over `[0, clamp s]` is below the one over `[0, clamp t]` — instead of an arithmetic `max`/`min` manipulation over an unfolded definition. It also matches the `continuous_projIcc` usage two lemmas later, so a reader sees one consistent vocabulary for `projIcc`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Interval/Set/ProjIcc.lean",
+          "declaration": "Set.monotone_projIcc",
+          "excerpt": "theorem monotone_projIcc : Monotone (projIcc a b h) := fun _ _ hxy =>\n  max_le_max le_rfl <| min_le_min le_rfl hxy"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Interval/Set/ProjIcc.lean",
+          "declaration": "Monotone.IccExtend",
+          "excerpt": "protected theorem Monotone.IccExtend (hf : Monotone f) : Monotone (IccExtend h f) :=\n  hf.comp <| monotone_projIcc h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralGroupPath_monotone",
+          "excerpt": "  exact intervalIntegral.integral_mono_interval le_rfl (p.nonneg s) (p.monotone hst)"
+        }
+      ]
+    },
+    {
+      "declaration": "continuous_cavityCanonicalCoordinate",
+      "start_line": 43,
+      "end_line": 51,
+      "excerpt": "  have hi := spectralPathDensity_intervalIntegrable ρ eig hρ hρsum p a ⟨zero_le_one, le_rfl⟩\n  have hp := intervalIntegral.continuousOn_primitive_interval' hi (a := 0) left_mem_uIcc\n  have hp' : ContinuousOn (fun z => ∫ r in 0..z, spectralPathDensity ρ eig hρ hρsum p a r)\n      (Icc 0 1) := by simpa only [uIcc_of_le zero_le_one] using hp",
+      "problem": "The proof threads three intermediate facts where only the last is used: `hi` is used only by `hp`, `hp` is used only by `hp'`, and `hp'` is the statement actually fed to `comp_continuous`. The names `hi`/`hp`/`hp'` thus add bookkeeping without exposing any additional mathematical step: `hp'` is literally `hp` transported across `uIcc_of_le zero_le_one`.",
+      "proposed_change": "Collapse the three `have`s into one, folding the interval-integrability witness into the call and applying `simpa` directly to the Mathlib lemma:\n\n```\n  have hp : ContinuousOn (fun z => ∫ r in 0..z, spectralPathDensity ρ eig hρ hρsum p a r)\n      (Icc 0 1) := by\n    simpa only [uIcc_of_le zero_le_one] using\n      intervalIntegral.continuousOn_primitive_interval'\n        (spectralPathDensity_intervalIntegrable ρ eig hρ hρsum p a ⟨zero_le_one, le_rfl⟩)\n        (a := 0) left_mem_uIcc\n  exact hp.comp_continuous (continuous_subtype_val.comp continuous_projIcc)\n    (fun t => (Set.projIcc 0 1 zero_le_one t).property)\n```",
+      "benefit": "The same construction is visible with fewer moving parts: the primitive of the density is continuous on `[[0,1]]`, hence (since `0 ≤ 1`) on `Icc 0 1`, and composing with the continuous projection gives continuity. This is exactly the idiom used in Mathlib's mean value theorem file, so the one-step form is recognizable rather than clever.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/DominatedConvergence.lean",
+          "declaration": "intervalIntegral.continuousOn_primitive_interval'",
+          "excerpt": "theorem continuousOn_primitive_interval' (h_int : IntervalIntegrable f μ b₁ b₂)\n    (ha : a ∈ [[b₁, b₂]]) : ContinuousOn (fun b => ∫ x in a..b, f x ∂μ) [[b₁, b₂]] := fun _ _ ↦ by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/IntervalIntegral/MeanValue.lean",
+          "declaration": "(usage of continuousOn_primitive_interval')",
+          "excerpt": "  have hGcont := uIcc_of_le hab ▸ continuousOn_primitive_interval' hg left_mem_uIcc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralPathDensity_intervalIntegrable",
+          "excerpt": "    IntervalIntegrable (spectralPathDensity ρ eig hρ hρsum p a) volume 0 q :=\n  ((spectralPathDensity_continuousOn ρ eig hρ hρsum p a).mono"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 421803,
+    "cached_input_tokens": 390144,
+    "output_tokens": 14457,
+    "reasoning_output_tokens": 10200
+  },
+  "cost_usd": 0.012882372,
+  "generation_ids": [
+    "gen-1792622334-e7IAMTJ1mnmDBRH5X2m6",
+    "gen-1792622338-rhB2o1fNbdfBhVZ8xq0r",
+    "gen-1792622350-zK3VSKGaphkDvVER3pyL",
+    "gen-1792622362-jk7p1Oh7iuQj5gcQaPch",
+    "gen-1792622372-Ap3Tmp7MFSyMrmKpA2SY",
+    "gen-1792622394-NbNfN0qemEt1Rfv4Wicp",
+    "gen-1792622399-BObdjWyRj9cwVWZnj5ZD",
+    "gen-1792622408-9Kl1ZC1QpnXq6fWbJ2fp",
+    "gen-1792622416-H6wRunRTvh583vC39CRC",
+    "gen-1792622432-1hUB7Ry7iIBAJxmrFtlI",
+    "gen-1792622464-ORt93ZDMjXmGN1QRQmin",
+    "gen-1792622477-kWCal17douyPTMCnaf5r",
+    "gen-1792622494-bf0gNIrIrBYBDG8JjCuE",
+    "gen-1792622516-3nvx5g5Mt0mM1RXRzfyd",
+    "gen-1792622525-OkqznyqDYI6fNYmHBBhH",
+    "gen-1792622535-j1FXUFHfo9vguAbmq8l7",
+    "gen-1792622557-OmZafb9sVmEjPVO5878D"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 17,
+  "duration_ms": 261237,
+  "judged": "2026-10-21T22:43:12+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "b390cf2c9c89d26b73b1c451d9d8b912a7c85e5c016d5f1a9120804b70a4843b"
+}

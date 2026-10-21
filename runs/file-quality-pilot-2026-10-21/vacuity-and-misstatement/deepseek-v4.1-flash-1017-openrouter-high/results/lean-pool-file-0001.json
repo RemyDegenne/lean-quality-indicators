@@ -1,0 +1,87 @@
+{
+  "id": "lean-pool-file-0001",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–509) and Defs.lean (especially distToAdditive and DualCertificate), plus the call sites and helpers in Pipeline.lean and PipelineEps.lean, and searched the library for uses of the reviewed declarations. I checked non-vacuity of the M > 0 branch: on U = Fin 3, f(∅)=0, f(singletons)=1/3, f(pairs)=-1/3, f(univ)=0 is 1-additive, has distToAdditive = 1/3 (taking a = 0 gives 1/3, and any a increasing the supremum: if all |1/3 - a i| < 1/3 then a i > 0, so |-1/3 - a i - a j| > 1/3), and satisfies the main hypotheses, so the theorem is not vacuous. I did not recompile any proposed replacement; sketches are unchecked. I considered but did not report two mere redundancies that are outside the vacuous/misleading rubric: dual_cert_from_convexHull's hMbound is used only in the disjointness branch where S = T = ∅ already gives f ∅ = M = -M, and dual_certificate_exists_proof's hf is used only via distToAdditive_nonneg (see finding 2).",
+  "findings": [
+    {
+      "declaration": "dual_certificate_exists_proof (with dual_cert_pos_case; contrasts with zero_mem_convexHull_of_best_approx's documentation)",
+      "start_line": 497,
+      "end_line": 507,
+      "excerpt": "theorem dual_certificate_exists_proof\n    (f : Finset U → ℝ)\n    (hf : IsApproxAdditive f 1)\n    (hM : ∀ S : Finset U, |f S| ≤ distToAdditive f)\n    (hbest : ∀ a : U → ℝ, ∃ S : Finset U,\n      |f S - additiveFunction a S| ≥ distToAdditive f) :\n    Nonempty (DualCertificate f (distToAdditive f)) := by",
+      "problem": "The hypothesis `hbest` is presented as the best-approximation hypothesis (the comment above `zero_mem_convexHull_of_best_approx` says \"when the best-approximation hypothesis holds with M > 0\", and the final theorem is labelled Lemma 2.1), but when the parameter is `distToAdditive f` it is a theorem for every `f`, with no additivity or bound needed. Since `distToAdditive f = ⨅ a, ⨆ S, |f S - additiveFunction a S|` and the supremum over the nonempty finite index `Finset U` is attained, for each `a` one gets `distToAdditive f ≤ ⨆ S, ... = |f S - additiveFunction a S|` for some `S`. The repository proves exactly this shape: `best_approx_property` takes `[Finite U]`, only `hM_eq : distToAdditive g = M`, marks its bound argument `_hM_bound` unused, and concludes `∀ a, ∃ S, |g S - additiveFunction a S| ≥ M`. Consequently `hbest` carries no information in `dual_cert_pos_case`/`dual_certificate_exists_proof`; the only substantive hypothesis is `hM`, yet the statement and docstring suggest two independent hypotheses. Callers already pay for this: PipelineEps.lean has to invoke `best_approx_property` merely to manufacture `hg_best` before applying `dual_certificate_exists`.",
+      "proposed_change": "State `dual_cert_pos_case` and `dual_certificate_exists_proof` without `hbest`, deriving the required instance for `M = distToAdditive f` internally by the finite-supremum argument (the same argument as `best_approx_property`, specialized with `M := distToAdditive f`, or a local `distToAdditive_le_sup` lemma). Keep `hbest` only in the general-`M` separation lemma `zero_mem_convexHull_of_best_approx`, where `M` is arbitrary and the hypothesis is genuinely informative, and document there that it constrains `M ≤ distToAdditive f`.",
+      "benefit": "The theorem then states exactly what has to be checked (the optimality condition `hM`), matching the intended Lemma 2.1, and callers need not construct an automatically true condition before applying the result. It also removes a misleading difference between the hypothesis list and the actual logical strength of the result.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Pipeline.lean",
+          "declaration": "best_approx_property",
+          "excerpt": "lemma best_approx_property [Finite U] (g : Finset U → ℝ) (M : ℝ)\n    (_hM_bound : ∀ S : Finset U, |g S| ≤ M)\n    (hM_eq : distToAdditive g = M) :\n    ∀ a : U → ℝ, ∃ S : Finset U,\n      |g S - additiveFunction a S| ≥ M := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/PipelineEps.lean",
+          "declaration": "distToAdditive_le_C₂_from_pipeline (proof body)",
+          "excerpt": "have hg_best := best_approx_property g (distToAdditive f) ha hg_dist\n  obtain ⟨cert⟩ := dual_certificate_exists g hg_add (hg_dist ▸ ha) (hg_dist ▸ hg_best)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Defs.lean",
+          "declaration": "distToAdditive",
+          "excerpt": "⨅ a : U → ℝ, ⨆ S : Finset U, |f S - additiveFunction a S|"
+        }
+      ]
+    },
+    {
+      "declaration": "distToAdditive_nonneg",
+      "start_line": 488,
+      "end_line": 493,
+      "excerpt": "omit [Fintype U] in\n/-- `distToAdditive f ≥ 0` for any function `f`. -/\nlemma distToAdditive_nonneg (f : Finset U → ℝ) (hf : IsApproxAdditive f 1)\n    (hM : ∀ S : Finset U, |f S| ≤ distToAdditive f) :\n    0 ≤ distToAdditive f := by",
+      "problem": "The docstring promises nonnegativity \"for any function `f`\", but the declaration only proves it for `f` that is 1-additive and satisfies `∀ S, |f S| ≤ distToAdditive f`; the proof just specializes the bound at `∅` and uses `hf.1`. Thus a user who wants the documented general fact for an arbitrary function (for example the negated residual `fun S => -g S` used in PipelineEps.lean, or any non-1-additive `f`) cannot apply the lemma. The statement fails to express its documented mathematical purpose: nonnegativity follows immediately from the definition, since `distToAdditive f` is the infimum of terms that are suprema of absolute values and hence nonnegative. The same repository already uses the fact that 0 is a lower bound of this infimum's range when applying `ciInf_le` in `distToAdditive_sub_additive`.",
+      "proposed_change": "Replace the declaration by the unconditional form, e.g. `lemma distToAdditive_nonneg (f : Finset U → ℝ) : 0 ≤ distToAdditive f := le_ciInf fun a => Real.iSup_nonneg fun S => abs_nonneg _` (to be checked by the compiler), and simplify `dual_certificate_exists_proof` accordingly, in particular `lt_of_le_of_ne (distToAdditive_nonneg f) (Ne.symm hM0)`.",
+      "benefit": "The lemma then matches its docstring, is usable for every function, and removes the spurious `IsApproxAdditive` and bound hypotheses; the final theorem's `hf` argument, currently used only through this lemma, can also be dropped or kept purely for compatibility with the paper's statement.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Defs.lean",
+          "declaration": "distToAdditive",
+          "excerpt": "noncomputable def distToAdditive {U : Type*}\n    (f : Finset U → ℝ) : ℝ :=\n  ⨅ a : U → ℝ, ⨆ S : Finset U, |f S - additiveFunction a S|"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Pipeline.lean",
+          "declaration": "distToAdditive_sub_additive",
+          "excerpt": "refine le_trans (ciInf_le\n      (⟨0, Set.forall_mem_range.2 fun _ => Real.iSup_nonneg fun _ => abs_nonneg _⟩)\n      (fun i => b i - a i)) ?_"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 185441,
+    "cached_input_tokens": 153216,
+    "output_tokens": 37623,
+    "reasoning_output_tokens": 34886
+  },
+  "cost_usd": 0.022615228,
+  "generation_ids": [
+    "gen-1792621819-ST7QZkD06n3bfEirB8oD",
+    "gen-1792621824-ARis8JwqqjpCtWyktlgP",
+    "gen-1792621829-tQM1FRqVD8hDEoiXPNdv",
+    "gen-1792621868-i9qaALmD94ffC0TGtJfV",
+    "gen-1792621873-Z010cGiYqwzWICNyMZAB",
+    "gen-1792621975-hthYQf33dCKy3eslIjkV"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 6,
+  "duration_ms": 241463,
+  "judged": "2026-10-21T22:33:40+00:00",
+  "unit": "file",
+  "rubric": "vacuity-and-misstatement",
+  "source_sha256": "e2e71e39360264ce01321d98a643b9e96aaf725b7e4ab6d8a568aee859dd9e03"
+}

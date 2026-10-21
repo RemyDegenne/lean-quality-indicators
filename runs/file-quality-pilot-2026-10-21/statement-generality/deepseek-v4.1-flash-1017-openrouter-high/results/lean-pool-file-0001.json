@@ -1,0 +1,145 @@
+{
+  "id": "lean-pool-file-0001",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1-509), the supporting definitions in LeanPool/KaltonRoberts/Defs.lean (IsApproxAdditive, additiveFunction, distToAdditive, DualCertificate), the wrapper theorem in LeanPool/KaltonRoberts/Lemmas.lean:316-323, and a downstream consumer LeanPool/KaltonRoberts/Pipeline.lean:149-164 that works with an arbitrary certificate parameter M. I also checked Mathlib for the general linear-map decomposition (Mathlib/LinearAlgebra/Pi.lean:357-363, LinearMap.pi_apply_eq_sum_univ, stated for any Semiring R and module M₂). Two candidate items were deliberately not reported: (a) the unused hypotheses `_hf : IsApproxAdditive f 1` in dual_cert_zero_case/dual_cert_pos_case and the (probably unused) `hMbound` in dual_cert_from_convexHull are primarily 'unnecessary hypotheses' issues, which the rubric assigns to a separate experiment; (b) making `Finset.indicator'`/`indicator'_injective` polymorphic in the value type would be maximal abstraction with no visible use in this library (additiveFunction and DualCertificate are ℝ-valued), so I did not treat it as a defect. None of the proposed replacement statements has been elaborated; the suggested proofs are based on the proof scripts actually present in the file.",
+  "findings": [
+    {
+      "declaration": "clm_decompose",
+      "start_line": 52,
+      "end_line": 67,
+      "excerpt": "/-- A continuous linear map on `U → ℝ` decomposes via basis vectors. -/\nlemma clm_decompose (Λ : (U → ℝ) →L[ℝ] ℝ) (h : U → ℝ) :\n    Λ h = ∑ i : U, h i * Λ (Function.update (0 : U → ℝ) i 1) := by",
+      "problem": "The lemma is restricted to `ContinuousLinearMap`, but the proof (lines 55-66) only uses `map_smul`, `smul_eq_mul` and `map_sum`; no continuity, topology or norm enters. Moreover the identity is exactly Mathlib's `LinearMap.pi_apply_eq_sum_univ` specialised to an ℝ-valued target, and that Mathlib theorem is stated for an arbitrary Semiring `R` and arbitrary module codomain, so the current statement is unnecessarily narrow.",
+      "proposed_change": "State it for a linear map, e.g.\n\n```lean\nlemma clm_decompose {M : Type*} [AddCommMonoid M] [Module ℝ M]\n    (Λ : (U → ℝ) →ₗ[ℝ] M) (h : U → ℝ) :\n    Λ h = ∑ i : U, h i • Λ (Function.update (0 : U → ℝ) i 1)\n```\n\n(or at least `Λ : (U → ℝ) →ₗ[ℝ] ℝ` keeping `h i * Λ (...)`). The existing proof goes through unchanged because `map_smul` and `map_sum` are `LinearMap` lemmas; alternatively the statement follows from `LinearMap.pi_apply_eq_sum_univ` after rewriting `Function.update (0 : U → ℝ) i 1` as `fun j => if i = j then 1 else 0` (`Function.update`, `eq_comm`) and `smul_eq_mul`. The call sites in this file supply a `ContinuousLinearMap`, which coerces to `LinearMap`, so no caller needs to change.",
+      "benefit": "The lemma becomes applicable to any linear functional (continuous or not) and to vector-valued codomains, removes an irrelevant topological assumption from its interface, and exposes that the result is a special case of an existing general Mathlib theorem rather than a new CLM-only fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "clm_decompose",
+          "excerpt": "      ext j; simp [Function.update, Pi.smul_apply]\n    rw [this, map_smul, smul_eq_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "clm_decompose",
+          "excerpt": "      _ = ∑ i, Λ (Function.update (0 : U → ℝ) i (h i)) := map_sum Λ _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/LinearAlgebra/Pi.lean",
+          "declaration": "LinearMap.pi_apply_eq_sum_univ",
+          "excerpt": "theorem pi_apply_eq_sum_univ [Fintype ι] (f : (ι → R) →ₗ[R] M₂) (x : ι → R) :\n    f x = ∑ i, x i • f fun j => if i = j then 1 else 0 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "clm_indicator'_eq_additiveFunction",
+      "start_line": 69,
+      "end_line": 75,
+      "excerpt": "omit [Fintype U] in\n/-- Applying a CLinearMap to an indicator equals `additiveFunction`. -/\nlemma clm_indicator'_eq_additiveFunction (Λ : (U → ℝ) →L[ℝ] ℝ) (S : Finset U) :\n    Λ S.indicator' = additiveFunction (fun i => Λ (Function.update 0 i 1)) S := by",
+      "problem": "Same unnecessary specialisation: the statement is formulated for a continuous linear map, but the entire proof is `have : S.indicator' = ∑ i ∈ S, Function.update (0 : U → ℝ) i 1 := ...; rw [this, map_sum]; rfl`, i.e. it only uses additivity of `Λ` on finite sums. Continuity, and even topological assumptions on the space `U → ℝ`, play no role.",
+      "proposed_change": "Weaken the type of `Λ` to a linear functional:\n\n```lean\nlemma clm_indicator'_eq_additiveFunction (Λ : (U → ℝ) →ₗ[ℝ] ℝ) (S : Finset U) :\n    Λ S.indicator' = additiveFunction (fun i => Λ (Function.update 0 i 1)) S\n```\n\nThe body `rw [this, map_sum]; rfl` is unchanged (`LinearMap.map_sum` for finite sums). The uses at lines 156 and 163 pass the `ContinuousLinearMap` obtained from Hahn-Banach separation, which coerces to `LinearMap`, so those call sites still elaborate.",
+      "benefit": "Users can apply the identity to arbitrary (e.g. non-continuous, or merely additive) functionals, and the lemma no longer drags in the topology of `U → ℝ`; a reader immediately sees that the result is pure additivity rather than an analytic fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "clm_indicator'_eq_additiveFunction",
+          "excerpt": "  have : S.indicator' = ∑ i ∈ S, Function.update (0 : U → ℝ) i 1 := by\n    ext j; simp [Finset.indicator', Finset.sum_apply, Function.update]\n  rw [this, map_sum]; rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "zero_mem_convexHull_of_best_approx",
+          "excerpt": "      convert clm_indicator'_eq_additiveFunction Λ S using 1;"
+        }
+      ]
+    },
+    {
+      "declaration": "dual_cert_zero_case",
+      "start_line": 82,
+      "end_line": 93,
+      "excerpt": "lemma dual_cert_zero_case\n    (f : Finset U → ℝ) (_hf : IsApproxAdditive f 1)\n    (hMbound : ∀ S : Finset U, |f S| ≤ distToAdditive f)\n    (hM0 : distToAdditive f = 0) :\n    Nonempty (DualCertificate f (distToAdditive f)) := by",
+      "problem": "The degenerate case is stated only for the concrete value `distToAdditive f`, although nothing in the construction (the witness `fun S => if S = ∅ then 1 else 0`) uses `distToAdditive`: the proof only needs that all values `f S` vanish, which follows from `hMbound` together with `hM0`. The hypothesis `_hf : IsApproxAdditive f 1` is not needed for that derivation either. As a result the lemma cannot be reused for a certificate at any other target value `M`, and it forces every user to have `distToAdditive` in the goal.",
+      "proposed_change": "Generalise the parameter to an arbitrary real `M` (or directly to `0`):\n\n```lean\nlemma dual_cert_zero_case (f : Finset U → ℝ) (M : ℝ)\n    (hMbound : ∀ S : Finset U, |f S| ≤ M) (hM0 : M = 0) :\n    Nonempty (DualCertificate f M)\n```\n\nProof sketch with the same witness: from `hMbound` and `hM0` get `∀ S, f S = 0` (`abs_nonpos_iff` after rewriting `M = 0`); then `norm_one` is the existing `Finset.sum_eq_single ∅` computation, `zero_marginals` holds because no set containing `i` equals `∅`, `pos_support` holds because `f S = 0 = M`, and `neg_support` is vacuous since the weights are `0` or `1`. The current call at line 505 then specialises with `M := distToAdditive f` and `hM0`.",
+      "benefit": "The lemma becomes a reusable statement about any vanishing certificate target, is independent of the definition of `distToAdditive`, and directly supports a version of the main theorem with a general parameter `M` (see the next finding).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "dual_cert_zero_case",
+          "excerpt": "  have hzero : ∀ S : Finset U, f S = 0 := by\n    simp_all\n  refine ⟨⟨fun S => if S = ∅ then 1 else 0, ?_, ?_, ?_, ?_⟩⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Defs.lean",
+          "declaration": "DualCertificate",
+          "excerpt": "structure DualCertificate {U : Type*} [DecidableEq U] [Fintype U]\n    (f : Finset U → ℝ) (M : ℝ) where"
+        }
+      ]
+    },
+    {
+      "declaration": "dual_certificate_exists_proof",
+      "start_line": 495,
+      "end_line": 507,
+      "excerpt": "theorem dual_certificate_exists_proof\n    (f : Finset U → ℝ)\n    (hf : IsApproxAdditive f 1)\n    (hM : ∀ S : Finset U, |f S| ≤ distToAdditive f)\n    (hbest : ∀ a : U → ℝ, ∃ S : Finset U,\n      |f S - additiveFunction a S| ≥ distToAdditive f) :\n    Nonempty (DualCertificate f (distToAdditive f)) := by",
+      "problem": "The whole Hahn-Banach development is parameterised by `distToAdditive f` only in the final statements: `zero_mem_convexHull_of_best_approx` and `dual_cert_from_convexHull` take an arbitrary real `M`, and `dual_cert_pos_case` even passes an underscore for it (`dual_cert_from_convexHull f _ hM_pos hMbound`, `zero_mem_convexHull_of_best_approx f _ hM_pos hMbound hbest`). Consequently the theorem is unnecessarily specialised to one particular real number, is usable only when `distToAdditive f` literally appears in the goal, and carries the extra hypothesis `IsApproxAdditive f 1`, which is used only to obtain `0 ≤ distToAdditive f` (via `distToAdditive_nonneg`), whereas `0 ≤ M` follows directly from `hM ∅`.",
+      "proposed_change": "Prove the M-general statement and derive the current one from it:\n\n```lean\ntheorem dual_certificate_exists_of_bounds (f : Finset U → ℝ) (M : ℝ)\n    (hM : ∀ S : Finset U, |f S| ≤ M)\n    (hbest : ∀ a : U → ℝ, ∃ S : Finset U, |f S - additiveFunction a S| ≥ M) :\n    Nonempty (DualCertificate f M) := by\n  have hM_nn : 0 ≤ M := le_trans (abs_nonneg _) (hM ∅)\n  rcases eq_or_lt_of_le hM_nn with h | h\n  · exact dual_cert_zero_case f M hM h.symm            -- generalised zero case above\n  · exact dual_cert_pos_case f M hM hbest h            -- dual_cert_pos_case with M instead of distToAdditive f\n```\n\n`dual_cert_pos_case` (lines 477-486) can be restated with a general `M` and `hM_pos : 0 < M` without touching its proof body, and `dual_certificate_exists_proof f hf hM hbest` is then the instance `M := distToAdditive f` (with `hf` kept only to match the paper's hypotheses). Note `M < 0` is excluded automatically, since `hM ∅` is then unsatisfiable.",
+      "benefit": "The main result becomes usable for any bound `M` satisfying the two evident hypotheses (e.g. an `M` coming from a direct sup-norm estimate rather than an infimum over additive functions), it decouples the separation argument from the definition of `distToAdditive`, and it matches the downstream interface, which already quantifies over an arbitrary `M` (e.g. `DualCertificate.neg : DualCertificate f M → DualCertificate (fun S => -f S) M` in Pipeline.lean).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "dual_cert_pos_case",
+          "excerpt": "  dual_cert_from_convexHull f _ hM_pos hMbound\n    (zero_mem_convexHull_of_best_approx f _ hM_pos hMbound hbest)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "dual_cert_from_convexHull",
+          "excerpt": "lemma dual_cert_from_convexHull\n    (f : Finset U → ℝ) (M : ℝ) (hM_pos : 0 < M)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Pipeline.lean",
+          "declaration": "DualCertificate.neg",
+          "excerpt": "noncomputable def DualCertificate.neg\n    {f : Finset U → ℝ} {M : ℝ}\n    (cert : DualCertificate f M) :\n    DualCertificate (fun S => -f S) M where"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 760135,
+    "cached_input_tokens": 668160,
+    "output_tokens": 28424,
+    "reasoning_output_tokens": 19243
+  },
+  "cost_usd": 0.02691528,
+  "generation_ids": [
+    "gen-1792621639-HRIbDGdbzsIO0ds8UBm5",
+    "gen-1792621684-alOdzmtxNk4TLuYpFUDG",
+    "gen-1792621693-WKbJzfOt4Pe3QDAb4oA3",
+    "gen-1792621726-Htwy3PbSF8tSB4BP36PG",
+    "gen-1792621731-6Ayvg3YSBfjySdcfr6gc",
+    "gen-1792621774-LlPN66Q85JdLntLaW8qQ",
+    "gen-1792621831-DTDf6VdzGrvqpMgCA0ao",
+    "gen-1792621865-FwgZeGusUs8wkox1cHx8",
+    "gen-1792621883-OLpbXYUXGqsQmoMXPgr2",
+    "gen-1792621888-qRxShBnGYDD4hQJ1hcG3",
+    "gen-1792621895-vV2GqzIxQw5t3Jz2F8qo",
+    "gen-1792621910-8O3sW9C0kEIrJ9oXLEPQ",
+    "gen-1792621915-2qsBNBQWSyzyxS2aODwm",
+    "gen-1792621920-rexImq43uvZYbX9LSzAA",
+    "gen-1792621925-SY3jgCGS1FRl2Pj8vItV",
+    "gen-1792621940-5pONazidAzpGhtiB6BDw",
+    "gen-1792621963-FuwLUNUnUr0Z97rEosiz"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 17,
+  "duration_ms": 361631,
+  "judged": "2026-10-21T22:33:02+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "e2e71e39360264ce01321d98a643b9e96aaf725b7e4ab6d8a568aee859dd9e03"
+}

@@ -1,0 +1,116 @@
+{
+  "id": "tauceti-file-0001",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the target file in full (lines 1-598) and inspected the related sources that define or consume its interface: TauCeti/LinearAlgebra/TensorCoalgebra/Primitives.lean (letter, letter_apply, letter_* simp lemmas), GradedCoderivation.lean (letter_comp_gradedCoderiv, taylorComponent_gradedCoderiv, IsGradedCoderivation, IsCoderivation.eq_of_letter_comp_eq, IsCoderivation.isGradedCoderivation, gradedCoderiv_zero) and TaylorComponent.lean (proofs that consume taylorComponent_apply). I checked the actual `[simp]` set contributed by the file (isCoderivation_coderiv, letter_comp_coderiv, mem_coderivations, coderivEquivTaylor_apply, coderivEquivTaylor_symm_apply, taylorComponent_apply/zero/coderiv/add/smul) and looked for cycles, competing rules, missing normal forms and downstream workarounds. I found no credible rewrite cycle among the declared simp lemmas. I did not run Lean, so the statements about which lemma the simplifier tries first are based on declaration order/priority and on the explicit `simp only` sets used downstream, not on an experiment; the proposed replacement lemmas are not claimed to be compiled.",
+  "findings": [
+    {
+      "declaration": "LinearMap.taylorComponent_coderiv (with TauCeti.ReducedTensorWords.letter_comp_coderiv and LinearMap.taylorComponent_apply)",
+      "start_line": 536,
+      "end_line": 541,
+      "excerpt": "/-- The arity components of `coderiv F` are the restrictions of `F` to each tensor length. -/\n@[simp]\ntheorem taylorComponent_coderiv (F : ReducedTensorWords R M →ₗ[R] M)\n    (n : {n : ℕ // 0 < n}) :\n    taylorComponent (coderiv R F) n = F ∘ₗ of R M n := by\n  rw [taylorComponent, letter_comp_coderiv]",
+      "problem": "`taylorComponent_coderiv` and `taylorComponent_apply` (lines 523-528) are competing simp rules for the same term `taylorComponent (coderiv R F) n x`, and they produce different normal forms. `taylorComponent_apply` rewrites any `taylorComponent b n x` to `letter R M (b (of R M n x))`, so whenever that rule is used (typically in a `simp only` list that omits the coderiv-specific rule) the term becomes `letter R M (coderiv R F (of R M n x))`, and nothing in the simp set closes it: `letter_comp_coderiv` (lines 432-434) is stated for the composite `letter R M ∘ₗ coderiv R F`, and `LinearMap.comp_apply` only unfolds composites into applications, never folds an application back into a composite. The same gap exists for `letter_comp_coderiv` alone: the file supplies the composite form but no applied form `letter R M (coderiv R F (of R M n z)) = F (of R M n z)`. Downstream proofs show the cost: after `simp only [LinearMap.taylorComponent_apply, LinearMap.comp_apply]` they have to re-fold the composite by hand.",
+      "proposed_change": "Add the pointwise companion lemma (proof by `LinearMap.congr_fun`), e.g.\n\n@[simp]\ntheorem letter_coderiv_of (F : ReducedTensorWords R M →ₗ[R] M) (n : {n : ℕ // 0 < n})\n    (z : TensorPower R n.1 M) :\n    letter R M (coderiv R F (of R M n z)) = F (of R M n z) :=\n  LinearMap.congr_fun (letter_comp_coderiv R F) (of R M n z)\n\nand keep (or additionally state pointwise) `taylorComponent_coderiv` as\n`taylorComponent (coderiv R F) n z = F (of R M n z)`. Both have hypothesis-free left-hand sides, so neither competes with nor loops against `taylorComponent_apply`, `letter_comp_coderiv` or `LinearMap.comp_apply`.",
+      "benefit": "After the standard `taylorComponent_apply`/`comp_apply` normalisation the goal `letter R M (coderiv R F (of R M n x)) = ...` is closed automatically instead of being a dead end, so the result of simplifying a `taylorComponent` of a Taylor expansion no longer depends on which of the two competing rules the simplifier reaches first. The same applied lemma is what the graded analogue needs: `taylorComponent_gradedCoderiv` and `taylorComponent_comp_gradedCoderiv_of_tprod` currently have to insert `rw [← LinearMap.comp_apply (letter R M), letter_comp_gradedCoderiv]`, i.e. they undo the simplifier's orientation by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Coderivation.lean",
+          "declaration": "LinearMap.taylorComponent_apply",
+          "excerpt": "    taylorComponent b n x = letter R M (b (of R M n x)) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Coderivation.lean",
+          "declaration": "TauCeti.ReducedTensorWords.letter_comp_coderiv",
+          "excerpt": "    letter R M ∘ₗ coderiv R F = F := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/GradedCoderivation.lean",
+          "declaration": "ReducedTensorWords.taylorComponent_gradedCoderiv",
+          "excerpt": "  rw [← LinearMap.comp_apply (letter R M), letter_comp_gradedCoderiv]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/TaylorComponent.lean",
+          "declaration": "taylorComponent_comp_gradedCoderiv_of_tprod",
+          "excerpt": "      rw [← LinearMap.comp_apply (letter R M), gradedCoderiv_of_tprod, map_sum]"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.ReducedTensorWords.IsCoderivation",
+      "start_line": 217,
+      "end_line": 220,
+      "excerpt": "def IsCoderivation (b : ReducedTensorWords R M →ₗ[R] ReducedTensorWords R M) : Prop :=\n  deconcatenation R M ∘ₗ b =\n    (LinearMap.rTensor (ReducedTensorWords R M) b +\n        LinearMap.lTensor (ReducedTensorWords R M) b) ∘ₗ deconcatenation R M",
+      "problem": "The body of `IsCoderivation` keeps the sum outside the composition, `(rTensor b + lTensor b) ∘ₗ deconcatenation`, which is the reverse of the simplifier's normal form for `LinearMap.add_comp` (`(f + g) ∘ₗ h` rewrites to `f ∘ₗ h + g ∘ₗ h`, never back). It is also a different shape from the hypothesis expected by the shared twist lemma `eq_of_letter_comp_eq_of_twist` (lines 269-279) and from the graded predicate it is meant to specialise. As a result every conversion in the tau = id case is an anti-simp rewrite: `IsCoderivation.eq_of_letter_comp_eq` needs `rw [isCoderivation_iff] at h₁; rwa [LinearMap.rTensor_id, LinearMap.comp_id, ← LinearMap.add_comp]` twice (lines 319-322), and `IsCoderivation.isGradedCoderivation` in GradedCoderivation.lean needs the same `← LinearMap.add_comp`. By contrast, the graded analogue is stored distributed, which is why `IsGradedCoderivation.eq_of_letter_comp_eq` can pass its hypotheses to `eq_of_letter_comp_eq_of_twist` verbatim.",
+      "proposed_change": "Either state the body distributed, `deconcatenation R M ∘ₗ b = LinearMap.rTensor (ReducedTensorWords R M) b ∘ₗ deconcatenation R M + LinearMap.lTensor (ReducedTensorWords R M) b ∘ₗ deconcatenation R M` (and word `isCoderivation_iff` the same way), or add a bridge lemma giving exactly that distributed identity so consumers can `simpa only [ReducedTensorWords.map_id, LinearMap.rTensor_id, LinearMap.comp_id] using h` instead of `rw [← LinearMap.add_comp]`. In either case, the tau = id instance of `eq_of_letter_comp_eq_of_twist`'s hypothesis becomes `IsCoderivation R b` up to `map_id`/`rTensor_id`/`comp_id`.",
+      "benefit": "The ungraded predicate then agrees with the simp normal form of `LinearMap.add_comp` and with the shape of `IsGradedCoderivation`, so the four existing `← LinearMap.add_comp` call sites stop undoing the simplifier, and the ungraded `eq_of_letter_comp_eq` / `isGradedCoderivation` conversions reduce to `simp`-only steps symmetric with the graded versions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/GradedCoderivation.lean",
+          "declaration": "ReducedTensorWords.isGradedCoderivation_iff",
+          "excerpt": "    IsGradedCoderivation G q b ↔\n      (deconcatenation R M ∘ₗ b =\n        LinearMap.rTensor (ReducedTensorWords R M) b ∘ₗ deconcatenation R M +"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/GradedCoderivation.lean",
+          "declaration": "ReducedTensorWords.IsGradedCoderivation.eq_of_letter_comp_eq",
+          "excerpt": "  eq_of_letter_comp_eq_of_twist h₁ h₂ hl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Coderivation.lean",
+          "declaration": "TauCeti.ReducedTensorWords.IsCoderivation.eq_of_letter_comp_eq",
+          "excerpt": "    rwa [LinearMap.rTensor_id, LinearMap.comp_id, ← LinearMap.add_comp]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/GradedCoderivation.lean",
+          "declaration": "ReducedTensorWords.IsCoderivation.isGradedCoderivation",
+          "excerpt": "  rw [hb, InternalGrading.koszulTwist_zero, ReducedTensorWords.map_id, LinearMap.rTensor_id,\n    LinearMap.comp_id, ← LinearMap.add_comp]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1252887,
+    "cached_input_tokens": 1185536,
+    "output_tokens": 34709,
+    "reasoning_output_tokens": 30259
+  },
+  "cost_usd": 0.032226868,
+  "generation_ids": [
+    "gen-1792622040-R9uUbzdt4DHQRF5B86lw",
+    "gen-1792622044-LYERKOoSSgVT7U9orcPQ",
+    "gen-1792622060-JvbjaCpEJ8dnz2hJ2roG",
+    "gen-1792622062-OoJitbOukRrGGE9TovQk",
+    "gen-1792622090-FYOmHJTVsMOXEjIPA9Eq",
+    "gen-1792622124-pajJEOvQTECEhP3Hmxf0",
+    "gen-1792622130-FHbfrcficfVhMV0vfhh0",
+    "gen-1792622154-ms917akvgLnaO8vTUrGz",
+    "gen-1792622166-VixadvFkeGXDOcr8V1mC",
+    "gen-1792622196-q6l0tnZtzYbKtvd953dD",
+    "gen-1792622201-xUfrU3P7oO6YXDlP8eE5",
+    "gen-1792622212-EC3SdsRXP3F6xVhIRML3",
+    "gen-1792622265-O4n0BI4iCL1MDQjZmSsq",
+    "gen-1792622276-lPIEs2hs3xICWo2YLjNu",
+    "gen-1792622280-BANruJ2LzFv2cW8rPR7X",
+    "gen-1792622284-OGK6vgpRsFb6CWnXI5UP",
+    "gen-1792622298-jYRJaeM1QeuX59fCyfe0",
+    "gen-1792622310-tIsKrbtVPJXl2AmQ3Ozy",
+    "gen-1792622332-8S71LsDQWruyRupZgpC2",
+    "gen-1792622354-QLdAP6xqOWmEcycylBSh"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 20,
+  "duration_ms": 379299,
+  "judged": "2026-10-21T22:40:00+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "ccc73f2715c13a14e6dedcd3d56026f094fcd1af39f4dfa6f6fb43c5f9b5e9b8"
+}

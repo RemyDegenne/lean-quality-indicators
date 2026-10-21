@@ -1,0 +1,87 @@
+{
+  "id": "openai-math-file-0001",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 75 lines of the target file and inspected the supporting definitions and lemmas it uses: SpectralOverlapPaths.lean (spectralPathDensity, spectralGroupPath, spectralGroupDiagonal, nonnegativity, continuityOn, interval integrability, diagonal bounds), SpectralPaths.lean (projectedResolventDerivative), Core/Variational.lean (OverlapPath, deficit), and CavityCanonicalBlockLimit.lean; I also grepped all uses of cavityCanonicalCoordinate/cavityCanonicalLabel and projIcc_of_mem across the InvariantIsing tree. The main two improvements are (1) the equality lemma at_path is stated only for arguments in the range of p, although the un-clamping fact holds for every t in Icc 0 1, and downstream files repeatedly unfold and rewrite this by hand; (2) the whole file hard-codes Fin m even though the underlying spectral API is generic over any finite index type and none of the proofs inspect the Nat/Fin structure. I considered but rejected two further changes: restricting the label codomain to Icc 0 1 would break the intentional `SpectralEntry m := Fin m → Icc (-1) 1` API used downstream, and replacing spectralPathDensity by an arbitrary nonnegative integrand would mostly restate standard one-line interval-integral facts while obscuring the spectral API, so it is not a clear practical improvement here. Proposed replacements are not compiled in this review, so exact instance inference remains untested.",
+  "findings": [
+    {
+      "declaration": "cavityCanonicalCoordinate_at_path",
+      "start_line": 53,
+      "end_line": 57,
+      "excerpt": "lemma cavityCanonicalCoordinate_at_path {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : Fin m) (s : ℝ) :\n    cavityCanonicalCoordinate ρ eig hρ hρsum p a (p s) = spectralGroupPath ρ eig hρ hρsum p a s := by\n  unfold cavityCanonicalCoordinate spectralGroupPath\n  rw [Set.projIcc_of_mem zero_le_one ⟨p.nonneg s, p.le_one s⟩]",
+      "problem": "The only evaluation lemma for cavityCanonicalCoordinate is restricted to arguments of the form p s, i.e. to the range of the particular OverlapPath p. The actual computation (the projection Set.projIcc 0 1 zero_le_one t is the identity) is valid for every t ∈ Icc 0 1, and the equality with spectralGroupPath is only the special case that additionally unfolds spectralGroupPath. Because no such general lemma is exported, downstream files must unfold cavityCanonicalCoordinate and rewrite Set.projIcc_of_mem by hand (CavitySpinObservable.lean:18, CavityFiniteHeightContinuity.lean:20-21, CavityFiniteReplicaCovariance.lean:86, CavityCanonicalContinuity.lean:60, CavityRecalculatedLabels.lean:47). In particular, values at endpoints such as t = 1, where the coordinate is the diagonal, are not available from this file unless p happens to attain 1.",
+      "proposed_change": "Add the general evaluation lemma\n\nlemma cavityCanonicalCoordinate_of_mem {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : Fin m) {t : ℝ} (ht : t ∈ Icc 0 1) :\n    cavityCanonicalCoordinate ρ eig hρ hρsum p a t =\n      ∫ r in 0..t, spectralPathDensity ρ eig hρ hρsum p a r := by\n  unfold cavityCanonicalCoordinate\n  rw [Set.projIcc_of_mem zero_le_one ht]\n\nand derive the existing lemma from it (as `simpa only [spectralGroupPath]` using it at ⟨p.nonneg s, p.le_one s⟩). Endpoint corollaries also follow by the same membership rewrites: t = 0 gives 0 (`integral_same`) and t = 1 gives `spectralGroupDiagonal ρ eig hρ hρsum p a`, without any assumption that p attains the endpoint. Degenerate cases t < 0 and t > 1 remain handled by the clamp and are not affected, since the new lemma only claims membership in Icc 0 1.",
+      "benefit": "Users get the coordinate in the form of the spectral primitive at every overlap level in [0,1], not only at values produced by one chosen path, and the repeated unfold-and-rewrite pattern in five downstream files can be replaced by one named lemma. It also makes the relation to spectralGroupPath a corollary rather than the primary form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavitySpinObservable.lean",
+          "declaration": "sum_cavityCanonicalCoordinate",
+          "excerpt": "(p : OverlapPath) {t : ℝ} (ht : t ∈ Icc 0 1) :\n    (∑ a, cavityCanonicalCoordinate rho lam hrho hsum p a t) = t := by\n  simp only [cavityCanonicalCoordinate, Set.projIcc_of_mem zero_le_one ht]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityFiniteHeightContinuity.lean",
+          "declaration": "cavityCanonicalCoordinate_dist_le",
+          "excerpt": "(p : OverlapPath) (a : Fin m) {s t : ℝ} (hs : s ∈ Icc 0 1) (ht : t ∈ Icc 0 1) :\n    |cavityCanonicalCoordinate rho lam hrho hsum p a s -\n      cavityCanonicalCoordinate rho lam hrho hsum p a t| ≤ |s - t| := by\n  simp only [cavityCanonicalCoordinate, Set.projIcc_of_mem zero_le_one hs,\n    Set.projIcc_of_mem zero_le_one ht]"
+        }
+      ]
+    },
+    {
+      "declaration": "cavityCanonicalCoordinate and the six lemmas/definitions through cavityCanonicalLabel (lines 15-69)",
+      "start_line": 15,
+      "end_line": 69,
+      "excerpt": "def cavityCanonicalCoordinate {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : Fin m) (t : ℝ) : ℝ :=",
+      "problem": "Every declaration in the file fixes the index set to Fin m, although no statement or proof uses any order, casting or arithmetic structure of Fin m: the only inputs are the pointwise positivity and unit sum of ρ, and the only spectral facts invoked (spectralPathDensity_nonneg, spectralPathDensity_intervalIntegrable, spectralGroupDiagonal_le_one) are all stated for an arbitrary finite index type. The immediately underlying layer is generic (`variable {ι : Type*} [Fintype ι]` in SpectralOverlapPaths.lean), so these results are unnecessarily restricted to one concrete finite type and cannot be reused for another finite indexing without transporting along an equivalence to Fin m.",
+      "proposed_change": "Replace the binder `{m : ℕ} (ρ eig : Fin m → ℝ) ... (a : Fin m)` in all seven declarations (cavityCanonicalCoordinate, the four cavityCanonicalCoordinate_* lemmas, cavityCanonicalLabel and continuous_cavityCanonicalLabel) by `{ι : Type*} [Fintype ι] (ρ eig : ι → ℝ) (hρ : ∀ a, 0 < ρ a) (hρsum : ∑ a, ρ a = 1) ... (a : ι)`. The proof terms can be kept verbatim, since they only instantiate the generic spectral lemmas above and the membership facts of Set.projIcc; no case analysis on the index occurs. For an empty index type the hypothesis hρsum is unsatisfiable, so there is no additional degenerate case, and a : ι is never constructed. (This has not been elaborated in this review.)",
+      "benefit": "The cavity canonical-coordinate API then matches the generality of the spectral-density API it is built on: any finite index type (for example a sum or product of block index types) can use these results directly instead of re-deriving them or reindexing to Fin m. Because the assumptions are unchanged, existing Fin m call sites keep working through inference.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralPathDensity",
+          "excerpt": "variable {ι : Type*} [Fintype ι]\n\ndef spectralPathDensity (ρ eig : ι → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : ι) (r : ℝ) : ℝ :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Spectral/SpectralOverlapPaths.lean",
+          "declaration": "spectralGroupDiagonal_le_one",
+          "excerpt": "theorem spectralGroupDiagonal_le_one (ρ eig : ι → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : ι) :\n    spectralGroupDiagonal ρ eig hρ hρsum p a ≤ 1 := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 387048,
+    "cached_input_tokens": 346368,
+    "output_tokens": 15415,
+    "reasoning_output_tokens": 11788
+  },
+  "cost_usd": 0.013732844,
+  "generation_ids": [
+    "gen-1792621636-q41w1e7fcuI4HPY06fLm",
+    "gen-1792621651-edfFWoeBh1VzZ7WchTUh",
+    "gen-1792621690-qHXuZXUMaephfKgAQR6U",
+    "gen-1792621719-SKCLg5sfSwemAFMcZaKW",
+    "gen-1792621751-Xb7hHFzDgbsx8GnA9ken",
+    "gen-1792621756-RNL9vCDOqgwvXnmk1ai3",
+    "gen-1792621794-vVGi2crIIsNH8LjFqkW8",
+    "gen-1792621799-UfzOLjZWM4Wi12M2mnoM",
+    "gen-1792621821-V5OkrI6WHJDOj6GtH7Ag",
+    "gen-1792621859-y3FpuEOszUglxYuocRfK",
+    "gen-1792621875-zWb7iAp6xgyx2BtLk5Ue"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 11,
+  "duration_ms": 279236,
+  "judged": "2026-10-21T22:31:40+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "b390cf2c9c89d26b73b1c451d9d8b912a7c85e5c016d5f1a9120804b70a4843b"
+}

@@ -2,6 +2,7 @@
 import datetime
 from decimal import Decimal
 import fcntl
+import http.client
 import json
 import os
 from pathlib import Path
@@ -28,6 +29,10 @@ class BudgetExhausted(RuntimeError):
 
 
 class RateLimited(RuntimeError):
+    pass
+
+
+class TransientFailure(RuntimeError):
     pass
 
 
@@ -109,6 +114,15 @@ class Budget:
                 not_before=time.time() + min(1800, 300 * 2 ** min(level - 1, 3)))
             write_json(self.path, state)
 
+    def pause_after_transport_error(self, seconds):
+        with self.path.with_suffix(".lock.log").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            state = self.read()
+            state.update(not_before=max(state.get("not_before", 0), time.time() + seconds),
+                         success_streak=0,
+                         transport_error_count=state.get("transport_error_count", 0) + 1)
+            write_json(self.path, state)
+
     def succeeded(self):
         with self.path.with_suffix(".lock.log").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
@@ -152,13 +166,26 @@ def request_once(payload, key, budget, target, transcript):
             response = json.load(stream)
     except urllib.error.HTTPError as error:
         # Failed/uncertain requests retain the entire reservation conservatively.
-        detail = error.read().decode(errors="replace")[:2000]
+        try:
+            detail = error.read().decode(errors="replace")[:2000]
+        except (OSError, http.client.IncompleteRead) as read_error:
+            detail = f"Error body unavailable: {read_error}"
+        finally:
+            error.close()
         transcript.write(json.dumps({"type": "request_error", "status": error.code,
                                       "detail": detail, "budget_request": number}) + "\n")
         transcript.flush()
         if error.code == 429:
             raise RateLimited("OpenRouter HTTP 429; stop requests and cool down") from None
+        if error.code in [408, 500, 502, 503, 504, 520, 522, 524]:
+            raise TransientFailure(f"OpenRouter HTTP {error.code}: {detail}") from None
         raise RuntimeError(f"OpenRouter HTTP {error.code}: {detail}") from None
+    except (ConnectionError, TimeoutError, urllib.error.URLError, http.client.IncompleteRead,
+            json.JSONDecodeError) as error:
+        transcript.write(json.dumps({"type": "request_error", "error_type": type(error).__name__,
+                                      "detail": str(error)[:2000], "budget_request": number}) + "\n")
+        transcript.flush()
+        raise TransientFailure(str(error)) from None
     transcript.write(json.dumps({"type": "api_response", "budget_request": number, "response": response}) + "\n")
     transcript.flush()
     amount = budget.settle(number, response)
@@ -177,6 +204,10 @@ def request(payload, key, budget, target, transcript):
             return request_once(payload, key, budget, target, transcript)
         except RateLimited:
             budget.backoff()
+            if retry == 2:
+                raise
+        except TransientFailure:
+            budget.pause_after_transport_error(5 * 3 ** retry)
             if retry == 2:
                 raise
 

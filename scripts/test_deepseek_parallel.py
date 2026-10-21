@@ -97,6 +97,7 @@ class SchedulingTests(unittest.TestCase):
                     'output':f'audit-{i//2}/judge'} for i in range(4)]
             existing=root/tasks[0]['output']/'results/test-0000.json'
             backend.write_json(existing,{'verdict':'none_found'})
+            backend.write_json(root/tasks[2]['output']/'results/test-0000.failure.json',{'error':'connection reset'})
             seen=[]
             lock=threading.Lock()
             barrier=threading.Barrier(2)
@@ -114,6 +115,7 @@ class SchedulingTests(unittest.TestCase):
                 pilot.run_tasks(tasks,'key',budget,jobs=2)
             self.assertEqual(set(seen),{(t['audit'],t['row']['id']) for t in tasks[1:]})
             self.assertEqual(len(seen),3)
+            self.assertEqual(set(seen[:2]),{(t['audit'],t['row']['id']) for t in [tasks[2],tasks[1]]})
             state=json.loads((root/'status.json').read_text())
             self.assertEqual(state['stage'],'complete')
             self.assertEqual(state['completed'],4)

@@ -109,3 +109,8 @@ The pilot began with one judgment session, increased to two after InferenceNet's
 stable calibration, then four and eight after verifying parallel source contexts and request pacing. Sessions have separate source-validation contexts, and share one
 atomic request limiter and spending ledger. Parallel sessions cannot admit simultaneous
 requests inside the configured gap or reserve more than the shared budget.
+
+Transient connection errors and provider 5xx errors retry the same request up to
+three times, preserving its session and applying a shared pause of 5, 15, then 45
+seconds. Unknown charges keep their reservations. Unfinished targets with failure
+records get priority when the worker resumes; failures never become negative judgments.

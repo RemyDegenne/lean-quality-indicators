@@ -1,0 +1,130 @@
+{
+  "id": "openai-math-file-0001",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the complete 75-line target file and inspected the definitions it depends on: `spectralPathDensity`, `spectralGroupPath`, `spectralGroupDiagonal`, `OverlapPath`, and Mathlib's `Set.projIcc` simp lemmas. I also checked downstream uses in `CavityCanonicalSynchronization`, `CavityCanonicalContinuity`, `CavityRecalculatedLabels`, `CavitySpinObservable`, and `CavityFiniteGroupSelection`. I did not execute Lean; the replacement lemmas and attributes are proposals, not compiled facts. The proposed simp rules are not expected to cycle: `_at_path` and the literal endpoint rules have different patterns, and the label coercion rule has no label on its right-hand side.",
+  "findings": [
+    {
+      "declaration": "InvariantIsing.cavityCanonicalCoordinate_at_path",
+      "start_line": 53,
+      "end_line": 57,
+      "excerpt": "    cavityCanonicalCoordinate ρ eig hρ hρsum p a (p s) = spectralGroupPath ρ eig hρ hρsum p a s := by\n  unfold cavityCanonicalCoordinate spectralGroupPath\n  rw [Set.projIcc_of_mem zero_le_one ⟨p.nonneg s, p.le_one s⟩]",
+      "problem": "`cavityCanonicalCoordinate_at_path` is the canonical bridge from the coordinate evaluated at a path argument to the named, more primitive `spectralGroupPath`, but it is not registered as a simp lemma. Downstream code must invoke it manually with `.symm` inside a `trans`, which is exactly the kind of bridge that a simp rule should remove. The rewrite is terminating: the right-hand side contains no `cavityCanonicalCoordinate`, and no existing simp rule rewrites `spectralGroupPath` back to the coordinate.",
+      "proposed_change": "Add `@[simp]` to `cavityCanonicalCoordinate_at_path`, keeping the orientation coordinate-at-path to `spectralGroupPath` (or add a separate `@[simp]` theorem with the same statement).",
+      "benefit": "Goals of the form `cavityCanonicalCoordinate ... p a (p s) = ...` reduce automatically to `spectralGroupPath ... p a s`. For example, the downstream proof in `cavity_canonical_group_synchronization` could use `simpa only [cavityCanonicalCoordinate_at_path] using hs a` instead of constructing `(hs a).trans (...).symm` by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityCanonicalLabels.lean",
+          "declaration": "InvariantIsing.cavityCanonicalCoordinate_at_path",
+          "excerpt": "    cavityCanonicalCoordinate ρ eig hρ hρsum p a (p s) = spectralGroupPath ρ eig hρ hρsum p a s := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityCanonicalSynchronization.lean",
+          "declaration": "InvariantIsing.cavity_canonical_group_synchronization",
+          "excerpt": "        filter_upwards [hc] with s hs\n        exact (hs a).trans (cavityCanonicalCoordinate_at_path ρ eig hρ hρsum p a s).symm)"
+        }
+      ]
+    },
+    {
+      "declaration": "InvariantIsing.cavityCanonicalCoordinate",
+      "start_line": 15,
+      "end_line": 17,
+      "excerpt": "def cavityCanonicalCoordinate {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : Fin m) (t : ℝ) : ℝ :=\n  ∫ r in 0..(Set.projIcc 0 1 zero_le_one t : ℝ), spectralPathDensity ρ eig hρ hρsum p a r",
+      "problem": "The definition hides the projection `Set.projIcc 0 1 zero_le_one t`, so the existing simp lemmas `Set.projIcc_left` and `Set.projIcc_right` cannot fire on coordinates. There are no companion endpoint simp lemmas such as `cavityCanonicalCoordinate ... 1 = spectralGroupDiagonal ...` or `cavityCanonicalCoordinate ... 0 = 0`. Downstream proofs therefore unfold the definition and supply an explicit membership proof by hand just to identify the value at `1`.",
+      "proposed_change": "Add canonical endpoint lemmas, for example `cavityCanonicalCoordinate_one` with right-hand side `spectralGroupDiagonal ρ eig hρ hρsum p a` and `cavityCanonicalCoordinate_zero` with right-hand side `0`, both marked `@[simp]`. The `_one` proof should reduce using `Set.projIcc_right`, and the `_zero` proof using `Set.projIcc_left`. These literal endpoint patterns do not overlap with the `p s` pattern of `cavityCanonicalCoordinate_at_path`.",
+      "benefit": "Consumers can normalize the endpoint values with a focused `simp only [cavityCanonicalCoordinate_one]` instead of unfolding the coordinate definition and proving `1 ∈ Icc 0 1` explicitly. This removes duplicated proof steps in `cavity_spectralGroupDiagonal_tendsto_of_L1` and `cavity_recalculated_label_test_uniform` and makes the fact that the continuum is clamped at its endpoints available to the simplifier.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityCanonicalLabels.lean",
+          "declaration": "InvariantIsing.cavityCanonicalCoordinate",
+          "excerpt": "  ∫ r in 0..(Set.projIcc 0 1 zero_le_one t : ℝ), spectralPathDensity ρ eig hρ hρsum p a r"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Interval/Set/ProjIcc.lean",
+          "declaration": "Set.projIcc_right",
+          "excerpt": "@[simp]\ntheorem projIcc_right : projIcc a b h b = ⟨b, right_mem_Icc.2 h⟩ :=\n  projIcc_of_right_le h le_rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityCanonicalContinuity.lean",
+          "declaration": "InvariantIsing.cavity_spectralGroupDiagonal_tendsto_of_L1",
+          "excerpt": "  simpa only [Real.dist_eq, cavityCanonicalCoordinate, spectralGroupDiagonal,\n    Set.projIcc_of_mem zero_le_one (show (1 : ℝ) ∈ Icc 0 1 from ⟨zero_le_one, le_rfl⟩)] using hn 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityRecalculatedLabels.lean",
+          "declaration": "InvariantIsing.cavity_recalculated_label_test_uniform",
+          "excerpt": "    simpa only [cavityCanonicalCoordinate, spectralGroupDiagonal,\n      Set.projIcc_of_mem zero_le_one (show (1 : ℝ) ∈ Icc 0 1 from ⟨zero_le_one, le_rfl⟩)] using hn a 1"
+        }
+      ]
+    },
+    {
+      "declaration": "InvariantIsing.cavityCanonicalLabel",
+      "start_line": 59,
+      "end_line": 64,
+      "excerpt": "def cavityCanonicalLabel {m : ℕ} (ρ eig : Fin m → ℝ) (hρ : ∀ a, 0 < ρ a)\n    (hρsum : ∑ a, ρ a = 1) (p : OverlapPath) (a : Fin m) (t : ℝ) : Icc (-1 : ℝ) 1 :=\n  ⟨cavityCanonicalCoordinate ρ eig hρ hρsum p a t,\n    ⟨le_trans (by norm_num) (cavityCanonicalCoordinate_nonneg ρ eig hρ hρsum p a t),\n      (cavityCanonicalCoordinate_le_diagonal ρ eig hρ hρsum p a t).trans\n        (spectralGroupDiagonal_le_one ρ eig hρ hρsum p a)⟩⟩",
+      "problem": "`cavityCanonicalLabel` is a subtype-valued wrapper, but the file provides no simp equation for its underlying real value. Downstream proofs therefore unfold the entire definition with `simp only [..., cavityCanonicalLabel]`, exposing the subtype constructor and its proof fields just to obtain the corresponding `cavityCanonicalCoordinate`. The desired normal form is `(cavityCanonicalLabel ... t : ℝ) = cavityCanonicalCoordinate ... t`. Since the right-hand side contains no `cavityCanonicalLabel`, this orientation is terminating and does not compete with the endpoint or path rules.",
+      "proposed_change": "Add a coercion simp lemma, for example `@[simp] lemma cavityCanonicalLabel_coe ... (t : ℝ) : (cavityCanonicalLabel ρ eig hρ hρsum p a t : ℝ) = cavityCanonicalCoordinate ρ eig hρ hρsum p a t`, proved by `rfl`.",
+      "benefit": "Downstream computations involving spectral labels can use `simp only [cavityCanonicalLabel_coe]` to expose the coordinate without unfolding the label definition and its proof term. This gives a stable simplification interface that composes with `cavityCanonicalCoordinate_at_path` and the proposed endpoint rules.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityCanonicalLabels.lean",
+          "declaration": "InvariantIsing.cavityCanonicalLabel",
+          "excerpt": "  ⟨cavityCanonicalCoordinate ρ eig hρ hρsum p a t,\n    ⟨le_trans (by norm_num) (cavityCanonicalCoordinate_nonneg ρ eig hρ hρsum p a t),"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavitySpinObservable.lean",
+          "declaration": "InvariantIsing.cavitySpinObservable_finite",
+          "excerpt": "    simp only [cavityFiniteReplicaSpectralBlock, cavitySynchronizedBlock, Fin.zero_ne_one,\n      ↓reduceIte, cavityCanonicalLabel]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityFiniteGroupSelection.lean",
+          "declaration": "InvariantIsing.cavity_finite_group_covariance_posSemidef",
+          "excerpt": "    simp only [cavityFiniteReplicaSpectralBlock, cavitySynchronizedBlock,\n      cavityCanonicalDiagonal, cavityCanonicalLabel, cascadeScalarArray, hs,\n      Pi.smul_apply, smul_eq_mul, div_eq_mul_inv]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 727307,
+    "cached_input_tokens": 677632,
+    "output_tokens": 20758,
+    "reasoning_output_tokens": 15414
+  },
+  "cost_usd": 0.019774056,
+  "generation_ids": [
+    "gen-1792622020-PAAFo0aF5iCJHhJgKGd5",
+    "gen-1792622025-T107mzoXDDxcSab4fp3M",
+    "gen-1792622032-Gv2rSuTPlNtmzW1buH2Q",
+    "gen-1792622038-TE3LWGBX55UF7cPZ4Cys",
+    "gen-1792622042-xSzkiBCJ1lasuu1q2jNE",
+    "gen-1792622058-uhUFbACdLnmfFdAv4WYW",
+    "gen-1792622066-EDtHDGhk9mhWxRifGafA",
+    "gen-1792622070-AYciQQUpfyza8p2pbovM",
+    "gen-1792622078-SaGsn3Q3MsoIFkjeal84",
+    "gen-1792622084-EbNKAmRx45ule031lU1a",
+    "gen-1792622088-y4Z9Kv1ata41HrPXIzmM",
+    "gen-1792622102-QDkck5D1ZmAtrvOpYlrH",
+    "gen-1792622106-cOaVQ6U4Kw8s9Ia2PmZq",
+    "gen-1792622118-2miHEUTsNu1bJSGQPxHV",
+    "gen-1792622146-nYL5vFKNu6z99pb7SgBk",
+    "gen-1792622170-YR1o5LpliJleVH21lfW3",
+    "gen-1792622174-lCBO0qrAGTcP3wCnOVPq",
+    "gen-1792622216-mHYQZvVt77NQILFlnZgj"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 18,
+  "duration_ms": 218163,
+  "judged": "2026-10-21T22:37:18+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "b390cf2c9c89d26b73b1c451d9d8b912a7c85e5c016d5f1a9120804b70a4843b"
+}

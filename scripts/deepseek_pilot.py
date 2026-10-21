@@ -165,7 +165,9 @@ def evaluate(task, key, budget):
 
 def run_tasks(tasks, key, budget, jobs=1):
     """Independent source contexts; all sessions share atomic API pacing and budget."""
-    pending = iter(tasks)
+    # A rejected/interrupted target stays selected and gets priority on recovery.
+    priority = lambda task: not (ROOT / task["output"] / "results" / f"{task['row']['id']}.failure.json").exists()
+    pending = iter(sorted(tasks, key=priority))
     failures = []
     stopped = None
     with ThreadPoolExecutor(max_workers=jobs) as workers:

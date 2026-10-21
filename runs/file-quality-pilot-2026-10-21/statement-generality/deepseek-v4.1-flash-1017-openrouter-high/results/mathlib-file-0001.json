@@ -1,0 +1,91 @@
+{
+  "id": "mathlib-file-0001",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 201 lines of the target and checked the declarations against the underlying API: DFinsupp.mk/support/support_zero/zero_apply and the decidability requirements in Mathlib/Data/DFinsupp/Defs.lean; DFinsupp's order and OrderBot/IsBotZeroClass instances in Mathlib/Data/DFinsupp/Order.lean; LocallyFiniteOrder.ofIcc/ofIcc' and the generic LocallyFiniteOrder→LocallyFiniteOrderTop/Bot instances in Mathlib/Order/Interval/Finset/Defs.lean; Finset.Icc_self, Icc_bot, card_Ico_eq_card_Icc_sub_one and card_Ioo_eq_card_Icc_sub_two in Mathlib/Order/Interval/Finset/Basic.lean; IsBotZeroClass and bot_eq_zero in Mathlib/Algebra/Order/IsBotOne.lean; and the analogous files Finsupp/Interval.lean, Pi/Interval.lean, Sigma/Interval.lean and Multiset/Interval.lean. I verified that the PartialOrder hypotheses in rangeIcc and instLocallyFiniteOrder are genuinely needed (Icc_self needs antisymmetry, and LocallyFiniteOrder.ofIcc needs PartialOrder plus DecidableEq), and that [DecidableEq ι] is needed by DFinsupp.mk and Finset.pi, so those are not specialization defects. Out of rubric scope (unnecessary/redundant hypotheses, not reported as findings): the extra [∀ i, OrderBot (α i)] in the IsBotZeroClass section is implied by IsBotZeroClass.toOrderBot, and the local [DecidableEq ι] on support_rangeIcc_subset appears unused because DFinsupp.support no longer needs decidable equality on the index type. Limitation: I could not compile; the exact simpa proof and simplification lemmas for the proposed zero-anchored statement were not run, and the Iic-form still requires AddCommMonoid because that is how DFinsupp's OrderBot instance is currently stated in DFinsupp/Order.lean.",
+  "findings": [
+    {
+      "declaration": "DFinsupp.card_Iic (together with DFinsupp.card_Iio)",
+      "start_line": 186,
+      "end_line": 197,
+      "excerpt": "variable [∀ i, AddCommMonoid (α i)] [∀ i, PartialOrder (α i)] [∀ i, IsBotZeroClass (α i)]\n  [∀ i, OrderBot (α i)] [∀ i, LocallyFiniteOrder (α i)]\nvariable (f : Π₀ i, α i)\n\nlemma card_Iic : #(Iic f) = ∏ i ∈ f.support, #(Iic (f i)) := by\n  simp [Iic_eq_Icc, card_Icc, bot_eq_zero]",
+      "problem": "The `card_Iic`/`card_Iio` facts are just `card_Icc`/`card_Ico` computed at the left endpoint `0`: after `bot_eq_zero` and `Finset.Icc_bot`, `Iic f` is `Icc 0 f` and `Iic (f i)` is `Icc 0 (f i)`. The hypotheses `AddCommMonoid`, `IsBotZeroClass` and `OrderBot` are needed only to manufacture `Iic`/`OrderBot` on `Π₀ i, α i` (DFinsupp's `OrderBot` instance is currently stated under `AddCommMonoid` even though its proof only uses `IsBotZeroClass`), not for the cardinality computation. Consequently the essentially same counting result is unavailable for locally finite partial orders with a zero that is not a bottom, e.g. `α i = ℤ`, or for non-additive zero types, even though the finite interval `Icc 0 f` and its cardinality formula make sense there.",
+      "proposed_change": "State the zero-anchored version in the weaker `PartialOrder` section, for example\n\n```lean\nlemma card_Icc_zero (f : Π₀ i, α i) :\n    #(Icc (0 : Π₀ i, α i) f) = ∏ i ∈ f.support, #(Icc (0 : α i) (f i)) := by\n  simpa using card_Icc (0 : Π₀ i, α i) f\n\nlemma card_Ico_zero (f : Π₀ i, α i) :\n    #(Ico (0 : Π₀ i, α i) f) = (∏ i ∈ f.support, #(Icc (0 : α i) (f i))) - 1 := by\n  rw [card_Ico_eq_card_Icc_sub_one, card_Icc_zero]\n```\n\nThe first proof should reduce with `DFinsupp.support_zero` (`(0 : Π₀ i, α i).support = ∅`) and `DFinsupp.zero_apply`/`Pi.zero_apply` (`(0 : Π₀ i, α i) i = 0`), after which `card_Icc` gives the product over `∅ ∪ f.support`. Then keep `card_Iic`/`card_Iio` in the `IsBotZeroClass` section as corollaries, rewriting with `Iic_eq_Icc`, `bot_eq_zero` and `Finset.Icc_bot`. I have not compiled this replacement.",
+      "benefit": "Users get the interval count for `[0, f]` in any fiberwise locally finite partial order with a zero, including cases such as `Π₀ i, ℤ` where there is no `OrderBot` on the fibers, and without needing an additive monoid just to obtain `Iic`. The existing `Iic`/`Iio` statements remain available as corollaries. Degenerate cases are handled correctly: if `0` is not a bottom, `Iic f` need not be finite (so the `Iic` statement should not be expected), while `Icc 0 f` is still finite and the formula applies; if `0` is a bottom (`IsBotZeroClass`), `Icc 0 f = Iic f` by `Icc_bot` and `bot_eq_zero`, so no strength is lost.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/DFinsupp/Interval.lean",
+          "declaration": "DFinsupp.card_Icc",
+          "excerpt": "lemma card_Icc : #(Icc f g) = ∏ i ∈ f.support ∪ g.support, #(Icc (f i) (g i)) :=\n  card_dfinsupp _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Order/Interval/Finset/Basic.lean",
+          "declaration": "Finset.Icc_bot",
+          "excerpt": "theorem Icc_bot [OrderBot α] : Icc (⊥ : α) a = Iic a := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/DFinsupp/Defs.lean",
+          "declaration": "DFinsupp.support_zero",
+          "excerpt": "theorem support_zero : (0 : Π₀ i, β i).support = ∅ :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/DFinsupp/Order.lean",
+          "declaration": "DFinsupp.instOrderBot",
+          "excerpt": "variable (α) [∀ i, AddCommMonoid (α i)] [∀ i, PartialOrder (α i)]\n\ninstance [∀ i, IsBotZeroClass (α i)] : OrderBot (Π₀ i, α i) where\n  bot := 0\n  bot_le := by simp [le_def]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1418728,
+    "cached_input_tokens": 1356032,
+    "output_tokens": 65416,
+    "reasoning_output_tokens": 60542
+  },
+  "cost_usd": 0.048571936,
+  "generation_ids": [
+    "gen-1792621621-a3pr7z26NPQF7gbCFUOy",
+    "gen-1792621645-xZDKrErCGImsaC9C1wTN",
+    "gen-1792621660-vAboNqKmH3bB3LtQ2613",
+    "gen-1792621706-gUhC3ZvEjnmwxO3qMpll",
+    "gen-1792621711-IgcL2BnlKK2MHvdki7BL",
+    "gen-1792621721-watdEAIucWTR7JQAbHKY",
+    "gen-1792621734-iuKSSWidNaxMKGHQdlXu",
+    "gen-1792621744-OOqeKXjf64b9CQ7v6HFV",
+    "gen-1792621784-lTmVTMKalcOCLn6snfos",
+    "gen-1792621796-zI0eXSgnUgTYMRGWenTE",
+    "gen-1792621834-PGNjVYMmPoiciiCkMtUm",
+    "gen-1792621846-vmcIoDtkBnXpZtF3uOLW",
+    "gen-1792621900-0NJDtNd8GEb0w5dtjbrz",
+    "gen-1792621905-6xJIEPzeOQy5vFORb7Ra",
+    "gen-1792621938-CGV46HNfHtO3zlMe0OJM",
+    "gen-1792621950-HZyUT1Af3bFVBVDtbmLt",
+    "gen-1792621968-58WSW26F93peLXwn3X2H",
+    "gen-1792621973-qvROs7hxpcSgHHM139CO",
+    "gen-1792622000-HVKfqlh5kltmuEXX0Cg3",
+    "gen-1792622030-iA9gKE0JEvQ4OKXRmyrS",
+    "gen-1792622050-qO40PmIV7moEzsOlSomX",
+    "gen-1792622080-fF8JJ8Ir2f1lq034k75X",
+    "gen-1792622158-aBRSMHX1uYq4x6Y7LOTS",
+    "gen-1792622160-ylBbH6xfmk0DAZ7FSbkc",
+    "gen-1792622180-HXBxSozjvb1AOECEMSI6",
+    "gen-1792622204-LReQMPLRgoZcQmAt5W7G"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 26,
+  "duration_ms": 610923,
+  "judged": "2026-10-21T22:37:11+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "85d194e712a3f0e16d710988c272b950f6b7b4d36276cf9a266267ba54381bec"
+}

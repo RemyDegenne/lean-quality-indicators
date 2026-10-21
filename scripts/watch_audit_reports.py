@@ -97,6 +97,7 @@ def deepseek_health(base):
     status.update(billed_usd=budget["billed_usd"],
                   request_spacing_seconds=budget.get("request_spacing_seconds", 10),
                   rate_limit_count=budget.get("rate_limit_count", 0),
+                  transport_error_count=budget.get("transport_error_count", 0),
                   request_count=len(requests),
                   unsettled_reservation_usd=sum(float(r["reserved_usd"]) for r in requests if r["billed_usd"] is None),
                   health_checked_epoch=time.time())

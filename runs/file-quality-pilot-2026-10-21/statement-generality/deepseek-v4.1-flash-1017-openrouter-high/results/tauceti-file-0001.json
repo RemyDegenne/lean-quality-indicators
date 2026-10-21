@@ -1,0 +1,109 @@
+{
+  "id": "tauceti-file-0001",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 598 lines of Coderivation.lean and inspected the relevant definitions and lemmas in Basic.lean, Splice.lean, Filtration.lean, Primitives.lean, GradedCoderivation.lean, TaylorComponent.lean, and the Mathlib TensorProduct files Map.lean and Defs.lean. Both findings concern unnecessary specialization; the proposed signatures are source-level suggestions and were not compiled or executed. I did not find mathematical errors in the supplied proofs, and I did not report intentional coalgebra-specific API merely for being concrete.",
+  "findings": [
+    {
+      "declaration": "TauCeti.ReducedTensorWords.rTensor_add_lTensor_rTensor_congr",
+      "start_line": 246,
+      "end_line": 254,
+      "excerpt": "theorem rTensor_add_lTensor_rTensor_congr",
+      "problem": "The proof only uses tensor-product induction and the evaluation rules for `rTensor` and `lTensor` on pure tensors; it uses no structure of `ReducedTensorWords` and no property of `deconcatenation`. The statement is also restricted to the same submodule on both tensor factors, although the argument naturally handles two submodules. This makes a generically valid tensor lemma unavailable for other coalgebras or for submodule products `P ⊗[R] Q`.",
+      "proposed_change": "Generalize the ambient module to an arbitrary `A` and allow two submodules `P Q`. A candidate signature is:\n\n```lean\ntheorem rTensor_add_lTensor_rTensor_congr\n    {A : Type uA} [AddCommMonoid A] [Module R A]\n    {b₁ b₂ τ : A →ₗ[R] A} (P Q : Submodule R A)\n    (hP : ∀ z ∈ P, b₁ z = b₂ z) (hQ : ∀ z ∈ Q, b₁ z = b₂ z)\n    (w : P ⊗[R] Q) :\n    LinearMap.rTensor A b₁ (TensorProduct.mapIncl P Q w) +\n        LinearMap.lTensor A b₁\n          (LinearMap.rTensor A τ (TensorProduct.mapIncl P Q w)) =\n      LinearMap.rTensor A b₂ (TensorProduct.mapIncl P Q w) +\n        LinearMap.lTensor A b₂\n          (LinearMap.rTensor A τ (TensorProduct.mapIncl P Q w)) := by\n  induction w using TensorProduct.inductionOn with\n  | tmul u v =>\n      simp only [TensorProduct.mapIncl, TensorProduct.map_tmul, Submodule.coe_subtype,\n        LinearMap.rTensor_tmul, LinearMap.lTensor_tmul]\n      rw [hP _ u.2, hQ _ v.2]\n  | add u v hu hv =>\n      simp only [map_add]\n      rw [add_add_add_comm, hu, hv, ← add_add_add_comm]\n```\n\nSet `A := ReducedTensorWords R M` and `P = Q` to recover the current use. The existing proof structure already works for this form; this is only a source-level candidate and has not been compiled here.",
+      "benefit": "This exposes a reusable tensor-product congruence lemma for arbitrary modules and unequal submodule factors, while preserving the current instance as a specialization. It avoids duplicating the same induction in other coalgebra or coderivation developments.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Coderivation.lean",
+          "declaration": "TauCeti.ReducedTensorWords.rTensor_add_lTensor_rTensor_congr",
+          "excerpt": "induction w using TensorProduct.inductionOn with"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Coderivation.lean",
+          "declaration": "TauCeti.ReducedTensorWords.rTensor_add_lTensor_rTensor_congr",
+          "excerpt": "rw [h _ u.2, h _ v.2]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/LinearAlgebra/TensorProduct/Map.lean",
+          "declaration": "TensorProduct.mapIncl",
+          "excerpt": "abbrev mapIncl (p : Submodule R P) (q : Submodule R Q) : p ⊗[R] q →ₗ[R] P ⊗[R] Q :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/LinearAlgebra/TensorProduct/Map.lean",
+          "declaration": "LinearMap.rTensor_tmul",
+          "excerpt": "theorem rTensor_tmul (m : M) (n : N) : f.rTensor M (n ⊗ₜ m) = f n ⊗ₜ m :="
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.ReducedTensorWords.sum_tmul_splice_eq_zero",
+      "start_line": 329,
+      "end_line": 331,
+      "excerpt": "theorem sum_tmul_splice_eq_zero {n : ℕ} (x : Fin n → M) {c p : ℕ}\n    (u : ReducedTensorWords R M) (e : ℕ → M) (hp : n ≤ c + p) :\n    ∑ d ∈ Finset.range (n + 1), u ⊗ₜ[R] splice R x c (n - c) p d (e d) = 0 := by",
+      "problem": "The left tensor factor `u` is fixed to `ReducedTensorWords R M`, but the proof only proves that each `splice` term is zero and then applies the polymorphic lemma `TensorProduct.tmul_zero`. The actual value and type of `u` play no role, so the statement is more specialized than its proof and than its name suggests.",
+      "proposed_change": "Let the left tensor factor range over an arbitrary `R`-module `N` (adding a universe `uN`):\n\n```lean\ntheorem sum_tmul_splice_eq_zero {N : Type uN} [AddCommMonoid N] [Module R N]\n    {n : ℕ} (x : Fin n → M) {c p : ℕ}\n    (u : N) (e : ℕ → M) (hp : n ≤ c + p) :\n    ∑ d ∈ Finset.range (n + 1), u ⊗ₜ[R] splice R x c (n - c) p d (e d) = 0 := by\n  refine Finset.sum_eq_zero fun d _ ↦ ?_\n  rw [splice_eq_zero_of_not_fits R x _ (by omega), TensorProduct.tmul_zero]\n```\n\nThe current statement is the specialization `N := ReducedTensorWords R M`. This candidate has not been compiled here.",
+      "benefit": "Users can apply the vanishing result when tensoring a reduced tensor word against any other module, rather than only against another reduced tensor word. This is the natural level of generality for a pure tensor-product lemma and costs no new mathematics.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Coderivation.lean",
+          "declaration": "TauCeti.ReducedTensorWords.sum_tmul_splice_eq_zero",
+          "excerpt": "rw [splice_eq_zero_of_not_fits R x _ (by omega), TensorProduct.tmul_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/LinearAlgebra/TensorProduct/Defs.lean",
+          "declaration": "TensorProduct.tmul_zero",
+          "excerpt": "theorem tmul_zero (m : M) : m ⊗ₜ[R] (0 : N) = 0 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Splice.lean",
+          "declaration": "TauCeti.ReducedTensorWords.splice_eq_zero_of_not_fits",
+          "excerpt": "theorem splice_eq_zero_of_not_fits {n : ℕ} (x : Fin n → M) {a b p d : ℕ} (e : M)"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1030376,
+    "cached_input_tokens": 902272,
+    "output_tokens": 23112,
+    "reasoning_output_tokens": 17414
+  },
+  "cost_usd": 0.029022496,
+  "generation_ids": [
+    "gen-1792621629-QwTYA9mdyeml65XoFVcG",
+    "gen-1792621654-Y5XoG6cgRaSgaM6z21Km",
+    "gen-1792621663-QhmuRuf5II5ISd47imZ8",
+    "gen-1792621669-3C9wIgTSjlDe1iCJbXa7",
+    "gen-1792621675-YfZ3nRpytj50I6mqCPxt",
+    "gen-1792621696-8amWjdfpyTylZDN2T0QS",
+    "gen-1792621709-mxDaI3b3zEiTNSSCERWH",
+    "gen-1792621741-JB6P10dprIC32tA9bbLu",
+    "gen-1792621754-1Wr6KlXOb6mqMylpphuu",
+    "gen-1792621776-xCaXW0JiTk3xRIl1rZR4",
+    "gen-1792621786-YWIKByEIzoMkzKwl9ztg",
+    "gen-1792621804-PklFoiGNXEcusmuEVLwb",
+    "gen-1792621811-g72ytytVZiyCCzCVJGb9",
+    "gen-1792621826-oDoNA9N4fFaBihRqjMqZ",
+    "gen-1792621849-cyibonNLUwHlwe5G8MBw",
+    "gen-1792621861-9BDxeU4mEVFbrph8emhY",
+    "gen-1792621880-32G8g8zErYTedpHT33IX",
+    "gen-1792621918-IZRXyMre6RPlzBEc4tQs"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 18,
+  "duration_ms": 309217,
+  "judged": "2026-10-21T22:32:10+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "ccc73f2715c13a14e6dedcd3d56026f094fcd1af39f4dfa6f6fb43c5f9b5e9b8"
+}

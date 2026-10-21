@@ -224,3 +224,46 @@ class PaidFinalRecoveryTests(unittest.TestCase):
                 result=backend.judge({'id':'test-0000','lib':'test'},root,root,{},'source',out,'key',None,lambda *a:None)
             self.assertEqual(result['generation_ids'],['paid-final'])
             self.assertEqual(result['cost_usd'],.51)
+
+class TransportRecoveryTests(unittest.TestCase):
+    def test_connection_reset_retries_identical_payload_after_shared_pause(self):
+        from unittest.mock import Mock
+        response={'id':'ok','provider':backend.PROVIDER,'model':backend.MODEL,'usage':{'cost':.001}}
+        budget=Mock()
+        budget.reserve.side_effect=[0,1]
+        budget.settle.return_value=Decimal('.001')
+        transcript=io.StringIO()
+        with patch.object(backend.urllib.request,'urlopen',side_effect=[
+            ConnectionResetError(104,'Connection reset by peer'),io.BytesIO(json.dumps(response).encode())]) as network:
+            result,cost=backend.request({'model':backend.MODEL,'max_tokens':1},'dummy',budget,'test-0000',transcript)
+        self.assertEqual(result['id'],'ok')
+        self.assertEqual(cost,Decimal('.001'))
+        self.assertEqual(network.call_args_list[0].args[0].data,network.call_args_list[1].args[0].data)
+        budget.pause_after_transport_error.assert_called_once_with(5)
+        events=[json.loads(line) for line in transcript.getvalue().splitlines()]
+        self.assertEqual(events[0]['error_type'],'ConnectionResetError')
+        self.assertEqual(events[0]['budget_request'],0)
+        self.assertEqual(events[1]['budget_request'],1)
+
+    def test_provider_503_is_retried_without_becoming_a_negative_judgment(self):
+        from unittest.mock import Mock
+        response={'id':'ok','provider':backend.PROVIDER,'model':backend.MODEL,'usage':{'cost':.001}}
+        budget=Mock();budget.settle.return_value=Decimal('.001');budget.reserve.side_effect=[0,1]
+        error=backend.urllib.error.HTTPError('https://openrouter.ai/api/v1/chat/completions',503,
+            'temporarily unavailable',{},io.BytesIO(b'upstream unavailable'))
+        with patch.object(backend.urllib.request,'urlopen',side_effect=[error,io.BytesIO(json.dumps(response).encode())]):
+            result,_=backend.request({'model':backend.MODEL,'max_tokens':1},'dummy',budget,'test-0000',io.StringIO())
+        self.assertEqual(result['id'],'ok')
+        budget.pause_after_transport_error.assert_called_once_with(5)
+
+    def test_transport_pause_preserves_a_longer_rate_limit_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            budget=backend.Budget(Path(tmp)/'budget.json')
+            state=budget.read();state['not_before']=5000;state['success_streak']=10
+            backend.write_json(budget.path,state)
+            with patch.object(backend.time,'time',return_value=1000):
+                budget.pause_after_transport_error(5)
+            state=budget.read()
+            self.assertEqual(state['not_before'],5000)
+            self.assertEqual(state['success_streak'],0)
+            self.assertEqual(state['transport_error_count'],1)
