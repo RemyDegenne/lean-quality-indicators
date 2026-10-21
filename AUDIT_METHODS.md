@@ -44,7 +44,28 @@ output, without adding reasoning tokens twice. GLM uses frozen OpenRouter model-
 rates, which can differ from routing prices and pi's bundled prices. Opus baselines use
 their saved API-equivalent amounts because token counts were not retained.
 
-The scope is the eight current audits and the original Opus duplication baseline.
+The scope is the current audits and the original Opus duplication baseline.
 Deleted or overwritten usage and this coordinating conversation are excluded; the totals
 cannot reconstruct the entire historical bill. See the [cost summary and rate sources](runs/main/api-equivalent-costs.md)
 and [frozen rates](pricing/api-rates-2026-10-21.json).
+
+## Combined summary
+
+The global table takes the union of first-pass findings: a source target is flagged if
+any completed audit flags it, and counts once even when several audits flag it. Targets
+match by library, source repository, pinned commit, path and (for theorems) declaration
+location and name. Theorem and whole-file samples have separate denominators.
+Cells show flagged / reviewed targets and Wilson 95% intervals. An asterisk marks
+incomplete selected audit coverage; unflagged targets may acquire a flag as results arrive.
+Models cover different sets of audits, shown in the model table, so their union rates
+are not directly comparable when audit coverage differs. The retained Opus duplication
+baseline also uses its earlier prompt, as noted in its individual report.
+
+Combined correlations OR decisions over the audits with results for both models,
+retaining only targets reviewed on every shared audit by both models. Each matrix cell
+can therefore use a different audit set; the sets are recorded in AUDIT_RESULTS.json.
+Self-correlations use only audits with a second pass. Bootstrap strata and interval
+rules are the same as for individual audits. First-pass union counts exclude repeats;
+judgment, pass and expenditure totals include them. A combined full-pass cost sums the
+per-audit full-pass estimates for the model's selected audits, and is omitted until
+every component has an estimate. It does not estimate missing model/audit combinations.

@@ -5,11 +5,50 @@ import json
 from pathlib import Path
 import tempfile
 
-from audit_dashboard import correlation, phi
+from audit_dashboard import correlation, phi, union_results, union_counts, union_correlation
 from api_costs import token_cost, full_pass_estimate, directory_expenditure, DIRECTORY_CACHE
 
 
 class DashboardTests(unittest.TestCase):
+    def test_union_deduplicates_source_targets_and_tracks_pending_audits(self):
+        sample = {"lib": "test", "dir": "repo", "commit": "abc", "path": "A.lean",
+                  "line": 10, "name": "foo"}
+        def bundle(audit, sid, verdict=None, unit="theorem"):
+            result = {} if verdict is None else {sid: ({"findings": [1]} if unit == "file"
+                                                     else {"verdict": verdict})}
+            return {"audit": audit, "unit": unit, "samples": {sid: sample},
+                    "models": {"Test": [{"selected": {sid}, "results": result}]}}
+        bundles = [bundle("unnecessary-hypotheses", "one", "unnecessary_hypothesis_found"),
+                   bundle("duplicates-new", "different-id", "duplicate"),
+                   bundle("another-audit", "pending"),
+                   bundle("file-audit", "one", "findings_found", "file")]
+        union, samples = union_results(bundles)
+        counts = union_counts(union["Test"], samples, unit="theorem")
+        self.assertEqual((counts["selected"], counts["completed"], counts["flagged"]), (1, 1, 1))
+        self.assertEqual(counts["all_selected_audits_completed"], 0)
+        self.assertEqual(union_counts(union["Test"], samples, unit="file")["flagged"], 1)
+        # A newly registered audit contributes without changing aggregate code.
+        bundles[-2]["models"]["Test"][0]["results"]["pending"] = {"verdict": "clear"}
+        union, samples = union_results(bundles)
+        self.assertEqual(union_counts(union["Test"], samples, unit="theorem")["all_selected_audits_completed"], 1)
+
+    def test_union_correlations_require_same_audits_and_real_repeats(self):
+        samples = {str(i): {"lib": "test", "unit": "theorem"} for i in range(5)}
+        first = {str(i): {"passes": {0: {"a": bool(i % 2), "b": False},
+                                              1: {"a": bool(i % 2)}}} for i in range(5)}
+        second = {str(i): {"passes": {0: {"a": bool(i % 2), "b": False}}} for i in range(5)}
+        del second["0"]["passes"][0]["b"]
+        result = union_correlation(first, second, samples, "theorem", "test", 100)
+        self.assertEqual(result["audits"], ["a", "b"])
+        self.assertEqual(result["n"], 4)
+        self.assertEqual(result["r"], 1)
+        repeat = union_correlation(first, first, samples, "theorem", "test", 100, repeat=True)
+        self.assertEqual(repeat["audits"], ["a"])
+        self.assertEqual(repeat["n"], 5)
+        absent = union_correlation(second, second, samples, "theorem", "test", 100, repeat=True)
+        self.assertEqual(absent["n"], 0)
+        self.assertIsNone(absent["r"])
+
     def test_retry_expenditure_counts_each_retained_attempt_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

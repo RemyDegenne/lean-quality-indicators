@@ -11,12 +11,12 @@ import tomllib
 
 from report import wilson
 from api_costs import directory_expenditure, full_pass_estimate
+from file_audits import RUBRICS
 
 ROOT = Path(__file__).resolve().parent.parent
 FILES = ROOT / "runs/file-quality-pilot-2026-10-21"
 MAIN = ROOT / "runs/main"
-RUBRICS = ["concept-reinvention", "statement-generality", "vacuity-and-misstatement",
-           "simp-interface", "repeated-proof-machinery", "readable-proof-simplification"]
+LIBRARY_ORDER = ["mathlib", "tauceti", "formal-frontier", "lean-pool", "flt-anthropic"]
 LABELS = {"Sol": ["gpt-6.1-sol-high", "gpt-6.1-sol-high-repeat-2"],
           "Sonnet": ["claude-sonnet-5-5-high", "claude-sonnet-5-5-high-repeat-2"],
           "Luna": ["gpt-6-luna-high", "gpt-6-luna-high-repeat-2"],
@@ -138,12 +138,18 @@ def library_table(data, libraries, names):
     return lines
 
 
-def make_report(audit, base, samples, is_file, resamples):
-    models = models_for(audit, base, samples, is_file)
-    positive = (lambda r: bool(r.get("findings"))) if is_file else (
-        lambda r: r["verdict"] in (["duplicate", "special_case"] if audit.startswith("duplicates") else ["unnecessary_hypothesis_found"]))
+def is_positive(audit, is_file, row):
+    if is_file:
+        return bool(row.get("findings"))
+    return row["verdict"] in (["duplicate", "special_case"] if audit.startswith("duplicates")
+                              else ["unnecessary_hypothesis_found"])
+
+
+def make_report(audit, base, samples, is_file, resamples, models=None):
+    models = models if models is not None else models_for(audit, base, samples, is_file)
+    positive = lambda r: is_positive(audit, is_file, r)
     names = {lib["id"]: lib["name"] for lib in tomllib.loads((ROOT / "libraries.toml").read_text())["library"]}
-    libraries = [lib for lib in names if any(s["lib"] == lib for s in samples.values())]
+    libraries = ordered_libraries({s["lib"] for s in samples.values()})
     data = {"audit": audit, "unit": "file" if is_file else "theorem", "groups": {}}
     methods = "../../../AUDIT_METHODS.md"
     lines = [f"# {audit}", "", f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · "
@@ -230,17 +236,164 @@ def make_report(audit, base, samples, is_file, resamples):
     return destination.with_suffix(".md")
 
 
+def ordered_libraries(libraries):
+    return [lib for lib in LIBRARY_ORDER if lib in libraries] + sorted(set(libraries) - set(LIBRARY_ORDER))
+
+
+def target_key(sample, unit):
+    """Match source targets across audits independently of sample numbering."""
+    return json.dumps([unit, sample["lib"], sample.get("dir"), sample.get("commit"),
+                       sample["path"], sample.get("line") if unit == "theorem" else None,
+                       sample.get("name") if unit == "theorem" else None])
+
+
+def union_results(bundles):
+    """OR first-pass findings on the same source target, preserving review coverage."""
+    union, samples = {}, {}
+    for bundle in bundles:
+        audit, unit = bundle["audit"], bundle["unit"]
+        for model, passes in bundle["models"].items():
+            entries = union.setdefault(model, {})
+            for index, entry in enumerate(passes):
+                for sid in entry["selected"] & bundle["samples"].keys():
+                    sample = bundle["samples"][sid]
+                    key = target_key(sample, unit)
+                    samples[key] = {**sample, "unit": unit}
+                    record = entries.setdefault(key, {"selected_audits": set(), "passes": {}})
+                    record["selected_audits"].add(audit)
+                    if sid in entry["results"]:
+                        record["passes"].setdefault(index, {})[audit] = is_positive(
+                            audit, unit == "file", entry["results"][sid])
+    return union, samples
+
+
+def union_counts(entries, samples, lib=None, unit=None):
+    rows = [row for key, row in entries.items() if (lib is None or samples[key]["lib"] == lib)
+            and (unit is None or samples[key]["unit"] == unit)]
+    reviewed = [row for row in rows if row["passes"].get(0)]
+    flags = sum(any(row["passes"][0].values()) for row in reviewed)
+    complete = sum(row["selected_audits"] <= row["passes"][0].keys() for row in reviewed)
+    ci = list(wilson(flags, len(reviewed))) if reviewed else None
+    return {"selected": len(rows), "completed": len(reviewed), "flagged": flags,
+            "all_selected_audits_completed": complete, "ci95": ci}
+
+
+def union_correlation(first, second, samples, unit, seed, resamples, repeat=False):
+    # Compare OR decisions over the same audits; partial audit sets are excluded.
+    a_index, b_index = 0, int(repeat)
+    def audit_set(entries, index):
+        return {audit for key, row in entries.items() if samples[key]["unit"] == unit
+                for audit in row["passes"].get(index, {})}
+    shared = audit_set(first, a_index) & audit_set(second, b_index)
+    a, b = {}, {}
+    for key in first.keys() & second.keys():
+        if samples[key]["unit"] != unit or not shared:
+            continue
+        left = first[key]["passes"].get(a_index, {})
+        right = second[key]["passes"].get(b_index, {})
+        if shared <= left.keys() and shared <= right.keys():
+            a[key] = any(left[audit] for audit in shared)
+            b[key] = any(right[audit] for audit in shared)
+    result = correlation(a, b, samples, bool, seed, resamples)
+    result["audits"] = sorted(shared)
+    return result
+
+
+def combined_summary(bundles, resamples):
+    union, samples = union_results(bundles)
+    names = {lib["id"]: lib["name"] for lib in tomllib.loads((ROOT / "libraries.toml").read_text())["library"]}
+    models = list(union)
+    units = list(dict.fromkeys(bundle["unit"] for bundle in bundles))
+    data = {"audits": [bundle["audit"] for bundle in bundles], "libraries": {}, "models": {},
+            "correlations": {}}
+    lines = ["## Combined summary", "",
+             f"Union across **{len(bundles)} audits**: a target counts once per model if any audit flags it. "
+             "First passes only; theorem and file samples are counted separately. "
+             "Unfinished coverage contributes the judgments available so far. "
+             "[Aggregation details](AUDIT_METHODS.md#combined-summary).", "",
+             "### Library comparison", "",
+             "| Library | Target | " + " | ".join(models) + " |",
+             "|---|---|" + "---:|" * len(models)]
+    for lib in ordered_libraries({s["lib"] for s in samples.values()}):
+        data["libraries"][lib] = {}
+        for unit in units:
+            if not any(s["lib"] == lib and s["unit"] == unit for s in samples.values()):
+                continue
+            rows = {model: union_counts(entries, samples, lib, unit) for model, entries in union.items()}
+            data["libraries"][lib][unit] = rows
+            cells = []
+            for row in rows.values():
+                n, flags = row["completed"], row["flagged"]
+                if not n:
+                    cells.append("—")
+                    continue
+                lo, hi = row["ci95"]
+                pending = "*" if row["all_selected_audits_completed"] < n else ""
+                cells.append(f"{flags}/{n}{pending}<br>{flags/n:.1%} [{lo:.1%}, {hi:.1%}]")
+            lines.append(f"| {names.get(lib, lib)} | {unit.title()} | " + " | ".join(cells) + " |")
+    lines += ["", r"\* Some targets still await selected audits; their union flags can increase.", "",
+              "### Model comparison", "",
+              "| Model | Audits with results | Theorems selected | Files selected | Audit passes done/planned | Theorems flagged / reviewed | Files flagged / reviewed | Judgments done/planned | API expenditure / full-pass estimate |",
+              "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    for model, entries in union.items():
+        rows = {unit: union_counts(entries, samples, unit=unit) for unit in units}
+        audit_rows = [b["report"]["groups"]["all"]["models"][model] for b in bundles
+                      if model in b["report"]["groups"]["all"]["models"]]
+        spend = sum(row["api_expenditure_usd"] for row in audit_rows)
+        estimates = [row["full_pass_estimate_usd"] for row in audit_rows]
+        estimate = sum(estimates) if estimates and all(e is not None for e in estimates) else None
+        done = sum(row["judgments_completed"] for row in audit_rows)
+        planned = sum(row["judgments_planned"] for row in audit_rows)
+        count = sum(bool(row["judgments_completed"]) for row in audit_rows)
+        passes_done = sum(row["passes_completed"] for row in audit_rows)
+        passes_planned = sum(row["passes_planned"] for row in audit_rows)
+        data["models"][model] = {"units": rows, "audits_with_results": count,
+                                 "judgments_completed": done, "judgments_planned": planned,
+                                 "passes_completed": passes_done, "passes_planned": passes_planned,
+                                 "api_expenditure_usd": spend, "full_pass_estimate_usd": estimate}
+        cells = [f"{rows[u]['flagged']}/{rows[u]['completed']}" if rows.get(u, {}).get("completed") else "—"
+                 for u in ("theorem", "file")]
+        money = f"${spend:.2f} / ${estimate:.2f}" if estimate is not None else f"${spend:.2f} / —"
+        selected = [rows.get(u, {}).get("selected", 0) for u in ("theorem", "file")]
+        lines.append(f"| {model} | {count}/{len(bundles)} | {selected[0]} | {selected[1]} | "
+                     f"{passes_done}/{passes_planned} | " + " | ".join(cells) + f" | {done}/{planned} | {money} |")
+    for unit in units:
+        lines += ["", f"### {unit.title()} union correlations", "",
+                  "| Model | " + " | ".join(models) + " |", "|---|" + "---:|" * len(models)]
+        estimates = {}
+        for first in models:
+            cells = []
+            for second in models:
+                key = tuple(sorted((first, second)))
+                if key not in estimates:
+                    estimates[key] = union_correlation(union[first], union[second], samples, unit,
+                        f"union:{unit}:{key}", resamples, repeat=first == second)
+                result = estimates[key]
+                data["correlations"][f"{unit}:{first}/{second}"] = result
+                if result["r"] is None:
+                    cells.append("—" + (f"; n={result['n']}" if result["n"] else ""))
+                else:
+                    ci = result["ci95"]
+                    interval = f" [{ci[0]:.2f}, {ci[1]:.2f}]" if ci else " [—]"
+                    cells.append(f"{result['r']:.2f}{interval}; n={result['n']}")
+            lines.append(f"| {first} | " + " | ".join(cells) + " |")
+    return "\n".join(lines), data
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resamples", type=int, default=2000)
     args = parser.parse_args()
     if args.resamples < 100:
         parser.error("Use at least 100 bootstrap resamples")
-    sections = []
+    sections, bundles = [], []
     for audit, is_file in [("unnecessary-hypotheses", False), ("duplicates-mathlib-inclusive", False), *[(r, True) for r in RUBRICS]]:
         run = FILES if is_file else MAIN
         samples = {s["id"]: s for s in map(json.loads, (run / "samples.jsonl").read_text().splitlines())}
-        path = make_report(audit, run / audit, samples, is_file, args.resamples)
+        models = models_for(audit, run / audit, samples, is_file)
+        path = make_report(audit, run / audit, samples, is_file, args.resamples, models)
+        bundles.append({"audit": audit, "unit": "file" if is_file else "theorem", "samples": samples,
+                        "models": models, "report": json.loads(path.with_suffix(".json").read_text())})
         text = path.read_text()
         library_section = text.split("## Library comparison\n", 1)[1].split("\n## ", 1)[0].strip()
         section = text.split("## All libraries\n", 1)[1].split("\n## ", 1)[0].strip()
@@ -250,10 +403,12 @@ def main():
         sections.append(f"## {audit}\n\n[Library breakdowns]({path.relative_to(ROOT).as_posix()})\n\n" + note +
                         "### Library comparison\n\n" + library_section + "\n\n### Model comparison\n\n" + section)
         print(path.relative_to(ROOT), flush=True)
+    summary, combined = combined_summary(bundles, args.resamples)
+    (ROOT / "AUDIT_RESULTS.json").write_text(json.dumps(combined, indent=2) + "\n")
     (ROOT / "AUDIT_RESULTS.md").write_text("# Audit results\n\n" +
         f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · " +
         "[Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).\n\n" +
-        "All eight audits, comparing libraries first and models second.\n\n" + "\n\n".join(sections) + "\n")
+        summary + "\n\n" + "\n\n".join(sections) + "\n")
 
 
 if __name__ == "__main__":
