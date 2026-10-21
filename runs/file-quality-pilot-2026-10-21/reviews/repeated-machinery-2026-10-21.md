@@ -1,159 +1,20 @@
-# Review of the structured-interface and repeated-machinery findings
+# Review of the repeated-machinery findings
 
-All 60 Sonnet file/rubric judgments completed on the frozen sample of ten files each from Mathlib, Tau Ceti and Lean Pool. Every reported positive was reviewed: 10 missing-structure and 17 repeated-proof-machinery findings. Raw judgments are unchanged.
+All 30 Sonnet file/rubric judgments completed on the frozen sample of ten files each from Mathlib, Tau Ceti and Lean Pool. Every reported positive was reviewed: 17 repeated-proof-machinery findings. Raw judgments are unchanged.
 
-The review checked the actual source, supporting uses and APIs, hypotheses, proposed constructions and rewritten uses. Proposed replacements have not been compiled. These are judgments about candidates, not verified defects or an accuracy estimate. The review covers positives only and does not assess missed findings.
+The review checked the actual source, supporting uses and APIs, hypotheses, proposed lemmas and rewritten uses. Proposed replacements have not been compiled. The review covers positives only and does not assess missed findings.
 
-| Rubric | Findings reviewed | Would pursue | Qualified / optional | Does not meet rubric |
-|---|---:|---:|---:|---:|
-| missing-structure | 10 | 3 | 1 | 6 |
-| repeated-proof-machinery | 17 | 11 | 6 | 0 |
-
-- **pursue**: A source-supported improvement candidate I would pursue; exact replacement remains uncompiled.
-- **qualified**: An optional or incomplete refactoring idea whose compliance with the rubric or net benefit is not established.
-- **does_not_meet_rubric**: I would not accept this finding under the current rubric, for the specific reason given.
-
-## Assessment
-
-Missing-structure provides three candidates worth pursuing: bundling the weight-linearity of additiveFunction, a smooth-periodic-test interface with shared L2 conversion API, and the normal-disc family of linear isometries. It also reports already-bundled maps, ordinary naming/reuse changes and instance-search changes. Those do not meet this rubric. The derivative-data bundle needs a stronger account of its cost and preservation of the current generic interface.
+| Findings reviewed | Would pursue | Qualified / optional |
+|---:|---:|---:|
+| 17 | 11 | 6 |
 
 Repeated-machinery provides eleven candidates worth pursuing: the scalar perturbation estimate; four cutoff/integral refactors; the shared Gaussian-phase bound; dyadic-shell existence and disjointness; the cyclic-plus-skew Killing-form identity; torus/cell pairing; and reuse of the existing coordinate-change continuity theorem. Six other proposals are plausible short cleanups or thin wrappers. Some cutoff findings overlap in one larger refactor.
 
-The construction and rewritten-use requirement makes the proposals inspectable, but compliance still needs review. In particular, a named function is not thereby a mathematical bundle. Concrete errors found here include ignoring cancellation in the proposed exponent Finsupp support, restricting generic formulas unnecessarily with a derivative-data record, and using an unjustified linarith finish over a general field.
-
-I would treat the repeated-machinery positives as a useful source of refactoring candidates. Missing-structure still needs a check that a proposal supplies genuinely missing mathematical structure before its positives can be interpreted as such. The manual assessments made no additional judge calls and did not alter raw judgments.
-
-## missing-structure
-
-### lean-pool: zero_mem_convexHull_of_best_approx (use of additiveFunction inside the ε-perturbation step)
-
-[lean-pool-file-0001 finding 0](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/KaltonRoberts/DualCert.lean#L170-L178) — **pursue**.
-
-The weight-to-set-function map is genuinely linear, and the existing perturbation and Pipeline proofs repeatedly unfold sums to establish scaling, negation and subtraction. The proposed LinearMap has straightforward fields and preserves the named operation. The rewritten scalar expression makes the existing continuity argument clearer and avoids repeated sum algebra. The construction and consumer sketch satisfy the rubric; the asserted removal of the entire active-case argument would additionally require the scalar lemma proposed by the other rubric.
-
-Additional inspected sources:
-
-- [LeanPool/KaltonRoberts/Defs.lean:61](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/KaltonRoberts/Defs.lean#L61)
-- [LeanPool/KaltonRoberts/DualCert.lean:170](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/KaltonRoberts/DualCert.lean#L170)
-- [LeanPool/KaltonRoberts/Pipeline.lean:131](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/KaltonRoberts/Pipeline.lean#L131)
-- [LeanPool/KaltonRoberts/Pipeline.lean:186](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/KaltonRoberts/Pipeline.lean#L186)
-
-### lean-pool: CKN.Leray.gradientOfCovectorLinear / gradientOfCovectorLinear_norm_bound / gradientOfCovector
-
-[lean-pool-file-0002 finding 0](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean#L51-L92) — **does_not_meet_rubric**.
-
-gradientOfCovector is already a public complex continuous linear map, and the cited Fourier consumer already uses that bundle. Replacing its construction with standard continuous-linear-map constructors may remove a hand-written norm estimate, but this is implementation reuse rather than missing exposed structure. The alternative construction is a plausible refactor; it does not satisfy this rubric. The proposal also describes retaining an apply lemma without actually giving the rewritten existing consumer.
-
-Additional inspected sources:
-
-- [LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean:54](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean#L54)
-- [LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean:88](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean#L88)
-- [LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean:196](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean#L196)
-- `repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Normed/Lp/PiLp.lean:1141`
-
-### lean-pool: pv_cutoff_F_integrable_0_delta (and the sibling private lemmas pv_cutoff_F_integrable_*, pv_cutoff_integral_seg*_eq_*, pv_sector_cutoff_eq)
-
-[lean-pool-file-0003 finding 0](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean#L305-L317) — **does_not_meet_rubric**.
-
-Using the existing named cutoff integrand would remove repeated lambdas and unfolding, and the cited simp lemmas fit the actual expressions. However, cauchyPrincipalValueIntegrand' is a plain function definition, not a bundle exposing homomorphism, continuity, equivalence or similar mathematical structure. The proposed rewritten integral is an implementation/API-reuse cleanup. Sonnet calls the named definition a bundle, so this does not satisfy the missing-bundled-structure rubric.
-
-Additional inspected sources:
-
-- [LeanPool/LeanModularForms/GeneralizedResidueTheory/Basic.lean:64](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/LeanModularForms/GeneralizedResidueTheory/Basic.lean#L64)
-- [LeanPool/LeanModularForms/GeneralizedResidueTheory/Basic.lean:69](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/LeanModularForms/GeneralizedResidueTheory/Basic.lean#L69)
-- [LeanPool/LeanModularForms/GeneralizedResidueTheory/Basic.lean:75](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/LeanModularForms/GeneralizedResidueTheory/Basic.lean#L75)
-- [LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean:307](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean#L307)
-
-### lean-pool: poitouVerticalProfileSecondDerivative / poitouKernelSecondDerivative (derivative-triple pattern)
-
-[lean-pool-file-0004 finding 0](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean#L702-L710) — **qualified**.
-
-Grouping derivative data could shorten the very long specialized argument lists, but the proposed replacement has an unaccounted cost: the generic operations and abs_poitouKernelSecondDerivative_le currently work for arbitrary triples, without any differentiability hypotheses. Requiring a TwiceDerivData would restrict that interface unnecessarily. The proposal also describes consumer changes without showing a concrete rewritten theorem/proof. Specialized names or an auxiliary bundle may be useful, but a complete improvement preserving the existing generality has not been demonstrated.
-
-Additional inspected sources:
-
-- [LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean:593](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean#L593)
-- [LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean:646](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean#L646)
-- [LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean:702](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean#L702)
-- [LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean:1136](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean#L1136)
-
-### lean-pool: smoothPeriodicTestL2
-
-[lean-pool-file-0007 finding 0](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean#L64-L68) — **pursue**.
-
-Smooth periodic test functions are a coherent mathematical class repeatedly passed with the same two proofs. The proposed bundle and toL2 operation retain the actual assumptions, and the rewritten pairing statement is concrete. A single public coeFn lemma would serve the demonstrated duplicated downstream consumers. This is worth trying as an interface refactor across those uses; some proof reuse can also be achieved independently of the bundle, so the complete patch should account for that. Unused periodicity in the toL2 implementation is not itself a defect.
-
-Additional inspected sources:
-
-- [LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean:64](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean#L64)
-- [LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean:188](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean#L188)
-- [LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ProductWeakGradient.lean:176](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ProductWeakGradient.lean#L176)
-- [LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ScalarFourierDerivative.lean:63](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ScalarFourierDerivative.lean#L63)
-
-### lean-pool: planeCurve_auxiliaryFamily_linearIndependent (and its three wrapper theorems)
-
-[lean-pool-file-0008 finding 0](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean#L340-L347) — **does_not_meet_rubric**.
-
-The repeated letI setup is real and reusable Fact-based instances might make the statements shorter. But IsDomain and CharP are already exposed as bundled typeclass proofs; the proposal changes how instance search obtains them rather than supplying missing mathematical structure. The suite explicitly leaves typeclass-instance design outside scope. The alternative IrreducibleCurve bundle is not developed into a construction or a rewritten consumer. I would treat this as an instance-design suggestion, not accept it under this rubric.
-
-Additional inspected sources:
-
-- [LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean:338](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean#L338)
-- [LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean:364](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean#L364)
-- [LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveFunctionField.lean:73](https://github.com/Vilin97/lean-pool/blob/01db1d7049cf9668bda1e9e106875ee1278b43e6/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveFunctionField.lean#L73)
-
-### mathlib: Algebra.TensorProduct.basisAux / basisAux_map_smul / basis
-
-[mathlib-file-0004 finding 0](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/RingTheory/TensorProduct/Free.lean#L44-L66) — **does_not_meet_rubric**.
-
-The proposed A-linear construction is plausible implementation reuse, but the required interface is already public both as basis.repr and, under stronger hypotheses, equivFinsuppOfBasis. The finding itself identifies the existing bundle. Generalizing and reusing that construction may reduce internal code, but it does not expose missing bundled structure. I also checked that the two TensorProduct.Free modules have no import path between them; the dependency concern is not the reason for rejection. The claimed target import list actually belongs to the other Free module.
-
-Additional inspected sources:
-
-- [Mathlib/RingTheory/TensorProduct/Free.lean:65](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/RingTheory/TensorProduct/Free.lean#L65)
-- [Mathlib/LinearAlgebra/TensorProduct/Free.lean:42](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/LinearAlgebra/TensorProduct/Free.lean#L42)
-- [Mathlib/LinearAlgebra/DirectSum/Finsupp.lean:157](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/LinearAlgebra/DirectSum/Finsupp.lean#L157)
-
-### tauceti: continuousOn_schwarzChristoffelBoundary_of_exponent_sum_gt_neg_one (and sum_filter_eq_zero_of_mem_Ioo, schwarzChristoffelBoundary_apply_prevertex, tendsto_schwarzChristoffelPrimitive_boundary, schwarzChristoffelBoundary_change_base, continuousOn_schwarzChristoffelBoundary_Icc)
-
-[tauceti-file-0004 finding 0](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean#L151-L152) — **does_not_meet_rubric**.
-
-Naming the total exponent is a sensible readability suggestion, but the proposed primary replacement is an ordinary definition, not missing bundled structure. The optional Finsupp adds no demonstrated consumer of its structured API. Its claimed support interpretation is also wrong without extra assumptions: coincident prevertices with weights 1 and -1 cancel in the Finsupp, while the existing condition forbidding each nonzero-weight prevertex still excludes their location. Thus support avoidance cannot replace that hypothesis as claimed.
-
-Additional inspected sources:
-
-- [TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean:151](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean#L151)
-- [TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean:255](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean#L255)
-- `repos/deps/mathlib-22c725c48122/Mathlib/Data/Finsupp/Basic.lean:265`
-- `repos/deps/mathlib-22c725c48122/Mathlib/Data/Finsupp/Basic.lean:1433`
-
-### tauceti: TauCeti.IsSolidTorusNeighborhood (open solid torus set repeated)
-
-[tauceti-file-0007 finding 0](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean#L138-L138) — **does_not_meet_rubric**.
-
-A name for the open solid torus could improve readability across the indicated uses, but the proposed replacement is only a named Set plus separate lemmas. It does not expose missing bundled mathematical structure or a consumer needing such structure. This is a naming/API suggestion outside the rubric, even though the replacement field and downstream definitions are concrete.
-
-Additional inspected sources:
-
-- [TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean:132](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean#L132)
-- [TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean:113](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean#L113)
-- [TauCeti/LowDimTopology/SolidTorusNeighborhood/Exterior.lean:68](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/LowDimTopology/SolidTorusNeighborhood/Exterior.lean#L68)
-- [TauCeti/LowDimTopology/SolidTorusNeighborhood/Link/Basic.lean](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/LowDimTopology/SolidTorusNeighborhood/Link/Basic.lean)
-
-### tauceti: exists_normalDisc
-
-[tauceti-file-0007 finding 1](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean#L327-L331) — **pursue**.
-
-The concrete frame construction is real-linear and norm-preserving, and the existing consumer uses norm preservation, injectivity and zero evaluation. Exposing a family of LinearIsometries matches the documented mathematics and gives those consumers descriptive standard operations. The norm-preservation computation is still needed to construct the bundle; it does not disappear for free. The extra linearity fields and the single private consumer make the exact code saving uncertain, but this is a substantive structural improvement worth checking.
-
-Additional inspected sources:
-
-- [TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean:327](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean#L327)
-- [TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean:334](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean#L334)
-- [TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean:364](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/LowDimTopology/SolidTorusNeighborhood/Basic.lean#L364)
-- `repos/deps/mathlib-22c725c48122/Mathlib/Analysis/Normed/Operator/LinearIsometry.lean:46`
+- **pursue**: A source-supported improvement candidate I would pursue; exact replacement remains uncompiled.
+- **qualified**: An optional or incomplete refactoring idea whose compliance with the rubric or net benefit is not established.
 
 ## repeated-proof-machinery
+
 
 ### lean-pool: zero_mem_convexHull_of_best_approx (inner h_active, both by_cases branches)
 

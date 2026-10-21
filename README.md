@@ -151,21 +151,21 @@ Opus has no Mathlib baseline. Because the prompt adds self-match and circularity
 this is an explicitly modified replication. A success marker is written only when every
 selected judgment and report is complete. Resuming skips saved verdicts.
 
-### Small pilot of seven file quality audits
+### Small pilot of six file quality audits
 
 The [file quality suite](audits/file-quality-v1/README.md) reviews the same ten complete
-files each from Mathlib, Tau Ceti and Lean Pool against seven separate rubrics. The
-judge is Sonnet 5.5 at high effort, with two sessions total (210 independent judgments).
+files each from Mathlib, Tau Ceti and Lean Pool against six separate rubrics. The
+judge is Sonnet 5.5 at high effort, with two sessions total (180 independent judgments).
 Samples, protocol snapshots and model results are separated so coverage and models can
 be expanded without replacing the pilot data.
 
 The concept-reinvention rubric protects useful named API and requires an actual competing
-concept with a concrete cost. Its thirty Sonnet reviews are complete. Missing structured
-interfaces and repeated proof machinery have sixty completed Sonnet reviews, using
-concise rubrics requiring constructions, proof sketches and rewritten existing uses. Their
+concept with a concrete cost. Its thirty Sonnet reviews are complete. Repeated proof
+machinery has thirty completed Sonnet reviews, using a concise rubric requiring a shared
+lemma, a proof sketch and rewritten existing uses. Its
 [results](runs/file-quality-pilot-2026-10-21/reports/claude-sonnet-5-5-high-structure-machinery/summary.md)
 use the same file sample.
-Every positive has an [individual source review](runs/file-quality-pilot-2026-10-21/reviews/structure-and-machinery-2026-10-21.md).
+Every positive has an [individual source review](runs/file-quality-pilot-2026-10-21/reviews/repeated-machinery-2026-10-21.md).
 Luna is reproducing the four selected audits (generality, vacuity/misstatement, simp and
 readable simplification) on the same thirty files, in 120 blind sessions, one at a time.
 

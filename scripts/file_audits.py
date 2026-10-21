@@ -30,7 +30,7 @@ from source_tools import Sources
 ROOT = Path(__file__).resolve().parent.parent
 SUITE = ROOT / "audits/file-quality-v1"
 RUBRICS = ["concept-reinvention", "statement-generality", "vacuity-and-misstatement",
-           "missing-structure", "simp-interface",
+           "simp-interface",
            "repeated-proof-machinery", "readable-proof-simplification"]
 MATHEMATICS = re.compile(r"(?m)^(?:(?:public|noncomputable|private|protected|local|scoped|unsafe)\s+)*"
                          r"(?:theorem|lemma|def|abbrev|structure|class|inductive|instance|opaque)\b")

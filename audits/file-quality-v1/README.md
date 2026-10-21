@@ -10,12 +10,12 @@ python3 -u scripts/reinvention_audit.py --run file-quality-pilot-2026-10-21 \
   --label claude-sonnet-5-5-high-concept --jobs 2
 ```
 
-The structured-interface and repeated-machinery rubrics require concrete constructions,
-proof sketches and rewritten existing uses showing an overall improvement. Run these two
-on the same sample, with a separate sixty-review report:
+The repeated-machinery rubric requires a shared lemma, a proof sketch and rewritten
+existing uses showing an overall improvement. Run it on the same sample, with a separate
+thirty-review report:
 
 ```sh
-python3 -u scripts/structure_and_machinery_audits.py --run file-quality-pilot-2026-10-21 \
+python3 -u scripts/repeated_machinery_audit.py --run file-quality-pilot-2026-10-21 \
   --files-per-library 10 --model claude-sonnet-5-5 \
   --label claude-sonnet-5-5-high-structure-machinery --jobs 2
 ```
@@ -25,8 +25,8 @@ generality, vacuity/misstatement, simp interface and readable proof simplificati
 `scripts/reproduce_file_audits.py` restricts that run and its reports to those four rubrics
 (120 reviews). It uses one active session behind the shared Codex guard.
 
-Seven independent rubrics review whole files: concepts already present in Mathlib,
-statement generality, vacuity or misstatement, missing structured interfaces, simp
+Six independent rubrics review whole files: concepts already present in Mathlib,
+statement generality, vacuity or misstatement, simp
 interfaces, repeated proof machinery, and readable proof simplification.
 The concept rubric applies within Mathlib too. Names, namespaces, module placement and
 typeclass instance design are outside this suite.
@@ -39,7 +39,7 @@ syntactic filter, not Lean elaboration. Private declarations and comments remain
 because the entire file is the unit of review. No file size cutoff is used.
 
 Every rubric uses exactly the same thirty files. A fresh, isolated Sonnet 5.5 session at
-high effort reviews one file against one rubric, for 210 judgments. There are two active
+high effort reviews one file against one rubric, for 180 judgments. There are two active
 sessions total. Read, Grep and Glob are the only tools; Lean is not executed and source
 files are never edited. The judge can read the library's own source, its pinned Mathlib
 and Batteries dependencies, and the corresponding Lean core sources. It cannot access
