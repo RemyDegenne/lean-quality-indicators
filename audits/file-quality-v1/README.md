@@ -26,33 +26,6 @@ then extend it by sixty reviews. `scripts/reproduce_file_audits.py` selects all 
 It uses one active session behind the shared Codex guard. The queued extension uses the
 original frozen runner so existing protocol hashes and accepted judgments remain valid.
 
-The pi SDK backend queues GLM-5.3 through OpenRouter at high effort on the same sample
-and protocols, with one active session and 180 reviews planned. Install the pinned
-harness with `npm ci --prefix tools/pi`. Export `OPENROUTER_API_KEY` from the local
-credential store, or configure pi's saved OpenRouter credentials, then run:
-
-```sh
-python3 -u scripts/file_audits.py --run file-quality-pilot-2026-10-21 \
-  --files-per-library 10 --backend pi --pi-provider openrouter --model z-ai/glm-5.3 \
-  --label glm-5.3-openrouter-pi-high --jobs 1
-```
-
-Pi sessions expose only the same Python Read, Grep and Glob implementation. Extensions,
-skills, context files, saved sessions and built-in execution/write tools are excluded.
-The JSON schema is appended to the user message, and every verdict passes the existing
-source-evidence validator before acceptance. Provider failures stop new admissions;
-invalid verdicts may be retried. The pi package lock and adapter hashes are recorded
-in each protocol manifest. Direct Z.ai access is also supported with `--pi-provider zai`
-and `--model glm-5.3`, using `ZAI_API_KEY_FILE`, `ZAI_API_KEY` or saved pi credentials.
-
-`python3 -u scripts/pi_audit_queue.py --secrets ~/.secrets` reads only the OpenRouter
-key assignment, waits for a positive credit balance, runs the two theorem pilots first,
-then resumes the six file audits. Its status and driver logs live in
-`runs/main/pi-glm-pilot/`. The theorem pilot uses the first ten sampled theorems per
-library and audit (100 judgments total), preserving the original prompts, schemas and
-duplicate self-match validation. Per-audit `pairwise-agreement.md` reports compare the
-same IDs with the saved Sol, Luna and Sonnet results after every accepted judgment.
-
 Six independent rubrics review whole files: concepts already present in Mathlib,
 statement generality, vacuity or misstatement, simp
 interfaces, repeated proof machinery, and readable proof simplification.
