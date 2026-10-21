@@ -267,14 +267,16 @@ def union_results(bundles):
     return union, samples
 
 
-def union_counts(entries, samples, lib=None, unit=None):
+def union_counts(entries, samples, lib=None, unit=None, audits=None):
     rows = [row for key, row in entries.items() if (lib is None or samples[key]["lib"] == lib)
             and (unit is None or samples[key]["unit"] == unit)]
-    reviewed = [row for row in rows if row["passes"].get(0)]
+    available = [row for row in rows if row["passes"].get(0)]
+    reviewed = [row for row in available if audits is None or set(audits) <= row["passes"][0].keys()]
     flags = sum(any(row["passes"][0].values()) for row in reviewed)
     complete = sum(row["selected_audits"] <= row["passes"][0].keys() for row in reviewed)
     ci = list(wilson(flags, len(reviewed))) if reviewed else None
     return {"selected": len(rows), "completed": len(reviewed), "flagged": flags,
+            "targets_with_any_review": len(available), "required_audits": sorted(audits) if audits is not None else None,
             "all_selected_audits_completed": complete, "ci95": ci}
 
 
@@ -310,7 +312,7 @@ def combined_summary(bundles, resamples):
     lines = ["## Combined summary", "",
              f"Union across **{len(bundles)} audits**: a target counts once per model if any audit flags it. "
              "First passes only; theorem and file samples are counted separately. "
-             "Unfinished coverage contributes the judgments available so far. "
+             "Each rate uses only targets reviewed on **every contributing audit**; a dash means no such targets. "
              "[Aggregation details](AUDIT_METHODS.md#combined-summary).", ""]
     for unit in units:
         contributing = data["audits_by_unit"][unit]
@@ -319,7 +321,7 @@ def combined_summary(bundles, resamples):
                   "| Library | " + " | ".join(models) + " |", "|---|" + "---:|" * len(models)]
         for lib in ordered_libraries({s["lib"] for s in samples.values() if s["unit"] == unit}):
             data["libraries"].setdefault(lib, {})
-            rows = {model: union_counts(entries, samples, lib, unit) for model, entries in union.items()}
+            rows = {model: union_counts(entries, samples, lib, unit, contributing) for model, entries in union.items()}
             data["libraries"][lib][unit] = rows
             cells = []
             for row in rows.values():
@@ -339,7 +341,7 @@ def combined_summary(bundles, resamples):
               "| Model | Audits with results | Theorems selected | Files selected | Audit passes done/planned | Theorems flagged / reviewed | Files flagged / reviewed | Judgments done/planned | API expenditure / full-pass estimate |",
               "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for model, entries in union.items():
-        rows = {unit: union_counts(entries, samples, unit=unit) for unit in units}
+        rows = {unit: union_counts(entries, samples, unit=unit, audits=data["audits_by_unit"][unit]) for unit in units}
         audit_rows = [b["report"]["groups"]["all"]["models"][model] for b in bundles
                       if model in b["report"]["groups"]["all"]["models"]]
         spend = sum(row["api_expenditure_usd"] for row in audit_rows)

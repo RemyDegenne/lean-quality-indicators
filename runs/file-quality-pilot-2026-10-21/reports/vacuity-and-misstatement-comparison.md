@@ -1,6 +1,6 @@
 # vacuity-and-misstatement
 
-Generated 2026-10-21T05:43:31+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-21T05:47:30+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## Library comparison
 

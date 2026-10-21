@@ -26,6 +26,11 @@ class DashboardTests(unittest.TestCase):
         counts = union_counts(union["Test"], samples, unit="theorem")
         self.assertEqual((counts["selected"], counts["completed"], counts["flagged"]), (1, 1, 1))
         self.assertEqual(counts["all_selected_audits_completed"], 0)
+        complete = union_counts(union["Test"], samples, unit="theorem",
+                                audits=["unnecessary-hypotheses", "duplicates-new", "another-audit"])
+        self.assertEqual(complete["completed"], 0)
+        self.assertEqual(complete["flagged"], 0)
+        self.assertEqual(complete["targets_with_any_review"], 1)
         self.assertEqual(union_counts(union["Test"], samples, unit="file")["flagged"], 1)
         # A newly registered audit contributes without changing aggregate code.
         bundles[-2]["models"]["Test"][0]["results"]["pending"] = {"verdict": "clear"}

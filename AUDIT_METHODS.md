@@ -52,13 +52,15 @@ and [frozen rates](pricing/api-rates-2026-10-21.json).
 ## Combined summary
 
 The global table takes the union of first-pass findings: a source target is flagged if
-any completed audit flags it, and counts once even when several audits flag it. Targets
+any contributing audit flags it, and counts once even when several audits flag it.
+A target enters the rate denominator only after **every contributing audit** has reviewed
+it. Missing audits never count as negative judgments; a dash means no fully covered
+targets. Models and libraries can have different fully covered sample sizes. Targets
 match by library, source repository, pinned commit, path and (for theorems) declaration
 location and name. Theorem and whole-file samples have separate denominators.
-Cells show flagged / reviewed targets and Wilson 95% intervals. An asterisk marks
-incomplete selected audit coverage; unflagged targets may acquire a flag as results arrive.
-Models cover different sets of audits, shown in the model table, so their union rates
-are not directly comparable when audit coverage differs. The retained Opus duplication
+Cells show flagged / fully reviewed targets and Wilson 95% intervals. The contributing
+audits are listed above each table. Selected-target and total-judgment counts also include
+partially covered targets; union flag counts exclude them. The retained Opus duplication
 baseline also uses its earlier prompt, as noted in its individual report.
 
 Combined correlations OR decisions over the audits with results for both models,
