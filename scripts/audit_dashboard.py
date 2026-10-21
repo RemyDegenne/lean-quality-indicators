@@ -16,11 +16,13 @@ from file_audits import RUBRICS
 ROOT = Path(__file__).resolve().parent.parent
 FILES = ROOT / "runs/file-quality-pilot-2026-10-21"
 MAIN = ROOT / "runs/main"
+EXTRA = ROOT / "runs/openai-math-2026-10-21"
+MODEL_NAMES = {"claude-opus-5-5": "Opus", "gpt-6.1-sol": "Sol", "claude-sonnet-5-5": "Sonnet",
+               "gpt-6-luna": "Luna"}
 LIBRARY_ORDER = ["mathlib", "tauceti", "formal-frontier", "lean-pool", "flt-anthropic"]
 LABELS = {"Sol": ["gpt-6.1-sol-high", "gpt-6.1-sol-high-repeat-2"],
           "Sonnet": ["claude-sonnet-5-5-high", "claude-sonnet-5-5-high-repeat-2"],
-          "Luna": ["gpt-6-luna-high", "gpt-6-luna-high-repeat-2"],
-          "GLM": ["glm-5.3-openrouter-pi-high-pilot"]}
+          "Luna": ["gpt-6-luna-high", "gpt-6-luna-high-repeat-2"]}
 
 
 def load(directory):
@@ -88,7 +90,6 @@ def models_for(audit, base, samples, is_file):
         labels["Luna"] = labels["Luna"][:1]
         labels["Sonnet"] = [{"concept-reinvention": "claude-sonnet-5-5-high-concept",
                               "repeated-proof-machinery": "claude-sonnet-5-5-high-structure-machinery"}.get(audit, "claude-sonnet-5-5-high")]
-        labels["GLM"] = ["glm-5.3-openrouter-pi-high"]
     else:
         labels = {"Opus": ["claude-opus-5-5-high", "rejudge-claude-opus-5-5-high"], **labels}
         if audit == "duplicates-mathlib-inclusive":
@@ -112,7 +113,7 @@ def models_for(audit, base, samples, is_file):
                 if is_file:
                     selected = list(samples)
                 else:
-                    limit = 10 if name == "GLM" else 1000 if audit.startswith("duplicates") else 400 if name == "Opus" and index == 0 else 300
+                    limit = 1000 if audit.startswith("duplicates") else 400 if name == "Opus" and index == 0 else 300
                     selected = [i for i, s in samples.items() if int(i.rsplit("-", 1)[1]) < limit
                                 and not (name == "Opus" and audit.startswith("duplicates") and s["lib"] == "mathlib")]
             records.append({"label": label, "directory": directory, "selected": set(selected), "results": rows})
@@ -148,7 +149,7 @@ def is_positive(audit, is_file, row):
 def make_report(audit, base, samples, is_file, resamples, models=None):
     models = models if models is not None else models_for(audit, base, samples, is_file)
     positive = lambda r: is_positive(audit, is_file, r)
-    names = {lib["id"]: lib["name"] for lib in tomllib.loads((ROOT / "libraries.toml").read_text())["library"]}
+    names = library_names()
     libraries = ordered_libraries({s["lib"] for s in samples.values()})
     data = {"audit": audit, "unit": "file" if is_file else "theorem", "groups": {}}
     methods = "../../../AUDIT_METHODS.md"
@@ -157,13 +158,15 @@ def make_report(audit, base, samples, is_file, resamples, models=None):
     if audit == "duplicates-mathlib-inclusive":
         lines += ["Opus uses the earlier prompt on four libraries, without Mathlib targets.", ""]
     if audit == "unnecessary-hypotheses":
-        lines += ["Opus: 400 then 300 targets/library; Sol, Sonnet and Luna: 300 per pass.", ""]
+        lines += ["Original five libraries: Opus 400 then 300 targets/library; Sol, Sonnet and Luna 300 per pass.", ""]
     for lib, title in [(None, "All libraries"), *[(lib, names[lib]) for lib in libraries]]:
         scoped = {i: s for i, s in samples.items() if lib is None or s["lib"] == lib}
         group = {"models": {}, "correlations": {}}
-        completed_sizes = [len(entry["selected"] & scoped.keys()) for passes in models.values() for entry in passes
-                           if entry["selected"] & scoped.keys() and
-                           entry["selected"] & scoped.keys() <= entry["results"].keys()]
+        completed_sizes = [len(component["selected"] & scoped.keys())
+                           for passes in models.values() for entry in passes
+                           for component in [entry, *entry.get("components", [])]
+                           if component["selected"] & scoped.keys() and
+                           component["selected"] & scoped.keys() <= component["results"].keys()]
         largest = max(completed_sizes, default=0)
         group["full_pass_reference_targets"] = largest
         lines += [f"## {title}", "", f"Full-pass reference: **{largest} targets**.", "",
@@ -189,7 +192,8 @@ def make_report(audit, base, samples, is_file, resamples, models=None):
             first = per_pass[0]
             lo, hi = wilson(first["flagged"], first["completed"]) if first["completed"] else (None, None)
             rate = f"{first['flagged']/first['completed']:.1%} [{lo:.1%}, {hi:.1%}]" if first["completed"] else "—"
-            costs = [directory_expenditure(entry["directory"], lib) for entry in passes]
+            costs = [directory_expenditure(directory, lib) for entry in passes
+                     for directory in entry.get("directories", [entry["directory"]])]
             expenditure = sum(c["api_usd"] for c in costs)
             estimate = full_pass_estimate(expenditure, completed, largest)
             money = f"${expenditure:.2f} / ${estimate:.2f}" if estimate is not None else f"${expenditure:.2f} / —"
@@ -234,6 +238,37 @@ def make_report(audit, base, samples, is_file, resamples, models=None):
     destination.with_suffix(".md").write_text("\n".join(lines))
     destination.with_suffix(".json").write_text(json.dumps(data, indent=2) + "\n")
     return destination.with_suffix(".md")
+
+
+def library_names():
+    names = {lib["id"]: lib["name"] for lib in tomllib.loads((ROOT / "libraries.toml").read_text())["library"]}
+    if (EXTRA / "experiment.json").exists():
+        names["openai-math"] = "OpenAI Math"
+    return names
+
+
+def add_extra_corpus(audit, is_file, samples, models):
+    """Merge another corpus into each model's first pass, retaining cost provenance."""
+    run = EXTRA / ("files" if is_file else "theorems")
+    manifests = sorted((run / audit).glob("*/judge.json"))
+    if not manifests:
+        return samples, models
+    samples = {**samples, **{r["id"]: r for r in map(json.loads, (run / "samples.jsonl").read_text().splitlines())}}
+    for manifest in manifests:
+        protocol = json.loads(manifest.read_text())["protocol"]
+        name = MODEL_NAMES[protocol["model"]]
+        directory = manifest.parent
+        extra = {"label": directory.name, "directory": directory,
+                 "selected": set(protocol["sample_ids"]), "results": load(directory)}
+        if name not in models:
+            models[name] = [extra]
+            continue
+        first = models[name][0]
+        components = first.get("components", [first.copy()]) + [extra]
+        first.update(selected=first["selected"] | extra["selected"],
+                     results={**first["results"], **extra["results"]}, components=components,
+                     directories=[c["directory"] for c in components])
+    return samples, {name: models[name] for name in [*MODEL_NAMES.values()] if name in models}
 
 
 def ordered_libraries(libraries):
@@ -303,7 +338,7 @@ def union_correlation(first, second, samples, unit, seed, resamples, repeat=Fals
 
 def combined_summary(bundles, resamples):
     union, samples = union_results(bundles)
-    names = {lib["id"]: lib["name"] for lib in tomllib.loads((ROOT / "libraries.toml").read_text())["library"]}
+    names = library_names()
     models = list(union)
     units = list(dict.fromkeys(bundle["unit"] for bundle in bundles))
     data = {"audits": [bundle["audit"] for bundle in bundles], "libraries": {}, "models": {},
@@ -396,6 +431,7 @@ def main():
         run = FILES if is_file else MAIN
         samples = {s["id"]: s for s in map(json.loads, (run / "samples.jsonl").read_text().splitlines())}
         models = models_for(audit, run / audit, samples, is_file)
+        samples, models = add_extra_corpus(audit, is_file, samples, models)
         path = make_report(audit, run / audit, samples, is_file, args.resamples, models)
         bundles.append({"audit": audit, "unit": "file" if is_file else "theorem", "samples": samples,
                         "models": models, "report": json.loads(path.with_suffix(".json").read_text())})

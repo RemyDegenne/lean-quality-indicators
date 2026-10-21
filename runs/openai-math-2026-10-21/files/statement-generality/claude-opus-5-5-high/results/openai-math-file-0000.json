@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0000",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file (lines 1–126) and both of its callers: SharedFreeCommonPolynomialCorrections.lean, and SharedFreeAffineOrbitFamily.lean lines 470–529. I also read the definitions and lemmas the proofs rely on: NilpotentLieFiltration.realification (RealifiedMultidegree.lean), coefficientFreeRealFiltration_eq_native, adapted_iff_coefficients, polynomialOrbitOfLog, positiveUnivariate_coefficients_mem, positiveUnivariate_coefficientBound and positiveUnivariate_coefficientGrid, CoefficientBound and CoefficientGrid, realDenominatorGrid_subset_of_dvd, and the generic NilpotentLieFiltration.exists_positiveUnivariate_orbit_lift in NativeSubspaceFreeModel.lean.\n\nI found two places where a general statement is hidden inside a native-context theorem:\n1. The orbit-existence part of `exists_native_freeCoefficientPolynomialOrbit` (the existence of an orbit with log `positiveUnivariate v` and value 1 at 0) holds for any NilpotentLieFiltration.\n2. The common-multiple part of `exists_native_freeCoefficient_corrections` holds for any finite family of positive naturals with a common real bound. This part is already copied verbatim in another file.\n\nI considered a third change: restating `exists_native_freeCoefficient_corrections` for a general filtration. I did not report it, because its conclusion is tied to `E.basis` and the native span hypotheses, and the benefit is less clear. I could not compile anything. The proposed proofs only rearrange steps that already appear in the file or in the cited generic lemma.",
+  "findings": [
+    {
+      "declaration": "OAI.Erdos3.NativeRankRelation.CommonData.exists_native_freeCoefficientPolynomialOrbit",
+      "start_line": 27,
+      "end_line": 50,
+      "excerpt": "    (hv : ∀ d, v d ∈ (D.coefficientFreeSpan d).baseChange ℝ) :\n    ∃ u : E.filtration.realification.PolynomialOrbit (fun _ : Unit => 1),",
+      "problem": "The main statement is about any nilpotent Lie filtration: if `v d` lies in layer `d+1` for every `d`, then there is a polynomial orbit with log `positiveUnivariate v` that takes the value 1 at 0. In this file it is stated only for `E.filtration.realification`, and only under the stronger hypothesis `v d ∈ (D.coefficientFreeSpan d).baseChange ℝ`. That forces the whole `D`/`E`/`T`/`hT` context (NativeRankRelation, CommonData, DegreeRankStructure, the filtration equation). The native context is used only in lines 33–38, to turn `hv` into `hlayer : v d ∈ E.filtration.realification.layer (d.val + 1)`. Lines 39–50 use nothing else. The same generic argument appears again inside `NilpotentLieFiltration.exists_positiveUnivariate_orbit_lift`, which has extra hypotheses (π, g), so it cannot be used directly when no target orbit `g` exists.",
+      "proposed_change": "Add a generic lemma and make the native theorem a corollary:\n\n```lean\ntheorem NilpotentLieFiltration.exists_positiveUnivariate_polynomialOrbit\n    {L : Type*} [LieRing L] [LieAlgebra ℚ L] {s : ℕ}\n    (F : NilpotentLieFiltration L s) (v : Fin s → L)\n    (hv : ∀ d, v d ∈ F.layer (d.val + 1)) :\n    ∃ u : F.PolynomialOrbit (fun _ : Unit => 1),\n      u.log = positiveUnivariate v ∧ F.polynomialOrbitEval (fun _ : Unit => 1) 0 u = 1\n```\n\nIts proof is lines 39–50 with `E.filtration.realification` replaced by `F` and `hlayer` replaced by `hv`:\n1. `(F.adapted_iff_coefficients _ _).mpr`, then `positiveUnivariate_coefficients_mem`, then `simpa [Finsupp.weight_single, smul_eq_mul, mul_one] using hv d`.\n2. `polynomialOrbitOfLog` builds the orbit.\n3. `NilpotentLieBCHGroup.ext` with `eval_zero_eq_coefficient` and `positiveUnivariate_zero` gives the value 1 at 0.\n\nThis is the same sequence as lines 208–213 and 224–226 of `exists_positiveUnivariate_orbit_lift`. The native theorem then becomes `(E.filtration.realification).exists_positiveUnivariate_polynomialOrbit v hlayer`, with `hlayer` proved as in lines 33–38. Degenerate case: for `s = 0` the hypothesis is vacuous and `positiveUnivariate v` is the zero polynomial. The lemma still holds.",
+      "benefit": "Users with any filtration whose layers are known, such as other realified or associated-degree filtrations, could use the lemma without building a NativeRankRelation.CommonData and a DegreeRankStructure. This file and NativeSubspaceFreeModel.lean would share one statement instead of each repeating the adapted-orbit construction. The native corollary stays available for its four uses in SharedFreeAffineOrbitFamily.lean and for the use in this file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/NativeSubspaceFreeModel.lean",
+          "declaration": "OAI.Erdos3.NilpotentLieFiltration.exists_positiveUnivariate_orbit_lift",
+          "excerpt": "  have hadapt : F.Adapted (fun _ : Unit => 1) (positiveUnivariate v) := by\n    apply (F.adapted_iff_coefficients _ _).mpr\n    apply positiveUnivariate_coefficients_mem"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/RealifiedMultidegree.lean",
+          "declaration": "NilpotentLieFiltration.realification",
+          "excerpt": "noncomputable def realification : NilpotentLieFiltration (ℝ ⊗[ℚ] L) s where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/AdaptedPolynomialSubstitution.lean",
+          "declaration": "polynomialOrbitOfLog",
+          "excerpt": "def polynomialOrbitOfLog {w : σ → ℕ} (p : VectorPolynomial σ ℚ L) (hp : F.Adapted w p) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Lattices/SharedFreeAffineOrbitFamily.lean",
+          "declaration": "OAI.Erdos3.NativeRankRelation.CommonData (theorem around lines 479–527)",
+          "excerpt": "obtain ⟨A, hA, hA0⟩ := D.exists_native_freeCoefficientPolynomialOrbit E T hTfil _ ha"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.Erdos3.NativeRankRelation.CommonData.exists_native_freeCoefficient_corrections",
+      "start_line": 77,
+      "end_line": 121,
+      "excerpt": "  let m := ∏ d, l d\n  have hm : 0 < m := Finset.prod_pos (fun d _ => hl d)\n  have hdiv (d : Fin s) : l d ∣ m := Finset.dvd_prod_of_mem l (Finset.mem_univ d)",
+      "problem": "Part of the conclusion, `∃ m, 0 < m ∧ (m : ℝ) ≤ Real.exp ((s : ℝ) * L) ∧ ∀ d, l d ∣ m`, follows from `hl` and `hlb` alone. It does not depend on the Lie algebra, nilmanifold or native data. Yet it is available only inside this theorem, which requires `D`, `E`, `T`, `hT`, `γ`, `e`, `q` and their span, error and grid hypotheses. It is also fixed to the index type `Fin s` and to a bound of the form `Real.exp L`. As a result, SharedFreeAffineOrbitFamily.lean, which needs the same common multiple under different hypotheses, repeats the construction line for line (`let m := ∏ d, l d`, `Finset.prod_pos`, `Finset.dvd_prod_of_mem`, the same `calc` with `Real.exp_nat_mul`).",
+      "proposed_change": "State the combinatorial fact on its own, for any finite index type and any real bound:\n\n```lean\ntheorem exists_pos_common_multiple_le {ι : Type*} [Fintype ι] (l : ι → ℕ)\n    (hl : ∀ i, 0 < l i) {B : ℝ} (hlb : ∀ i, (l i : ℝ) ≤ B) :\n    ∃ m : ℕ, 0 < m ∧ (m : ℝ) ≤ B ^ Fintype.card ι ∧ ∀ i, l i ∣ m\n```\n\nProof, from lines 101–109: take `m := ∏ i, l i`. `Finset.prod_pos` gives positivity and `Finset.dvd_prod_of_mem` gives divisibility. For the bound, rewrite with `Nat.cast_prod`, apply `Finset.prod_le_prod₀ (fun i _ => Nat.cast_nonneg _) (fun i _ => hlb i)`, then `Finset.prod_const` and `Finset.card_univ`. For `exists_native_freeCoefficient_corrections`, use `B := Real.exp L` and `ι := Fin s`, then rewrite `Real.exp L ^ s` as `Real.exp (s * L)` with `Fintype.card_fin` and `Real.exp_nat_mul`, exactly as the current proof does. Degenerate cases: for an empty `ι`, `m = 1 ≤ B ^ 0 = 1`, so no sign assumption on `B` is needed. When `ι` is nonempty, `hlb` and `hl` already force `1 ≤ B`.",
+      "benefit": "The divisibility-and-size fact becomes reusable wherever finitely many denominators share a common bound. In particular, the duplicated block in SharedFreeAffineOrbitFamily.lean can be replaced by one call. Readers of the correction theorem can see at once that the bound on `m` is pure arithmetic and separate from the nilmanifold content.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Lattices/SharedFreeAffineOrbitFamily.lean",
+          "declaration": "OAI.Erdos3.NativeRankRelation.CommonData (theorem around lines 479–527)",
+          "excerpt": "  let m := ∏ d, l d\n  have hm : 0 < m := Finset.prod_pos (fun d _ => (hl d).1)\n  have hdiv (d : Fin s) : l d ∣ m := Finset.dvd_prod_of_mem l (Finset.mem_univ d)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/FreeCoefficientCorrectionControl.lean",
+          "declaration": "OAI.Erdos3.NativeRankRelation.CommonData.exists_native_freeCoefficient_corrections",
+          "excerpt": "      _ = _ := by rw [Finset.prod_const, Finset.card_univ, Fintype.card_fin, Real.exp_nat_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/SharedFreeCommonPolynomialCorrections.lean",
+          "declaration": "OAI.Erdos3.NativeRankRelation.CommonData.exists_shared_free_common_polynomial_corrections",
+          "excerpt": "obtain ⟨m, hm, hmb, _hdiv, Γ, ε, ρ, hΓ, hε, hρ, hΓ0, hε0, hρ0, hbound, hgrid⟩ :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 30022,
+    "cache_read_input_tokens": 160800,
+    "output_tokens": 8436,
+    "output_tokens_details": {
+      "thinking_tokens": 2463
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30022,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5512,
+        "cache_read_input_tokens": 33123,
+        "cache_creation_input_tokens": 9708,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 9708
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.441112,
+  "duration_ms": 85002,
+  "turns": 10,
+  "attempts": 2,
+  "judged": "2026-10-21T05:52:44",
+  "unit": "file",
+  "source_sha256": "6f1f31b13f46ad202c07b0f55e14b3edbd7391bb06838b798be1c5d100698997",
+  "rubric": "statement-generality"
+}

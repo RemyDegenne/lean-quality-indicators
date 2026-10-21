@@ -1,8 +1,9 @@
-"""Refresh coverage, correlations and costs while Luna and GLM audits finish."""
+"""Refresh coverage, correlations and costs while the corpus pilots finish."""
 
 import argparse
 import fcntl
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -22,9 +23,21 @@ def main():
         while True:
             for script in ["audit_dashboard.py", "api_costs.py", "order_model_tables.py"]:
                 subprocess.run([sys.executable, str(ROOT / "scripts" / script)], cwd=ROOT, check=True)
-            glm = json.loads((ROOT / "runs/main/pi-glm-pilot/status.json").read_text())
-            luna = json.loads((ROOT / "runs/file-quality-pilot-2026-10-21/reports/gpt-6-luna-high/status.json").read_text())
-            if glm["stage"] in ["complete", "failed"] and (luna.get("complete") or luna.get("failed")):
+            pilot = ROOT / "runs/openai-math-2026-10-21"
+            launch = json.loads((pilot / "launch.json").read_text())
+            active = False
+            for name, info in launch.items():
+                path = pilot / f"{name}-status.json"
+                status = json.loads(path.read_text()) if path.exists() else {}
+                if status.get("stage") in ["complete", "failed"]:
+                    continue
+                try:
+                    os.kill(info["pid"], 0)
+                    active = True
+                except ProcessLookupError:
+                    status.update(stage="failed", reason="Worker exited; inspect its local log")
+                    path.write_text(json.dumps(status, indent=2) + "\n")
+            if not active:
                 return
             time.sleep(args.interval)
 

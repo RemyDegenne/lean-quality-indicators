@@ -9,7 +9,7 @@ counted once across passes.
 
 Flag rates and Wilson 95% intervals use the first pass, avoiding double-counting repeated
 judgments as independent targets. File audits count not-applicable judgments as unflagged;
-partial and not-applicable counts appear with each table. Sol and Opus have no file-audit runs.
+partial and not-applicable counts appear with each table. Coverage varies by model and library.
 
 Library-comparison cells show **flagged / completed**, followed by **rate [95% interval]**,
 separately for each model. A dash means no completed judgments; models are not pooled.
@@ -40,8 +40,7 @@ when coverage is smaller; estimates from a handful of targets can be dominated b
 expensive judgment. Models with cheaper tokens can still cost more if they use more tokens.
 
 Costs use standard short-context API rates, including recorded cache usage and reasoning
-output, without adding reasoning tokens twice. GLM uses frozen OpenRouter model-list
-rates, which can differ from routing prices and pi's bundled prices. Opus baselines use
+output, without adding reasoning tokens twice. Opus baselines use
 their saved API-equivalent amounts because token counts were not retained.
 
 The scope is the current audits and the original Opus duplication baseline.
@@ -71,3 +70,9 @@ rules are the same as for individual audits. First-pass union counts exclude rep
 judgment, pass and expenditure totals include them. A combined full-pass cost sums the
 per-audit full-pass estimates for the model's selected audits, and is omitted until
 every component has an estimate. It does not estimate missing model/audit combinations.
+
+OpenAI Math uses separate fixed selections of 2,000 theorem targets and 2,000 complete
+files from `lean/OAI/`, excluding ComparatorChallenges specifications. Its initial
+judging selects the first 100 in each sample for every model/audit. These selections
+join the first pass in the comparison reports; they are not repeat judgments.
+All 42 dependencies are pinned to the source manifest and available as read-only sources.

@@ -1,0 +1,13 @@
+namespace OAI
+
+namespace SharpPlanar.CachedData
+
+open IntegerIntervals IntegerBasis IntegerGrid Numerical
+
+namespace hm28_1_1_2
+
+lemma c3_11 : chunk 3 11 = s3_11 := by decide +kernel
+
+end hm28_1_1_2
+end SharpPlanar.CachedData
+end OAI

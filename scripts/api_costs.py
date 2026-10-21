@@ -20,11 +20,7 @@ def token_cost(result):
     usage = result.get("usage")
     if not usage or not rates:
         return result.get("cost_usd"), "reported API equivalent"
-    if isinstance(usage, list):
-        # Pi uses mutually exclusive input and cache-read counts. Output includes reasoning.
-        total = sum(u.get("input", 0) * rates["input"] + u.get("cacheRead", 0) * rates["cached_input"] +
-                    u.get("cacheWrite", 0) * rates["cache_write"] + u.get("output", 0) * rates["output"] for u in usage)
-    elif result.get("backend") == "codex":
+    if result.get("backend") == "codex":
         cached = usage.get("cached_input_tokens", 0)
         writes = usage.get("cache_write_input_tokens", 0)
         total = max(0, usage.get("input_tokens", 0) - cached - writes) * rates["input"] + cached * rates["cached_input"] + writes * rates["cache_write"] + usage.get("output_tokens", 0) * rates["output"]
@@ -55,23 +51,15 @@ def directory_expenditure(directory, lib=None):
             attempt = int(attempt.split(".", 1)[0])
             if sid in results and attempt == results[sid].get("attempts", 1):
                 continue  # Already costed from the accepted judgment.
-            # These bootstrap calls were saved separately before their paths were reused.
-            if model == "z-ai/glm-5.3" and directory.parent.name == "unnecessary-hypotheses" and sid == "mathlib-0000" and attempt in (2, 3):
-                continue
             usage, reported = None, None
-            messages = []
             for line in transcript.read_text().splitlines():
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if event.get("type") in ["turn.completed", "result", "judge_result"]:
+                if event.get("type") in ["turn.completed", "result"]:
                     usage = event.get("usage")
                     reported = event.get("total_cost_usd", event.get("cost_usd"))
-                if event.get("type") == "message_end" and event.get("message", {}).get("role") == "assistant":
-                    messages.append(event["message"].get("usage", {}))
-            if usage is None and backend == "pi" and messages:
-                usage = messages
             library = results.get(sid, {}).get("lib") or (
                 sid.split("-file-", 1)[0] if "-file-" in sid else sid.rsplit("-", 1)[0])
             amount, _ = token_cost({"model": model, "backend": backend, "usage": usage, "cost_usd": reported})
@@ -80,11 +68,6 @@ def directory_expenditure(directory, lib=None):
                 buckets[library]["retry_api_usd"] += amount
             else:
                 buckets[library]["uncosted_attempts"] += 1
-        setup = MAIN / "pi-glm-pilot/setup-usage.json"
-        if directory.name == "glm-5.3-openrouter-pi-high-pilot" and directory.parent.name == "unnecessary-hypotheses" and setup.exists():
-            amount, _ = token_cost({"model": "z-ai/glm-5.3", "usage": json.loads(setup.read_text())["usage"]})
-            buckets["mathlib"]["api_usd"] += amount
-            buckets["mathlib"]["retry_api_usd"] += amount
         DIRECTORY_CACHE[directory] = dict(buckets)
     buckets = DIRECTORY_CACHE[directory]
     selected = [buckets.get(lib, {})] if lib else list(buckets.values())
@@ -100,7 +83,7 @@ def main():
     groups = defaultdict(lambda: {"completed": 0, "api_usd": 0., "costed": 0, "reported_only": 0})
     largest_pass = defaultdict(int)
     model_names = {"gpt-6.1-sol": "Sol", "gpt-6-luna": "Luna", "claude-sonnet-5-5": "Sonnet",
-                   "claude-opus-5-5": "Opus", "z-ai/glm-5.3": "GLM"}
+                   "claude-opus-5-5": "Opus"}
     selected = []
     for audit in ["unnecessary-hypotheses", "duplicates-mathlib-inclusive", "duplicates-mathlib"]:
         for directory in (MAIN / audit).iterdir():
@@ -108,6 +91,10 @@ def main():
                 selected.append((audit, directory))
     for audit in RUBRICS:
         selected += [(audit, d) for d in (FILES / audit).iterdir() if d.is_dir()]
+    extra = ROOT / "runs/openai-math-2026-10-21"
+    for unit in ("theorems", "files"):
+        selected += [(manifest.parent.parent.name, manifest.parent)
+                     for manifest in (extra / unit).glob("*/*/judge.json")]
     for source_audit, directory in selected:
         audit = "duplicates-mathlib-inclusive" if source_audit == "duplicates-mathlib" else source_audit
         directory_completed = 0
@@ -138,13 +125,17 @@ def main():
             row["api_usd"] += expenditure["retry_api_usd"]
             row["retry_api_usd"] = row.get("retry_api_usd", 0) + expenditure["retry_api_usd"]
             row["uncosted_attempts"] = row.get("uncosted_attempts", 0) + expenditure["uncosted_attempts"]
+    for audit in largest_pass:
+        report = FILES / "reports" / f"{audit}-comparison.json" if audit in RUBRICS else MAIN / audit / "audit-comparison.json"
+        if report.exists():
+            largest_pass[audit] = json.loads(report.read_text())["groups"]["all"]["full_pass_reference_targets"]
     lines = ["# API-equivalent costs", "",
              f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · "
              "[Methods and notation](../../AUDIT_METHODS.md).", "",
              "| Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |",
              "|---|---|---:|---:|---:|---:|"]
     totals = defaultdict(float)
-    order = {name: i for i, name in enumerate(["Opus", "Sol", "Sonnet", "Luna", "GLM"])}
+    order = {name: i for i, name in enumerate(["Opus", "Sol", "Sonnet", "Luna"])}
     audits = {audit: i for i, audit in enumerate(dict.fromkeys(audit for audit, _ in groups))}
     for (audit, model), row in sorted(groups.items(), key=lambda item: (audits[item[0][0]], order.get(item[0][1], 99))):
         cost = row["api_usd"]
@@ -158,27 +149,14 @@ def main():
     lines += ["", "## Totals by model", "", "| Model | API-equivalent USD |", "|---|---:|"]
     for model, amount in totals.items():
         lines.append(f"| {model} | ${amount:.2f} |")
-    lines += [f"| **Total** | **${sum(totals.values()):.2f}** |", "", "## GLM projection", "",
-              "Pilot means are early estimates; theorem and whole-file audits are projected separately.", "",
-              "| Audit | Accepted GLM judgments | Observed API equivalent | Planned judgments | Projected accepted-judgment cost |",
-              "|---|---:|---:|---:|---:|"]
-    for audit in ["unnecessary-hypotheses", "duplicates-mathlib-inclusive", *RUBRICS]:
-        row = groups.get((audit, "GLM"), {"completed": 0, "costed": 0, "api_usd": 0})
-        planned = 30 if audit in RUBRICS else 50
-        estimate = f"${row['api_usd']/row['costed']*planned:.2f}" if row["costed"] else "Awaiting first accepted judgment"
-        lines.append(f"| {audit} | {row['completed']} | ${row['api_usd']:.3f} | {planned} | {estimate} |")
-    setup = MAIN / "pi-glm-pilot/setup-usage.json"
-    overhead = 0
-    if setup.exists():
-        overhead, _ = token_cost({"model": "z-ai/glm-5.3", "usage": json.loads(setup.read_text())["usage"]})
-        lines += ["", f"Included in GLM hypothesis expenditure: initial parser-rejected setup calls, ${overhead:.4f} API equivalent."]
+    lines += [f"| **Total** | **${sum(totals.values()):.2f}** |"]
     lines += ["", "## Rate sources", "", *[f"- [{url}]({url})" for url in RATES["sources"]], "",
               "Frozen rates: `pricing/api-rates-2026-10-21.json`. Refresh with `python3 scripts/api_costs.py`. "
               "Mean-based projections include recorded retry expenditure and will change as more targets complete."]
     (MAIN / "api-equivalent-costs.md").write_text("\n".join(lines) + "\n")
     data = {"generated_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
             "rates": RATES, "rows": [{"audit": a, "model": m, **r} for (a, m), r in groups.items()],
-            "totals_by_model": dict(totals), "recorded_glm_setup_usd": overhead}
+            "totals_by_model": dict(totals)}
     (MAIN / "api-equivalent-costs.json").write_text(json.dumps(data, indent=2) + "\n")
     print(json.dumps(data["totals_by_model"]))
 

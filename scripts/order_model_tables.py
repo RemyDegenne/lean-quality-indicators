@@ -15,8 +15,6 @@ def rank(value):
         return 2
     if "luna" in value:
         return 3
-    if "glm" in value:
-        return 4
     return None
 
 

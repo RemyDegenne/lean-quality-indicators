@@ -166,12 +166,13 @@ lemma, a proof sketch and rewritten existing uses. Its
 [results](runs/file-quality-pilot-2026-10-21/reports/claude-sonnet-5-5-high-structure-machinery/summary.md)
 use the same file sample.
 Every positive has an [individual source review](runs/file-quality-pilot-2026-10-21/reviews/repeated-machinery-2026-10-21.md).
-Luna is reproducing all six audits on the same thirty files in 180 blind sessions, one at
-a time. Concept reinvention and repeated machinery are queued after its original four
-audits. GLM-5.3 is queued through OpenRouter using the [pi SDK backend](audits/file-quality-v1/README.md)
-on the same six audits, also at high effort with one session at a time. Its queue first
-judges ten theorems per library on each of the two original audits and publishes pairwise
-agreement with Sol, Luna and Sonnet. It waits when OpenRouter credits are exhausted.
+Luna has completed all six audits on the same thirty files (180 blind reviews).
+
+OpenAI Math has fixed selections of 2,000 theorem targets and 2,000 whole files from
+`lean/OAI/`. Opus, Sol, Sonnet and Luna are judging the first 100 targets on each audit,
+with one session per model and the shared Codex rate guard. Samples, protocols and
+results live in `runs/openai-math-2026-10-21/`; all 42 pinned dependencies are available
+as read-only sources. Resume with `python3 scripts/corpus_pilot.py judge --model Sol`.
 
 ## Results so far: unnecessary hypotheses
 
@@ -179,8 +180,8 @@ agreement with Sol, Luna and Sonnet. It waits when OpenRouter credits are exhaus
 rates with Wilson 95% intervals, matched-target Pearson correlation matrices with paired
 bootstrap intervals, and API-equivalent expenditure / estimated cost of one pass at the
 largest completed model's scale. [Cost details](runs/main/api-equivalent-costs.md) include
-rates, retained retry expenditure and early GLM projections. Local reports refresh every
-five minutes while the Luna and GLM runs finish; the committed reports are snapshots.
+rates and retained retry expenditure. Local reports refresh every five minutes while
+the OpenAI Math runs finish; the committed reports are snapshots.
 
 400 theorems per library:
 

@@ -4,8 +4,9 @@ import unittest
 import json
 from pathlib import Path
 import tempfile
+from unittest.mock import patch
 
-from audit_dashboard import correlation, phi, union_results, union_counts, union_correlation
+from audit_dashboard import correlation, phi, union_results, union_counts, union_correlation, add_extra_corpus
 from api_costs import token_cost, full_pass_estimate, directory_expenditure, DIRECTORY_CACHE
 
 
@@ -53,6 +54,29 @@ class DashboardTests(unittest.TestCase):
         absent = union_correlation(second, second, samples, "theorem", "test", 100, repeat=True)
         self.assertEqual(absent["n"], 0)
         self.assertIsNone(absent["r"])
+
+    def test_extra_corpus_joins_first_pass_and_preserves_cost_directories(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            extra = Path(temporary)
+            run = extra / "theorems"
+            directory = run / "unnecessary-hypotheses/gpt-6.1-sol-high"
+            (directory / "results").mkdir(parents=True)
+            (run / "samples.jsonl").write_text(json.dumps({"id": "extra-0000", "lib": "extra"}) + "\n")
+            (directory / "judge.json").write_text(json.dumps({"protocol": {
+                "model": "gpt-6.1-sol", "sample_ids": ["extra-0000"]}}))
+            (directory / "results/extra-0000.json").write_text(json.dumps({"verdict": "none_found"}))
+            old = {"label": "original", "directory": Path("original"), "selected": {"old-0000"},
+                   "results": {"old-0000": {"verdict": "none_found"}}}
+            with patch("audit_dashboard.EXTRA", extra):
+                samples, models = add_extra_corpus("unnecessary-hypotheses", False,
+                                                    {"old-0000": {"lib": "old"}}, {"Sol": [old]})
+            self.assertEqual(len(models["Sol"]), 1)  # Coverage extension is not a repeat.
+            first = models["Sol"][0]
+            self.assertEqual(first["selected"], {"old-0000", "extra-0000"})
+            self.assertEqual(set(first["results"]), first["selected"])
+            self.assertEqual(first["directories"], [Path("original"), directory])
+            self.assertEqual(len(first["components"]), 2)
+            self.assertEqual(len(samples), 2)
 
     def test_retry_expenditure_counts_each_retained_attempt_once(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -104,10 +128,7 @@ class DashboardTests(unittest.TestCase):
             "output_tokens": 100_000, "reasoning_output_tokens": 80_000}})
         self.assertAlmostEqual(value, 2.05)
 
-    def test_pi_and_claude_usage_categories(self):
-        value, _ = token_cost({"model": "z-ai/glm-5.3", "usage": [
-            {"input": 1_000_000, "cacheRead": 1_000_000, "output": 1_000_000, "reasoning": 500_000}]})
-        self.assertAlmostEqual(value, 1.557)
+    def test_claude_usage_categories(self):
         value, _ = token_cost({"model": "claude-sonnet-5-5", "backend": "claude", "usage": {
             "input_tokens": 1_000_000, "cache_creation_input_tokens": 1_000_000,
             "cache_creation": {"ephemeral_1h_input_tokens": 500_000}, "output_tokens": 0}})

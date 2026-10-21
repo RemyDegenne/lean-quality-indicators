@@ -6,13 +6,13 @@ Cells: files with findings / completed reviews (number of findings). The same fi
 
 | Rubric | Mathlib | Tau Ceti | Lean Pool |
 |---|---:|---:|---:|
-| statement-generality | 1/6 (1) | 0/6 (0) | 4/6 (4) |
-| vacuity-and-misstatement | 0/6 (0) | 0/6 (0) | 0/6 (0) |
-| simp-interface | 1/6 (1) | 0/6 (0) | 3/6 (3) |
-| readable-proof-simplification | 1/6 (1) | 2/6 (2) | 3/6 (3) |
-| concept-reinvention | 0/6 (0) | 0/6 (0) | 0/6 (0) |
-| repeated-proof-machinery | 1/5 (1) | 0/5 (0) | 1/5 (1) |
+| statement-generality | 2/10 (2) | 1/10 (1) | 8/10 (8) |
+| vacuity-and-misstatement | 1/10 (1) | 1/10 (1) | 0/10 (0) |
+| simp-interface | 4/10 (4) | 1/10 (1) | 6/10 (6) |
+| readable-proof-simplification | 2/10 (2) | 3/10 (3) | 6/10 (6) |
+| concept-reinvention | 0/10 (0) | 0/10 (0) | 0/10 (0) |
+| repeated-proof-machinery | 2/10 (2) | 0/10 (0) | 3/10 (3) |
 
-Completed judgments: 105/180.
+Completed judgments: 180/180.
 
 Flags are judge claims; replacements have not been compiled or independently audited. This small file sample does not estimate a theorem defect rate. Rubrics may flag the same issue.

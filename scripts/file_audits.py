@@ -192,12 +192,7 @@ def review(row, rubric, run, label, args):
         raise ValueError("Target source changed")
     context.sources = Sources([cwd, *dirs.values()])
     try:
-        if args.backend == "pi":
-            import pi_judge
-            result = pi_judge.judge(row, ind, out, args, cwd, dirs,
-                                    build_message(row, run, ind)[2])
-        else:
-            result = judge.judge_one(row, run, ind, out, args)
+        result = judge.judge_one(row, run, ind, out, args)
         result.update(unit="file", source_sha256=row["source_sha256"], rubric=rubric)
         write_json(out / f"{row['id']}.json", result)
         return result
@@ -258,8 +253,7 @@ def main():
     parser.add_argument("--files-per-library", type=int, default=10)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--model", default="claude-sonnet-5-5")
-    parser.add_argument("--backend", choices=["claude", "codex", "pi"], default="claude")
-    parser.add_argument("--pi-provider", default="zai")
+    parser.add_argument("--backend", choices=["claude", "codex"], default="claude")
     parser.add_argument("--label")
     parser.add_argument("--effort", default="high")
     parser.add_argument("--jobs", type=int, default=2)
@@ -293,18 +287,10 @@ def main():
         return
     judge.validate_verdict = validate
     judge.build_message = build_message
-    if args.backend == "pi":
-        import pi_judge
-        version = pi_judge.preflight(args)
-    else:
-        executable = args.claude if args.backend == "claude" else args.codex
-        version = subprocess.run([executable, "--version"], capture_output=True, text=True, check=True).stdout.strip()
+    executable = args.claude if args.backend == "claude" else args.codex
+    version = subprocess.run([executable, "--version"], capture_output=True, text=True, check=True).stdout.strip()
     code_hashes = {name: digest((ROOT / "scripts" / name).read_bytes()) for name in
                    ["file_audits.py", "judge.py", "codex_judge.py", "source_tools.py", "leanscan.py", "sample.py"]}
-    if args.backend == "pi":
-        code_hashes["pi_judge.py"] = digest((ROOT / "scripts/pi_judge.py").read_bytes())
-        for name in ["session.mjs", "package-lock.json"]:
-            code_hashes["tools/pi/" + name] = digest((ROOT / "tools/pi" / name).read_bytes())
     for rubric in rubrics:
         ind = run / "protocols" / rubric
         directory = run / rubric / label
@@ -312,8 +298,6 @@ def main():
         protocol = {"backend": args.backend, "model": args.model, "effort": args.effort,
                     "unit": "file", "rubric": rubric, "contract": contract, "code_hashes": code_hashes,
                     "artifacts": {p.name: digest(p.read_bytes()) for p in ind.iterdir()}}
-        if args.backend == "pi":
-            protocol["provider"] = args.pi_provider
         path = directory / "judge.json"
         manifest = json.loads(path.read_text()) if path.exists() else {
             "protocol": protocol, "cli_version": version, "selections": []}
