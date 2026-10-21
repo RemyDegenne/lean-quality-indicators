@@ -1,7 +1,7 @@
 # File quality audits, version 1
 
 The concept rubric protects useful named API and requires a competing definition with a
-concrete cost. It is prepared but has no results yet. To run it alone on the existing
+concrete cost. Its thirty Sonnet reviews are complete. To run it alone on the existing
 thirty-file sample, with separate reports:
 
 ```sh
@@ -10,14 +10,24 @@ python3 -u scripts/reinvention_audit.py --run file-quality-pilot-2026-10-21 \
   --label claude-sonnet-5-5-high-concept --jobs 2
 ```
 
+The structured-interface and repeated-machinery rubrics require concrete consumers and
+an overall improvement including the proposed abstraction and its uses. Run these two
+on the same sample, with a separate sixty-review report:
+
+```sh
+python3 -u scripts/structure_and_machinery_audits.py --run file-quality-pilot-2026-10-21 \
+  --files-per-library 10 --model claude-sonnet-5-5 \
+  --label claude-sonnet-5-5-high-structure-machinery --jobs 2
+```
+
 Four selected audits are being independently reproduced by Luna on the same thirty files:
 generality, vacuity/misstatement, simp interface and readable proof simplification.
 `scripts/reproduce_file_audits.py` restricts that run and its reports to those four rubrics
 (120 reviews). It uses one active session behind the shared Codex guard.
 
-Eight independent rubrics review whole files: concepts already present in Mathlib,
+Seven independent rubrics review whole files: concepts already present in Mathlib,
 statement generality, vacuity or misstatement, missing structured interfaces, simp
-interfaces, fragile proofs, repeated proof machinery, and readable proof simplification.
+interfaces, repeated proof machinery, and readable proof simplification.
 The concept rubric applies within Mathlib too. Names, namespaces, module placement and
 typeclass instance design are outside this suite.
 
@@ -29,7 +39,7 @@ syntactic filter, not Lean elaboration. Private declarations and comments remain
 because the entire file is the unit of review. No file size cutoff is used.
 
 Every rubric uses exactly the same thirty files. A fresh, isolated Sonnet 5.5 session at
-high effort reviews one file against one rubric, for 240 judgments. There are two active
+high effort reviews one file against one rubric, for 210 judgments. There are two active
 sessions total. Read, Grep and Glob are the only tools; Lean is not executed and source
 files are never edited. The judge can read the library's own source, its pinned Mathlib
 and Batteries dependencies, and the corresponding Lean core sources. It cannot access
@@ -53,7 +63,8 @@ The immutable sampling contract records the corpus and candidate population hash
 and eligibility method. Files are ordered by a hash of the seed, library and path, then
 the first eligible files are taken. Sample metadata records source commits, hashes, full
 file snapshots and URLs. `protocols/` snapshots each complete prompt, schema and message;
-changing a rubric requires a new experiment version. Each rubric/model directory records
+each snapshot must match its rubric, and judgments from different prompts are never
+combined. Each rubric/model directory records
 runner hashes, CLI version and the history of file selections used as coverage expands.
 
 Results live under `runs/file-quality-pilot-2026-10-21/`:

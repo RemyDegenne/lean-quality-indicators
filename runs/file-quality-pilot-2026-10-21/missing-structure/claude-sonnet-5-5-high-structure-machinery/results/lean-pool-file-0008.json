@@ -1,0 +1,101 @@
+{
+  "id": "lean-pool-file-0008",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and its consumers: PlaneConstantField.lean, BivariateResultant.lean (transposeBivariate, evalBivariate lemmas) and AuxiliaryFamily.lean (evalBivariate). planeCurveToBivariate is already a bundled AlgEquiv, and transposeBivariate is already a RingHom, so I did not flag them. The two findings are the unbundled planeCurveFrobeniusRelation, which is really a ring hom, and the same pattern with evalBivariate. I did not check that the proposed bundled definitions compile. The proposed changes depend on the dependency order: evalBivariate lives upstream, and PlaneConstantField appears to be downstream of the target file, so it would also have to be edited to share a lemma.",
+  "findings": [
+    {
+      "declaration": "planeCurveFrobeniusRelation",
+      "start_line": 187,
+      "end_line": 191,
+      "excerpt": "def planeCurveFrobeniusRelation (f : MvPolynomial (Fin 2) K) :\n    Polynomial (Polynomial (frobeniusSubfield L p)) :=\n  planeCurveToBivariate (frobeniusSubfield L p)",
+      "problem": "The definition is a bare function `f ↦ planeCurveToBivariate F (MvPolynomial.map ι f)`. It is a composite of a ring hom `MvPolynomial.map ι` and an `AlgEquiv`, so it is a ring homomorphism, and an injective one. The file exposes that only through separate unbundled facts: `_natDegree`, `transposeBivariate_..._natDegree`, `_irreducible` and `evalBivariate_...`. The proof of `evalBivariate_planeCurveFrobeniusRelation` rebuilds the bundled map by hand as `(planeCurveToBivariate F).toRingEquiv.toRingHom.comp (MvPolynomial.map ι)`. `planeCurveFrobeniusRelation_irreducible` re-derives preservation of irreducibility by `.map` on a `MulEquiv`. Both degree lemmas unfold the definition with `rw [planeCurveFrobeniusRelation, ...]`.",
+      "proposed_change": "Define a bundled map first. For example, `planeCurveFrobeniusRelationHom : MvPolynomial (Fin 2) K →+* Polynomial (Polynomial (frobeniusSubfield L p))`, defined as `(planeCurveToBivariate F).toRingEquiv.toRingHom.comp (MvPolynomial.map ι)`. Then set `planeCurveFrobeniusRelation f := planeCurveFrobeniusRelationHom f`, or use the hom directly. State the C/X generator values once and use `MvPolynomial.ringHom_ext`. The hand-built `lhs` in `evalBivariate_planeCurveFrobeniusRelation` is then just `evalIterated.comp planeCurveFrobeniusRelationHom`. Injectivity of the hom (composition of `MvPolynomial.map_injective` with an equiv) gives a uniform `map_...` / `Irreducible.map`-style route for irreducibility.",
+      "benefit": "The ring-hom structure becomes one public object that the evaluation, irreducibility and degree lemmas share. The proof of `evalBivariate_planeCurveFrobeniusRelation` no longer has to rebuild the composite inline. Later users get `map_mul`, `map_add` and `ringHom_ext` for free.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean",
+          "declaration": "evalBivariate_planeCurveFrobeniusRelation",
+          "excerpt": "let lhs : MvPolynomial (Fin 2) K →+* L :=\n    evalIterated.comp\n      ((planeCurveToBivariate F).toRingEquiv.toRingHom.comp\n        (MvPolynomial.map ι))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean",
+          "declaration": "planeCurveFrobeniusRelation_irreducible",
+          "excerpt": "exact hbaseChange.map\n    (planeCurveToBivariate (frobeniusSubfield L p)).toMulEquiv"
+        }
+      ]
+    },
+    {
+      "declaration": "evalBivariate_planeCurveFrobeniusRelation (use of unbundled evalBivariate)",
+      "start_line": 227,
+      "end_line": 233,
+      "excerpt": "let evalIterated : Polynomial (Polynomial F) →+* L :=\n    Polynomial.eval₂RingHom\n      (Polynomial.eval₂RingHom (algebraMap F L) y) x",
+      "problem": "`evalBivariate u v` (upstream, in AuxiliaryFamily.lean) is a plain function `P.eval₂ (eval₂RingHom (algebraMap C L) u) v`. It is a ring hom `C[U][V] →+* L`, but that is not exposed. Its additivity and multiplicativity exist only as `private` lemmas `evalBivariate_add` and `evalBivariate_mul` in BivariateResultant.lean. Each consumer therefore rebuilds the ring hom by hand: this file at lines 227–229, PlaneConstantField.lean `evalBivariate_planeCurveToBivariate`, and BivariateResultant `eval₂_resultant_eq_zero_of_common_zero`. The `evalBivariate_transposeBivariate` proof needs a manual `induction P using Polynomial.induction_on'`. The proof of `evalBivariate_planeCurveFrobeniusRelation` also repeats the generator-by-generator check already done for `planeCurveToBivariate` in PlaneConstantField.",
+      "proposed_change": "Add a public bundled `evalBivariateHom (u v : L) : Polynomial (Polynomial C) →+* L` (or an `AlgHom` over `C`), defined as `Polynomial.eval₂RingHom (Polynomial.eval₂RingHom (algebraMap C L) u) v`. Redefine or characterize `evalBivariate u v` as its coercion, drop the private add/mul lemmas, and use it in this file. Then `evalBivariate_planeCurveFrobeniusRelation` becomes: evaluate `planeCurveToBivariate F (map ι f)` through the existing generic lemma `evalBivariate_planeCurveToBivariate` (with `F` as base and the scalar-tower `algebraMap F L`), followed by `MvPolynomial.eval₂_map` and the equality `algebraMap F L ∘ ι = algebraMap K L`. The generator-by-generator `ringHom_ext` argument then disappears from this file.",
+      "benefit": "One bundled evaluation hom replaces four hand-built copies and the private add/mul lemmas. It gives `map_*` lemmas for free and shortens the Frobenius evaluation lemma to a base-change composition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/AuxiliaryFamily.lean",
+          "declaration": "evalBivariate",
+          "excerpt": "def evalBivariate (u v : L) (P : Polynomial (Polynomial C)) : L :=\n  P.eval₂ (Polynomial.eval₂RingHom (algebraMap C L) u) v"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/BivariateResultant.lean",
+          "declaration": "evalBivariate_mul",
+          "excerpt": "private theorem evalBivariate_mul"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/HasseWeil/PlaneConstantField.lean",
+          "declaration": "evalBivariate_planeCurveToBivariate",
+          "excerpt": "(Polynomial.eval₂RingHom\n      (Polynomial.eval₂RingHom (algebraMap K L) y) x).comp"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 28948,
+    "cache_read_input_tokens": 128206,
+    "output_tokens": 5757,
+    "output_tokens_details": {
+      "thinking_tokens": 1380
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28948,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3037,
+        "cache_read_input_tokens": 30547,
+        "cache_creation_input_tokens": 2383,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2383
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18620660000000006,
+  "duration_ms": 41056,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T03:12:40",
+  "unit": "file",
+  "source_sha256": "c501674797f0929cf181974d55cd178a57ba3fbe59a6531a8e6ccef3c787e8ec",
+  "rubric": "missing-structure"
+}

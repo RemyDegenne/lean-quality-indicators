@@ -1,11 +1,11 @@
 # Failure to expose mathematical structure
 
-Does a function plus separate preservation or inverse lemmas have a useful standard
-structured interface, such as a LinearMap, RingHom, ContinuousMap, equivalence or bundled
-action? Identify the exact applicable structure in the available sources. Show how the
-existing definitions and facts supply its fields, and demonstrate an actual use that
-would become clearer or gain access to existing API.
+Find a function or construction whose useful homomorphism, continuity, equivalence or
+action structure is exposed only as separate facts. Identify a standard bundle in the
+allowed sources, show how its fields follow under the actual assumptions, and cite an
+existing consumer that becomes clearer or gains useful API.
 
-Do not flag every function that could technically be bundled. Explain a practical benefit
-in this code, account for assumptions and coercions, and check whether the bundled
-interface already exists elsewhere. Merely recommending additional abstraction is not enough.
+Do not flag structure already exposed by a public object, implementation reuse via a
+generic combinator, or bundling with only hypothetical uses. Preserve useful named
+operations. Explain why adding the bundle improves the complete interface after
+accounting for its construction, assumptions and coercions.

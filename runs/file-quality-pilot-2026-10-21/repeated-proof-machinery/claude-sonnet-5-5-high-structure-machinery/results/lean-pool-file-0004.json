@@ -1,0 +1,112 @@
+{
+  "id": "lean-pool-file-0004",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the related RegularizedTartarTransform.lean. I grepped the Odlyzko directory for Real.fourier_deriv, exp_neg_mul_sq_add_mul_le and integrable_mul_exp_neg_mul_sq. The three findings are the repetitions I judged substantial: the shared estimate machinery in the two norm bounds, the duplicated integrable majorant, and the duplicated Fourier-derivative wrapper. I did not report the cosh/sinh derivative setup in hasDerivAt_poitouKernel and hasDerivAt_poitouKernelDerivative, because the repeated part is short. I could not compile any suggested replacement, so exact lemma shapes may need small adjustments. In particular, the Fourier helper depends on the form of Real.fourier_deriv's conclusion, which I did not re-read.",
+  "findings": [
+    {
+      "declaration": "norm_poitouVerticalProfileDerivative_regularized_le / norm_poitouVerticalProfileSecondDerivative_regularized_le",
+      "start_line": 328,
+      "end_line": 428,
+      "excerpt": "      exact exp_neg_mul_sq_add_mul_le hδ a x",
+      "problem": "The first- and second-derivative decay bounds repeat the same three-part argument. (1) The phase bound exp((σ-1/2)x) ≤ exp(a|x|) is proved by le_abs_self plus simp_all. (2) Norms of terms of the form (r:ℂ)*exp((σ-1/2)x) are unfolded by the same long simp only [norm_mul, Complex.norm_real, …] followed by norm_num and the hnorm rewrite of ‖(σ:ℂ)-1/2‖ = a. (3) The finish is P*exp(-δx²)*exp(a|x|) ≤ exp(a²/(2δ))*(P*exp(-(δ/2)x²)) via Real.exp_add, ring and exp_neg_mul_sq_add_mul_le. The second proof (about 190 lines) also restates the nonnegativity of the polynomial P twice. The calc chains are hard to follow, and any change to the phase or Gaussian-shift argument has to be made in both places.",
+      "proposed_change": "Add two small private lemmas before the first bound. (a) For a = |σ-1/2|: exp((σ-1/2)*x) ≤ exp(a*|x|). (b) For 0 ≤ P and 0 < δ: P*exp(-δ*x^2)*exp(a*|x|) ≤ exp(a^2/(2*δ))*(P*exp(-(δ/2)*x^2)), proved from Real.exp_add and exp_neg_mul_sq_add_mul_le. Optionally add (c): ‖(r:ℂ)*exp((σ-1/2)*x)‖ = |r|*exp((σ-1/2)*x), and the same with an extra factor (σ-1/2). Each bound then only does the triangle inequality and the real polynomial estimate, and ends with (b), where the polynomial P is stated once and its nonnegativity is proved once.",
+      "benefit": "This removes a long duplicated tail from both proofs, so each states only its real-variable polynomial estimate. It also makes the shared role of the Gaussian-shift step visible, and any later third-derivative bound can reuse it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "norm_poitouVerticalProfileSecondDerivative_regularized_le",
+          "excerpt": "          (exp_neg_mul_sq_add_mul_le hδ a x) hP"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedTartarTransform.lean",
+          "declaration": "norm_poitouTransformIntegrand_regularizedScaledTartar_le",
+          "excerpt": "        exp_neg_mul_sq_add_mul_le hδ |s.re - 1 / 2| x"
+        }
+      ]
+    },
+    {
+      "declaration": "poitouVerticalProfileDerivative_regularized_integrable (hone) vs integrable_quadratic_abs_mul_exp_neg_mul_sq",
+      "start_line": 436,
+      "end_line": 449,
+      "excerpt": "    have h := (integrable_mul_exp_neg_mul_sq (half_pos hδ)).norm",
+      "problem": "The first-derivative integrability proof builds its majorant K*(A*e^{-(δ/2)x²}) + K*(2δ*(|x|*e^{-(δ/2)x²})) by hand. It proves integrability of |x|*exp(-b x²) from integrable_mul_exp_neg_mul_sq.norm, using simp_all. The later helper integrable_quadratic_abs_mul_exp_neg_mul_sq proves the same facts for (A + B|x| + C x²)*exp(-b x²), with the same hzero/hone steps. The same |x|*exp moment argument also appears in RegularizedTartarTransform (hmoment). The general helper is stated after its first use, so the first proof could not reuse it.",
+      "proposed_change": "Move integrable_quadratic_abs_mul_exp_neg_mul_sq above poitouVerticalProfileDerivative_regularized_integrable, or into RegularizedTartarTransform. In the first-derivative proof, take hmajor := (integrable_quadratic_abs_mul_exp_neg_mul_sq (half_pos hδ) A (2*δ) 0).const_mul K. Then apply hmajor.mono' with the same measurability argument. The pointwise bound needs a small ring/grind step to absorb 0 * x^2. This deletes hzero and hone. Optionally extract the |x|*exp(-b x²) integrability as its own lemma for the other two copies.",
+      "benefit": "The Gaussian-moment integrability argument is proved once, and the first- and second-derivative integrability proofs then have the same shape. That is easier to read and to maintain.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "integrable_quadratic_abs_mul_exp_neg_mul_sq",
+          "excerpt": "    have h := (integrable_mul_exp_neg_mul_sq hb).norm.const_mul B"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedTartarTransform.lean",
+          "declaration": "hasDerivAt_poitouTransform_regularizedScaledTartar",
+          "excerpt": "    have h := (integrable_mul_exp_neg_mul_sq (half_pos hδ)).norm"
+        }
+      ]
+    },
+    {
+      "declaration": "fourier_poitouVerticalProfileDerivative_regularized / fourier_poitouVerticalProfileSecondDerivative_regularized",
+      "start_line": 1180,
+      "end_line": 1210,
+      "excerpt": "    congrFun (Real.fourier_deriv\n      (poitouVerticalProfileDerivative_regularized_integrable hδ y σ)",
+      "problem": "The two theorems (556–579 and 1180–1210) have the same proof. Each states a hderiv equation `deriv g = g'` by funext, calls Real.fourier_deriv with the integrability of g, differentiability of g, and integrability of deriv g rewritten via hderiv, applies congrFun at w, and closes with simp_all. Only the function pair (g, g') differs. The deriv_*/differentiable_* wrapper lemmas exist solely to feed this pattern, and each call site re-states the long regularizedScaledTartar arguments.",
+      "proposed_change": "Add one general lemma: for g g' : ℝ → ℂ with Integrable g, Integrable g' and ∀ x, HasDerivAt g (g' x) x, we get 𝓕 g' w = (2 * Real.pi * I * w) • 𝓕 g w. Prove it once, by deriving deriv g = g' from the HasDerivAt hypotheses and applying Real.fourier_deriv. Both fourier_… theorems then follow by passing the existing hasDerivAt_poitouVerticalProfile (with hasDerivAt_regularizedScaledTartar) and hasDerivAt_regularizedPoitouVerticalProfileDerivative, plus the two integrability facts. This also lets the deriv_regularizedPoitouVerticalProfile* wrappers be dropped if nothing else uses them, apart from the aestronglyMeasurable step at line ~1145.",
+      "benefit": "The Fourier-derivative identity and its simp_all closing step appear once, and the instance theorems become short and obviously parallel. The separate hderiv/funext boilerplate disappears.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "fourier_poitouVerticalProfileDerivative_regularized",
+          "excerpt": "    congrFun (Real.fourier_deriv\n      (regularizedPoitouVerticalProfile_integrable hδ σ)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 40773,
+    "cache_read_input_tokens": 142507,
+    "output_tokens": 6690,
+    "output_tokens_details": {
+      "thinking_tokens": 2095
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40773,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4320,
+        "cache_read_input_tokens": 39305,
+        "cache_creation_input_tokens": 5441,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5441
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2442627,
+  "duration_ms": 45752,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T03:08:59",
+  "unit": "file",
+  "source_sha256": "56ef8d471d0ee3f0b24a9cdf7f0d1a043ae91df828c144b9a95b83891efe9b66",
+  "rubric": "repeated-proof-machinery"
+}

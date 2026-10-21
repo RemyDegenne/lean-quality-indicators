@@ -30,7 +30,7 @@ from source_tools import Sources
 ROOT = Path(__file__).resolve().parent.parent
 SUITE = ROOT / "audits/file-quality-v1"
 RUBRICS = ["concept-reinvention", "statement-generality", "vacuity-and-misstatement",
-           "missing-structure", "simp-interface", "fragile-proofs",
+           "missing-structure", "simp-interface",
            "repeated-proof-machinery", "readable-proof-simplification"]
 MATHEMATICS = re.compile(r"(?m)^(?:(?:public|noncomputable|private|protected|local|scoped|unsafe)\s+)*"
                          r"(?:theorem|lemma|def|abbrev|structure|class|inductive|instance|opaque)\b")
@@ -257,7 +257,7 @@ def main():
     parser.add_argument("--label")
     parser.add_argument("--effort", default="high")
     parser.add_argument("--jobs", type=int, default=2)
-    parser.add_argument("--rubrics", help="comma-separated subset; default all eight")
+    parser.add_argument("--rubrics", help="comma-separated subset; default all rubrics")
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--report-only", action="store_true")
     parser.add_argument("--timeout", type=int, default=1800)
