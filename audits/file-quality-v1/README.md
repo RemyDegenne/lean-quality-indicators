@@ -1,5 +1,20 @@
 # File quality audits, version 1
 
+The concept rubric protects useful named API and requires a competing definition with a
+concrete cost. It is prepared but has no results yet. To run it alone on the existing
+thirty-file sample, with separate reports:
+
+```sh
+python3 -u scripts/reinvention_audit.py --run file-quality-pilot-2026-10-21 \
+  --files-per-library 10 --model claude-sonnet-5-5 \
+  --label claude-sonnet-5-5-high-concept --jobs 2
+```
+
+Four selected audits are being independently reproduced by Luna on the same thirty files:
+generality, vacuity/misstatement, simp interface and readable proof simplification.
+`scripts/reproduce_file_audits.py` restricts that run and its reports to those four rubrics
+(120 reviews). It uses one active session behind the shared Codex guard.
+
 Eight independent rubrics review whole files: concepts already present in Mathlib,
 statement generality, vacuity or misstatement, missing structured interfaces, simp
 interfaces, fragile proofs, repeated proof machinery, and readable proof simplification.

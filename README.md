@@ -159,6 +159,11 @@ judge is Sonnet 5.5 at high effort, with two sessions total (240 independent jud
 Samples, protocol snapshots and model results are separated so coverage and models can
 be expanded without replacing the pilot data.
 
+The concept-reinvention rubric now explicitly protects useful named API and requires an
+actual competing concept with a concrete cost. It is prepared, with no results yet.
+Luna is reproducing the four selected audits (generality, vacuity/misstatement, simp and
+readable simplification) on the same thirty files, in 120 blind sessions, one at a time.
+
 ## Results so far: unnecessary hypotheses
 
 400 theorems per library:

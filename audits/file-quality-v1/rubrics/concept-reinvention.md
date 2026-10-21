@@ -1,13 +1,17 @@
 # Its own version of a concept already in Mathlib
 
-Does this file define its own version of a concept already in Mathlib (including Lean core
-or Batteries)? This question applies within Mathlib itself: look for a different existing
-definition or structure, not the declaration being reviewed or its alternative spelling.
+Does this file introduce an avoidable competing version of a concept already in Mathlib
+(including Lean core or Batteries)? Apply the same question within Mathlib itself.
 
-Identify the existing concept, read its definition, and explain the correspondence and
-which actual uses would benefit from adopting it. Give a concrete migration or equivalence
-argument and check relevant assumptions, representations and computational behaviour.
-Do not flag a mere specialisation, intentional different representation or useful wrapper
-without a specific practical advantage to replacing it. Do not count duplicate theorem
-statements: this rubric concerns definitions and concepts. A proposed replacement that
-itself depends on the target is not independent evidence.
+Useful named specialisations, wrappers, chosen orientations and deliberately different
+representations are not defects merely because they can be expressed using existing
+operations. In particular, implementation via a generic map or composition does not make
+a named API redundant.
+
+For a finding, read both definitions, establish that they represent the same specific
+concept under matching assumptions, and show a concrete cost: duplicated substantive API,
+incompatibility or repeated conversions. Check documentation and actual uses for a reason
+to keep both. Propose integration while preserving useful names where appropriate.
+
+Exclude standalone theorem duplication and proof shortening. A match must be a different,
+independent declaration. If the practical case for consolidation is unclear, abstain.

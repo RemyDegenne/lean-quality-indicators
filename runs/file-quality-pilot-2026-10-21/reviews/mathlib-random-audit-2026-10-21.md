@@ -4,17 +4,9 @@ Random seed: `18378141014703184964`.
 
 uniform over individual Mathlib findings within each rubric, sorted by result filename and finding index.
 
-One finding was selected uniformly within each category, without replacements after inspection. DFinsupp.singleton was independently drawn in two categories. These are assessments requested by the user and are separate from the unmodified Sonnet judgments.
+Findings were selected uniformly within their categories, without replacements after inspection. These are assessments requested by the user and are separate from the unmodified Sonnet judgments.
 
 Method: inspected the exact pinned Mathlib source and the cited definitions and proof dependencies. No Lean compilation was performed.
-
-## concept-reinvention
-
-Selected [DFinsupp.singleton](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/Data/DFinsupp/Interval.lean#L83-L86), finding 0 of `concept-reinvention/claude-sonnet-5-5-high/results/mathlib-file-0001.json` (5 eligible findings in category).
-
-Partly: a small implementation cleanup, not a reinvention of a mathematical concept.
-
-DFinsupp.singleton manually maps the support witness exactly as DFinsupp.mapRange does. The zero condition is definitional: pointwise Finset zero is {0}. Reusing mapRange is reasonable, but the present implementation has only two fields and one short proof. Keeping a named singleton construction is useful; it does not create a competing mathematical concept. Sonnet overstates the severity and the concept-reinvention classification.
 
 ## statement-generality
 
