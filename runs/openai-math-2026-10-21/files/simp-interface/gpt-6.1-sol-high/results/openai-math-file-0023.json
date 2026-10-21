@@ -1,0 +1,80 @@
+{
+  "id": "openai-math-file-0023",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Inspected all 151 lines, imported matrix definitions and simp rules, and relevant downstream uses. Found two missing computation rules supported by existing proofs. Proposed changes were not tested in Lean.",
+  "findings": [
+    {
+      "declaration": "scalarMatrixHom",
+      "excerpt": "noncomputable def scalarMatrixHom : A →⋆ₐ[ℂ] CStarMatrix ι ι A where\n  toFun a := diagonalMatrixHom (fun _ : ι => a)",
+      "problem": "The entrywise simp interface stops at this wrapper. The desired normal form of `scalarMatrixHom a i j` is `if i = j then a else 0`, but the existing simp rule addresses `diagonalMatrixHom`. The file manually exposes that implementation at lines 138–139, and downstream matrix-map proofs similarly use `change` to expose the conditional.",
+      "proposed_change": "Add `@[simp] lemma scalarMatrixHom_apply (a : A) (i j : ι) : scalarMatrixHom a i j = if i = j then a else 0 := rfl`, omitting the unused order assumptions. Keep the matrix-valued hom itself opaque to simp.",
+      "benefit": "Entrywise proofs and the scalar trace calculation can simplify through the public interface without unfolding the hom structure. The rule only computes entries, introduces no reverse rewrite, and needs no nonemptiness assumption; for an empty index type there are no entries.",
+      "start_line": 26,
+      "end_line": 27,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixDiagonal.lean",
+          "declaration": "diagonalMatrixHom_apply",
+          "excerpt": "@[simp] lemma diagonalMatrixHom_apply (a : ι → A) (i j : ι) :\n    diagonalMatrixHom a i j = if i = j then a i else 0 := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixTraceCorrespondence.lean",
+          "declaration": "comap_matrixTracialState",
+          "excerpt": "    change (∑ i : ι, τ.functional (diagonalMatrixHom (fun _ : ι => a) i i)) = _\n    simp [diagonalMatrixHom_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/States/FiniteFamilyPullback.lean",
+          "declaration": "matrixMap_scalarMatrix",
+          "excerpt": "  apply CStarMatrix.ext\n  intro i j\n  change φ (if i=j then x else 0) = if i=j then φ x else 0\n  split_ifs <;> simp"
+        }
+      ]
+    },
+    {
+      "declaration": "singleMatrix",
+      "excerpt": "noncomputable def singleMatrix (i j : ι) (a : A) : CStarMatrix ι ι A :=\n  CStarMatrix.ofMatrix (Matrix.single i j a)",
+      "problem": "There is no public simp rule reducing `star (singleMatrix i j a)` to `singleMatrix j i (star a)`. Downstream proofs repeatedly reconstruct this computation by exposing `CStarMatrix.ofMatrix` and invoking `Matrix.conjTranspose_single`, although the intended normal form stays entirely in the `singleMatrix` API.",
+      "proposed_change": "Add `@[simp] lemma star_singleMatrix (i j : ι) (a : A) : star (singleMatrix i j a) = singleMatrix j i (star a)`, proved by transporting `Matrix.conjTranspose_single` through `CStarMatrix.ofMatrix`. Omit the unused order assumptions.",
+      "benefit": "Eliminates repeated implementation-level adjoint calculations, including the unit and positive-square-root cases. This pushes star onto the coefficient without expanding the matrix into entries or sums. It covers equal indices and zero coefficients, is vacuous for empty indices, and is compatible with `star_star`.",
+      "start_line": 35,
+      "end_line": 36,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/Matrix/ConjTranspose.lean",
+          "declaration": "Matrix.conjTranspose_single",
+          "excerpt": "@[simp]\nlemma conjTranspose_single [DecidableEq n] [DecidableEq m] [AddMonoid α]\n    [StarAddMonoid α] (i : m) (j : n) (a : α) :\n    (single i j a)ᴴ = single j i (star a) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Quasitrace/QuasitraceMatrixDiagonal.lean",
+          "declaration": "positiveQuasitrace_matrixCorner_eq",
+          "excerpt": "  have hs : star w = singleMatrix j i (CFC.sqrt a.1) := by\n    change CStarMatrix.ofMatrix (Matrix.single i j (CFC.sqrt a.1)).conjTranspose = _\n    rw [Matrix.conjTranspose_single,(CFC.sqrt_nonneg a.1).star_eq]\n    rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/States/FiniteFamilyMatrixCompletion.lean",
+          "declaration": "CompatibleFiniteQuasitrace.cauchyMatrixLeg_orthogonal",
+          "excerpt": "  have hs (k : Fin (n+1)) : star (singleMatrix k 0 (1 : A))=singleMatrix 0 k 1 := by\n    change CStarMatrix.ofMatrix (Matrix.single k 0 (1 : A)).conjTranspose=\n      CStarMatrix.ofMatrix (Matrix.single 0 k 1)\n    rw [Matrix.conjTranspose_single,star_one]"
+        }
+      ]
+    }
+  ],
+  "backend": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "cost_usd": null,
+  "duration_ms": 87077,
+  "turns": 1,
+  "attempts": 1,
+  "usage": {
+    "input_tokens": 246975,
+    "cached_input_tokens": 194432,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 3205,
+    "reasoning_output_tokens": 663
+  },
+  "prompt_sha256": "9217a14d9454cda7c037adfd55911c0e1be020dd8aa88e3e33d8b47e087b9092",
+  "judged": "2026-10-21T08:12:58+00:00",
+  "unit": "file",
+  "source_sha256": "1cb4377537c01fa788040dc0565bbb719118e7a745ae00cdda590ad75803d60a",
+  "rubric": "simp-interface"
+}

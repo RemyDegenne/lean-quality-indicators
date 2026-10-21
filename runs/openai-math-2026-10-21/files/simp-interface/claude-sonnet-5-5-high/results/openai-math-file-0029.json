@@ -1,0 +1,122 @@
+{
+  "id": "openai-math-file-0029",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related definitions: SmoothRealFunction, SmoothRealFunction.constant, Smooth.ofReal, and complexL_re/complexL_im in ComplexKernel.lean. I also read the uses of complexL_ofReal, laplacian_constant and ext_value across the PrescribedPotential, PrescribedRicci and Anticanonical files. I did not run Lean, so I have not checked whether the proposed attributes loop or clash. I judged them safe by reading the statements. Smooth.ofReal_apply is already simp, and the left-hand sides are plain constructor and operator applications. The file declares no simp lemmas of its own. The three findings are missing simp or ext attributes on lemmas whose right-hand sides are canonical, plus one duplicated proof that the missing simp lemma would remove. I found no loop or orientation problem.",
+  "findings": [
+    {
+      "declaration": "GlobalElliptic.complexL_ofReal (with Smooth.ofReal_part_re / Smooth.ofReal_part_im)",
+      "start_line": 26,
+      "end_line": 50,
+      "excerpt": "lemma complexL_ofReal (g : KaehlerMetric A) (f : SmoothRealFunction A) :\n    complexL g (Smooth.ofReal f) = Smooth.ofReal (g.laplacian f) := by",
+      "problem": "The complex Laplacian of a real-valued function is the real Laplacian, so complexL g (Smooth.ofReal f) should normalise to Smooth.ofReal (g.laplacian f). `Smooth.ofReal_apply` is already @[simp], but `complexL_ofReal` is not simp. Neither are the two rewrites `Smooth.ofReal_part_re` and `Smooth.ofReal_part_im` that feed it. Every downstream use is a hand-written rw/simp-only step, e.g. `rw [map_zero,sub_zero,D.completedLOrder_embed,complexL_ofReal,...]` and `rw [← f.ofReal_source, complexL_ofReal]`. The simp set cannot reduce `(complexL g (Smooth.ofReal f)) x` to `((g.laplacian f).value x : ℂ)` on its own.",
+      "proposed_change": "Mark `Smooth.ofReal_part_re`, `Smooth.ofReal_part_im` and `complexL_ofReal` with @[simp]. Each is oriented from a composite to a simpler form: part of ofReal becomes f or constant 0, and complexL of ofReal becomes ofReal of laplacian. None of the right-hand sides contains its own left-hand side, so I see no cycle. The `Smooth.ofReal_apply` rule is the only rule that could also fire on these expressions.",
+      "benefit": "Call sites such as UniformPathSobolev, PathUniformSobolevBase and RealVolume can drop the explicit `complexL_ofReal` rewrite and rely on simp. The proofs inside this file (the `complexL_re` and `complexL_im` steps) also get shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/UniformPathSobolev.lean",
+          "declaration": "line 33 use of complexL_ofReal",
+          "excerpt": "rw [map_zero,sub_zero,D.completedLOrder_embed,complexL_ofReal,D.pointPoissonOrder_equation]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/RealVolume.lean",
+          "declaration": "line 75 use of complexL_ofReal",
+          "excerpt": "rw [← f.ofReal_source, complexL_ofReal]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/GlobalPartition.lean",
+          "declaration": "Smooth.ofReal_apply",
+          "excerpt": "@[simp] lemma Smooth.ofReal_apply (f : SmoothRealFunction A) (x : X) :"
+        }
+      ]
+    },
+    {
+      "declaration": "GlobalElliptic.laplacian_constant",
+      "start_line": 34,
+      "end_line": 41,
+      "excerpt": "lemma laplacian_constant (g : KaehlerMetric A) (c : ℝ) :\n    g.laplacian (SmoothRealFunction.constant c) = SmoothRealFunction.constant 0 := by",
+      "problem": "This is the canonical rewrite for the Laplacian of a constant, since the Laplacian of `constant c` is `constant 0`. It has no simp attribute, so `simp` cannot clear it. Other proofs repeat the unfolding by hand. `RealSmooth.complexL_real` redoes the same `change g.laplacianValue (SmoothRealFunction.constant 0) x = 0` / `rw [g.laplacianValue_local ..., g.linearizedMongeAmpere_constant]` / `rfl` steps. That file is imported by this one, so it cannot call `laplacian_constant`. The lemma also sits in a downstream file, away from the related `linearizedMongeAmpere_constant`.",
+      "proposed_change": "Make `laplacian_constant` @[simp]. Its left-hand side is `g.laplacian (constant c)` with a variable `c`, and its right-hand side is the single constant `constant 0`, so it cannot loop. Better, move it, with the simp attribute, next to `linearizedMongeAmpere_constant` in AnalyticSupport.lean (or into RealSobolev.lean before `complexL_real`). Then the duplicated proof in `complexL_real` can be replaced by a single simp or rw call. In `complexL_ofReal` the `rw [complexL_im, Smooth.ofReal_part_im, laplacian_constant]` step could also become a simp call.",
+      "benefit": "The constant-Laplacian normal form becomes available to simp everywhere, and the second hand-unfolded proof of the same fact disappears.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/RealSobolev.lean",
+          "declaration": "RealSmooth.complexL_real",
+          "excerpt": "change g.laplacianValue (SmoothRealFunction.constant 0) x = 0\n  rw [g.laplacianValue_local _ i hi, g.linearizedMongeAmpere_constant]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/AnalyticSupport.lean",
+          "declaration": "linearizedMongeAmpere_constant",
+          "excerpt": "lemma linearizedMongeAmpere_constant (g : KaehlerMetric A) (c : ℝ) :\n    g.linearizedMongeAmpere (SmoothRealFunction.constant c) = 0 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "Anticanonical.SourceSmooth.SmoothRealFunction.ext_value",
+      "start_line": 16,
+      "end_line": 21,
+      "excerpt": "lemma ext_value {f h : SmoothRealFunction A} (he : f.value = h.value) : f = h := by",
+      "problem": "This lemma is the extensionality principle for `SmoothRealFunction`, since the `smooth` field is a proof. It is not tagged @[ext], and the structure is not declared with @[ext] either. As a result `ext`, `apply SmoothRealFunction.ext_value` and `congr`-style tactics cannot reduce equalities of `SmoothRealFunction`. The file itself uses `SmoothRealFunction.ext_value rfl` and `apply SmoothRealFunction.ext_value` by name. Sibling lemmas do carry the attribute, for example `@[ext] lemma ext` for `Smooth` in GlobalSobolev.lean.",
+      "proposed_change": "Write `@[ext] lemma ext_value ...`, or rename it to `ext` and tag it @[ext]. You could also put @[ext] on the structure, but then the generated `value`-based lemma has a function-extensionality hypothesis, so a manual lemma is the better choice. Equalities such as `ofReal_part_im` and `laplacian_constant` can then be proved by `ext x`.",
+      "benefit": "Equalities of real smooth functions become reducible by the standard `ext` tactic, matching `Smooth.ext`. Users no longer need to know the nonstandard lemma name.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/GlobalSobolev.lean",
+          "declaration": "Smooth.ext",
+          "excerpt": "@[ext] lemma ext {f h : Smooth A} (H : ∀ x, f x = h x) : f = h := Subtype.ext (funext H)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/AnalyticSupport.lean",
+          "declaration": "SmoothRealFunction",
+          "excerpt": "structure SmoothRealFunction (A : ComplexAtlas d X) where\n  value : X → ℝ"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 26772,
+    "cache_read_input_tokens": 107517,
+    "output_tokens": 5528,
+    "output_tokens_details": {
+      "thinking_tokens": 646
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26772,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3803,
+        "cache_read_input_tokens": 28506,
+        "cache_creation_input_tokens": 2279,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2279
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17314369999999998,
+  "duration_ms": 44689,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T07:28:12",
+  "unit": "file",
+  "source_sha256": "90794b2169bc1400a4377f2343de3fdc6911dc2b725f717e2ae377bf08aafa54",
+  "rubric": "simp-interface"
+}

@@ -77,10 +77,29 @@ class Budget:
             if Decimal(state["billed_usd"]) + pending + amount > self.limit:
                 raise BudgetExhausted("Remaining budget cannot cover this request's worst-case reservation")
             number = len(state["requests"])
+            state["next_request_at"] = time.time() + state.get("request_spacing_seconds", 10)
             state["requests"].append({"target": target, "reserved_usd": str(amount), "billed_usd": None,
                                       "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()})
             write_json(self.path, state)
         return number
+
+    def wait_for_slot(self):
+        while True:
+            state = self.read()
+            delay = max(state.get("next_request_at", 0), state.get("not_before", 0)) - time.time()
+            if delay <= 0:
+                return
+            time.sleep(min(30, delay))
+
+    def backoff(self):
+        with self.path.with_suffix(".lock.log").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            state = self.read()
+            count = state.get("rate_limit_count", 0) + 1
+            state.update(rate_limit_count=count,
+                request_spacing_seconds=min(120, state.get("request_spacing_seconds", 10) * 2),
+                not_before=time.time() + min(1800, 300 * 2 ** min(count - 1, 3)))
+            write_json(self.path, state)
 
     def settle(self, number, response):
         usage = response.get("usage", {})
@@ -104,7 +123,7 @@ class Budget:
         return amount
 
 
-def request(payload, key, budget, target, transcript):
+def request_once(payload, key, budget, target, transcript):
     number = budget.reserve(payload, target)
     request = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions",
         data=json.dumps(payload).encode(), headers={"Authorization": "Bearer " + key,
@@ -129,6 +148,17 @@ def request(payload, key, budget, target, transcript):
     if response.get("error"):
         raise RuntimeError("Provider returned an error; judgment discarded")
     return response, amount
+
+
+def request(payload, key, budget, target, transcript):
+    for retry in range(3):
+        budget.wait_for_slot()
+        try:
+            return request_once(payload, key, budget, target, transcript)
+        except RateLimited:
+            budget.backoff()
+            if retry == 2:
+                raise
 
 
 def parse_verdict(text):

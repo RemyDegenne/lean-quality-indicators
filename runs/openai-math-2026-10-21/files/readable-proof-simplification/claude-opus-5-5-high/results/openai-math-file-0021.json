@@ -1,0 +1,122 @@
+{
+  "id": "openai-math-file-0021",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 313 lines of the target file. I used Grep to check where the phase-belt helpers and `exists_uniform_angular_bound` are used: in `lean/`, they appear only in this file. `StandardSphere2` is an abbrev for `Metric.sphere (0 : SphereAmbient) 1`, so `x.2` is a proof that `x.1` lies on the sphere. In Mathlib I read the signatures of `ContDiffAt.congr_of_eventuallyEq` and `Filter.EventuallyEq.fderiv_eq`, which the proposed replacements use.\n\nThe main simplification is that `exists_uniform_angular_bound` re-proves a special case of `exists_uniform_angular_bound_on_compact`. The general lemma does not depend on the special one, so the special one can be derived from it. That would also remove about 45 lines of phase-belt helpers that nothing else uses. Two smaller findings remove copy-pasted proofs.\n\nI left the calc in `norm_fderiv_angularAmbient_le_at` and the `nlinarith` endings alone. They read clearly, and changing them would mostly be a matter of taste.\n\nNone of the replacements has been compiled. The `exact ⟨C, hC, fun k x => h k x.1 x.2⟩` step relies on `angular k x` unfolding by definition to `angularAmbient k x.1`.",
+  "findings": [
+    {
+      "declaration": "exists_uniform_angular_bound (with phaseBelt, isCompact_phaseBelt, horizontal_ne_zero_on_phaseBelt, exists_bounds_cutoff_and_phase)",
+      "start_line": 217,
+      "end_line": 238,
+      "excerpt": "  obtain ⟨A, B, hA0, hB0, hA, hB⟩ := exists_bounds_cutoff_and_phase\n  refine ⟨1 + A + B, by linarith, ?_⟩\n  intro k x",
+      "problem": "This proof is a hand-specialised copy of `exists_uniform_angular_bound_on_compact` (lines 240–279) for K = the unit sphere. Both proofs have the same structure: bound the cutoff derivative on a compact set, bound the phase derivative on a belt, split into in-belt and out-of-belt cases, then finish with `nlinarith`. The only real difference is the belt bounds (-9/10..3/4 here, -4/5..1/2 there). The supporting declarations `phaseBelt`, `isCompact_phaseBelt`, `horizontal_ne_zero_on_phaseBelt` and `exists_bounds_cutoff_and_phase` (lines 120–162, excluding `norm_phase_eq_one`) are used only by this proof. `horizontal_ne_zero_on_phaseBelt` also repeats the pole computation already done in `sphere_mem_regularDomain`.",
+      "proposed_change": "Move `exists_uniform_angular_bound` after `exists_uniform_angular_bound_on_compact` and derive it from the general lemma:\n```lean\ntheorem exists_uniform_angular_bound :\n    ∃ C : ℝ, 1 ≤ C ∧ ∀ (k : ℕ) (x : StandardSphere2),\n      ‖angular k x‖ + ‖fderiv ℝ (angularAmbient k) x.1‖ ≤ C * (1 + (k : ℝ)) := by\n  obtain ⟨C, hC, h⟩ := exists_uniform_angular_bound_on_compact\n    (isCompact_sphere (0 : SphereAmbient) 1) (fun x hx => sphere_mem_regularDomain ⟨x, hx⟩)\n  exact ⟨C, hC, fun k x => h k x.1 x.2⟩\n```\nThen delete `phaseBelt`, `isCompact_phaseBelt`, `horizontal_ne_zero_on_phaseBelt` and `exists_bounds_cutoff_and_phase`, since nothing else uses them.",
+      "benefit": "The sphere bound would then read as what it is: the compact-set bound applied to the sphere, which lies in `regularDomain`. The reader follows one copy of the belt and derivative argument instead of two near-identical ones with different constants. About 45 lines of duplicated proof and the duplicate pole computation go away. The mathematics is unchanged.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "exists_uniform_angular_bound_on_compact",
+          "excerpt": "theorem exists_uniform_angular_bound_on_compact {K : Set SphereAmbient}\n    (hK : IsCompact K) (hU : K ⊆ regularDomain) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "exists_uniform_angular_neighborhood",
+          "excerpt": "    fun x hx => sphere_mem_regularDomain ⟨x, hx⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/ComparatorChallenges/C1EntropyCounterexample.lean",
+          "declaration": "StandardSphere2",
+          "excerpt": "abbrev StandardSphere2 := Metric.sphere (0 : SphereAmbient) (1 : ℝ)"
+        }
+      ]
+    },
+    {
+      "declaration": "contDiffAt_angularAmbient_of_low / _of_high, fderiv_angularAmbient_eq_zero_of_low / _of_high",
+      "start_line": 49,
+      "end_line": 180,
+      "excerpt": "  have hh : ContinuousAt (fun y : SphereAmbient => y 2) x :=\n    (EuclideanSpace.proj (𝕜 := ℝ) (2 : Fin 3)).continuous.continuousAt\n  filter_upwards [hh.eventually (gt_mem_nhds hx)] with y hy\n  exact angularAmbient_eq_zero_of_low hy.le k",
+      "problem": "The same three-step argument appears four times: continuity of the third coordinate, then `filter_upwards`, then the pointwise vanishing lemma. It is in the two `contDiffAt_..._of_low/high` proofs (lines 49–63) and again in the two `fderiv_..._eq_zero_of_low/high` proofs (lines 164–180). It proves the single fact that `angularAmbient k` is locally zero near a point with `x 2 < -4/5` (resp. `1/2 < x 2`), but that fact is never stated.",
+      "proposed_change": "State the local-vanishing fact once per side and reuse it:\n```lean\ntheorem angularAmbient_eventuallyEq_zero_of_low {x : SphereAmbient} (hx : x 2 < -4 / 5)\n    (k : ℕ) : angularAmbient k =ᶠ[𝓝 x] fun _ => (0 : ℂ) := by\n  have hh : ContinuousAt (fun y : SphereAmbient => y 2) x :=\n    (EuclideanSpace.proj (𝕜 := ℝ) (2 : Fin 3)).continuous.continuousAt\n  filter_upwards [hh.eventually (gt_mem_nhds hx)] with y hy\n  exact angularAmbient_eq_zero_of_low hy.le k\n\ntheorem contDiffAt_angularAmbient_of_low {n : ℕ∞} {x : SphereAmbient}\n    (hx : x 2 < -4 / 5) (k : ℕ) : ContDiffAt ℝ n (angularAmbient k) x :=\n  contDiffAt_const.congr_of_eventuallyEq (angularAmbient_eventuallyEq_zero_of_low hx k)\n\ntheorem fderiv_angularAmbient_eq_zero_of_low {x : SphereAmbient}\n    (hx : x 2 < -4 / 5) (k : ℕ) : fderiv ℝ (angularAmbient k) x = 0 := by\n  simpa using (angularAmbient_eventuallyEq_zero_of_low hx k).fderiv_eq (𝕜 := ℝ)\n```\nDo the same for the `_high` versions with `lt_mem_nhds`.",
+      "benefit": "The key idea (the function is identically zero near the poles, so it is smooth there and its derivative vanishes) becomes one named lemma. The smoothness and derivative facts then read as one-line consequences. Readers no longer have to compare four near-identical filter arguments to check that they really are the same.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/ContDiff/Defs.lean",
+          "declaration": "ContDiffAt.congr_of_eventuallyEq",
+          "excerpt": "theorem ContDiffAt.congr_of_eventuallyEq (h : ContDiffAt 𝕜 n f x) (hg : f₁ =ᶠ[𝓝 x] f) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/FDeriv/Congr.lean",
+          "declaration": "Filter.EventuallyEq.fderiv_eq",
+          "excerpt": "theorem Filter.EventuallyEq.fderiv_eq (h : f₁ =ᶠ[𝓝 x] f) : fderiv 𝕜 f₁ x = fderiv 𝕜 f x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "fderiv_angularAmbient_eq_zero_of_low",
+          "excerpt": "  have hz : angularAmbient k =ᶠ[𝓝 x] (fun _ => (0 : ℂ)) := by\n    filter_upwards [hh.eventually (gt_mem_nhds hx)] with y hy"
+        }
+      ]
+    },
+    {
+      "declaration": "norm_phase_le_one",
+      "start_line": 104,
+      "end_line": 107,
+      "excerpt": "  · simp [phase, norm_inv, norm_ne_zero_iff.mpr hx]",
+      "problem": "The non-degenerate branch repeats, word for word, the proof of `norm_phase_eq_one` (lines 141–142). That proof only comes later in the file, so the reader cannot see that this branch just says the phase is a unit complex number.",
+      "proposed_change": "Move `norm_phase_eq_one` above `norm_phase_le_one` and write:\n```lean\ntheorem norm_phase_le_one (x : SphereAmbient) : ‖phase x‖ ≤ 1 := by\n  by_cases hx : horizontal x = 0\n  · simp [phase, hx]\n  · exact (norm_phase_eq_one hx).le\n```",
+      "benefit": "The case split then reads directly as: the phase is 0 when the horizontal part vanishes and has norm 1 otherwise. The duplicated `simp` call goes away, and the second branch names the fact it uses.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "norm_phase_eq_one",
+          "excerpt": "theorem norm_phase_eq_one {x : SphereAmbient} (hx : horizontal x ≠ 0) : ‖phase x‖ = 1 := by\n  simp [phase, norm_inv, norm_ne_zero_iff.mpr hx]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 30505,
+    "cache_read_input_tokens": 67756,
+    "output_tokens": 6899,
+    "output_tokens_details": {
+      "thinking_tokens": 2121
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30505,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4663,
+        "cache_read_input_tokens": 28806,
+        "cache_creation_input_tokens": 1699,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1699
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.39560319999999993,
+  "duration_ms": 55132,
+  "turns": 5,
+  "attempts": 2,
+  "judged": "2026-10-21T11:05:04",
+  "unit": "file",
+  "source_sha256": "b27a02fe74022900cd863f97f1dd19f2a1f9e9ec78e12ae1cd22de3d650d8e7e",
+  "rubric": "readable-proof-simplification"
+}

@@ -1,0 +1,80 @@
+{
+  "id": "openai-math-file-0035",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole 65-line file. The first two theorems are short and non-repetitive. In the third theorem I looked for repeated proof blocks in the rest of the NavierStokes tree. I found one repeated pattern, the Lipschitz bound on EuclideanPlane that follows from a global bound on `fderiv`. It appears in this file, in CompactEuclideanBounds.lean and, in a coordinate-changed form, in DetectorSupport.lean. Each copy is only about five lines and wraps a single Mathlib mean-value lemma, so the benefit is modest. I did not check that the proposed lemma compiles. The ShearFlows, clocked and compact-detector copies are over other spaces (SpaceTime, an Icc-product set) and would not use an EuclideanPlane-specific lemma. Mathlib's `lipschitzWith_of_nnnorm_fderiv_le` is the closest existing API, but it takes an ℝ≥0 bound and a `LipschitzWith` conclusion, so the call sites would still need a conversion.",
+  "findings": [
+    {
+      "declaration": "ForcedComputation.planar_euclidean_flow_estimates (final Lipschitz conjunct)",
+      "start_line": 54,
+      "end_line": 59,
+      "excerpt": "have h := Convex.norm_image_sub_le_of_norm_fderiv_le (s := (univ : Set EuclideanPlane))",
+      "problem": "The last conjunct re-proves, inline, the step 'a differentiable map of EuclideanPlane whose fderiv is everywhere bounded by B satisfies dist (f x) (f y) ≤ B * dist x y'. It does this by instantiating the mean-value inequality on `univ`, supplying `convex_univ` and `mem_univ`, and then rewriting with `dist_eq_norm`. `compact_euclidean_flow_estimates` in CompactEuclideanBounds.lean (lines 138–143) repeats the same block verbatim, differing only in the map and the bound. `planar_flow_distance_bound` in DetectorSupport.lean (lines 55–62) uses the same `univ`/`convex_univ`/`mem_univ` scaffolding. Each copy has to restate the `(s := (univ : Set EuclideanPlane))` and `convex_univ` ascriptions, and the argument order (`mem_univ y` before `mem_univ x`) is easy to get wrong.",
+      "proposed_change": "Add one lemma in this file, or in EuclideanConjugacy if that is a better home for it:\n\ntheorem euclidean_dist_le_of_fderiv_bound {f : EuclideanPlane → EuclideanPlane} {B : ℝ}\n    (hf : Differentiable ℝ f) (hB : ∀ z, ‖fderiv ℝ f z‖ ≤ B) (x y : EuclideanPlane) :\n    dist (f x) (f y) ≤ B * dist x y := by\n  have h := Convex.norm_image_sub_le_of_norm_fderiv_le (s := (univ : Set EuclideanPlane))\n    (fun z _ => hf z) (fun z _ => hB z) convex_univ (mem_univ y) (mem_univ x)\n  simpa only [dist_eq_norm] using h\n\nThe proof is the existing five-line block. The `(by simp)` argument is unchanged at the call sites.\n\nUse here (lines 54–59 become one line):\n  · intro x y\n    exact euclidean_dist_le_of_fderiv_bound ((he.smooth a t).differentiable (by simp))\n      (fun z => (euclidean_quantitative_variations hH hT he a z ht).1) x y\n\nUse in `compact_euclidean_flow_estimates` (lines 138–143):\n  intro x y\n  exact euclidean_dist_le_of_fderiv_bound\n    ((compactTransition_euclidean_smooth I hI hΨ hΩ hv a t).differentiable (by simp))\n    (fun z => (hf z).1) x y\n\nThe hypotheses are the same as before: `ht : 0 ≤ t` enters through `euclidean_quantitative_variations`, and `hf z` already has the form `‖fderiv ℝ (euclideanMap (Ψ a t)) z‖ ≤ exp (L*t)`. `planar_flow_distance_bound` could also be restated through this lemma, but that needs a `planeCoordinates.symm` rewrite, so it is optional.",
+      "benefit": "The mean-value/convexity scaffolding is written once and each use is a single `exact`. The final conjunct of the quantitative flow theorem then reads as 'the derivative bound implies the Lipschitz bound'. A future change, such as switching to `lipschitzWith_of_nnnorm_fderiv_le`, is made in one place instead of in two or three.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Flow/CompactEuclideanBounds.lean",
+          "declaration": "ForcedComputation.Recorder.Planar.compact_euclidean_flow_estimates",
+          "excerpt": "have h := Convex.norm_image_sub_le_of_norm_fderiv_le (s := (univ : Set EuclideanPlane))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Detector/DetectorSupport.lean",
+          "declaration": "planar_flow_distance_bound",
+          "excerpt": "(convex_univ : Convex ℝ (univ : Set EuclideanPlane))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/MeanValue.lean",
+          "declaration": "Convex.norm_image_sub_le_of_norm_fderiv_le",
+          "excerpt": "(bound : ∀ x ∈ s, ‖fderiv 𝕜 f x‖ ≤ C) (hs : Convex ℝ s) (xs : x ∈ s) (ys : y ∈ s) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19921,
+    "cache_read_input_tokens": 53344,
+    "output_tokens": 4710,
+    "output_tokens_details": {
+      "thinking_tokens": 1380
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19921,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2888,
+        "cache_read_input_tokens": 20845,
+        "cache_creation_input_tokens": 3005,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3005
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.13213439999999999,
+  "duration_ms": 46672,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T07:51:09",
+  "unit": "file",
+  "source_sha256": "82c49296d8096d88e344c407d0af438c5ea339c35aed6fb939ab264f71cc6cfb",
+  "rubric": "repeated-proof-machinery"
+}

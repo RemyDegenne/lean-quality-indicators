@@ -1,60 +1,60 @@
 # API-equivalent costs
 
-Generated 2026-10-21T07:24:44+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-21T11:05:07+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 | Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |
 |---|---|---:|---:|---:|---:|
-| unnecessary-hypotheses | Opus | 3520 | 2000 | $255.80 / $145.34 | $72.67 |
-| unnecessary-hypotheses | Sol | 3016 | 2000 | $141.45 / $93.80 | $46.90 |
-| unnecessary-hypotheses | Sonnet | 3029 | 2000 | $106.56 / $70.36 | $35.18 |
-| unnecessary-hypotheses | Luna | 3026 | 2000 | $6.56 / $4.34 | $2.17 |
-| unnecessary-hypotheses | DeepSeek | 1 | 2000 | $0.01 / $13.87 | $6.93 |
-| duplicates-mathlib-inclusive | Opus | 4020 | 5000 | $217.66 / $270.72 | $54.14 |
-| duplicates-mathlib-inclusive | Sol | 5016 | 5000 | $320.53 / $319.51 | $63.90 |
-| duplicates-mathlib-inclusive | Sonnet | 5029 | 5000 | $125.94 / $125.21 | $25.04 |
-| duplicates-mathlib-inclusive | Luna | 5026 | 5000 | $16.08 / $16.00 | $3.20 |
+| unnecessary-hypotheses | Opus | 3522 | 2000 | $256.57 / $145.70 | $72.85 |
+| unnecessary-hypotheses | Sol | 3070 | 2000 | $144.28 / $94.00 | $47.00 |
+| unnecessary-hypotheses | Sonnet | 3041 | 2000 | $107.41 / $70.64 | $35.32 |
+| unnecessary-hypotheses | Luna | 3048 | 2000 | $6.64 / $4.36 | $2.18 |
+| unnecessary-hypotheses | DeepSeek | 1 | 2000 | $0.01 / $26.51 | $13.26 |
+| duplicates-mathlib-inclusive | Opus | 4022 | 5000 | $217.81 / $270.77 | $54.15 |
+| duplicates-mathlib-inclusive | Sol | 5070 | 5000 | $324.01 / $319.54 | $63.91 |
+| duplicates-mathlib-inclusive | Sonnet | 5041 | 5000 | $126.30 / $125.28 | $25.06 |
+| duplicates-mathlib-inclusive | Luna | 5048 | 5000 | $16.16 / $16.00 | $3.20 |
 | duplicates-mathlib-inclusive | DeepSeek | 0 | 5000 | $0.00 / — | $0.00 |
-| concept-reinvention | Opus | 20 | 30 | $2.85 / $4.28 | $142.59 |
-| concept-reinvention | Sol | 16 | 30 | $1.50 / $2.81 | $93.52 |
-| concept-reinvention | Sonnet | 59 | 30 | $4.49 / $2.28 | $76.03 |
-| concept-reinvention | Luna | 56 | 30 | $0.29 / $0.16 | $5.23 |
+| concept-reinvention | Opus | 22 | 30 | $3.37 / $4.60 | $153.21 |
+| concept-reinvention | Sol | 70 | 30 | $6.15 / $2.64 | $87.88 |
+| concept-reinvention | Sonnet | 70 | 30 | $4.98 / $2.14 | $71.20 |
+| concept-reinvention | Luna | 78 | 30 | $0.40 / $0.15 | $5.10 |
 | concept-reinvention | DeepSeek | 0 | 30 | $0.00 / — | $0.00 |
-| statement-generality | Opus | 19 | 30 | $6.75 / $10.66 | $355.29 |
-| statement-generality | Sol | 16 | 30 | $2.26 / $4.23 | $140.96 |
-| statement-generality | Sonnet | 59 | 30 | $6.91 / $3.51 | $117.06 |
-| statement-generality | Luna | 56 | 30 | $0.27 / $0.14 | $4.80 |
+| statement-generality | Opus | 22 | 30 | $7.60 / $10.37 | $345.64 |
+| statement-generality | Sol | 70 | 30 | $9.35 / $4.01 | $133.53 |
+| statement-generality | Sonnet | 70 | 30 | $7.96 / $3.41 | $113.77 |
+| statement-generality | Luna | 78 | 30 | $0.38 / $0.14 | $4.82 |
 | statement-generality | DeepSeek | 0 | 30 | $0.00 / — | $0.00 |
-| vacuity-and-misstatement | Opus | 19 | 30 | $4.28 / $6.76 | $225.42 |
-| vacuity-and-misstatement | Sol | 15 | 30 | $1.35 / $2.69 | $89.72 |
-| vacuity-and-misstatement | Sonnet | 59 | 30 | $5.11 / $2.60 | $86.69 |
-| vacuity-and-misstatement | Luna | 56 | 30 | $0.26 / $0.14 | $4.69 |
+| vacuity-and-misstatement | Opus | 22 | 30 | $4.88 / $6.66 | $221.84 |
+| vacuity-and-misstatement | Sol | 70 | 30 | $7.02 / $3.01 | $100.24 |
+| vacuity-and-misstatement | Sonnet | 70 | 30 | $6.40 / $2.74 | $91.44 |
+| vacuity-and-misstatement | Luna | 77 | 30 | $0.35 / $0.14 | $4.55 |
 | vacuity-and-misstatement | DeepSeek | 0 | 30 | $0.00 / — | $0.00 |
-| simp-interface | Opus | 19 | 30 | $5.49 / $8.66 | $288.80 |
-| simp-interface | Sol | 15 | 30 | $1.51 / $3.03 | $100.87 |
-| simp-interface | Sonnet | 58 | 30 | $5.12 / $2.65 | $88.27 |
-| simp-interface | Luna | 55 | 30 | $0.26 / $0.14 | $4.71 |
+| simp-interface | Opus | 22 | 30 | $6.52 / $8.90 | $296.52 |
+| simp-interface | Sol | 70 | 30 | $7.10 / $3.04 | $101.50 |
+| simp-interface | Sonnet | 70 | 30 | $6.10 / $2.61 | $87.16 |
+| simp-interface | Luna | 77 | 30 | $0.36 / $0.14 | $4.63 |
 | simp-interface | DeepSeek | 0 | 30 | $0.00 / — | $0.00 |
-| repeated-proof-machinery | Opus | 19 | 30 | $4.42 / $6.98 | $232.54 |
-| repeated-proof-machinery | Sol | 15 | 30 | $1.27 / $2.54 | $84.61 |
-| repeated-proof-machinery | Sonnet | 58 | 30 | $4.35 / $2.25 | $75.04 |
-| repeated-proof-machinery | Luna | 55 | 30 | $0.20 / $0.11 | $3.62 |
+| repeated-proof-machinery | Opus | 22 | 30 | $5.56 / $7.59 | $252.95 |
+| repeated-proof-machinery | Sol | 69 | 30 | $5.50 / $2.39 | $79.75 |
+| repeated-proof-machinery | Sonnet | 70 | 30 | $5.22 / $2.24 | $74.57 |
+| repeated-proof-machinery | Luna | 77 | 30 | $0.28 / $0.11 | $3.63 |
 | repeated-proof-machinery | DeepSeek | 0 | 30 | $0.00 / — | $0.00 |
-| readable-proof-simplification | Opus | 19 | 30 | $6.06 / $9.56 | $318.73 |
-| readable-proof-simplification | Sol | 14 | 30 | $1.68 / $3.61 | $120.31 |
-| readable-proof-simplification | Sonnet | 58 | 30 | $7.41 / $3.83 | $127.83 |
-| readable-proof-simplification | Luna | 55 | 30 | $0.21 / $0.12 | $3.89 |
+| readable-proof-simplification | Opus | 22 | 30 | $7.53 / $10.27 | $342.37 |
+| readable-proof-simplification | Sol | 68 | 30 | $8.70 / $3.84 | $127.95 |
+| readable-proof-simplification | Sonnet | 70 | 30 | $9.36 / $4.01 | $133.65 |
+| readable-proof-simplification | Luna | 77 | 30 | $0.31 / $0.12 | $3.97 |
 | readable-proof-simplification | DeepSeek | 0 | 30 | $0.00 / — | $0.00 |
 
 ## Totals by model
 
 | Model | API-equivalent USD |
 |---|---:|
-| Opus | $503.31 |
-| Sol | $471.55 |
-| Sonnet | $265.89 |
-| Luna | $24.14 |
+| Opus | $509.85 |
+| Sol | $512.12 |
+| Sonnet | $273.74 |
+| Luna | $24.86 |
 | DeepSeek | $0.01 |
-| **Total** | **$1264.89** |
+| **Total** | **$1320.58** |
 
 ## Rate sources
 

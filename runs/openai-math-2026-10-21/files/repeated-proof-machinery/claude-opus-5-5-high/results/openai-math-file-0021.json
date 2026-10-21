@@ -1,0 +1,116 @@
+{
+  "id": "openai-math-file-0021",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 313 lines of the target file. I checked `SphereAmbient` and `StandardSphere2` in Definitions.lean: `StandardSphere2` is an `abbrev` for `Metric.sphere (0 : SphereAmbient) 1`. I also grepped the `lean/` tree for uses of `phaseBelt`, `exists_bounds_cutoff_and_phase`, `horizontal_ne_zero_on_phaseBelt`, `exists_uniform_angular_bound` and the vanishing-near-the-poles lemmas. Every use is inside this file.\n\nThere are two findings.\n\n1. The sphere version `exists_uniform_angular_bound` re-proves, through its own `phaseBelt` machinery, what the general `exists_uniform_angular_bound_on_compact` already proves. Removing it also removes a second copy of the \"horizontal part is zero on the sphere only at the poles\" argument, which appears in both `sphere_mem_regularDomain` and `horizontal_ne_zero_on_phaseBelt`.\n2. The same argument that `angularAmbient` is eventually zero near a point is written out four times.\n\nI did not report several smaller repetitions because they are routine:\n- The `ofRealCLM` composition with the cutoff, which appears in about three places.\n- The proof that a `z`-slab is closed.\n- The `simpa` showing the cutoff's norm is at most 1, in `norm_angularAmbient_le_one` and `norm_fderiv_angularAmbient_le_at`.\n\nRemaining uncertainty: I could not compile anything. The `exact ⟨C, hC, fun k x => h k x.1 x.2⟩` step relies on `angular k x` unfolding by definition to `angularAmbient k x.1`. That holds because `angular` is a plain `def` with that body. The suggested rewrites also require moving `exists_uniform_angular_bound_on_compact` above its sphere corollary.",
+  "findings": [
+    {
+      "declaration": "exists_uniform_angular_bound (with exists_bounds_cutoff_and_phase, phaseBelt, isCompact_phaseBelt, horizontal_ne_zero_on_phaseBelt)",
+      "start_line": 120,
+      "end_line": 238,
+      "excerpt": "  obtain ⟨A, B, hA0, hB0, hA, hB⟩ := exists_bounds_cutoff_and_phase\n  refine ⟨1 + A + B, by linarith, ?_⟩",
+      "problem": "The proof of the uniform C¹ bound on the sphere is written out twice. `exists_uniform_angular_bound` (lines 217–238), with its helpers `phaseBelt`, `isCompact_phaseBelt`, `horizontal_ne_zero_on_phaseBelt` and `exists_bounds_cutoff_and_phase` (lines 120–162), repeats the same steps as `exists_uniform_angular_bound_on_compact` (lines 240–279). Both proofs do the following in the same order:\n- bound `fderiv` of the cutoff on a compact set using `exists_bound_of_continuousOn`;\n- prove `ContinuousOn (fderiv ℝ phase)` on a belt using `contDiffAt_phase (n := 1) …).continuousAt_fderiv`;\n- clamp the constants with `max 0`;\n- split on belt membership into `norm_fderiv_angularAmbient_le_at` or `fderiv_angularAmbient_eq_zero_of_low/high`;\n- finish with `nlinarith [mul_nonneg hA0 hk]`.\nThe sphere is compact and lies in `regularDomain` (`sphere_mem_regularDomain`, already used this way at line 289), so the sphere statement is just the special case K = sphere of the general lemma. A further duplication goes away with it: `horizontal_ne_zero_on_phaseBelt` (lines 130–139) copies the argument of `sphere_mem_regularDomain` (lines 85–93). Both take Re/Im of `horizontal x = 0`, apply `PiLp.norm_sq_eq_of_L2` to get `(x 2)^2 = 1`, then use `sq_eq_one_iff`.",
+      "proposed_change": "Move `exists_uniform_angular_bound_on_compact` above `exists_uniform_angular_bound`. Derive the sphere statement from it under the same hypotheses and imports:\n```lean\ntheorem exists_uniform_angular_bound :\n    ∃ C : ℝ, 1 ≤ C ∧ ∀ (k : ℕ) (x : StandardSphere2),\n      ‖angular k x‖ + ‖fderiv ℝ (angularAmbient k) x.1‖ ≤ C * (1 + (k : ℝ)) := by\n  obtain ⟨C, hC, h⟩ := exists_uniform_angular_bound_on_compact\n    (isCompact_sphere (0 : SphereAmbient) 1) (fun x hx => sphere_mem_regularDomain ⟨x, hx⟩)\n  exact ⟨C, hC, fun k x => h k x.1 x.2⟩\n```\nThis works because `angular k x` is by definition `angularAmbient k x.1`, and `x.2 : x.1 ∈ Metric.sphere 0 1`. After the change, `phaseBelt`, `isCompact_phaseBelt`, `horizontal_ne_zero_on_phaseBelt` and `exists_bounds_cutoff_and_phase` have no remaining uses in the repository and can be deleted. The `exists_uniform_angular_neighborhood` call to the general lemma (line 290) is unchanged.",
+      "benefit": "About 60 lines of near-identical analytic bookkeeping are removed. These include a second set of belt constants (-9/10, 3/4 versus -4/5, 1/2) that must stay consistent with the cutoff's support. Future changes to the cutoff, the phase, or the derivative estimate then need to be made in one proof, not two. The duplicated pole argument also disappears without needing a separate helper lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "exists_bounds_cutoff_and_phase",
+          "excerpt": "    exact ((contDiffAt_phase (n := 1) (horizontal_ne_zero_on_phaseBelt hx)).continuousAt_fderiv\n      (by norm_num)).continuousWithinAt"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "exists_uniform_angular_bound_on_compact",
+          "excerpt": "    exact ((contDiffAt_phase (n := 1) (hregular x hx)).continuousAt_fderiv\n      (by norm_num)).continuousWithinAt"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "exists_uniform_angular_neighborhood",
+          "excerpt": "    fun x hx => sphere_mem_regularDomain ⟨x, hx⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "horizontal_ne_zero_on_phaseBelt",
+          "excerpt": "  have hs := PiLp.norm_sq_eq_of_L2 (fun _ : Fin 3 => ℝ) x\n  have hh2 : (x 2) ^ 2 = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/Definitions.lean",
+          "declaration": "StandardSphere2",
+          "excerpt": "abbrev StandardSphere2 := Metric.sphere (0 : SphereAmbient) (1 : ℝ)"
+        }
+      ]
+    },
+    {
+      "declaration": "contDiffAt_angularAmbient_of_low/high, fderiv_angularAmbient_eq_zero_of_low/high",
+      "start_line": 49,
+      "end_line": 180,
+      "excerpt": "  have hh : ContinuousAt (fun y : SphereAmbient => y 2) x :=\n    (EuclideanSpace.proj (𝕜 := ℝ) (2 : Fin 3)).continuous.continuousAt",
+      "problem": "Four theorems each prove the same locality fact from scratch: if `x 2 < -4/5` (or `1/2 < x 2`), then `angularAmbient k` is eventually zero near `x`. Each one rebuilds `ContinuousAt (fun y => y 2)` from `EuclideanSpace.proj`, runs `filter_upwards [hh.eventually (gt_mem_nhds hx)]` (or `lt_mem_nhds`), and applies `angularAmbient_eq_zero_of_low/high hy.le k`. The copies are at lines 51–55, 59–63, 166–170 and 175–179. Only the last step differs: the `ContDiffAt` lemmas feed the result to `contDiffAt_const.congr_of_eventuallyEq`, and the `fderiv` lemmas feed it to `EventuallyEq.fderiv_eq`.",
+      "proposed_change": "State the shared fact once, right after `angularAmbient_eq_zero_of_low/high`:\n```lean\ntheorem angularAmbient_eventuallyEq_zero_of_low {x : SphereAmbient}\n    (hx : x 2 < -4 / 5) (k : ℕ) : angularAmbient k =ᶠ[𝓝 x] fun _ => (0 : ℂ) := by\n  have hh : ContinuousAt (fun y : SphereAmbient => y 2) x :=\n    (EuclideanSpace.proj (𝕜 := ℝ) (2 : Fin 3)).continuous.continuousAt\n  filter_upwards [hh.eventually (gt_mem_nhds hx)] with y hy\n  exact angularAmbient_eq_zero_of_low hy.le k\n```\nAdd the analogous `_of_high` lemma using `lt_mem_nhds` and `angularAmbient_eq_zero_of_high`. The four consumers then become one-liners with the same hypotheses:\n```lean\ntheorem contDiffAt_angularAmbient_of_low {n : ℕ∞} {x : SphereAmbient}\n    (hx : x 2 < -4 / 5) (k : ℕ) : ContDiffAt ℝ n (angularAmbient k) x :=\n  contDiffAt_const.congr_of_eventuallyEq (angularAmbient_eventuallyEq_zero_of_low hx k)\n\ntheorem fderiv_angularAmbient_eq_zero_of_low {x : SphereAmbient}\n    (hx : x 2 < -4 / 5) (k : ℕ) : fderiv ℝ (angularAmbient k) x = 0 := by\n  simpa using (angularAmbient_eventuallyEq_zero_of_low hx k).fderiv_eq (𝕜 := ℝ)\n```\nThe `_high` versions are rewritten the same way.",
+      "benefit": "The geometric fact that the angular input vanishes on a neighbourhood of each polar cap becomes a named, reusable statement. Right now it exists only as four copies of the same filter argument. The two analytic consequences become visibly direct corollaries, and if the cutoff thresholds change, the filter argument has to be updated in two places instead of four.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "contDiffAt_angularAmbient_of_low",
+          "excerpt": "  filter_upwards [hh.eventually (gt_mem_nhds hx)] with y hy\n  exact angularAmbient_eq_zero_of_low hy.le k"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "fderiv_angularAmbient_eq_zero_of_low",
+          "excerpt": "  have hz : angularAmbient k =ᶠ[𝓝 x] (fun _ => (0 : ℂ)) := by\n    filter_upwards [hh.eventually (gt_mem_nhds hx)] with y hy\n    exact angularAmbient_eq_zero_of_low hy.le k"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "fderiv_angularAmbient_eq_zero_of_high",
+          "excerpt": "    filter_upwards [hh.eventually (lt_mem_nhds hx)] with y hy\n    exact angularAmbient_eq_zero_of_high hy.le k"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 27547,
+    "cache_read_input_tokens": 74171,
+    "output_tokens": 8033,
+    "output_tokens_details": {
+      "thinking_tokens": 2575
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27547,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4794,
+        "cache_read_input_tokens": 29347,
+        "cache_creation_input_tokens": 2129,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2129
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3959022,
+  "duration_ms": 67465,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T07:40:48",
+  "unit": "file",
+  "source_sha256": "b27a02fe74022900cd863f97f1dd19f2a1f9e9ec78e12ae1cd22de3d650d8e7e",
+  "rubric": "repeated-proof-machinery"
+}

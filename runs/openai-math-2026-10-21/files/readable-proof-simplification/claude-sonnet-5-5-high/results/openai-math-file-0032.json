@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0032",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definition of residueTestMean in OppositeBiasTransfer.lean. I also read the Mathlib lemmas div_le_one_of_le₀, Nat.abs_cast and Finset.abs_sum_le_sum_abs. The first finding drops a case split that the lemma div_le_one_of_le₀ makes unnecessary. The second finding is that two nlinarith calls look replaceable by linarith. I am less sure of that one because I could not run Lean. Linarith's preprocessing treats nonlinear monomials as atoms, so I expect both replacements to work, but neither was compiled. I found nothing worth flagging in weighted_bias_threshold's sum manipulation or in the rest of biasedPrimeBand_weight.",
+  "findings": [
+    {
+      "declaration": "OAI.Ostmann.residueTestMean_abs_le_one",
+      "start_line": 13,
+      "end_line": 23,
+      "excerpt": "  by_cases hs : S.Nonempty\n  · have hc : (0 : ℝ) < S.card := by exact_mod_cast hs.card_pos",
+      "problem": "The proof splits on S.Nonempty only to get a strictly positive card, so it can use `div_le_one`. For the empty case it then runs a separate `simp`. Mathlib's `div_le_one_of_le₀` needs only `0 ≤ b`, and `(S.card : ℝ)` is always nonnegative. The split, the positivity cast and the empty-case `simp` are therefore all unnecessary.",
+      "proposed_change": "Replace the body with one case-free argument:\n```\n  rw [residueTestMean, abs_div, Nat.abs_cast]\n  refine div_le_one_of_le₀ ?_ (Nat.cast_nonneg _)\n  calc\n    |∑ r ∈ S, f r| ≤ ∑ r ∈ S, |f r| := Finset.abs_sum_le_sum_abs _ _\n    _ ≤ ∑ _r ∈ S, (1 : ℝ) := Finset.sum_le_sum hf\n    _ = S.card := by simp\n```\nThe triangle-inequality calc is kept as it is, so the key idea stays visible. This has not been compiled.",
+      "benefit": "The proof is shorter, with no case split and no `exact_mod_cast`. A reader sees the whole argument at once: |mean| ≤ (∑|f|)/card ≤ 1. The empty-set degenerate case, where division by zero gives 0, is covered by `0 ≤ card` and needs no special treatment.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/GroupWithZero/Basic.lean",
+          "declaration": "div_le_one_of_le₀",
+          "excerpt": "lemma div_le_one_of_le₀ [ZeroLEOneClass G₀] (h : a ≤ b) (hb : 0 ≤ b) : a / b ≤ 1 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/OppositeBiasTransfer.lean",
+          "declaration": "residueTestMean",
+          "excerpt": "(∑ x ∈ S, f x) / S.card"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/Ring/Abs.lean",
+          "declaration": "Nat.abs_cast (used in this file)",
+          "excerpt": "Nat.abs_cast"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.Ostmann.weighted_bias_threshold and OAI.Ostmann.biasedPrimeBand_weight",
+      "start_line": 32,
+      "end_line": 32,
+      "excerpt": "    · nlinarith [mul_le_mul_of_nonneg_left (hb p hp) (hw p hp), mul_nonneg hδ (hw p hp)]",
+      "problem": "Both `nlinarith` calls (line 32, and line 57 of `biasedPrimeBand_weight`) are given every product they need as explicit hint terms. Line 32 gets `w p * b p ≤ w p * 1` and `0 ≤ δ * w p`. Line 57 gets `0 ≤ δ * (2*T - ∑ …)`. After those hints the goals are linear in the monomials `w p * b p`, `δ * w p`, `δ * T` and `δ * ∑ …`. Linarith treats these monomials as atoms, so I expect plain `linarith` to close them. The `nlinarith` calls suggest a degree-2 search is needed, which is misleading. The sibling branch on line 34 already uses `linarith` in the same way.",
+      "proposed_change": "Line 32: `· linarith [mul_le_mul_of_nonneg_left (hb p hp) (hw p hp), mul_nonneg hδ (hw p hp)]`\nLine 57: `linarith only [hh, hbias, mul_nonneg hδ (sub_nonneg.mpr htotal)]`\nI could not compile these. If linarith's preprocessing does not close either goal, keep `nlinarith` for that call.",
+      "benefit": "The tactic names the real argument, which is linear arithmetic after the product hints. Linarith is also faster and more predictable than the Positivstellensatz-style products that nlinarith adds. The two branches on lines 32 and 34 then read the same way.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Quadratic/QuadraticBiasSelection.lean",
+          "declaration": "weighted_bias_threshold (sibling branch)",
+          "excerpt": "      linarith"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Quadratic/QuadraticBiasSelection.lean",
+          "declaration": "biasedPrimeBand_weight",
+          "excerpt": "  nlinarith only [hh, hbias, mul_nonneg hδ (sub_nonneg.mpr htotal)]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 18567,
+    "cache_read_input_tokens": 77738,
+    "output_tokens": 6131,
+    "output_tokens_details": {
+      "thinking_tokens": 2330
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18567,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2406,
+        "cache_read_input_tokens": 18986,
+        "cache_creation_input_tokens": 3624,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3624
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1433758,
+  "duration_ms": 43541,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T07:41:06",
+  "unit": "file",
+  "source_sha256": "6e9f334a6c5502b37aac22d7b014779bb222846fc720f09203ccd65a407404b6",
+  "rubric": "readable-proof-simplification"
+}

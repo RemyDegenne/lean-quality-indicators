@@ -1,0 +1,64 @@
+{
+  "id": "openai-math-file-0027",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Reviewed all declarations and proofs in lines 1–384, relevant Mathlib coefficient and finite-presentation APIs, and downstream model uses. The repeated specialization boilerplate was not reported separately because it mainly wraps existing APIs. The proposed extraction below is untested.",
+  "findings": [
+    {
+      "declaration": "countable_polynomial_model; countable_model_with_elements",
+      "excerpt": "  have hI : (I.comap (MvPolynomial.map S.subtype)).map (MvPolynomial.map S.subtype) = I := by\n    apply le_antisymm Ideal.map_comap_le\n    rw [← hq]\n    apply Ideal.span_le.mpr\n    intro p hp",
+      "problem": "Lines 292–313 and 338–365 repeat the coefficient-field descent argument: generate a countable subfield containing the required coefficients, lift polynomial generators, prove that extending the contracted ideal recovers I, and construct the base-change equivalence. The second proof adds coefficients of representatives of the marked elements, but otherwise repeats the same mathematical construction.",
+      "proposed_change": "Extract a shared coefficient-descent lemma before both proofs. A proposed statement, using the current imports, is:\n\nprivate lemma countable_presentation_coefficients\n    {K : Type} [Field K] {n : ℕ}\n    (I : Ideal (MvPolynomial (Fin n) K))\n    (q : Finset (MvPolynomial (Fin n) K))\n    (hq : Ideal.span (q : Set (MvPolynomial (Fin n) K)) = I)\n    (d : Finset K) (hd : q.biUnion MvPolynomial.coeffs ⊆ d)\n    (c : Set K) (hc : c.Countable) :\n    ∃ S : Subfield K, Countable S ∧ c ⊆ S ∧\n      (∀ f : MvPolynomial (Fin n) K, f.coeffs ⊆ d →\n        ∃ f₀ : MvPolynomial (Fin n) S,\n          MvPolynomial.map S.subtype f₀ = f) ∧\n      (I.comap (MvPolynomial.map S.subtype)).map\n        (MvPolynomial.map S.subtype) = I\n\nProof sketch: take S = Subfield.closure (c ∪ ↑d), establish countability with cardinalMk_closure_le_max, and lift polynomials using mem_range_map_iff_coeffs_subset. For the ideal equality, use map_comap_le in one direction; in the other, rewrite I using hq and lift every generator using hd. This extracts the combined descent argument, not merely its final equivalence wrapper.\n\nIn countable_polynomial_model, retain the finite-presentation setup and replace lines 292–311 with:\n\nlet d : Finset K := q.biUnion MvPolynomial.coeffs\nobtain ⟨S, hcount, hcS, _, hI⟩ :=\n  countable_presentation_coefficients I q hq d\n    (by intro x hx; exact hx) c hc\nrefine ⟨S, hcount, hcS, n,\n  I.comap (MvPolynomial.map S.subtype), ?_⟩\n\nThen retain the equivalence construction at lines 312–313.\n\nIn countable_model_with_elements, retain the chosen representatives p and the existing definition of d, then replace lines 340–358 with:\n\nobtain ⟨S, hcount, hcS, lift_poly, hI⟩ :=\n  countable_presentation_coefficients I q hq d\n    (by intro x hx; exact Finset.mem_union_left _ hx) c hc\nlet I₀ := I.comap (MvPolynomial.map S.subtype)\n\nThe existing hp₀ proof uses the returned lift_poly directly; hI supplies the equality needed by the existing e₀ construction. Use hcS in the final existential instead of reproving containment. Retain the marked-element verification at lines 368–375. No new imports or domain assumptions are needed. Empty generator sets, n = 0, k = 0, and the zero algebra remain permitted.",
+      "benefit": "Both proofs expose their genuine difference—whether extra element coefficients must be included—while countability, polynomial lifting, and ideal descent are maintained in one place. Keeping the existing equivalence and marked-element verification avoids introducing an additional compatibility API.",
+      "start_line": 292,
+      "end_line": 313,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_polynomial_model",
+          "excerpt": "  let S := Subfield.closure (c ∪ (d : Set K))\n  have hcount : Countable S := Cardinal.mk_le_aleph0_iff.mp\n    ((Subfield.cardinalMk_closure_le_max _).trans (max_le\n      ((hc.union d.countable_toSet).le_aleph0) le_rfl))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_model_with_elements",
+          "excerpt": "  have hI : I₀.map (MvPolynomial.map S.subtype) = I := by\n    apply le_antisymm Ideal.map_comap_le\n    rw [← hq]\n    apply Ideal.span_le.mpr\n    intro f hf\n    obtain ⟨f₀, rfl⟩ := lift_poly f (fun x hx => Finset.mem_union_left _\n      (Finset.mem_biUnion.mpr ⟨f, hf, hx⟩))\n    apply Ideal.mem_map_of_mem\n    exact Ideal.subset_span hf"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_model_with_elements",
+          "excerpt": "  have lift_poly (f : MvPolynomial (Fin n) K) (hf : f.coeffs ⊆ d) :\n      ∃ f₀ : MvPolynomial (Fin n) S, MvPolynomial.map S.subtype f₀ = f := by\n    apply MvPolynomial.mem_range_map_iff_coeffs_subset.mpr\n    intro x hx\n    exact ⟨⟨x, Subfield.subset_closure (Or.inr (hf hx))⟩, rfl⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/MvPolynomial/Eval.lean",
+          "declaration": "MvPolynomial.mem_range_map_iff_coeffs_subset",
+          "excerpt": "lemma mem_range_map_iff_coeffs_subset {f : R →+* S₁} {x : MvPolynomial σ S₁} :\n    x ∈ Set.range (MvPolynomial.map f) ↔ (x.coeffs : Set _) ⊆ .range f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/SetTheory/Cardinal/Subfield.lean",
+          "declaration": "Subfield.cardinalMk_closure_le_max",
+          "excerpt": "lemma cardinalMk_closure_le_max : #(closure s) ≤ max #s ℵ₀ :="
+        }
+      ]
+    }
+  ],
+  "backend": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "cost_usd": null,
+  "duration_ms": 184119,
+  "turns": 1,
+  "attempts": 1,
+  "usage": {
+    "input_tokens": 229314,
+    "cached_input_tokens": 192768,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 5655,
+    "reasoning_output_tokens": 2715
+  },
+  "prompt_sha256": "cf99def8a55561be27db8448e2cb724eae959d5f6c22eb72acdf2f5d8d58919d",
+  "judged": "2026-10-21T08:37:43+00:00",
+  "unit": "file",
+  "source_sha256": "a385fec0279b02bb275f224192cc0e8ba7a096c4bc1e082be18e433746a5ff7e",
+  "rubric": "repeated-proof-machinery"
+}

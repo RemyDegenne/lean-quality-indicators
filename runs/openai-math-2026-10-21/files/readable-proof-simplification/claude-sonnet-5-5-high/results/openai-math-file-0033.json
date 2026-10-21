@@ -1,0 +1,112 @@
+{
+  "id": "openai-math-file-0033",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the lemmas it relies on: phaseAt_regulator_eq_and_le_one in MultipointPhaseRegulator.lean, cutoff_radius_factor_thresholds in MultipointRadiusStatus.lean, and the uses of factorSwitchList in MultipointActualExpectation.lean. I also checked List.mem_map_of_mem, List.mem_cons_of_mem and List.mem_cons_self in Lean core. The remaining proofs look reasonable: the fin_cases/norm_num proofs of factorRadiusLevel_nonneg and factorRadiusLevel_monotone, the three-way split in actualFactorStops_regular, actual_at, and the final computation in actual_phase_switch_clock. I found no worthwhile simplification there. Nothing was compiled. The replacements are untested, and the first one relies on `rw [← he] at hh` matching syntactically after `dsimp only`. In the second finding, `List.mem_map_of_mem` is a core lemma I confirmed by grep. The third finding (factorSwitchList_zero) is minor.",
+  "findings": [
+    {
+      "declaration": "actual_phase_regulator",
+      "start_line": 118,
+      "end_line": 133,
+      "excerpt": "  · intro ht\n    rw [he]\n    apply le_of_not_gt\n    intro h\n    exact (not_le_of_gt ht) (hh.2.1.mpr h.le)",
+      "problem": "All four side-goal bullets repeat `rw [he]` just to turn `S.Q t ω i` into `logLoewnerCoordinates (G ω) (z i) t`, the form used in the threshold facts `hh`. The two `hbefore`/`hend` bullets also use a four-line `apply le_of_not_gt; intro h; exact (not_le_of_gt ht) (…mpr h.le)` detour. This is a plain contrapositive of an iff: from `t < τ` one gets `¬ τ ≤ t`, hence `¬ V/2 ≤ v`, hence `v < V/2`. The repetition makes the proof look longer than the idea behind it.",
+      "proposed_change": "Rewrite `hh` once after `dsimp only at hh ⊢`, using `rw [← he] at hh`, so that it speaks about `S.Q t ω i`. Then the bullets reduce to:\n  · exact hh.1.mp\n  · exact fun ht => (not_le.mp (hh.2.1.not.mp ht.not_ge)).le\n  · exact hh.2.1.mp\n  · exact fun ht => (not_le.mp (hh.2.2.1.not.mp ht.not_ge)).le\nThe `.not` and `not_le` steps state the contrapositive reasoning directly. If `not_le.mp` is thought too terse, `fun ht => le_of_lt (lt_of_not_ge fun h => ht.not_ge (hh.2.1.mpr h))` is an equally short variant. This is untested.",
+      "benefit": "The single rewrite makes it clear that the same coordinate identity is used throughout, and each bullet becomes one line. A reader sees directly that the two `≤` facts come from the contrapositive of the `τ ≤ t ↔ threshold ≤ v` iff, and that the other two are the forward direction. This removes about 12 lines of repeated `rw [he]` and `intro h` boilerplate without hiding the argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointPhaseRegulator.lean",
+          "declaration": "phaseAt_regulator_eq_and_le_one",
+          "excerpt": "(hbefore : t < ρ (i,1) ω → logFactorClock κ z-a ≤ U/2)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointRadiusStatus.lean",
+          "declaration": "cutoff_radius_factor_thresholds",
+          "excerpt": "(τ ((u₀+u₂)/2) ≤ t ↔ V/2 ≤ v)"
+        }
+      ]
+    },
+    {
+      "declaration": "factorSwitchList_mem",
+      "start_line": 44,
+      "end_line": 44,
+      "excerpt": "exact List.mem_cons_of_mem _ (List.mem_map.mpr ⟨k,Finset.mem_toList.mpr (Finset.mem_univ _),rfl⟩)",
+      "problem": "The proof builds the existential witness for `List.mem_map` by hand, with `k` and `rfl`, even though the core lemma `List.mem_map_of_mem` proves exactly `f a ∈ map f l` from `a ∈ l`. The `by exact` wrapper is also redundant for a term-mode proof.",
+      "proposed_change": "Use the term proof:\n  List.mem_cons_of_mem _ (List.mem_map_of_mem (Finset.mem_toList.mpr (Finset.mem_univ k)))\nThis is untested. The lemma statement is `theorem mem_map_of_mem {f : α → β} (h : a ∈ l) : f a ∈ map f l`.",
+      "benefit": "The proof now follows the structure of `factorSwitchList` directly: `ρ k` is in the mapped list because `k` is in `univ.toList`, and the list is `0 :: map ρ …`. It no longer needs an anonymous-constructor existential with `rfl`.",
+      "evidence": [
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.34.1/src/lean/Init/Data/List/Lemmas.lean",
+          "declaration": "List.mem_map_of_mem",
+          "excerpt": "theorem mem_map_of_mem {f : α → β} (h : a ∈ l) : f a ∈ map f l := mem_map.2 ⟨_, h, rfl⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointActualPhases.lean",
+          "declaration": "factorSwitchList",
+          "excerpt": "(fun _ => 0) :: (Finset.univ.toList.map ρ)"
+        }
+      ]
+    },
+    {
+      "declaration": "factorSwitchList_zero",
+      "start_line": 40,
+      "end_line": 40,
+      "excerpt": "simp only [factorSwitchList, List.mem_cons, true_or]",
+      "problem": "The membership of the head of a cons list is proved by unfolding the definition and running a simp set. The statement is exactly `List.mem_cons_self` after unfolding `factorSwitchList`, so the simp call is more indirect than needed.",
+      "proposed_change": "Replace the proof with `List.mem_cons_self`, wrapped in `by unfold factorSwitchList; exact List.mem_cons_self` if the elaborator does not unfold the definition itself. This is untested.",
+      "benefit": "It names the one fact being used, that the head belongs to its own list, instead of a simp-lemma list. It also parallels the term-mode style of the neighbouring `factorSwitchList_mem`. This is a minor improvement.",
+      "evidence": [
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.34.1/src/lean/Init/Data/List/Lemmas.lean",
+          "declaration": "List.mem_cons_self",
+          "excerpt": "theorem mem_cons_self {a : α} {l : List α} : a ∈ a :: l := .head .."
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 20026,
+    "cache_read_input_tokens": 38278,
+    "output_tokens": 6201,
+    "output_tokens_details": {
+      "thinking_tokens": 2953
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20026,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3091,
+        "cache_read_input_tokens": 19705,
+        "cache_creation_input_tokens": 4364,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4364
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1459538,
+  "duration_ms": 41773,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T07:44:22",
+  "unit": "file",
+  "source_sha256": "04cc465baec7ccb4d9f99e2b70e311463fb127cd3e4c8cd1343832651acd71b6",
+  "rubric": "readable-proof-simplification"
+}

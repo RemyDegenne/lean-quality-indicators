@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0021",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 313 lines of the target file, the declaration list of SphereCutoffs.lean (no `@[simp]` lemmas for the ambient cutoff), and both downstream users: SphereAngularTransport.lean and ConcreteInputRegularity.lean (lines 135–187).\n\nThe file has no `@[simp]` lemmas. It also has no unfolding or coordinate lemmas for its four definitions (`horizontal`, `phase`, `angularAmbient`, `angular`). Every proof, in this file and downstream, either unfolds `horizontal` inside `simp`/`simpa` or uses `change` to reach the definitional body of `angular`. I report two concrete gaps.\n\nOther things I checked:\n- I found no rewrite cycles or competing rules, because the file declares no simp rules.\n- The `angularAmbient_eq_zero_of_low/high` lemmas need side conditions. They are used by name, so a simp attribute is not justified.\n- `norm_phase_eq_one` needs the hypothesis `horizontal x ≠ 0`. It is used by name in `norm_fderiv_angularAmbient_le_at`, so I did not recommend a simp attribute.\n- `phase_eq_normalize` points from the local definition to the library notion. That is reasonable as a rewrite lemma, and it is not tagged simp.\n\nRemaining uncertainty: I cannot run Lean. I have not compiled the proposed lemmas or the simplified proofs. I expect the proofs to be `simp [horizontal]` or `rfl`, based on how the current proofs already close.",
+  "findings": [
+    {
+      "declaration": "horizontal (with uses in sphere_mem_regularDomain and horizontal_ne_zero_on_phaseBelt)",
+      "start_line": 11,
+      "end_line": 132,
+      "excerpt": "def horizontal (x : SphereAmbient) : ℂ := (x 0 : ℂ) + (x 1 : ℂ) * Complex.I",
+      "problem": "`horizontal` has no coordinate simp lemmas. To read off `re`, `im` or the zero condition, every proof unfolds the definition and relies on simp to normalise `((x 0 : ℂ) + (x 1 : ℂ) * I).re`.\n- In this file, `simpa [horizontal] using congrArg Complex.re hh` and the matching `Complex.im` line appear twice: lines 85–86 and 131–132.\n- Downstream, SphereAngularTransport uses `Complex.ext <;> simp [horizontal, ...]`.\n- ConcreteInputRegularity unfolds `SphereAngularInput.horizontal` with `simp only` and with `simp`.\nThe missing lemmas also lead to duplication: two different files prove a theorem named `horizontal_sphereOfComplex`, and each unfolds `horizontal` by hand.",
+      "proposed_change": "Add the canonical projection lemmas just after the definition:\n```lean\n@[simp] theorem horizontal_re (x : SphereAmbient) : (horizontal x).re = x 0 := by simp [horizontal]\n@[simp] theorem horizontal_im (x : SphereAmbient) : (horizontal x).im = x 1 := by simp [horizontal]\ntheorem horizontal_eq_zero_iff {x : SphereAmbient} : horizontal x = 0 ↔ x 0 = 0 ∧ x 1 = 0 := by\n  simp [Complex.ext_iff]\n```\nThen replace the four `simpa [horizontal] using congrArg Complex.re/im hh` lines with `obtain ⟨h0, h1⟩ := horizontal_eq_zero_iff.mp hh`. Downstream, `Complex.ext <;> simp [Complex.real_smul, ...]` would no longer need to unfold `horizontal`. The two simp lemmas only project a constructor-like expression to its components, so they terminate and do not compete with Mathlib's `Complex.add_re` and `Complex.ofReal_re` rules.",
+      "benefit": "Simp gets a stable normal form (`x 0` and `x 1`) for the components of `horizontal x`, so the definition can stay folded. The repeated four-step zero-extraction becomes one lemma application. Downstream proofs that compute `horizontal` on concrete points become shorter and less fragile.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "horizontal_ne_zero_on_phaseBelt",
+          "excerpt": "have h0 : x 0 = 0 := by simpa [horizontal] using congrArg Complex.re hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularTransport.lean",
+          "declaration": "Problem340.SphereAngularInput.horizontal_sphereOfComplex",
+          "excerpt": "simp [horizontal, Complex.real_smul, div_eq_mul_inv] <;> ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/ConcreteInputRegularity.lean",
+          "declaration": "phase_complexSphereHomeomorph",
+          "excerpt": "simp [SphereAngularInput.phase, SphereAngularInput.horizontal,"
+        }
+      ]
+    },
+    {
+      "declaration": "angular",
+      "start_line": 15,
+      "end_line": 18,
+      "excerpt": "def angular (k : ℕ) (x : StandardSphere2) : ℂ := angularAmbient k x.1",
+      "problem": "`angular` and `angularAmbient` have no stated unfolding lemma. Downstream users therefore reach the product form `(preparationCutoff x : ℂ) * phase x.1 ^ k` with `change`, writing out the target term by hand three times:\n- `angular_sphereOfComplex`\n- `angular_chartNorthPole`\n- `angular_modelEmbedding`, which first `change`s to `angularAmbient` and then `rw`s with the definition.\nThese `change` steps silently depend on the definitional chain `angular → angularAmbient → preparationCutoffAmbient`, with `SphereCutoffs.preparationCutoff x` defeq to `preparationCutoffAmbient x.1`. That chain is not exposed as a rewrite rule.",
+      "proposed_change": "Add rewrite lemmas, without the simp attribute so that `angular` is not unfolded eagerly:\n```lean\ntheorem angularAmbient_apply (k : ℕ) (x : SphereAmbient) :\n    angularAmbient k x = (SphereCutoffs.preparationCutoffAmbient x : ℂ) * phase x ^ k := rfl\ntheorem angular_apply (k : ℕ) (x : StandardSphere2) :\n    angular k x = (SphereCutoffs.preparationCutoff x : ℂ) * phase x.1 ^ k := rfl\n```\nDownstream, `rw [angular_apply, SphereCutoffs.preparationCutoff_sphereOfComplex, phase_sphereOfComplex]` would replace the `change` in `angular_sphereOfComplex`, and `simp [angular_apply]` would replace the `change` in `angular_chartNorthPole`.",
+      "benefit": "Users get a named, stable rewrite to the cutoff-times-phase form, stated with the sphere-level `preparationCutoff` that the cutoff lemmas use. Proofs no longer depend on restating defeq goals with `change`, which breaks silently if either definition is refactored.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularTransport.lean",
+          "declaration": "Problem340.SphereAngularInput.angular_sphereOfComplex",
+          "excerpt": "change (SphereCutoffs.preparationCutoff (sphereOfComplex z) : ℂ) *\n    phase (sphereOfComplex z).1 ^ k = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularTransport.lean",
+          "declaration": "Problem340.SphereAngularInput.angular_chartNorthPole",
+          "excerpt": "change (SphereCutoffs.preparationCutoff chartNorthPole : ℂ) * _ = 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/ConcreteInputRegularity.lean",
+          "declaration": "angular_modelEmbedding",
+          "excerpt": "change SphereAngularInput.angularAmbient _ (complexSphereHomeomorph z).val = _"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 32291,
+    "cache_read_input_tokens": 133049,
+    "output_tokens": 6289,
+    "output_tokens_details": {
+      "thinking_tokens": 2160
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32291,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3351,
+        "cache_read_input_tokens": 31202,
+        "cache_creation_input_tokens": 5102,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5102
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4107658,
+  "duration_ms": 56097,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T07:39:35",
+  "unit": "file",
+  "source_sha256": "b27a02fe74022900cd863f97f1dd19f2a1f9e9ec78e12ae1cd22de3d650d8e7e",
+  "rubric": "simp-interface"
+}

@@ -1,0 +1,134 @@
+{
+  "id": "openai-math-file-0030",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and the definition/statement of planeForm_nonneg_on_hull in Moments.lean, and checked Mathlib's exists_nat_pow_near. Candidate replacements were not compiled. I did not flag the many `nlinarith only` calls for inequalities, since replacing them would be taste or uncertain. The linear_combination suggestions assume `ring` treats the `let`-bound a₀ and W as atoms, as the existing `ring` call on line 60 already does. The `exists_odd_integer_between` suggestion is the least certain: it assumes linarith will match `⌊(lo+1)/2⌋` casts after push_cast.",
+  "findings": [
+    {
+      "declaration": "primitive_direction_coordinates (heq inside hintlen)",
+      "start_line": 56,
+      "end_line": 62,
+      "excerpt": "        _ = d * (j : ℝ) * ((W - a₀) * (1 + T)) := by ring\n        _ = _ := by rw [hgap]",
+      "problem": "The identity (d(R - j a₀) - d(R - j W))(1+T) = d j W is proved by a two-step calc. The first step is `ring`, and the second is `rw [hgap]` after a hand-written factorisation. The calc only restates that the goal is d·j times hgap.",
+      "proposed_change": "Replace the calc with a single step that names the hypothesis it uses:\n    have heq : (d * (R - (j : ℝ) * a₀) - d * (R - (j : ℝ) * W)) * (1 + T) = d * (j : ℝ) * W := by\n      linear_combination (d * (j : ℝ)) * hgap",
+      "benefit": "The proof drops from about 6 lines to 2. The reader sees directly that the identity is d·j times the gap identity `hgap`, and no longer has to check the intermediate factored form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/PrimitiveDirections.lean",
+          "declaration": "primitive_direction_coordinates",
+          "excerpt": "have hgap : (W - a₀) * (1 + T) = W := by nlinarith only [ha₀]"
+        }
+      ]
+    },
+    {
+      "declaration": "primitive_direction_coordinates (hgap)",
+      "start_line": 49,
+      "end_line": 49,
+      "excerpt": "have hgap : (W - a₀) * (1 + T) = W := by nlinarith only [ha₀]",
+      "problem": "An equation that follows linearly from ha₀ is proved with `nlinarith`, a search tactic aimed at inequalities. The reader cannot tell which combination of hypotheses is used.",
+      "proposed_change": "Use `by linear_combination (-1 : ℝ) * ha₀`. The goal's lhs minus rhs is W·T − a₀(1+T), which is exactly −(a₀(1+T) − W·T). The same replacement works for the equation `htb` at lines 96-99, using `haeq` after the division is cleared, though that one needs more care.",
+      "benefit": "The certificate is explicit: the equation is just −1 times ha₀. This is cheaper than a nonlinear arithmetic search and is checked by `ring`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/PrimitiveDirections.lean",
+          "declaration": "primitive_direction_coordinates",
+          "excerpt": "have ha₀ : a₀ * (1 + T) = W * T := div_mul_cancel₀ _ hTp.ne'"
+        }
+      ]
+    },
+    {
+      "declaration": "primitive_direction_coordinates (hR / htwoW)",
+      "start_line": 30,
+      "end_line": 31,
+      "excerpt": "  have hR : 0 < R := lt_of_lt_of_le (by positivity : 0 < 2 * W) hR1\n  have htwoW : 0 < 2 * W := by positivity",
+      "problem": "The fact `0 < 2 * W` is proved twice by positivity: once inline for hR and again as the named hypothesis htwoW. The second proof exists only because the first is anonymous.",
+      "proposed_change": "Swap the two lines and reuse the name:\n  have htwoW : 0 < 2 * W := by positivity\n  have hR : 0 < R := htwoW.trans_le hR1",
+      "benefit": "This removes the duplicated positivity call and the type ascription. The reader sees that R is positive because it is at least 2W, which is positive.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/PrimitiveDirections.lean",
+          "declaration": "primitive_direction_coordinates",
+          "excerpt": "have hx : 1 ≤ R / (2 * W) := (le_div_iff₀ htwoW).mpr (by simpa using hR1)"
+        }
+      ]
+    },
+    {
+      "declaration": "compressedTriangle_projection_endpoints (hmin, hmax)",
+      "start_line": 127,
+      "end_line": 137,
+      "excerpt": "    have hh := planeForm_nonneg_on_hull (-(j : ℝ)) (i : ℝ)",
+      "problem": "In both hmin and hmax, the partially applied lemma is bound to `hh` and then applied once to a proof and to `p hp`. This extra name carries no information. The closing `dsimp [planeForm, directionProjection] at *` also rewrites every hypothesis in the context, although only `hy` and the goal are needed.",
+      "proposed_change": "Inline the intermediate:\n    have hy := planeForm_nonneg_on_hull (-(j : ℝ)) (i : ℝ) ((j : ℝ) * (d * H * t / (1 + t)))\n      {(-(d * H / (1 + t)), 0), (d * H * t / (1 + t), 0), (0, 1 / d)} (by ...) p hp\n    dsimp [planeForm, directionProjection] at hy ⊢\n    linarith\nDo the same in hmax (lines 140-151).",
+      "benefit": "This removes two redundant bindings. The vertex check and the evaluation at p then read as one application of the lemma. Restricting dsimp to `hy ⊢` makes it clear which facts are being unfolded.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/Moments.lean",
+          "declaration": "planeForm_nonneg_on_hull",
+          "excerpt": "∀ p ∈ convexHull ℝ s, 0 ≤ planeForm a b c p"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_odd_integer_between",
+      "start_line": 11,
+      "end_line": 20,
+      "excerpt": "  let k : ℤ := ⌊(lo + 1) / 2⌋",
+      "problem": "k is introduced with `let`, so each branch needs a `change ... at h` to restate the floor lemma in terms of `(k : ℝ)`. These two `change` lines only manage the let-binding and do not advance the argument.",
+      "proposed_change": "Drop the `let` and the two `change` lines, and witness with the floor directly:\n  refine ⟨2 * ⌊(lo + 1) / 2⌋ + 1, odd_two_mul_add_one _, ?_, ?_⟩\n  · have h := Int.lt_floor_add_one ((lo + 1) / 2)\n    push_cast\n    linarith\n  · have h := Int.floor_le ((lo + 1) / 2)\n    push_cast\n    linarith\nAlternatively keep k via `obtain ⟨k, hk⟩ : ∃ k : ℤ, k = ⌊(lo+1)/2⌋ := ⟨_, rfl⟩`. The point is only to avoid the defeq-restating `change` steps.",
+      "benefit": "Without the let-bound variable, the hypotheses from `Int.lt_floor_add_one` and `Int.floor_le` match the goal syntactically. The proof then reads as the two floor inequalities followed by linear arithmetic.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/PrimitiveDirections.lean",
+          "declaration": "exists_odd_integer_between",
+          "excerpt": "change (k : ℝ) ≤ (lo + 1) / 2 at h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 23026,
+    "cache_read_input_tokens": 64911,
+    "output_tokens": 6618,
+    "output_tokens_details": {
+      "thinking_tokens": 2759
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23026,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3134,
+        "cache_read_input_tokens": 25977,
+        "cache_creation_input_tokens": 1092,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1092
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.16479110000000002,
+  "duration_ms": 58840,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T07:33:56",
+  "unit": "file",
+  "source_sha256": "f7e5ff2088e17ef72d00bed06f5c76e1a800bf2159d0a84d2aab5f6de98198c1",
+  "rubric": "readable-proof-simplification"
+}

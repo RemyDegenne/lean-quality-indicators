@@ -237,19 +237,29 @@ def run_model(name, limit, worker=0, jobs=1):
             if destination.exists():
                 continue
             source_dirs(row, "pinned")
-            if unit == "file":
-                judge.validate_verdict = file_audits.validate
-                judge.build_message = file_audits.build_message
-                result = file_audits.review(row, audit, run, label, args)
-            else:
-                judge.validate_verdict = duplicates_judge.validate if audit.startswith("duplicates") else ORIGINAL_VALIDATE
-                judge.build_message = file_audits.original_build_message
-                duplicates_judge.context.sample = row
-                try:
-                    result = judge.judge_one(row, run, ind, directory / "results", args)
-                    save(destination, result)
-                finally:
-                    del duplicates_judge.context.sample
+            try:
+                if unit == "file":
+                    judge.validate_verdict = file_audits.validate
+                    judge.build_message = file_audits.build_message
+                    result = file_audits.review(row, audit, run, label, args)
+                else:
+                    judge.validate_verdict = duplicates_judge.validate if audit.startswith("duplicates") else ORIGINAL_VALIDATE
+                    judge.build_message = file_audits.original_build_message
+                    duplicates_judge.context.sample = row
+                    try:
+                        result = judge.judge_one(row, run, ind, directory / "results", args)
+                        save(destination, result)
+                    finally:
+                        del duplicates_judge.context.sample
+            except RuntimeError as error:
+                if not str(error).startswith("Invalid verdict:"):
+                    raise  # Infrastructure or source-access failures still stop the worker.
+                failure = {"utc": utc(), "audit": audit, "id": row["id"], "error": str(error)}
+                save(directory / "results" / f"{row['id']}.failure.json", failure)
+                print(json.dumps({"rejected": failure}), flush=True)
+                model_status(name, limit, jobs=jobs, latest_rejection=failure)
+                continue  # Leave this target unanswered; finish other selected targets.
+            (directory / "results" / f"{row['id']}.failure.json").unlink(missing_ok=True)
             model_status(name, limit, jobs=jobs, latest_audit=audit, latest_id=row["id"])
             print(json.dumps({"audit": audit, "id": row["id"], "verdict": result["verdict"]}), flush=True)
             time.sleep(5)

@@ -84,3 +84,10 @@ for each theorem audit and 10 files per library for each file audit (1,440 judgm
 The endpoint has flat rates below DeepSeek’s own off-peak prices, so no off-peak wait is needed.
 A persistent $20 inference budget reserves conservative peak-rate input and maximum
 output costs before each request; uncertain requests retain their reservation.
+
+DeepSeek requests are spaced at least ten seconds apart. A 429 doubles the spacing
+(up to two minutes) and increases the cooldown (five to thirty minutes); a request
+gets at most three attempts. Resuming a worker preserves previous attempt transcripts
+and their expenditure. Invalid file evidence never becomes an accepted judgment:
+missing evidence files are retryable validation failures, and targets that exhaust
+validation retries remain unanswered while the worker continues other targets.

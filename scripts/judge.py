@@ -147,14 +147,15 @@ def judge_one(sample: dict, run: Path, ind: Path, out: Path, args,
     for d in dirs.values():
         cmd += ["--add-dir", str(d)]
     last_err = None
-    for attempt in range(args.retries + 1):
+    first_attempt = codex_judge.next_attempt(out, sample["id"])
+    for attempt in range(first_attempt, first_attempt + args.retries + 1):
         try:
             p = codex_judge.run_process(cmd, message, cwd, args.timeout)
         except subprocess.TimeoutExpired:
             last_err = f"timeout after {args.timeout}s"
             continue
-        (out / f"{sample['id']}.attempt-{attempt + 1}.transcript.jsonl").write_text(p.stdout)
-        (out / f"{sample['id']}.attempt-{attempt + 1}.stderr.log").write_text(p.stderr)
+        (out / f"{sample['id']}.attempt-{attempt}.transcript.jsonl").write_text(p.stdout)
+        (out / f"{sample['id']}.attempt-{attempt}.stderr.log").write_text(p.stderr)
         events = []
         for line in p.stdout.splitlines():
             try:
@@ -181,7 +182,7 @@ def judge_one(sample: dict, run: Path, ind: Path, out: Path, args,
                "model": args.model, "effort": args.effort,
                "backend": "claude", "usage": raw.get("usage"),
                "cost_usd": raw.get("total_cost_usd"), "duration_ms": raw.get("duration_ms"),
-               "turns": raw.get("num_turns"), "attempts": attempt + 1,
+               "turns": raw.get("num_turns"), "attempts": attempt,
                "judged": datetime.datetime.now().isoformat(timespec="seconds")}
         destination = out / f"{sample['id']}.json"
         temporary = destination.with_suffix(".tmp")

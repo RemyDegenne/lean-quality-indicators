@@ -41,6 +41,11 @@ class EvidenceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 audits.validate(value, self.ind)
 
+    def test_missing_evidence_file_is_rejected_without_uncaught_io_error(self):
+        self.verdict["findings"][0]["evidence"][0]["path"] = str(self.root / "Missing.lean")
+        with self.assertRaisesRegex(ValueError, "Evidence source"):
+            audits.validate(self.verdict, self.ind)
+
     def test_evidence_cannot_escape_allowed_sources(self):
         self.verdict["findings"][0]["evidence"][0]["path"] = "/etc/passwd"
         with self.assertRaises(ValueError):

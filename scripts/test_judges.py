@@ -66,6 +66,14 @@ class SourceTests(unittest.TestCase):
 
 
 class JudgeTests(unittest.TestCase):
+    def test_resumed_attempt_numbers_do_not_overwrite_transcripts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(codex_judge.next_attempt(root, "mathlib-0000"), 1)
+            (root / "mathlib-0000.attempt-3.transcript.jsonl").write_text("first run")
+            (root / "mathlib-0000.attempt-1.transcript.jsonl").write_text("earlier")
+            self.assertEqual(codex_judge.next_attempt(root, "mathlib-0000"), 4)
+
     def test_shared_limit_is_adjustable_without_restarting_sessions(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

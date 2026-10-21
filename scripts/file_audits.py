@@ -95,9 +95,13 @@ def validate(verdict, ind):
         for evidence in finding["evidence"]:
             if not Path(evidence["path"]).is_absolute():
                 raise ValueError("Evidence needs an absolute source path")
-            source = context.sources.path(evidence["path"])
+            try:
+                source = context.sources.path(evidence["path"])
+                source_text = source.read_text()
+            except OSError as error:
+                raise ValueError("Evidence source does not exist or cannot be read") from error
             quotation = normalise(evidence["excerpt"])
-            if not quotation or quotation not in normalise(source.read_text()):
+            if not quotation or quotation not in normalise(source_text):
                 raise ValueError("Evidence quotation not found in cited source")
 
 

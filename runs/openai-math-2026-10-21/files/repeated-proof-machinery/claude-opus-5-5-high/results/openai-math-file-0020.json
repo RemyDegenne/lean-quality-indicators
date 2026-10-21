@@ -1,0 +1,95 @@
+{
+  "id": "openai-math-file-0020",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 152 lines of the target file. I also checked the helper definitions and lemmas it relies on: `restrictSection`, `coefficient`, `endValue_comp`, `coefficient_change` and `end_isIso_iff` in Sheaves/Frames.lean, `tensor_multiply_framed` in Sheaves/TensorDivision.lean, `local_powerSection_coefficient(_unit)` in Sheaves/TensorFrames.lean, and the Mathlib lemmas `associated_mul_unit_right` and `associated_unit_mul_right`.\n\nThe repeated reasoning that matters is the restriction-plus-postcomposition argument, which appears in both `affineCoefficient_iso` and `affineCoefficient_sectionMultiply`. Divisors/SectionTransport.lean already has `restrictSection_postcomp`. I could not show from the sources that the target file imports it: SectionTransport imports SectionChart, and I did not trace the full import closure. So the proposal puts the shared lemma in the target file (or Frames.lean) rather than citing `restrictSection_postcomp` as something the target can already use.\n\nI considered and set aside a second possible pattern: \"`Associated.trans` with `affineCoefficient_change`, then an equality of the form unit × …, then `associated_unit_mul_right`\", which appears in `affineCoefficient_power` and `affineCoefficient_sectionMultiply`. A helper for it would only wrap Mathlib's `associated_unit_mul_right`, so it does not meet the rubric.\n\nThe proposed rewrites have not been compiled. In particular, the `inferInstance` for `IsIso (e.inv ≫ F.map g.hom ≫ f.hom)` should work through the standard `IsIso.comp_isIso` and `Functor.map_isIso` instances, but I have not checked this with Lean.",
+  "findings": [
+    {
+      "declaration": "affineCoefficient_iso / affineCoefficient_sectionMultiply",
+      "start_line": 28,
+      "end_line": 105,
+      "excerpt": "have restrictedComposition : restrictSection U.1.ι (t ≫ multiplication) =\n      restrictSection U.1.ι t ≫ restriction.map multiplication :=\n    (congrArg (fun morphism => unitIso.inv ≫ morphism)\n      (restriction.map_comp t multiplication)).trans (Category.assoc _ _ _).symm",
+      "problem": "Both proofs work out the affine coefficient of a postcomposed section `s ≫ a` by hand, and each repeats the same three steps: (1) unfold `restrictSection` into `unitIso.inv ≫ restriction.map _`; (2) use `restriction.map_comp` and associativity to move `a` past the restriction; (3) compare the coefficient with the one in another frame.\n\nIn `affineCoefficient_iso` (lines 34–50), this takes a 3-step `calc` called `composition` plus a manual `affineCoefficient_change` with the frame `restriction.mapIso g ≪≫ f`. In `affineCoefficient_sectionMultiply` (lines 80–98), it takes `restrictedComposition`, the first two `calc` steps of `he`, and `coefficient_postcompose`.\n\nThe file already states the global form of step (3) as `coefficient_postcompose` (lines 59–64), but it has no affine/restricted version. As a result, each caller rebuilds the restriction functoriality and the `topIso` transport itself, with its own local `restriction`/`unitIso` bindings.",
+      "proposed_change": "Move `coefficient_postcompose` above `affineCoefficient_iso` and add a shared lemma:\n\n```lean\nlemma affineCoefficient_postcomp {M N : X.Modules} (U : X.affineOpens)\n    (e : M.restrict U.1.ι ≅ O U.1.toScheme) (f : N.restrict U.1.ι ≅ O U.1.toScheme)\n    (s : O X ⟶ M) (a : M ⟶ N) :\n    affineCoefficient U f (s ≫ a) = affineCoefficient U e s *\n      U.1.topIso.hom (endValue (e.inv ≫ (Scheme.Modules.restrictFunctor U.1.ι).map a ≫ f.hom)) := by\n  have hr : restrictSection U.1.ι (s ≫ a) =\n      restrictSection U.1.ι s ≫ (Scheme.Modules.restrictFunctor U.1.ι).map a :=\n    (congrArg (fun m => (Scheme.Modules.restrictUnitIso U.1.ι).inv ≫ m)\n      ((Scheme.Modules.restrictFunctor U.1.ι).map_comp s a)).trans (Category.assoc _ _ _).symm\n  unfold affineCoefficient\n  rw [hr, coefficient_postcompose e f, map_mul]\n```\n\nProof sketch: restriction is functorial, then apply `coefficient_postcompose`, then the ring hom `topIso.hom` preserves products.\n\nRewritten use 1, `affineCoefficient_iso` (same hypotheses; `g : M ≅ N`, so `e.inv ≫ F.map g.hom ≫ f.hom` is an isomorphism of `O U`):\n```lean\n  rw [affineCoefficient_postcomp U e f s g.hom]\n  exact associated_mul_unit_right _ _\n    (((end_isIso_iff _).mp inferInstance).map U.1.topIso.hom.hom)\n```\nThis replaces lines 32–51 (`h`, `composition`, `equality`).\n\nRewritten use 2, `affineCoefficient_sectionMultiply`: drop `restrictedComposition`, `unitIso` and the first two `calc` steps of `he`, and state the equality directly at the affine level:\n```lean\n  have equality : affineCoefficient U tensorTrivialization (t ≫ multiplication) = ... :=\n    (affineCoefficient_postcomp U f tensorTrivialization t multiplication).trans (by\n      rw [tensor_multiply_framed L M s U.1 e f, endValue_comp, map_mul]; rfl)\n```\nThe rest of the proof (`associated_unit_middle`) is unchanged. The degenerate cases are unaffected: the lemma is an equation with no nonzero or nonempty hypotheses.",
+      "benefit": "The coefficient of a postcomposed section on an affine chart is the key computation behind both the frame-transport lemma and the multiplicativity lemma. Stating it once makes clear that `affineCoefficient_iso` is just the special case where the postcomposition is an isomorphism, so the coefficient changes by a unit. It also removes about 25 lines of hand-built `Category.assoc`/`congrArg` plumbing and two sets of duplicated local `let` bindings. Later lemmas in the file (e.g. `affineCoefficient_division`) and downstream users that multiply sections by morphisms can reuse the same rewrite instead of re-deriving restriction functoriality.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Divisors/SectionCoefficientOrder.lean",
+          "declaration": "affineCoefficient_iso",
+          "excerpt": "      _ = unitIso.inv ≫ restriction.map (s ≫ g.hom) ≫ f.hom :=\n        congrArg (fun morphism => unitIso.inv ≫ morphism ≫ f.hom)\n          (restriction.map_comp s g.hom).symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Divisors/SectionCoefficientOrder.lean",
+          "declaration": "affineCoefficient_sectionMultiply",
+          "excerpt": "        congrArg (coefficient tensorTrivialization) restrictedComposition\n      _ = coefficient f (restrictSection U.1.ι t) *\n          endValue (f.inv ≫ restriction.map multiplication ≫ tensorTrivialization.hom) :=\n        coefficient_postcompose f tensorTrivialization _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Divisors/SectionCoefficientOrder.lean",
+          "declaration": "coefficient_postcompose",
+          "excerpt": "coefficient f (s ≫ a) = coefficient e s * endValue (e.inv ≫ a ≫ f.hom)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Sheaves/Frames.lean",
+          "declaration": "restrictSection",
+          "excerpt": "(Scheme.Modules.restrictUnitIso φ).inv ≫ (Scheme.Modules.restrictFunctor φ).map s"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Sheaves/Frames.lean",
+          "declaration": "end_isIso_iff",
+          "excerpt": "lemma end_isIso_iff (f : O X ⟶ O X) : IsIso f ↔ IsUnit (endValue f) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/GroupWithZero/Associated.lean",
+          "declaration": "associated_mul_unit_right",
+          "excerpt": "theorem associated_mul_unit_right {N : Type*} [Monoid N] (a u : N) (hu : IsUnit u) :\n    Associated a (a * u) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 28347,
+    "cache_read_input_tokens": 169965,
+    "output_tokens": 7729,
+    "output_tokens_details": {
+      "thinking_tokens": 2576
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28347,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3664,
+        "cache_read_input_tokens": 31033,
+        "cache_creation_input_tokens": 1243,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1243
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.415413,
+  "duration_ms": 69065,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T07:35:10",
+  "unit": "file",
+  "source_sha256": "002f493d9495eff79b4de971d1d6e2b7ecc7dd81cbbbdbc6e4b2ee495d07c4e0",
+  "rubric": "repeated-proof-machinery"
+}

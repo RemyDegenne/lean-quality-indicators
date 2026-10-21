@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0021",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and checked it against Mathlib's `NormedSpace.normalize` (Mathlib/Analysis/Normed/Module/Normalize.lean). I also looked at how `phase` and `horizontal` are used downstream, in SphereAngularTransport.lean and ConcreteInputRegularity.lean.\n\n`horizontal` is a specific coordinate map from ℝ³ to ℂ, and Mathlib has no equivalent, so it is not a finding. `angularAmbient`, `angular`, `regularDomain` and `phaseBelt` are local constructions for this problem and do not compete with anything in Mathlib.\n\nThe only competing concept is `phase`. Its formula is \"(‖v‖ : ℂ)⁻¹ * v\" applied to `horizontal x`. This is pointwise the same as Mathlib's `NormedSpace.normalize`, including the degenerate case: both give 0 when `horizontal x = 0`. The file proves this equality itself in `phase_eq_normalize`, and that lemma exists only so that downstream proofs can use Mathlib's `normalize_smul_of_pos`. Downstream proofs then unfold `NormedSpace.normalize` again with `simp [NormedSpace.normalize, Complex.real_smul, ...]`. This is a recurring conversion cost.\n\nOther `normalize`/`phase` copies exist in the project: AmbientRetraction.normalize and Construction.phase. They are in other files, so I did not report them here.\n\nThe cost is modest: a bridge lemma plus a re-proved unit-norm lemma. The main uncertainty is whether the multiplicative complex formula was chosen deliberately to make the `contDiffAt_phase` proof easier. The file has no documentation suggesting this.",
+  "findings": [
+    {
+      "declaration": "phase (with norm_phase_eq_one, phase_eq_normalize, phase_eq_of_positive_scale)",
+      "start_line": 13,
+      "end_line": 13,
+      "excerpt": "def phase (x : SphereAmbient) : ℂ := (‖horizontal x‖ : ℂ)⁻¹ * horizontal x",
+      "problem": "`phase` re-implements Mathlib's `NormedSpace.normalize` applied to `horizontal x`. It uses a different formula (complex multiplication by a cast inverse instead of real scalar multiplication), but the two agree everywhere, including at 0, where both are 0. Because the definitions are independent, the file has to prove the bridge lemma `phase_eq_normalize` (lines 300–302) by unfolding with `Complex.real_smul` before it can use Mathlib's `normalize_smul_of_pos` in `phase_eq_of_positive_scale`. It also re-proves the unit-norm property in `norm_phase_eq_one` (lines 136–137), which is exactly Mathlib's `NormedSpace.norm_normalize`. Downstream files (SphereAngularTransport, ConcreteInputRegularity) then go through `phase_eq_of_positive_scale` and unfold `NormedSpace.normalize` again with `simp [..., Complex.real_smul, ...]`. So the same value is converted repeatedly between the two representations.",
+      "proposed_change": "Keep the useful name, but define it with Mathlib's operation: `def phase (x : SphereAmbient) : ℂ := NormedSpace.normalize (horizontal x)`. Then `phase_eq_normalize` holds by `rfl` and can be deleted or kept as a `rfl` lemma. `norm_phase_eq_one hx` becomes `NormedSpace.norm_normalize hx`. `phase_eq_of_positive_scale` becomes a one-line `rw [phase, hx, NormedSpace.normalize_smul_of_pos hr]`. `contDiffAt_phase` needs a small adjustment, because the smoothness proof now goes through `‖·‖⁻¹ • ·`. That fits the existing `ContDiffAt.inv`/`smul` lemmas, but I have not compiled it.",
+      "benefit": "The bridge lemma and the duplicated unit-norm proof go away, and `phase` gains Mathlib's whole `normalize` API directly (`normalize_smul_of_pos`, `normalize_neg`, `normalize_eq_zero_iff`, `norm_normalize_eq_one_iff`). Readers also see at once that `phase` is the standard normalisation of the horizontal component, not a new notion.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Module/Normalize.lean",
+          "declaration": "NormedSpace.normalize",
+          "excerpt": "noncomputable def NormedSpace.normalize (x : V) : V := ‖x‖⁻¹ • x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Module/Normalize.lean",
+          "declaration": "NormedSpace.norm_normalize_eq_one_iff",
+          "excerpt": "lemma norm_normalize_eq_one_iff {x : V} : ‖normalize x‖ = 1 ↔ x ≠ 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "OAI.Problem340.SphereAngularInput.phase_eq_normalize",
+          "excerpt": "phase x = NormedSpace.normalize (horizontal x) := by\n  simp [phase, NormedSpace.normalize, Complex.real_smul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularInput.lean",
+          "declaration": "OAI.Problem340.SphereAngularInput.norm_phase_eq_one",
+          "excerpt": "theorem norm_phase_eq_one {x : SphereAmbient} (hx : horizontal x ≠ 0) : ‖phase x‖ = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereAngularTransport.lean",
+          "declaration": "OAI.Problem340.SphereAngularInput.phase_sphereOfComplex",
+          "excerpt": "simp [NormedSpace.normalize, Complex.real_smul, div_eq_mul_inv, mul_comm]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 27374,
+    "cache_read_input_tokens": 100645,
+    "output_tokens": 4757,
+    "output_tokens_details": {
+      "thinking_tokens": 1474
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27374,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2497,
+        "cache_read_input_tokens": 29640,
+        "cache_creation_input_tokens": 1815,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1815
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.334301,
+  "duration_ms": 39957,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T07:37:20",
+  "unit": "file",
+  "source_sha256": "b27a02fe74022900cd863f97f1dd19f2a1f9e9ec78e12ae1cd22de3d650d8e7e",
+  "rubric": "concept-reinvention"
+}

@@ -28,12 +28,19 @@ def run_process(cmd: list[str], message: str, cwd: Path, timeout: int) -> subpro
         return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
+def next_attempt(out: Path, sid: str) -> int:
+    previous = [int(p.name.split(".attempt-", 1)[1].split(".", 1)[0])
+                for p in out.glob(f"{sid}.attempt-*.transcript.jsonl")]
+    return max(previous, default=0) + 1
+
+
 def judge(sample: dict, ind: Path, out: Path, args, cwd: Path,
           dirs: dict[str, Path], message: str) -> dict:
     prompt = (ind / "prompt.md").read_text().replace(
         "with the Read, Grep and Glob tools", "with the sources MCP tools Read, Grep and Glob")
     last_err = None
-    for attempt in range(args.retries + 1):
+    first_attempt = next_attempt(out, sample["id"])
+    for attempt in range(first_attempt, first_attempt + args.retries + 1):
         with tempfile.TemporaryDirectory(prefix="lean-judge-") as tmp:
             tmp = Path(tmp)
             (tmp / "prompt.md").write_text(prompt)
@@ -81,7 +88,7 @@ def judge(sample: dict, ind: Path, out: Path, args, cwd: Path,
                 last_err = f"timeout after {args.timeout}s"
                 continue
             elapsed = round((time.monotonic() - started) * 1000)
-            prefix = out / f"{sample['id']}.attempt-{attempt + 1}"
+            prefix = out / f"{sample['id']}.attempt-{attempt}"
             Path(f"{prefix}.transcript.jsonl").write_text(proc.stdout)
             Path(f"{prefix}.stderr.log").write_text(proc.stderr)
             events = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
@@ -111,7 +118,7 @@ def judge(sample: dict, ind: Path, out: Path, args, cwd: Path,
                    "backend": "codex", "model": args.model, "effort": args.effort,
                    "cost_usd": None, "duration_ms": elapsed,
                    "turns": sum(e.get("type") == "turn.completed" for e in events),
-                   "attempts": attempt + 1, "usage": usage,
+                   "attempts": attempt, "usage": usage,
                    "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
                    "judged": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
             destination = out / f"{sample['id']}.json"

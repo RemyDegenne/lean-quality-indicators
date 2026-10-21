@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0019",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. It has one theorem, `NoncollapsedRCD.regular_good_coordinate_sets`, so any repetition has to be with proofs in other files. I searched the OAI RCD sources for the curvature-scale step: the `ε / (|K| + 1)` cap and `neg_abs_le K`. The same argument appears in four proofs: InitialHarmonicCoordinates (lines 26–37), RegularControlledNormalization (lines 55–71, plus a variant at 75–79), BoundedRegularNormalization (lines 54–71, plus the same variant) and the target (lines 34–53). The argument always runs the same way: cap the scale at `min 1 (ε/(|K|+1))`, clear the denominator, use `r^2 ≤ r` and `-|K| ≤ K`, and conclude `-ε ≤ K*r^2`.\n\nThis finding is borderline under the rubric. Each copy is short (about 4–6 lines), but the same multi-step argument is copied at least four times with only renamed variables. It is also not a thin wrapper around an existing API: no existing lemma packages this argument, and my multiline search for theorem statements mentioning `|K| + 1` found none in OAI.\n\nUncertainties: I could not run Lean, so the replacement proof and the rewritten call sites are untested. The proposed lemma body is copied from the existing InitialHarmonicCoordinates block. I did not check whether the target transitively imports InitialHarmonicCoordinates, so I suggest putting the lemma in a low-level file that all four proofs import; it only needs Mathlib real-number arithmetic. No other repeated multi-step reasoning in the target was a credible candidate. The `min`/`lt_min` scale-selection boilerplate is routine and was not reported.",
+  "findings": [
+    {
+      "declaration": "NoncollapsedRCD.regular_good_coordinate_sets",
+      "start_line": 40,
+      "end_line": 53,
+      "excerpt": "  have hcurv : -ε ≤ K*r^2 := by\n    have h1 := mul_le_mul_of_nonneg_left hrsq (abs_nonneg K)\n    have h2 := mul_le_mul_of_nonneg_right (neg_abs_le K) (sq_nonneg r)\n    linarith only [h1,h2,hKR]",
+      "problem": "The target proves a curvature lower bound `-ε ≤ K*r^2` from a scale cap `R ≤ min 1 (ε/(|K|+1))`. It takes three steps: `hKR` (clear the denominator, lines 42–44), `hrsq` (`r^2 ≤ R`, line 49) and `hcurv` (combine with `-|K| ≤ K`, lines 50–53). Sibling proofs repeat the same argument with renamed variables. `regular_initial_splitting_at_all_small_scales` (InitialHarmonicCoordinates.lean lines 32–37), `regular_controlled_normalization` (RegularControlledNormalization.lean lines 66–71) and the bounded variant in BoundedRegularNormalization.lean (lines 66–71) each rebuild `R * (|K|+1) ≤ ε`, `R^2 ≤ R`, `abs_nonneg K` and `neg_abs_le K` and close with `nlinarith`. The same files also repeat the related upper bound `|K| * R ^ 2 ≤ β` (lines 75–79). Each copy picks its own mix of `linarith only`, `nlinarith only` and plain `nlinarith`, which makes the copies harder to compare and to maintain.",
+      "proposed_change": "Add one real-arithmetic lemma in a low-level file imported by all four proofs (it only needs Mathlib):\n\n```lean\ntheorem neg_le_mul_sq_of_le_div_abs_add_one {K ε r : ℝ} (hr : 0 ≤ r) (hr1 : r ≤ 1)\n    (hrε : r ≤ ε / (|K| + 1)) : -ε ≤ K * r ^ 2 := by\n  have hb : r * (|K| + 1) ≤ ε := (le_div_iff₀ (by positivity)).mp hrε\n  have hs : r ^ 2 ≤ r := by nlinarith\n  have hm := mul_le_mul_of_nonneg_left hs (abs_nonneg K)\n  have hK := mul_le_mul_of_nonneg_right (neg_abs_le K) (sq_nonneg r)\n  nlinarith\n```\n\nThe proof sketch is the existing InitialHarmonicCoordinates block: `r^2 ≤ r ≤ ε/(|K|+1)` gives `|K| r^2 ≤ ε`, and `K r^2 ≥ -|K| r^2`. A companion lemma `|K| * r ^ 2 ≤ ε` under the same hypotheses would cover the `hcurvβ` copies.\n\nIn the target, delete `hKR` (lines 42–44), `hrsq` (line 49) and the `hcurv` block (lines 50–53), and replace them after line 48 with:\n`have hcurv : -ε ≤ K*r^2 := neg_le_mul_sq_of_le_div_abs_add_one hr.le (hrR'.le.trans hR1) (hrR'.le.trans hRe)`\nThis uses only the existing hypotheses `hr : 0 < r`, `hrR' : r < R`, `hR1 : R ≤ 1` and `hRe : R ≤ ε/(|K|+1)`.\n\nIn `regular_initial_splitting_at_all_small_scales`, replace lines 33–37 with `have hcurv : -ε ≤ K * r ^ 2 := neg_le_mul_sq_of_le_div_abs_add_one hr.le hr1 hre`.\n\nIn `regular_controlled_normalization`, replace the body of lines 66–71 with `neg_le_mul_sq_of_le_div_abs_add_one hR.le hR1.le hRK.le`. The bounded-normalization proof changes the same way.",
+      "benefit": "The curvature-scale argument gets one name and one proof. Each call site shrinks to a single line that shows exactly which scale caps (`R ≤ 1`, `R ≤ ε/(|K|+1)`) are being used. In the target, the indirection through `R` (`hKR`, `hrsq`) disappears, which makes the per-point proof easier to read. If the cap changes later (for example to `ε/(|K|+1)` without the `min 1`), only one lemma needs updating instead of four or more hand-tuned `nlinarith` blocks.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/InitialHarmonicCoordinates.lean",
+          "declaration": "regular_initial_splitting_at_all_small_scales",
+          "excerpt": "  have hbound : r * (|K| + 1) ≤ ε := (le_div_iff₀ (by positivity)).mp hre\n  have hsquare : r ^ 2 ≤ r := by nlinarith\n  have hm := mul_le_mul_of_nonneg_left hsquare (abs_nonneg K)\n  have hK := mul_le_mul_of_nonneg_right (neg_abs_le K) (sq_nonneg r)\n  have hcurv : -ε ≤ K * r ^ 2 := by nlinarith"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularControlledNormalization.lean",
+          "declaration": "regular_controlled_normalization",
+          "excerpt": "  have hcurv : -ε ≤ K * R ^ 2 := by\n    have he : R * (|K| + 1) ≤ ε := (le_div_iff₀ (by positivity)).mp hRK.le\n    have hs : R ^ 2 ≤ R := by nlinarith\n    have hm := mul_le_mul_of_nonneg_left hs (abs_nonneg K)\n    have hK := mul_le_mul_of_nonneg_right (neg_abs_le K) (sq_nonneg R)\n    nlinarith"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/BoundedRegularNormalization.lean",
+          "declaration": "RegularPointCoordinates (bounded regular normalization theorem)",
+          "excerpt": "  have hcurv : -ε ≤ K * R ^ 2 := by\n    have he : R * (|K| + 1) ≤ ε := (le_div_iff₀ (by positivity)).mp hRK.le\n    have hs : R ^ 2 ≤ R := by nlinarith"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularGoodCoordinateSets.lean",
+          "declaration": "NoncollapsedRCD.regular_good_coordinate_sets",
+          "excerpt": "  have hKR : |K| * R ≤ ε := by\n    have hh := (le_div_iff₀ (by positivity : 0 < |K|+1)).mp hRe\n    nlinarith only [hh,hR]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 22272,
+    "cache_read_input_tokens": 102852,
+    "output_tokens": 6827,
+    "output_tokens_details": {
+      "thinking_tokens": 2197
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22272,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3340,
+        "cache_read_input_tokens": 24239,
+        "cache_creation_input_tokens": 1962,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1962
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3353424,
+  "duration_ms": 64410,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T07:27:36",
+  "unit": "file",
+  "source_sha256": "8c568cc6cf114dff998c0481087545fd6607bf7673c08625ca14b77831fb97d8",
+  "rubric": "repeated-proof-machinery"
+}

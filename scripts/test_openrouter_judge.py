@@ -30,6 +30,20 @@ class OpenRouterTests(unittest.TestCase):
                 resumed.settle(number, {'usage': {'cost': .001}})
             resumed.reserve(payload, 'other')
 
+    def test_rate_limit_increases_spacing_and_cooldown_across_resume(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'budget.json'
+            budget = backend.Budget(path)
+            with patch.object(backend.time, 'time', return_value=1000):
+                budget.backoff()
+                first = budget.read()
+                self.assertEqual(first['request_spacing_seconds'], 20)
+                self.assertEqual(first['not_before'], 1300)
+                backend.Budget(path).backoff()
+                second = budget.read()
+                self.assertEqual(second['request_spacing_seconds'], 40)
+                self.assertEqual(second['not_before'], 1600)
+
     def test_tools_provider_reasoning_and_billed_cost(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

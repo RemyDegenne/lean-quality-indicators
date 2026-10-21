@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0019",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed the whole file, which contains one theorem, `NoncollapsedRCD.regular_good_coordinate_sets`, on lines 17–55. I read the two lemmas it relies on, `NoncollapsedRCD.full_splitting_coordinates` and `NoncollapsedRCD.regular_large_good_sets`. I also read `FirstOrderSplittingOn.mono_error`, where `μ` and `hQ` are explicit section variables, which is why the call uses `_ _`. I compared the file with its sibling `regular_good_coordinate_sets_bounded`. That sibling has to state `t ≤ β`, so its `min` on `t` is needed; the `min ε 1` in this file is not.\n\nThere are two findings. The main one is that the tolerance `t := min ε 1` is unnecessary. The second, smaller one is that the bounds hidden in `S` can be unpacked more clearly with `lt_min_iff`; I confirmed that lemma exists in Mathlib (`Mathlib/Order/Defs/LinearOrder.lean`).\n\nI left the `hcurv` argument (lines 50–53) as it is. It is a clear, explicit bound using `abs`, and the obvious shorter version would be a single, harder-to-read `nlinarith` call. I could not compile anything, so none of the replacements below have been checked by Lean.",
+  "findings": [
+    {
+      "declaration": "OAI.RegularPointCoordinates.NoncollapsedRCD.regular_good_coordinate_sets",
+      "start_line": 30,
+      "end_line": 55,
+      "excerpt": "  let t := min ε 1\n  have ht : 0 < t := lt_min he zero_lt_one\n  have htε : t ≤ ε := min_le_left _ _",
+      "problem": "The proof sets the splitting tolerance to `t := min ε 1`. The cap at 1 is never used. The only facts about `t` the proof needs are `0 < t` (to call `regular_large_good_sets`) and `t ≤ ε` (to feed `hcoord`). The theorem statement only promises `∃ t, 0 < t ∧ ...`, with no upper bound on `t`. Because of the cap, the proof needs `ht`, `htε`, and an extra `.mono_error _ _ ht.le htε` step at the end, just to raise the tolerance back up to `ε`.",
+      "proposed_change": "Use `ε` directly as the tolerance:\n```lean\n  obtain ⟨ε,he,hcoord⟩ := hX.full_splitting_coordinates hn hpublished hη\n  obtain ⟨s,hs,hgood⟩ := hX.regular_large_good_sets hn hp he hζ\n  let S := min s (min 1 (ε/(|K|+1)))\n  have hS : 0 < S := lt_min hs (lt_min zero_lt_one (by positivity))\n  refine ⟨ε,S,he,hS,?_⟩\n  ... -- unchanged\n  exact hcoord x r hr hcurv u v\n    (hall x hx (16*r) (by positivity) (by linarith only [hrR]))\n```\nThis deletes lines 30–32 and the `.mono_error _ _ ht.le htε` call. `hall` then directly gives `FirstOrderSplittingOn … x (16*r) ε u v`, which is the hypothesis `hcoord` expects.",
+      "benefit": "The proof gets shorter, and the reader no longer has to ask why the tolerance is capped at 1 when nothing uses that. The key idea becomes easier to see: the good sets are built at exactly the tolerance `ε` that the coordinate theorem needs, and the result is passed straight through without a monotonicity detour.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/FullSplittingCoordinates.lean",
+          "declaration": "NoncollapsedRCD.full_splitting_coordinates",
+          "excerpt": "FirstOrderSplittingOn (hausdorff n X) hX.quadratic p (16*r) ε u v →"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularLargeGoodSets.lean",
+          "declaration": "NoncollapsedRCD.regular_large_good_sets",
+          "excerpt": "{p : X} (hp : IsRegular n p) {t ζ : ℝ} (ht : 0 < t) (hζ : 0 < ζ) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularLargeGoodSets.lean",
+          "declaration": "NoncollapsedRCD.regular_large_good_sets",
+          "excerpt": "FirstOrderSplittingOn (hausdorff n X) hX.quadratic x r t u v := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/TransformationInput.lean",
+          "declaration": "FirstOrderSplittingOn.mono_error",
+          "excerpt": "(h : FirstOrderSplittingOn μ hQ p r ε u v) (hε : 0 ≤ ε) (hεδ : ε ≤ δ) :"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.RegularPointCoordinates.NoncollapsedRCD.regular_good_coordinate_sets",
+      "start_line": 38,
+      "end_line": 44,
+      "excerpt": "  have hR1 : R ≤ 1 := (hRS.le.trans (min_le_right _ _)).trans (min_le_left _ _)\n  have hRe : R ≤ ε/(|K|+1) :=\n    (hRS.le.trans (min_le_right _ _)).trans (min_le_right _ _)",
+      "problem": "The three bounds hidden in `S = min s (min 1 (ε/(|K|+1)))` are recovered with hand-built chains of `min_le_left`/`min_le_right`. To see which bound each chain produces, the reader has to follow the `left`/`right` path through the nested `min`. Two of the three are also weakened from `<` to `≤` along the way. Separately, the step after them uses `nlinarith`, even though the goal follows linearly from `R*(|K|+1) ≤ ε` and `0 < R`.",
+      "proposed_change": "Unpack the `min` with the named Mathlib lemma `lt_min_iff`:\n```lean\n  obtain ⟨hRs, hR1e⟩ := lt_min_iff.mp hRS\n  obtain ⟨hR1, hRe⟩ := lt_min_iff.mp hR1e\n  have hKR : |K| * R ≤ ε := by\n    have hh := (lt_div_iff₀ (by positivity : 0 < |K|+1)).mp hRe\n    linarith only [hh,hR]\n```\nThis makes `hR1 : R < 1` and `hRe : R < ε/(|K|+1)` strict. The later `nlinarith only [hrR',hr,hR1,hR]` still works, because a strict hypothesis is stronger than the `≤` version.",
+      "benefit": "Each bound now comes from destructuring with a well-named lemma, so the reader sees directly that `R < S` splits into `R < s`, `R < 1` and `R < ε/(|K|+1)`. This replaces three different `trans` chains. Using `linarith` also makes clear that the `|K|*R ≤ ε` step is only linear rearrangement.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Defs/LinearOrder.lean",
+          "declaration": "lt_min",
+          "excerpt": "lemma lt_min (h₁ : a < b) (h₂ : a < c) : a < min b c := lt_min_iff.mpr ⟨h₁, h₂⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularGoodCoordinateSets.lean",
+          "declaration": "NoncollapsedRCD.regular_good_coordinate_sets",
+          "excerpt": "let S := min s (min 1 (ε/(|K|+1)))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 22296,
+    "cache_read_input_tokens": 118934,
+    "output_tokens": 9072,
+    "output_tokens_details": {
+      "thinking_tokens": 4542
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22296,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3007,
+        "cache_read_input_tokens": 24745,
+        "cache_creation_input_tokens": 1594,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1594
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.38365079999999996,
+  "duration_ms": 82881,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T07:29:05",
+  "unit": "file",
+  "source_sha256": "8c568cc6cf114dff998c0481087545fd6607bf7673c08625ca14b77831fb97d8",
+  "rubric": "readable-proof-simplification"
+}

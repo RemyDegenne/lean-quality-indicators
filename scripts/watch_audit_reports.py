@@ -12,6 +12,47 @@ import time
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def save(path, value):
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(value, indent=2) + "\n")
+    temporary.replace(path)
+
+
+def supervise(info, status_path, command, log_path):
+    status = json.loads(status_path.read_text()) if status_path.exists() else {}
+    if status.get("stage") in ["complete", "budget-complete"]:
+        return False
+    try:
+        finished, _ = os.waitpid(info["pid"], os.WNOHANG)
+    except ChildProcessError:
+        finished = 0
+    if not finished:
+        try:
+            os.kill(info["pid"], 0)
+            return True
+        except ProcessLookupError:
+            pass
+    if info.get("automatic_restarts", 0) >= 2:
+        status.update(stage="failed", reason="Automatic recovery limit reached; inspect worker log")
+        save(status_path, status)
+        return False
+    if "restart_after" not in info:
+        info["restart_after"] = time.time() + 300
+    if time.time() < info["restart_after"]:
+        status.update(stage="restart-wait", restart_after=info["restart_after"],
+                      reason="Worker exited; bounded restart scheduled after cooldown")
+        save(status_path, status)
+        return True
+    with log_path.open("a") as log:
+        process = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+                                   start_new_session=True)
+    info.update(pid=process.pid, automatic_restarts=info.get("automatic_restarts", 0) + 1)
+    info.pop("restart_after", None)
+    status.update(stage="restarting", pid=process.pid)
+    save(status_path, status)
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--interval", type=int, default=300)
@@ -22,33 +63,23 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         while True:
             for script in ["audit_dashboard.py", "api_costs.py", "order_model_tables.py"]:
-                subprocess.run([sys.executable, str(ROOT / "scripts" / script)], cwd=ROOT, check=True)
+                result = subprocess.run([sys.executable, str(ROOT / "scripts" / script)], cwd=ROOT)
+                if result.returncode:
+                    print(json.dumps({"report_refresh_failed": script, "exit_code": result.returncode}), flush=True)
             pilot = ROOT / "runs/openai-math-2026-10-21"
             launch = json.loads((pilot / "launch.json").read_text())
             active = False
             for name, info in launch.items():
-                path = pilot / f"{name}-status.json"
-                status = json.loads(path.read_text()) if path.exists() else {}
-                if status.get("stage") in ["complete", "failed"]:
-                    continue
-                try:
-                    os.kill(info["pid"], 0)
-                    active = True
-                except ProcessLookupError:
-                    status.update(stage="failed", reason="Worker exited; inspect its local log")
-                    path.write_text(json.dumps(status, indent=2) + "\n")
+                command = [sys.executable, "-u", "scripts/corpus_pilot.py", "judge", "--model", name,
+                           "--limit", str(info.get("limit_per_audit", 100)), "--jobs", str(info.get("jobs", 1))]
+                active |= supervise(info, pilot / f"{name}-status.json", command, Path(info["log"]))
+            save(pilot / "launch.json", launch)
             deepseek = ROOT / "runs/deepseek-pilot-2026-10-21"
             if (deepseek / "launch.json").exists():
                 info = json.loads((deepseek / "launch.json").read_text())
-                path = deepseek / "status.json"
-                status = json.loads(path.read_text()) if path.exists() else {}
-                if status.get("stage") not in ["complete", "failed", "budget-complete"]:
-                    try:
-                        os.kill(info["pid"], 0)
-                        active = True
-                    except ProcessLookupError:
-                        status.update(stage="failed", reason="Worker exited; inspect its local log")
-                        path.write_text(json.dumps(status, indent=2) + "\n")
+                active |= supervise(info, deepseek / "status.json",
+                    [sys.executable, "-u", "scripts/deepseek_pilot.py"], deepseek / "worker.log")
+                save(deepseek / "launch.json", info)
             if not active:
                 return
             time.sleep(args.interval)
