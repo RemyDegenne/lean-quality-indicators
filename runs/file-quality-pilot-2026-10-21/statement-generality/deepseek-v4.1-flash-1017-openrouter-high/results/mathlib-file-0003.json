@@ -1,0 +1,116 @@
+{
+  "id": "mathlib-file-0003",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the entire target file (415 lines) and checked the definitions and lemmas that the statements depend on: `Real.rpow_def_of_neg`, `Real.rpow_def_of_nonpos`, `Real.abs_rpow_le_abs_rpow`, `Real.rpow_nonneg`, `Real.norm_cpow_of_imp`, `isBigO_of_div_tendsto_nhds`, plus the uses of the affected lemmas in `Mathlib/NumberTheory/LSeries/SumCoeff.lean`, `Mathlib/Analysis/SpecialFunctions/Log/NegMulLog.lean`, `Mathlib/Analysis/SpecialFunctions/Log/InvLog.lean`, `Mathlib/Computability/AkraBazzi/SumTransform.lean` and `Mathlib/NumberTheory/LSeries/Injectivity.lean`. Candidates I considered but did not report: the `atTop` restriction in `IsBigO.mul_atTop_rpow_of_isBigO_rpow`/`..._natCast_...` (the `l ≤ atTop` generalisation is cheap, but the benefit for the existing ℕ- and ℝ-indexed uses is unclear); the `[RCLike 𝕜]` restriction in `isBigO_atTop_natCast_rpow_of_tendsto_div_rpow` (a `NormedDivisionRing` + `NormedAlgebra ℝ` version is plausible but entails extra instances and is untested); the exponent-1 special cases `isLittleO_rpow_exp_pos_mul_atTop` and `isLittleO_log_rpow_atTop` (these are legitimate stepping stones in the proofs of the more general lemmas). I could not run Lean, so the proposed statements were checked only by reading definitions and lemmas, not by elaboration.",
+  "findings": [
+    {
+      "declaration": "tendsto_rpow_atBot_of_base_gt_one",
+      "start_line": 89,
+      "end_line": 93,
+      "excerpt": "lemma tendsto_rpow_atBot_of_base_gt_one (b : ℝ) (hb : 1 < b) :\n    Tendsto (b ^ · : ℝ → ℝ) atBot (𝓝 0) := by",
+      "problem": "The hypothesis `1 < b` restricts the lemma to positive bases, but the limit at `atBot` also exists (and equals 0) for every negative base with `|b| > 1`: for `b < -1` and `x → atBot`, `Real.rpow_def_of_neg` gives `b ^ x = exp (log b * x) * cos (x * π)` with `log b = log |b| > 0`, so the exponential decays to 0 while the cosine factor stays bounded. Equivalently `|b ^ x| ≤ |b| ^ x` by `Real.abs_rpow_le_abs_rpow`, and `|b| ^ x → 0`. The file already handles negative bases wherever the `atTop` limit exists (`tendsto_rpow_atTop_of_base_lt_one`, lines 52–66, treats `-1 < b < 0` via `Real.rpow_def_of_nonpos` and the bounded cosine), so the `atBot` statement is the one base-limit lemma with an unnecessarily narrow base range. The degenerate bases are not affected: `b = 0` and `b = ±1` all violate `1 < |b|`.",
+      "proposed_change": "Replace the hypothesis `hb : 1 < b` by `hb : 1 < |b|` (the existing case is recovered since `b < |b|` when `1 < b`), i.e. state\n\n  lemma tendsto_rpow_atBot_of_base_gt_one {b : ℝ} (hb : 1 < |b|) :\n      Tendsto (b ^ · : ℝ → ℝ) atBot (𝓝 0)\n\nProof sketch: apply the positive-base case to `|b|` to get `Tendsto (fun x => |b| ^ x) atBot (𝓝 0)`; by `Real.abs_rpow_le_abs_rpow b x` and `Real.rpow_nonneg (abs_nonneg b) x` we have `0 ≤ |b ^ x| ≤ |b| ^ x` for all `x`, so `squeeze_zero` gives `Tendsto (fun x => |b ^ x|) atBot (𝓝 0)`, which is equivalent to `Tendsto (fun x => b ^ x) atBot (𝓝 0)`. Keeping the positive-base case as a separate (private) lemma avoids any circularity.",
+      "benefit": "The four lemmas about limits of `b ^ ·` at `±∞` would then cover exactly the base ranges for which a limit exists (`|b| < 1` at `atTop`, `|b| > 1` at `atBot`, positive base `< 1` at `atBot`), giving a reader a uniform picture instead of silently dropping the negative-base `atBot` case. Users with negative bases (e.g. recurrences or products involving `(-c) ^ x`) can apply the lemma directly rather than re-deriving the cosine/absolute-value argument used in `tendsto_rpow_atTop_of_base_lt_one`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "tendsto_rpow_atTop_of_base_lt_one",
+          "excerpt": "simp_rw [Real.rpow_def_of_nonpos hb.le, hb.ne, ite_false]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Real.lean",
+          "declaration": "Real.abs_rpow_le_abs_rpow",
+          "excerpt": "theorem abs_rpow_le_abs_rpow (x y : ℝ) : |x ^ y| ≤ |x| ^ y := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Real.lean",
+          "declaration": "Real.rpow_nonneg",
+          "excerpt": "theorem rpow_nonneg {x : ℝ} (hx : 0 ≤ x) (y : ℝ) : 0 ≤ x ^ y := by"
+        }
+      ]
+    },
+    {
+      "declaration": "tendsto_log_mul_self_nhdsLT_zero",
+      "start_line": 403,
+      "end_line": 415,
+      "excerpt": "lemma tendsto_log_mul_self_nhdsLT_zero : Filter.Tendsto (fun x ↦ log x * x) (𝓝[<] 0) (𝓝 0) := by",
+      "problem": "The left one-sided limit is stated only for the fixed exponent `1` (`log x * x`), although the same limit holds for every positive real exponent `r`, exactly as in the right-hand companion `tendsto_log_mul_rpow_nhdsGT_zero` (lines 398–401). For `x < 0`, `Real.rpow_def_of_neg` gives `x ^ r = exp (log x * r) * cos (r * π)` and `log x = log (-x)`, hence `log x * x ^ r = cos (r * π) * (log (-x) * (-x) ^ r)`, and the right-hand limit applies to `-x → 0⁺`. The current proof carries out precisely this kind of reduction (via `abs`, `log_abs`, `tendsto_abs_nhdsNE_zero`) for the single exponent 1, so the special case is not cheaper than the general one. The degenerate case `cos (π * r) = 0` is harmless: then `x ^ r = 0` for `x < 0` and the product is identically `0`.",
+      "proposed_change": "State the general version first\n\n  lemma tendsto_log_mul_rpow_nhdsLT_zero {r : ℝ} (hr : 0 < r) :\n      Tendsto (fun x ↦ log x * x ^ r) (𝓝[<] 0) (𝓝 0)\n\nand keep the current lemma as a one-line corollary `simpa only [Real.rpow_one] using tendsto_log_mul_rpow_nhdsLT_zero one_pos`. Proof of the general version: on `Iio 0`, rewrite with `Real.rpow_def_of_neg hx`, `Real.log_neg_eq_log` and `Real.rpow_def_of_pos (neg_pos.mpr hx)` to get `log x * x ^ r = cos (π * r) * (log (-x) * (-x) ^ r)`; compose `tendsto_log_mul_rpow_nhdsGT_zero hr` with `Tendsto (fun x : ℝ => -x) (𝓝[<] 0) (𝓝[>] 0)` and multiply by the constant `cos (π * r)`.",
+      "benefit": "The file's `x → 0⁻` results would no longer be a lone exponent-1 case: users needing `x ^ r * log x → 0` from the left (e.g. one-sided continuity or integrability of `x ↦ x ^ r * log x` near 0) get the statement for all `r > 0` without redoing the negative-base/absolute-value reduction. The existing uses in `NegMulLog.lean`/`InvLog.lean` continue to work through the derived `r = 1` corollary, so nothing is obscured.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "tendsto_log_mul_rpow_nhdsGT_zero",
+          "excerpt": "theorem tendsto_log_mul_rpow_nhdsGT_zero {r : ℝ} (hr : 0 < r) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Real.lean",
+          "declaration": "Real.rpow_def_of_neg",
+          "excerpt": "theorem rpow_def_of_neg {x : ℝ} (hx : x < 0) (y : ℝ) : x ^ y = exp (log x * y) * cos (y * π) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Log/NegMulLog.lean",
+          "declaration": "continuous_mul_log",
+          "excerpt": "refine ⟨⟨tendsto_log_mul_self_nhdsLT_zero, ?_⟩, ?_⟩"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 2059230,
+    "cached_input_tokens": 1914752,
+    "output_tokens": 46899,
+    "reasoning_output_tokens": 38663
+  },
+  "cost_usd": 0.050325756,
+  "generation_ids": [
+    "gen-1792624373-ISAvthkgGOJ2VBXWrQLm",
+    "gen-1792624393-7VBhveHSL8s1rovnLaFO",
+    "gen-1792624435-958UI4yHXtsbmhJeu6s0",
+    "gen-1792624445-8qpmDLJZ4F377LP7JZji",
+    "gen-1792624453-22lwJ4qbYorUK3Ltcdis",
+    "gen-1792624505-lHhCrWlG4fQw1ytdCXZ3",
+    "gen-1792624525-ubspAx2zwy7JBg51DqyF",
+    "gen-1792624576-lstMWK0eaI3e8lcmct8p",
+    "gen-1792624606-8AHzODjYC5Ld6WUYR4qN",
+    "gen-1792624616-SsmbzkRaF3lsQC95PoJX",
+    "gen-1792624643-DPfTpkUB3LZtX6Cb1mpX",
+    "gen-1792624666-kGkuCPwKFOV3OXVF1Y47",
+    "gen-1792624698-ADIf25tOf1uu5zY5K6aH",
+    "gen-1792624708-RTjVpk9kEphOx06a4DE4",
+    "gen-1792624716-JywUt7UFT7KevQFbtomm",
+    "gen-1792624726-piWGpQJLxIAwGwNXVUYV",
+    "gen-1792624734-fep6jYLKsT7MuyhyevYJ",
+    "gen-1792624784-Y5OweYi2YwQyhp4Kop2w",
+    "gen-1792624796-shVfi9UtQBoOUNtHwfHm",
+    "gen-1792624811-fxOUeyCXXyvbLeAV01Gg",
+    "gen-1792624843-xWWeEJNGoKSv7Rxv19c0",
+    "gen-1792624869-JpdDNZe3ap09AYb7UMdT",
+    "gen-1792624884-ZsKrGqr20eGkP9rn5Y1f",
+    "gen-1792624929-TVjykWWimBc8zceQ7M8H",
+    "gen-1792624941-qdNm9KaPbpSXEtil33N5",
+    "gen-1792624946-QMRgRsOd2N8HFHAaUooz",
+    "gen-1792624951-QBqB4FZzFcelWprjqjHW",
+    "gen-1792624956-uE6IoyfqcbqLF71pkCnw",
+    "gen-1792624974-L7q5tFgI2j0QxfV13mJu",
+    "gen-1792625019-sQYsghCu0iIvcnQyRXqr"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 30,
+  "duration_ms": 668319,
+  "judged": "2026-10-21T23:23:51+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "f736afe5ee0e392168895c13ce258c142fdc5d3b45ecb5d3dd12af9299a8ee42"
+}

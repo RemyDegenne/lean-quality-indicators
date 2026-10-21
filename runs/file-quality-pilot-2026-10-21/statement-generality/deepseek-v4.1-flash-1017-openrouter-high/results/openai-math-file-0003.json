@@ -1,0 +1,124 @@
+{
+  "id": "openai-math-file-0003",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file (132 lines) and the related modules BranchCoupling.lean, CompactSeparation.lean, CoulombEstimates.lean, Model.lean, BranchInterfaces.lean and the consumer ExistenceFromLocalGeometry.lean, plus the relevant Mathlib declarations (MeasureTheory/Measure/Typeclasses/Finite.lean, Typeclasses/Probability.lean, Measure/Map.lean, Constructions/BorelSpace/Metric.lean). Verified that E3-specific declarations in this file are used only through topological/set-theoretic facts, and that the finite-cost theorem only needs a finite measure on branchCoupling. All proofs are compiled in the supplied source, but the proposed replacements were not compiled by me; the finite-measure generalisation would need explicit instance derivation using `Measure.isFiniteMeasure_map`, `isFiniteMeasureAdd` and `Measure.smul_finite (by norm_num)`.",
+  "findings": [
+    {
+      "declaration": "finite_cost_branchCoupling",
+      "start_line": 118,
+      "end_line": 126,
+      "excerpt": "theorem finite_cost_branchCoupling\n    {nu : Measure E3} [IsProbabilityMeasure nu] {K : Set E3} (hK : IsCompact K)",
+      "problem": "The theorem asks for a probability measure `nu`, but the proof only uses finiteness of the measure `branchCoupling nu (H 0) (H 1) (H 2) (H 3)` that it integrates against, via `CoulombEstimates.lintegral_coulombCost_lt_top_of_ae_separated`, which requires only `[IsFiniteMeasure mu]`. Nothing in the argument uses `nu Set.univ = 1`: `exists_ae_separated_branchCoupling` does not depend on normalisation, and the finiteness of the coupling (branchCoupling is a `(1/6)`-scaled sum of six maps of `nu`) only needs `nu` finite. So the statement is unnecessarily specialised to probability measures.",
+      "proposed_change": "Weaken the hypothesis to `{nu : Measure E3} [IsFiniteMeasure nu]`. In the proof, replace `have := isProbabilityMeasure_branchCoupling nu (hH 0) (hH 1) (hH 2) (hH 3)` by an explicit finiteness instance for the coupling, for example `have : IsFiniteMeasure (branchCoupling nu (H 0) (H 1) (H 2) (H 3)) := by unfold branchCoupling; exact Measure.smul_finite _ (by norm_num)`, relying on the instances `Measure.isFiniteMeasure_map` and `isFiniteMeasureAdd` for the six summands. Then apply `CoulombEstimates.lintegral_coulombCost_lt_top_of_ae_separated` with the `eta`/`hae` obtained from `exists_ae_separated_branchCoupling hK hnu hH hcont hdisjoint` exactly as now. Degenerate case: the zero measure is finite and is allowed, and the conclusion `∫⁻ t, coulombCost t ∂... < ⊤` remains true (the coupling is then zero).",
+      "benefit": "Users with non-normalised base measures (a density measure before renormalisation, a restriction of a probability measure to a subset, a weighted measure) can apply the theorem directly, and the statement then matches the hypothesis of the underlying `lintegral_coulombCost_lt_top_of_ae_separated` instead of adding a stronger assumption that is never used. Existing probability-measure callers are unaffected, since `IsProbabilityMeasure` gives `IsFiniteMeasure`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/CoulombTransport/CoulombEstimates.lean",
+          "declaration": "CoulombEstimates.lintegral_coulombCost_lt_top_of_ae_separated",
+          "excerpt": "theorem lintegral_coulombCost_lt_top_of_ae_separated (mu : Measure Triple)\n    [IsFiniteMeasure mu] {eta : ℝ}"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/CoulombTransport/BranchCoupling.lean",
+          "declaration": "branchCoupling",
+          "excerpt": "(1 / 6 : ℝ≥0∞) •\n    (Measure.map (branchGraph id H1 H2) nu +"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Typeclasses/Finite.lean",
+          "declaration": "Measure.smul_finite",
+          "excerpt": "theorem Measure.smul_finite (μ : Measure α) [IsFiniteMeasure μ] {c : ℝ≥0∞} (hc : c ≠ ∞) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Typeclasses/Probability.lean",
+          "declaration": "IsProbabilityMeasure",
+          "excerpt": "class IsProbabilityMeasure (μ : Measure α) : Prop where\n  measure_univ : μ univ = 1"
+        }
+      ]
+    },
+    {
+      "declaration": "components / compact_components (with disjoint_components_mono)",
+      "start_line": 15,
+      "end_line": 22,
+      "excerpt": "def components (K : Set E3) (H : Fin 4 → E3 → E3) : Fin 5 → Set E3 :=\n  Fin.cases K (fun i => H i '' K)\n\nlemma compact_components {K : Set E3} (hK : IsCompact K)\n    {H : Fin 4 → E3 → E3} (hH : ∀ i, ContinuousOn (H i) K) :",
+      "problem": "These three declarations are fixed to `E3 = EuclideanSpace ℝ (Fin 3)`, although none of them uses Euclidean structure: `components` is a plain `Fin.cases` on sets, `compact_components` only invokes `IsCompact.image_of_continuousOn` (line 22), and `disjoint_components_mono` (lines 106–114) only uses `image_mono` and `Disjoint.mono`. The general separation engine they feed, `exists_uniform_compact_separation` in CompactSeparation.lean, is already stated for an arbitrary `[MetricSpace α]` and an arbitrary finite index type, so the E3-specific combinators are the only part of the pipeline that cannot be reused elsewhere.",
+      "proposed_change": "Parametrise the type: `def components {α : Type*} (K : Set α) (H : Fin 4 → α → α) : Fin 5 → Set α := Fin.cases K (fun i => H i '' K)`, `lemma compact_components {α : Type*} [TopologicalSpace α] {K : Set α} (hK : IsCompact K) {H : Fin 4 → α → α} (hH : ∀ i, ContinuousOn (H i) K) : ∀ i, IsCompact (components K H i)` (proof unchanged), and for `disjoint_components_mono` drop all type constraints: `{α : Type*} {K B : Set α} (hKB : K ⊆ B) {H : Fin 4 → α → α} ...` (proof unchanged). Downstream uses such as `BranchSeparation.disjoint_components_mono d.core_subset` and `components d.compactCore d.branch` still elaborate with `α` inferred from `E3`, and `compact_components` remains usable inside `ae_mem_branchMarginal_components` where the union's measurability is derived from compactness.",
+      "benefit": "The set-level helpers become usable in any topological (or, for the monotonicity lemma, arbitrary) space, matching the generality of `exists_uniform_compact_separation` and the metric-space statements in CoulombEstimates.lean; the generalisation records that no Euclidean Structure is involved and costs no new mathematics.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/CoulombTransport/BranchSeparation.lean",
+          "declaration": "compact_components",
+          "excerpt": "exact Fin.cases hK (fun j => hK.image_of_continuousOn (hH j)) i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/CoulombTransport/BranchSeparation.lean",
+          "declaration": "disjoint_components_mono",
+          "excerpt": "exact Fin.cases hKB (fun j => image_mono hKB) i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/CoulombTransport/CompactSeparation.lean",
+          "declaration": "exists_uniform_compact_separation",
+          "excerpt": "theorem exists_uniform_compact_separation {α : Type uAlpha} {ι : Type uIndex} [MetricSpace α] [Finite ι]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1475964,
+    "cached_input_tokens": 1365888,
+    "output_tokens": 33430,
+    "reasoning_output_tokens": 26844
+  },
+  "cost_usd": 0.036448184,
+  "generation_ids": [
+    "gen-1792624403-pynTAy9ADcmGvEmnVgv9",
+    "gen-1792624458-SxYVNigHv16KqGu4TAnH",
+    "gen-1792624465-t4pX0ArZj2D6NZYjKEzw",
+    "gen-1792624470-eFIAiHiSVL97lzeYAJUr",
+    "gen-1792624500-rsGcRmzzRTZ10nPVbkUL",
+    "gen-1792624520-RbmGDxm5hwR6BY7i9byj",
+    "gen-1792624530-Be9B7951NTDySMh0oPc9",
+    "gen-1792624547-W140uIuvN0ttp3K7GwXF",
+    "gen-1792624556-3rPcg24R4VjVwODGcHjJ",
+    "gen-1792624563-1Fve2cPA72uhWlcDEZG7",
+    "gen-1792624571-zUTgjqvWAO16xkLp8vm2",
+    "gen-1792624578-w0L01LEaVyGeMCoAJmJ9",
+    "gen-1792624598-mA4USk4CTCSnv3p4nnI3",
+    "gen-1792624608-MyT3wCJTHmDqTH1dgprb",
+    "gen-1792624636-49h71FiyKb6Ke9wrijr7",
+    "gen-1792624646-1M1OlqQs2ri3EajzzyDD",
+    "gen-1792624676-DrHWROpyoFtOVKSVCAhL",
+    "gen-1792624683-DGJdcsvCHI0jOJH7HWsr",
+    "gen-1792624703-PUrDfFOon3q8SoBEw1XJ",
+    "gen-1792624723-emOfHE7QoxvEA1rQkkYY",
+    "gen-1792624745-vNVmzgidP4ZZFaK3ZVUR",
+    "gen-1792624751-qLNcmFZldG4NnHC2Ulu1",
+    "gen-1792624794-i7GKOiQmY70lecG4bjai",
+    "gen-1792624804-sIrISn1MCygpj5Bp5j0b",
+    "gen-1792624816-cn35Gb0f2kunB6jCW2r1",
+    "gen-1792624821-PxoTr4LqrWuwUASi5Pxt",
+    "gen-1792624833-lZUsC4LV3agfnqxBcj4W",
+    "gen-1792624876-DhfASP4tPFcCFgupqVhL",
+    "gen-1792624891-cNLBYq9lpfy6LuFdBvfY",
+    "gen-1792624896-qlHCUukkAQg6mc0DinW8",
+    "gen-1792624916-KkWX69mXtcBqEuwkdatX",
+    "gen-1792624921-8jD7pbC3BcHOqN3cRkCY",
+    "gen-1792624931-ayVm1e8K08FXW0xmSCrP"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 33,
+  "duration_ms": 582820,
+  "judged": "2026-10-21T23:22:48+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "598ce6f02ee890e360a94d86e84cea855ef5c45f73fb128063cb773326e7d322"
+}

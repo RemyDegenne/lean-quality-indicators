@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0002",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the entire target file (lines 1–426) and checked the relevant definitions and lemmas in JSpace, FourierRealification, FourierLeray, and Mathlib's Schwartz-space API. I did not run Lean; the replacements below are proposed, not compiled. The findings focus on removing local smoothness proofs made redundant by SchwartzMap.differentiableAt, on avoiding an unnecessary sum-equality/calc wrapper, and on factoring the repeated a.e.-congruence step in the final two corollaries.",
+  "findings": [
+    {
+      "declaration": "weakTestGradientSchwartz_apply",
+      "start_line": 151,
+      "end_line": 176,
+      "excerpt": "  have hψSource : ContDiff ℝ (⊤ : ℕ∞) (weakTestSourceSchwartz ψ) := by\n    change ContDiff ℝ (⊤ : ℕ∞) ψ.toFun\n    simpa using ψ.contDiff",
+      "problem": "This proof introduces hψSource and, later, hψL only to obtain differentiability of two Schwartz maps for `fderiv_comp`. Both facts are already available from the SchwartzMap API; the local `change`/`simpa` unfolding of `weakTestSourceSchwartz` and `weakTestSchwartz` obscures the actual chain-rule argument.",
+      "proposed_change": "Delete the `hψSource` block (lines 151–153) and the `hψL` block (lines 170–172). Replace the corresponding arguments of `fderiv_comp` with `(weakTestSourceSchwartz ψ).differentiableAt` at line 167 and `(weakTestSchwartz (ψ := ψ)).differentiableAt` at line 176. The rest of the proof, including `hL`, `hcomp'`, `Complex.ofRealCLM.hasFDerivAt.fderiv`, and the final coordinate calculation, can stay unchanged.",
+      "benefit": "The reader sees the chain-rule application directly, without first following a definitional unfolding of the test-function Schwartz encodings. It also removes duplicated smoothness arguments and makes the proof less brittle under changes to those definitions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "weakTestGradientSchwartz_apply",
+          "excerpt": "  have hψL : ContDiff ℝ (⊤ : ℕ∞) (fun z : L2Vec3 => weakTestSchwartz (ψ := ψ) z) := by\n    change ContDiff ℝ (⊤ : ℕ∞) (ψ.toFun ∘ l2Vec3Equiv)\n    exact (ψ.contDiff.comp l2Vec3Equiv.contDiff)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Distribution/SchwartzSpace/Basic.lean",
+          "declaration": "SchwartzMap.differentiableAt",
+          "excerpt": "protected theorem differentiableAt (f : 𝓢(E, F)) {x : E} : DifferentiableAt ℝ f x :="
+        }
+      ]
+    },
+    {
+      "declaration": "isWeakDivFree_congr_ae",
+      "start_line": 330,
+      "end_line": 342,
+      "excerpt": "  have hsum : (fun x : Vec3 => ∑ i : Fin 3, b x i * ψ.partialDeriv i x) =ᵐ[volume]\n      fun x => ∑ i : Fin 3, a x i * ψ.partialDeriv i x := by\n    filter_upwards [hab] with x hx\n    rw [hx]\n  calc\n    ∫ x : Vec3, ∑ i : Fin 3, b x i * ψ.partialDeriv i x =\n      ∫ x : Vec3, ∑ i : Fin 3, a x i * ψ.partialDeriv i x := integral_congr_ae hsum\n    _ = 0 := ha.2 ψ",
+      "problem": "The proof constructs a separate almost-everywhere equality of integrands and then uses a `calc` block. This is more machinery than needed: the goal is exactly an integral equality obtained from `hab`, followed by `ha.2 ψ`.",
+      "proposed_change": "After the `MemLp` component, use:\n\n  intro ψ\n  rw [← ha.2 ψ]\n  apply integral_congr_ae\n  filter_upwards [hab] with x hx\n  rw [hx]\n\nThis removes `hsum` and the `calc` block while preserving the same mathematical argument.",
+      "benefit": "The proof becomes a direct chain `integral of b = integral of a = 0`, which is exactly the intended a.e.-congruence argument and matches the existing analogous proof in `regR12_isWeakDivFreeL2_congr`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/RegularisedR12FinalR1.lean",
+          "declaration": "regR12_isWeakDivFreeL2_congr",
+          "excerpt": "  refine ⟨(memLp_congr_ae hfg).1 hf.1, fun ψ => ?_⟩\n  rw [← hf.2 ψ]\n  apply integral_congr_ae\n  filter_upwards [hfg] with x hx\n  rw [hx]"
+        }
+      ]
+    },
+    {
+      "declaration": "realLerayProjection_isWeakDivFree (and the identical pattern in realStokesOperator_isWeakDivFree)",
+      "start_line": 384,
+      "end_line": 424,
+      "excerpt": "theorem realLerayProjection_isWeakDivFree (f : RealVectorL2) :\n    CKN.IsWeakDivFreeL2 (realVectorL2Representative (realLerayProjection f)) := by\n  let z := lerayProjectionL2 (complexifyVectorL2 f)\n  have hRange := realLerayProjectionRepresentative_isWeakDivFree f\n  have hAE := realPartVectorL2Representative_eq_ae z\n  change CKN.IsWeakDivFreeL2 (realVectorL2Representative (realPartVectorL2 z))\n  exact isWeakDivFree_congr_ae hAE.symm hRange",
+      "problem": "The final Leray and Stokes corollaries repeat the same six-line pattern: introduce `z`, restate the representative result, obtain the a.e. equality of representatives, unfold `z` with `change`, and apply `isWeakDivFree_congr_ae`. The duplication hides that both are immediate corollaries of one representative-agreement lemma.",
+      "proposed_change": "Add a private helper after `realPartVectorL2Representative_eq_ae`:\n\n  private theorem isWeakDivFree_realVectorRepresentative_of_realPart {z : ComplexVectorL2}\n      (hz : CKN.IsWeakDivFreeL2 (realPartVectorL2Representative z)) :\n      CKN.IsWeakDivFreeL2 (realVectorL2Representative (realPartVectorL2 z)) :=\n    isWeakDivFree_congr_ae (realPartVectorL2Representative_eq_ae z).symm hz\n\nThen prove the Leray corollary with\n\n  simpa [realLerayProjection] using\n    isWeakDivFree_realVectorRepresentative_of_realPart\n      (realLerayProjectionRepresentative_isWeakDivFree f)\n\nand the Stokes corollary analogously with `simpa [realStokesOperator]` and `realStokesOperatorRepresentative_isWeakDivFree ht F`.",
+      "benefit": "The common a.e.-congruence step is stated once with a descriptive name, and each public theorem becomes a direct consequence of its representative theorem. This removes duplicated local `let`/`have`/`change` steps and makes the relationship between the representative and coordinate corollaries explicit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "realStokesOperator_isWeakDivFree",
+          "excerpt": "  let z := stokesL2Operator ht (complexifyTensorL2 F)\n  have hRange := realStokesOperatorRepresentative_isWeakDivFree ht F\n  have hAE := realPartVectorL2Representative_eq_ae z\n  change CKN.IsWeakDivFreeL2 (realVectorL2Representative (realPartVectorL2 z))\n  exact isWeakDivFree_congr_ae hAE.symm hRange"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/ForcedRegularisedSolutionJ.lean",
+          "declaration": "forcedMildCurve_mildJData",
+          "excerpt": "  exact CKN.isInJ_iff_weakDivFree.2\n    (isWeakDivFree_congr_ae (realPartVectorL2Representative_eq_ae _).symm hweak)"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 2541472,
+    "cached_input_tokens": 2015104,
+    "output_tokens": 33245,
+    "reasoning_output_tokens": 27096
+  },
+  "cost_usd": 0.074852772,
+  "generation_ids": [
+    "gen-1792623683-LXJSlV3ZKsky3CeyIxiz",
+    "gen-1792623687-WeCQ1TIVfshvs5cudVPl",
+    "gen-1792623692-x0y6F32RsC6rPeYUchLV",
+    "gen-1792623708-gUdvKiVTHkf6cMVK6F12",
+    "gen-1792623721-7Shx6XuFRMm1o5pQU79C",
+    "gen-1792623731-I08gxZZIYZhfJfC7uFuV",
+    "gen-1792623739-0jN5K4vLfIk0bCAYvOFx",
+    "gen-1792623743-WYh8BBW4JhRF7yhT36SL",
+    "gen-1792623750-ezCHUoKazlayCWU5FA5O",
+    "gen-1792623755-JKhUFJs5COuGyC7BTfLR",
+    "gen-1792623762-L0oAVIgonRbe0RqsWt1r",
+    "gen-1792623771-4EYHmCsqNx2UZ7WrXUTe",
+    "gen-1792623774-Pn85Q9uMi0C3D2FNQfiO",
+    "gen-1792623792-IiafnW39kRO5Z4vraWSu",
+    "gen-1792623814-ElHYCpStnMWmI6dXT0B6",
+    "gen-1792623821-o7yVBV1UKw3kzZb8yodg",
+    "gen-1792623832-3HCvoArhRsvt9APCA5Yf",
+    "gen-1792623834-vqlG0J9yn541x0QcrKPq",
+    "gen-1792623840-xTRbhXudcb8QjThVsbvH",
+    "gen-1792623842-Oaf6DfJSTEiVQ9ysi68C",
+    "gen-1792624200-EeRfs4JdEVgivnOCNDVu",
+    "gen-1792624240-7aiEKtYuoAJ5u7IZr8p4",
+    "gen-1792624280-uWmQjsutHUhLlQkOBQ0D",
+    "gen-1792624408-aVoQ01XBLlP4QtiOTBMj",
+    "gen-1792624450-qJap4DxETpKmysxKUEor",
+    "gen-1792624460-YDKsEiUE4rqoZO7wDflj",
+    "gen-1792624488-iHvwWP31tJRgornOEvhq",
+    "gen-1792624513-2xZ3mOBOC6EhreaSsEzy"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 28,
+  "duration_ms": 1102527,
+  "judged": "2026-10-21T23:19:31+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "b8ef72c373bf6ce6441335c9b87f592a65fa1e978b9b2de2240636ba3850ed17"
+}

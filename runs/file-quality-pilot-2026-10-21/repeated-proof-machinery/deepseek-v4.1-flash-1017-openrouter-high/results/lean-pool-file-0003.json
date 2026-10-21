@@ -1,0 +1,144 @@
+{
+  "id": "lean-pool-file-0003",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 652 lines of the target file (Read calls covering 1–120, 120–381, 380–651) and inspected the sibling file `Residue/SectorCurveLemma.lean` for cross-file evidence, plus grepped the whole library for uses of `integral_seg1_eq_neg_log`, `integral_seg3_eq_log`, `pv_integrand_seg1/2/3` and `sectorCurve_norm_on_arc`. The findings are about repeated proof content rather than about statements: (i) the pointwise 'cutoff integrand equals its closed form on the open segment' blocks for segments 2 and 3 are written twice each — once in the integrability lemma and once in the integral lemma — while the file already contains `pv_integrand_seg2/3`, `sectorCurve_norm_on_arc`, `sectorCurve_norm_seg3'`; (ii) `log_cancellation` re-proves the two immediately preceding public integral lemmas instead of using them; (iii) the 'cutoff weight vanishes near the endpoints' argument appears four times. Proposed Lean snippets are sketches: they use existing names in the file but I could not run Lean, so hypothesis names (e.g. `_hε` in `pv_cutoff_F_integrable_1_2`) may need to be made available, and the explicit `calc`/`nlinarith` steps may need small adjustment. Because `log_cancellation` is a later (line 282) statement, the suggested change there uses the earlier lemmas rather than treating a wrapper as an independent replacement.",
+  "findings": [
+    {
+      "declaration": "pv_cutoff_F_integrable_1_2 (repeated in pv_cutoff_integral_seg2_eq_Ialpha)",
+      "start_line": 380,
+      "end_line": 390,
+      "excerpt": "    · rw [sectorCurve_seg2 r α t ⟨le_of_lt ht1, le_of_lt ht2⟩,\n          deriv_sectorCurve_seg2 r α t ⟨ht1, ht2⟩]\n      have : (r : ℂ) ≠ 0 := Complex.ofReal_ne_zero.mpr (ne_of_gt hr)\n      have : exp (I * ↑((t - 1) * α)) ≠ 0 := Complex.exp_ne_zero _\n      field_simp",
+      "problem": "The statement `F t = I * ↑α` for `t ∈ Ioo 1 2` is proved twice, essentially verbatim: here (380–390) and again in `pv_cutoff_integral_seg2_eq_Ialpha` (526–536). Both proofs re-derive the algebra already isolated in `pv_integrand_seg2` (233–239) with `field_simp`, and both re-derive the threshold `‖sectorCurve r α t‖ = r > ε` inline (lines 388–390 and 534–536) although `sectorCurve_norm_on_arc` (154–159) states exactly that, and is not used anywhere in this file. The same occurrence in the sibling file is written with the existing API (`exact pv_integrand_seg2 r hr α t ⟨ht1, ht2⟩`, SectorCurveLemma.lean:389), which shows the reuse is feasible. A change to the arc parametrisation or to the arc-derivative formula must currently be replayed in four places in this file.",
+      "proposed_change": "Add a shared private lemma carrying both halves of the argument, then use it for both `h_eq`/`h_on_Ioo`:\n\n```lean\nprivate lemma pv_cutoff_eq_seg2 (r : ℝ) (hr : 0 < r) (α : ℝ) (ε : ℝ)\n    (hε : 0 < ε) (hεr : ε < r) {t : ℝ} (ht : t ∈ Ioo 1 2) :\n    (if ‖sectorCurve r α t - 0‖ > ε\n      then (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t else 0) = I * ↑α := by\n  rw [sub_zero, ite_eq_left]\n  · exact pv_integrand_seg2 r hr α t ht\n  · rw [sectorCurve_norm_on_arc r hr α t ⟨le_of_lt ht.1, le_of_lt ht.2⟩]\n    linarith\n```\n\nUse sites: in `pv_cutoff_F_integrable_1_2` and in `pv_cutoff_integral_seg2_eq_Ialpha` write\n\n```lean\nhave h_eq : ∀ t ∈ Ioo (1 : ℝ) 2, F t = I * ↑α :=\n  fun t ht => by dsimp only [F]; exact pv_cutoff_eq_seg2 r hr α ε hε hεr ht\n```\n\n(The hypothesis `_hε : 0 < ε` in `pv_cutoff_F_integrable_1_2` must be renamed to `hε` so it can be passed in.) A companion `pv_cutoff_eq_seg1`/`pv_cutoff_eq_seg3` would remove the analogous duplicates at 358–363 vs 504–513 and 412–425 vs 557–570.",
+      "benefit": "One named fact ('on the arc the cutoff indicator is 1 and the integrand equals `i * α`') replaces two copies of a five-line field computation plus norm comparison, so readers see the mathematics once and edits to the arc formulas need to be made only once. It also puts the currently unused `sectorCurve_norm_on_arc` to work.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_integral_seg2_eq_Ialpha",
+          "excerpt": "    · rw [sectorCurve_seg2 r α t ⟨le_of_lt ht1, le_of_lt ht2⟩,\n          deriv_sectorCurve_seg2 r α t ⟨ht1, ht2⟩]\n      have : (r : ℂ) ≠ 0 := Complex.ofReal_ne_zero.mpr (ne_of_gt hr)\n      have : exp (I * ↑((t - 1) * α)) ≠ 0 := Complex.exp_ne_zero _\n      field_simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_integrand_seg2",
+          "excerpt": "theorem pv_integrand_seg2 (r : ℝ) (hr : 0 < r) (α : ℝ) (t : ℝ) (ht : t ∈ Ioo 1 2) :\n    (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t = I * ↑α := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "sectorCurve_norm_on_arc",
+          "excerpt": "theorem sectorCurve_norm_on_arc (r : ℝ) (hr : 0 < r) (α : ℝ) (t : ℝ)\n    (ht : t ∈ Icc 1 2) :\n    ‖sectorCurve r α t‖ = r := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "cauchyPV_inv_integrableOn_12",
+          "excerpt": "    rw [ite_eq_left]; · exact pv_integrand_seg2 r hr α t ⟨ht1, ht2⟩"
+        }
+      ]
+    },
+    {
+      "declaration": "pv_cutoff_F_integrable_2_3delta (repeated in pv_cutoff_integral_seg3_eq_neg_inv)",
+      "start_line": 412,
+      "end_line": 425,
+      "excerpt": "    · have h3 : t < 3 := by linarith\n      rw [sectorCurve_seg3 r α t ⟨le_of_lt ht2, le_of_lt h3⟩,\n          deriv_sectorCurve_seg3 r α t ⟨ht2, h3⟩]\n      have : (r : ℂ) ≠ 0 := Complex.ofReal_ne_zero.mpr (ne_of_gt hr)\n      have : exp (I * ↑α) ≠ 0 := Complex.exp_ne_zero _\n      have : (3 - t : ℝ) ≠ 0 := by linarith\n      push_cast; field_simp",
+      "problem": "The equation `F t = -(↑((3 - t)⁻¹) : ℂ)` on `Ioo 2 (3 - δ)` is proved twice in this file: in `pv_cutoff_F_integrable_2_3delta` (412–425) and again in `pv_cutoff_integral_seg3_eq_neg_inv` (557–570), including the identical `have h3 : t < 3`/`field_simp` algebra and the identical `calc ε = δ * r ... _ < (3 - t) * r` threshold. Both copies duplicate `pv_integrand_seg3` (242–250) and the norm formula `sectorCurve_norm_seg3'` (277–280), and the same inline algebra is even re-derived across files in `cauchyPV_inv_integrableOn_2_3δ`.",
+      "proposed_change": "Introduce one private lemma for the full pointwise statement and reuse it in both places:\n\n```lean\nprivate lemma pv_cutoff_eq_seg3 (r : ℝ) (hr : 0 < r) (α : ℝ) (ε : ℝ)\n    (hε : 0 < ε) (hεr : ε < r) {t : ℝ} (ht : t ∈ Ioo 2 (3 - ε / r)) :\n    (if ‖sectorCurve r α t - 0‖ > ε\n      then (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t else 0) =\n      -(↑((3 - t)⁻¹) : ℂ) := by\n  have hδ : 0 < ε / r := div_pos hε hr\n  have h3 : t < 3 := by linarith [ht.2]\n  rw [sub_zero, ite_eq_left]\n  · exact pv_integrand_seg3 r hr α t ⟨ht.1, h3⟩\n  · rw [sectorCurve_norm_seg3' r hr α t ⟨le_of_lt ht.1, le_of_lt h3⟩]\n    have hδr : ε / r * r = ε := by field_simp\n    nlinarith\n```\n\nThen both `h_eq` (line 412) and `h_on_Ioo` (line 557) become `fun t ht => by dsimp only [F]; exact pv_cutoff_eq_seg3 r hr α ε hε hεr ht` (after rewriting `3 - δ` as `3 - ε / r` via `hδ_def`).",
+      "benefit": "A single lemma states the third-segment cutoff behaviour, which is the mathematically meaningful content (returning ray, modulus `(3 - t) * r`, integrand `-1/(3 - t)`). The two consumers stop carrying parallel copies of the same case analysis, so the file no longer has two places where an error in the `3 - t > 0` side condition or in the modulus bound could creep in independently.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_integral_seg3_eq_neg_inv",
+          "excerpt": "    · have h3 : t < 3 := by linarith\n      rw [sectorCurve_seg3 r α t ⟨le_of_lt ht2, le_of_lt h3⟩,\n          deriv_sectorCurve_seg3 r α t ⟨ht2, h3⟩]\n      have : (r : ℂ) ≠ 0 := Complex.ofReal_ne_zero.mpr (ne_of_gt hr)\n      have : exp (I * ↑α) ≠ 0 := Complex.exp_ne_zero _\n      have : (3 - t : ℝ) ≠ 0 := by linarith\n      push_cast; field_simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_integrand_seg3",
+          "excerpt": "theorem pv_integrand_seg3 (r : ℝ) (hr : 0 < r) (α : ℝ) (t : ℝ) (ht : t ∈ Ioo 2 3) :\n    (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t = -↑((3 - t)⁻¹) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "cauchyPV_inv_integrableOn_2_3δ",
+          "excerpt": "    · rw [sectorCurve_seg3 r α t ⟨le_of_lt ht2, by linarith⟩,\n          deriv_sectorCurve_seg3 r α t ⟨ht2, by linarith⟩]\n      have : (r : ℂ) ≠ 0 := Complex.ofReal_ne_zero.mpr (ne_of_gt hr)\n      have : exp (I * ↑α) ≠ 0 := Complex.exp_ne_zero _\n      have : (3 - t : ℝ) ≠ 0 := by linarith\n      push_cast; field_simp"
+        }
+      ]
+    },
+    {
+      "declaration": "log_cancellation",
+      "start_line": 288,
+      "end_line": 297,
+      "excerpt": "  have h2 : ∫ t in (2 : ℝ)..(3 - ε / r), -((3 - t)⁻¹ : ℝ) = Real.log (ε / r) := by\n    rw [intervalIntegral.integral_neg]\n    have h_sub : ∫ t in (2 : ℝ)..(3 - ε / r), (3 - t)⁻¹ = ∫ u in (ε / r)..1, u⁻¹ := by\n      have := intervalIntegral.integral_comp_sub_left (fun u => u⁻¹) (3 : ℝ)\n        (a := (2 : ℝ)) (b := 3 - ε / r)\n      rw [this]; congr 1 <;> ring",
+      "problem": "`log_cancellation` re-proves the two public lemmas stated immediately above it. `h1` (288–290) is exactly `integral_seg1_eq_neg_log (ε / r) hεr_pos hεr_lt1` (statement at 255–257), and `h2` (291–297) is exactly `integral_seg3_eq_log (ε / r) hεr_pos hεr_lt1` (statement at 260–261); the substitution step `intervalIntegral.integral_comp_sub_left (fun u => u⁻¹) 3` followed by `congr 1 <;> ring` and `simp_all` at 293–297 is the verbatim skeleton of the proof at 263–268 with `ε` replaced by `ε / r`. A grep over the library finds no use of `integral_seg1_eq_neg_log` or `integral_seg3_eq_log` other than their own proofs, so the reusable statements exist but the only consumer repeats their proofs instead of invoking them.",
+      "proposed_change": "Replace the two inline proofs by invocations of the already-proved lemmas:\n\n```lean\nhave h1 : ∫ t in (ε / r)..(1 : ℝ), (t⁻¹ : ℝ) = -(Real.log (ε / r)) :=\n  integral_seg1_eq_neg_log (ε / r) hεr_pos hεr_lt1\nhave h2 : ∫ t in (2 : ℝ)..(3 - ε / r), -((3 - t)⁻¹ : ℝ) = Real.log (ε / r) :=\n  integral_seg3_eq_log (ε / r) hεr_pos hεr_lt1\n```\n\nThe rest of `log_cancellation` (`h1c`, `h2c`, the final `rw`/`Complex.ofReal_add`) is unchanged; if the two public lemmas are not intended as API, the alternative is to delete them, but keeping both copies is the worst option.",
+      "benefit": "The logarithmic divergence computation is stated and proved in exactly one place, so the reader of the cancellation lemma sees 'use the two segment integrals' rather than a re-derivation, and a change to how the substitution `3 - t ↦ u` is justified can no longer make the two copies diverge. It also removes two otherwise-unused public theorems from the file's dead surface.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "integral_seg3_eq_log",
+          "excerpt": "theorem integral_seg3_eq_log (ε : ℝ) (hε : 0 < ε) (_hε1 : ε < 1) :\n    ∫ t in (2 : ℝ)..(3 - ε), -((3 - t)⁻¹) = Real.log ε := by\n  rw [intervalIntegral.integral_neg]\n  have h1 : ∫ t in (2 : ℝ)..(3 - ε), (3 - t)⁻¹ = ∫ u in ε..1, u⁻¹ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "integral_seg1_eq_neg_log",
+          "excerpt": "theorem integral_seg1_eq_neg_log (ε : ℝ) (hε : 0 < ε) (_hε1 : ε < 1) :\n    ∫ t in ε..1, (t : ℝ)⁻¹ = -Real.log ε := by"
+        }
+      ]
+    },
+    {
+      "declaration": "pv_sector_cutoff_eq",
+      "start_line": 593,
+      "end_line": 609,
+      "excerpt": "      dsimp only [F]; simp only [sub_zero]; rw [ite_eq_right (not_lt.mpr _)]\n      rw [sectorCurve_norm_seg1 r hr α t ⟨ht.1, le_trans ht.2 (le_of_lt hδ1)⟩]\n      calc t * r ≤ δ * r := by nlinarith [ht.2]\n        _ = ε := by rw [hδ_def]; field_simp]",
+      "problem": "The 'the cutoff weight vanishes near the endpoint' argument is written four times: in `pv_cutoff_F_integrable_0_delta` (319–322) and again as `hI1` (597–600), and in `pv_cutoff_F_integrable_3delta_3` (336–340) and again as `hI5` (606–609). Each copy repeats the same two-step reasoning: rewrite `‖sectorCurve r α t‖` via `sectorCurve_norm_seg1`/`sectorCurve_norm_seg3'`, then bound `t * r` (resp. `(3 - t) * r`) by `δ * r = ε`. The two forms even differ only in the final closing tactic (`le_trans (mul_le_mul_of_nonneg_right …)` versus a `calc` with `nlinarith`), which makes the duplication visible to a reader comparing the two proofs.",
+      "proposed_change": "State the endpoint vanishings once, e.g.\n\n```lean\nprivate lemma pv_cutoff_eq_zero_near_zero (r : ℝ) (hr : 0 < r) (α : ℝ) (ε : ℝ)\n    (hε : 0 < ε) (hεr : ε < r) {t : ℝ} (ht : t ∈ Icc 0 (ε / r)) :\n    (if ‖sectorCurve r α t - 0‖ > ε\n      then (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t else 0) = 0 := by\n  have hδ1 : ε / r < 1 := by rwa [div_lt_one hr]\n  rw [sub_zero, ite_eq_right (not_lt.mpr _)]\n  rw [sectorCurve_norm_seg1 r hr α t ⟨ht.1, le_trans ht.2 hδ1.le⟩]\n  calc t * r ≤ ε / r * r := by nlinarith [ht.2, hr]\n    _ = ε := by field_simp\n```\n\nwith the mirror image `pv_cutoff_eq_zero_near_three` on `Icc (3 - ε / r) 3`. Then `pv_cutoff_F_integrable_0_delta`/`_3delta_3` reduce to `.congr intervalIntegrable_const (fun t ht => by rw [Set.uIoc_of_le …] at ht; exact pv_cutoff_eq_zero_near_zero … ⟨ht.1, ht.2⟩)`, and `hI1`/`hI5` reduce to `rw [show ∫ t in 0..δ, F t = ∫ t in 0..δ, (0 : ℂ) from intervalIntegral.integral_congr (fun t ht => …)]; exact intervalIntegral.integral_zero`.",
+      "benefit": "The degenerate near-origin behaviour of the curve — the mathematical reason the principal value is unaffected by the cutoff there — is proved once per endpoint instead of twice, and the integrability lemmas and the final cutoff computation share the same bound, so a change to the cutting parameter `δ = ε / r` or to the endpoint parametrisation only has to be made in one lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_F_integrable_0_delta",
+          "excerpt": "  dsimp only [F]; simp only [sub_zero]; rw [ite_eq_right (not_lt.mpr _)]\n  rw [sectorCurve_norm_seg1 r hr α t ⟨le_of_lt ht.1, le_trans ht.2 (le_of_lt hδ1)⟩]\n  exact le_trans (mul_le_mul_of_nonneg_right ht.2 hr.le)\n    (le_of_eq (by rw [hδ_def]; field_simp))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_F_integrable_3delta_3",
+          "excerpt": "  have : (3 - t) * r ≤ δ * r := mul_le_mul_of_nonneg_right (by linarith [ht.1]) hr.le\n  linarith [show δ * r = ε from by rw [hδ_def]; field_simp]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_sector_cutoff_eq",
+          "excerpt": "      rw [sectorCurve_norm_seg3' r hr α t ⟨by linarith [ht.1], ht.2⟩]\n      calc (3 - t) * r ≤ δ * r := by nlinarith [ht.1]\n        _ = ε := by rw [hδ_def]; field_simp]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 175553,
+    "cached_input_tokens": 138624,
+    "output_tokens": 17526,
+    "reasoning_output_tokens": 11146
+  },
+  "cost_usd": 0.012826312,
+  "generation_ids": [
+    "gen-1792624997-4c2Ql9nZZTbw9bMmDhqT",
+    "gen-1792625009-T3QVSpYYKSGX3jAE3xMF",
+    "gen-1792625017-J5u6qkufJXvm8IRB9ned",
+    "gen-1792625034-CrvJmunxeNLer0oSN7Uw",
+    "gen-1792625044-ou2nuhJDXb19TO2M6UoG",
+    "gen-1792625059-Utll7NMs52lpEWiLI11Y"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 6,
+  "duration_ms": 181228,
+  "judged": "2026-10-21T23:25:59+00:00",
+  "unit": "file",
+  "rubric": "repeated-proof-machinery",
+  "source_sha256": "de515c586469d139beb62e3a244ba09c5de602aaa08004cf221d4a24cc69ce21"
+}

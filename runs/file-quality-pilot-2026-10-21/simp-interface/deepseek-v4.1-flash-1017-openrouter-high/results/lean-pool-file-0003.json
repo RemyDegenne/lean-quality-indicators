@@ -1,0 +1,111 @@
+{
+  "id": "lean-pool-file-0003",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 652 lines of LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean, then checked the imported definition file GeneralizedResidueTheory/Basic.lean (cauchyPrincipalValueIntegrand', cauchyPrincipalValue', CauchyPrincipalValueExists' and their @[simp] lemmas) and the downstream consumer Residue/SectorCurveLemma.lean. I also grepped the whole pool for uses of cauchyPrincipalValueIntegrand'_of_gt/_of_le (no uses anywhere), pv_integrand_seg* and the sectorCurve_* evaluation/norm lemmas. The findings concern (1) the integrand being written as an expanded if instead of the library's cauchyPrincipalValueIntegrand' (so the existing @[simp] interface is dead in this file), (2) the per-segment integrand lemmas not being stated in the form their consumers need and being bypassed inside this very file, and (3) the segment rewrite lemmas overlapping at t = 1 and t = 2 with only propositionally equal right-hand sides. I did not run Lean, so I do not claim any of the proposed statements compile; they are given as concrete shapes consistent with the definitions and the existing lemmas.",
+  "findings": [
+    {
+      "declaration": "pv_cutoff_F_integrable_0_delta (same pattern in all private pv_cutoff_* lemmas, lines 307-574, and in pv_sector_cutoff_eq)",
+      "start_line": 307,
+      "end_line": 313,
+      "excerpt": "    let F : ℝ → ℂ := fun t => if ‖sectorCurve r α t - 0‖ > ε\n        then (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t else 0\n    IntervalIntegrable F volume 0 (ε / r) := by\n  set F : ℝ → ℂ := fun t => if ‖sectorCurve r α t - 0‖ > ε\n      then (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t else 0",
+      "problem": "Every statement of the cutoff development re-spells the integrand as an expanded `if ‖sectorCurve r α t - 0‖ > ε then (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t else 0`, both in a `let F` in the type and again in a `set F` in the proof. That expression is definitionally `cauchyPrincipalValueIntegrand' (fun z => z⁻¹) (sectorCurve r α) 0 ε t` (Basic.lean:64-66), but because the abbreviation is expanded, the library's canonical simp rules for it are unusable, and each proof must redo `dsimp only [F]; simp only [sub_zero]; rw [ite_eq_left]` / `rw [ite_eq_right (not_lt.mpr _)]` (e.g. lines 319, 505, 528, 559, 597, 606). Consequently `cauchyPrincipalValueIntegrand'_of_gt` and `_of_le` have no uses anywhere in the repository.",
+      "proposed_change": "Introduce one abbreviation, e.g. `abbrev sectorPVIntegrand (r α ε : ℝ) (t : ℝ) : ℂ := cauchyPrincipalValueIntegrand' (fun z => z⁻¹) (sectorCurve r α) 0 ε t` (or simply write `cauchyPrincipalValueIntegrand' (fun z => z⁻¹) (sectorCurve r α) 0 ε` directly), use it in place of the `let F` in every private lemma and in `pv_sector_cutoff_eq` (lines 578-583), and replace each `rw [ite_eq_left h]` / `rw [ite_eq_right h]` with `rw [cauchyPrincipalValueIntegrand'_of_gt (by ...)]` / `rw [cauchyPrincipalValueIntegrand'_of_le (by ...)]`; then drop the `set F` lines.",
+      "benefit": "The statements one definition away from what `CauchyPrincipalValueExists'`/`cauchyPrincipalValue'` unfold to become literally the canonical form used downstream (SectorCurveLemma.lean uses `cauchyPrincipalValueIntegrand' (fun z => z⁻¹) (sectorCurve r α) 0 ε` throughout), the existing `@[simp]` interface in Basic.lean becomes effective instead of dead, and eight copies of the same two-line `let`/`set` boilerplate disappear. No mathematics changes, since the two forms are definitionally equal.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Basic.lean",
+          "declaration": "cauchyPrincipalValueIntegrand'",
+          "excerpt": "def cauchyPrincipalValueIntegrand' (f : ℂ → ℂ) (γ : ℝ → ℂ)\n    (z₀ : ℂ) (ε : ℝ) (t : ℝ) : ℂ :=\n  if ‖γ t - z₀‖ > ε then f (γ t) * deriv γ t else 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Basic.lean",
+          "declaration": "cauchyPrincipalValueIntegrand'_of_gt",
+          "excerpt": "@[simp]\ntheorem cauchyPrincipalValueIntegrand'_of_gt {f : ℂ → ℂ} {γ : ℝ → ℂ} {z₀ : ℂ} {ε : ℝ} {t : ℝ}\n    (h : ε < ‖γ t - z₀‖) :\n    cauchyPrincipalValueIntegrand' f γ z₀ ε t = f (γ t) * deriv γ t := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "cauchyPV_inv_integrableOn_δ1",
+          "excerpt": "  have h_eq : ∀ t ∈ Ioo δ (1 : ℝ),\n      cauchyPrincipalValueIntegrand' (fun z => z⁻¹) (sectorCurve r α) 0 ε t =\n      (↑(t⁻¹) : ℂ) := fun t ⟨htδ, ht1⟩ => by\n    simp only [cauchyPrincipalValueIntegrand', sub_zero]"
+        }
+      ]
+    },
+    {
+      "declaration": "pv_integrand_seg2 (and the parallel pv_integrand_seg1, pv_integrand_seg3)",
+      "start_line": 232,
+      "end_line": 239,
+      "excerpt": "/-- The integrand on segment 2 (t in (1,2)) simplifies to `I * alpha`. -/\ntheorem pv_integrand_seg2 (r : ℝ) (hr : 0 < r) (α : ℝ) (t : ℝ) (ht : t ∈ Ioo 1 2) :\n    (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t = I * ↑α := by\n  rw [sectorCurve_seg2 r α t ⟨le_of_lt ht.1, le_of_lt ht.2⟩,\n      deriv_sectorCurve_seg2 r α t ht]",
+      "problem": "These three lemmas describe the *inner* product only, with no statement about the cutoff. Every real use is inside the piecewise integrand: the downstream consumer must write `simp only [cauchyPrincipalValueIntegrand', sub_zero]; rw [ite_eq_left]; exact pv_integrand_seg2 ...` (SectorCurveLemma.lean:388-389, similarly 364-365), and this file's own `pv_cutoff_integral_seg2_eq_Ialpha` (lines 526-536) does not use `pv_integrand_seg2` at all but repeats `rw [sectorCurve_seg2 ..., deriv_sectorCurve_seg2 ...]; field_simp`. So the published simplification lemma does not serve the simplification step it is named for, and that step is duplicated three times in this file and twice more downstream.",
+      "proposed_change": "Add companion lemmas whose left-hand side is the canonical integrand, e.g. `theorem cauchyPrincipalValueIntegrand'_inv_of_seg2 (h : t ∈ Ioo 1 2) (hε : ε < ‖sectorCurve r α t‖) : cauchyPrincipalValueIntegrand' (fun z => z⁻¹) (sectorCurve r α) 0 ε t = I * ↑α` proved by `rw [cauchyPrincipalValueIntegrand'_of_gt hε]; exact pv_integrand_seg2 r hr α t h`, with the analogous seg1/seg3 statements; tag these `@[simp]` (the arc one in particular, whose right-hand side `I * ↑α` does not mention `t`, so there is no rewrite cycle). Then the `h_on_Ioo` blocks at lines 504-513, 526-536, 557-570 can each be discharged by the companion lemma instead of `dsimp only [F]; ...; field_simp`.",
+      "benefit": "The per-segment simplification becomes a single rewrite usable in exactly the context where it is needed (inside `cauchyPrincipalValueIntegrand'`), removing three duplicated `field_simp` blocks here and the unfold-then-rewrite dance downstream.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "cauchyPV_inv_integrableOn_12",
+          "excerpt": "  have h_eq : ∀ t ∈ Ioo (1 : ℝ) 2,\n      cauchyPrincipalValueIntegrand' (fun z => z⁻¹) (sectorCurve r α) 0 ε t =\n      I * ↑α := fun t ⟨ht1, ht2⟩ => by\n    simp only [cauchyPrincipalValueIntegrand', sub_zero]\n    rw [ite_eq_left]; · exact pv_integrand_seg2 r hr α t ⟨ht1, ht2⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_integral_seg2_eq_Ialpha",
+          "excerpt": "  have h_on_Ioo : ∀ t ∈ Ioo 1 2, F t = I * ↑α := by\n    intro t ⟨ht1, ht2⟩\n    dsimp only [F]; simp only [sub_zero]; rw [ite_eq_left]\n    · rw [sectorCurve_seg2 r α t ⟨le_of_lt ht1, le_of_lt ht2⟩,\n          deriv_sectorCurve_seg2 r α t ⟨ht1, ht2⟩]"
+        }
+      ]
+    },
+    {
+      "declaration": "sectorCurve_seg2 (overlapping with sectorCurve_seg1 and sectorCurve_seg3)",
+      "start_line": 104,
+      "end_line": 118,
+      "excerpt": "theorem sectorCurve_seg2 (r : ℝ) (α : ℝ) (t : ℝ) (ht : t ∈ Icc 1 2) :\n    sectorCurve r α t = ↑r * exp (I * ↑((t - 1) * α)) := by\n  rcases eq_or_lt_of_le ht.1 with rfl | h1\n  · simp [sectorCurve, Complex.exp_zero]\n  · simp only [sectorCurve, ite_eq_right (not_le.mpr h1), ite_eq_left ht.2]",
+      "problem": "The segment lemmas are the only rewrite rules this file offers for `sectorCurve r α t`, and they are the rules every proof in this file and in SectorCurveLemma.lean uses (`rw [sectorCurve_seg1 ...]`, `rw [sectorCurve_seg3 ...]`). Their domains are not the definition's branches: `sectorCurve` guards are `t ≤ 1`, `t ≤ 2`, else (lines 64-70), so on `t = 1` the first branch wins and on `t = 2` the second branch wins, yet `sectorCurve_seg2` claims the arc form on all of `Icc 1 2` and `sectorCurve_seg3` claims the ray form on all of `Icc 2 3`. At those shared endpoints the right-hand sides are only propositionally equal to the neighbouring rule's (`↑r * exp (I * ↑((1 - 1) * α))` versus `↑(1 * r)`), which is why the proofs above need `rcases eq_or_lt_of_le ht.1` plus `Complex.exp_zero` (line 107) and `push_cast; ring_nf` (lines 114-116); `sectorCurve_seg1` needs no such split. Any attempt to register these as simp rules therefore produces competing rules on the overlap.",
+      "proposed_change": "State the segment lemmas on the definition's own, disjoint guards: `sectorCurve_seg1` on `Icc 0 1`, `sectorCurve_seg2` on `Ioc 1 2`, `sectorCurve_seg3` on `Ioc 2 3`, each proved by a single `simp only [sectorCurve, ite_eq_right ..., ite_eq_left ...]`. Keep the currently stated `Icc` versions (needed by the interval proofs) as corollaries derived via `sectorCurve_one` (line 90) and `sectorCurve_two` (line 94) for the left endpoints, so that each `t` matches exactly one segment rule.",
+      "benefit": "The segment rules become non-overlapping and confluent, so they can safely serve as the rewrite/simp interface for `sectorCurve`; the boundary case splits and `exp_zero`/`ring_nf` steps in `sectorCurve_seg2`/`sectorCurve_seg3` disappear, and users no longer have to remember that the `Icc` statements are only true up to the boundary identities.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "sectorCurve",
+          "excerpt": "def sectorCurve (r : ℝ) (α : ℝ) (t : ℝ) : ℂ :=\n  if t ≤ 1 then\n    ↑(t * r)\n  else if t ≤ 2 then\n    ↑r * exp (I * ↑((t - 1) * α))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "sectorCurve_zero_set_finite",
+          "excerpt": "    · exfalso; rw [sectorCurve_seg2 r α t ⟨le_of_lt h1, h2⟩] at h0\n      simp_all\n    · rw [sectorCurve_seg3 r α t ⟨le_of_lt h2, ht3⟩] at h0"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 466666,
+    "cached_input_tokens": 407936,
+    "output_tokens": 18949,
+    "reasoning_output_tokens": 13887
+  },
+  "cost_usd": 0.017436388,
+  "generation_ids": [
+    "gen-1792624779-1LbhBj6LfXcv5YMqGm15",
+    "gen-1792624819-yvrqGnGYJpQsB0wMjNTL",
+    "gen-1792624829-ikMwQ5HgckAojYP6xPHs",
+    "gen-1792624844-D3L2frM3CwPaq6VDDGQZ",
+    "gen-1792624866-kfC44cSvXEXzuaW1jwjZ",
+    "gen-1792624881-WBVjMuFDD3n6AflYN6Nu",
+    "gen-1792624914-Jy4Zvwe1pQNjFYDwC9kq",
+    "gen-1792624924-gXOXdrRf91iuXwlii0e8",
+    "gen-1792624954-wZJQKiNLw5RCGEmFdvGy"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 9,
+  "duration_ms": 206824,
+  "judged": "2026-10-21T23:22:58+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "de515c586469d139beb62e3a244ba09c5de602aaa08004cf221d4a24cc69ce21"
+}

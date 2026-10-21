@@ -1,0 +1,83 @@
+{
+  "id": "mathlib-file-0003",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 415 lines of the target file. I also inspected the relevant rpow monotonicity definition and the existing `IsBigO.natCast_atTop` API in `Mathlib/Analysis/Asymptotics/Lemmas.lean`. The proposed replacement is a source-level refactor and was not compiled here. I considered the nearby constant-base tendsto proofs and the Complex cpow proofs, but their shared portions are short uses of existing filter/asymptotics API rather than substantial repeated proof machinery.",
+  "findings": [
+    {
+      "declaration": "IsBigO.mul_atTop_rpow_of_isBigO_rpow and IsBigO.mul_atTop_rpow_natCast_of_isBigO_rpow",
+      "start_line": 274,
+      "end_line": 293,
+      "excerpt": "  refine (hf.mul hg).trans (Eventually.isBigO ?_)\n  filter_upwards [eventually_ge_atTop 1] with t ht\n  replace ht : 1 ≤ (t : ℝ) := Nat.one_le_cast.mpr ht\n  rw [← Real.rpow_add (zero_lt_one.trans_le ht), Real.norm_of_nonneg (Real.rpow_nonneg\n    (zero_le_one.trans ht) (a + b))]\n  exact Real.rpow_le_rpow_of_exponent_le ht h",
+      "problem": "The two adjacent declarations repeat the same real-power comparison proof. In both proofs, after `hf.mul hg`, the remaining goal is to compare `fun t => t ^ a * t ^ b` with `fun t => t ^ c` at `atTop`: take eventually `1 ≤ t`, rewrite `t ^ a * t ^ b` as `t ^ (a+b)`, and apply `Real.rpow_le_rpow_of_exponent_le` using `a+b ≤ c`. The natural-number proof differs only by the `Nat.one_le_cast` conversion. This duplicates the mathematical core and hides that the nat-cast version is a specialization of the real version.",
+      "proposed_change": "Extract the common estimate into a helper, for example\n```lean\nprivate lemma isBigO_rpow_mul_rpow_atTop_of_le {p q r : ℝ} (h : p + q ≤ r) :\n    (fun t : ℝ => t ^ p * t ^ q) =O[atTop] fun t : ℝ => t ^ r := by\n  refine Eventually.isBigO ?_\n  filter_upwards [eventually_ge_atTop 1] with t ht\n  rw [← Real.rpow_add (zero_lt_one.trans_le ht), Real.norm_of_nonneg\n    (Real.rpow_nonneg (zero_le_one.trans ht) (p + q))]\n  exact Real.rpow_le_rpow_of_exponent_le ht h\n```\nUnder the existing hypotheses `hf`, `hg`, and `h : a + b ≤ c`, the real theorem becomes\n```lean\n  (hf.mul hg).trans (isBigO_rpow_mul_rpow_atTop_of_le h)\n```\nand the nat-cast theorem becomes\n```lean\n  (hf.mul hg).trans ((isBigO_rpow_mul_rpow_atTop_of_le h).natCast_atTop)\n```\nThe latter uses the existing `IsBigO.natCast_atTop` specialization in `Mathlib/Analysis/Asymptotics/Lemmas.lean`; add that import if it is not already transitively available. The helper proof is exactly the existing repeated block with variables renamed, so no new mathematical assumptions are introduced.",
+      "benefit": "The only proof of the real-power comparison `t^a * t^b =O t^c` for `t ≥ 1` lives in one place. The nat-cast theorem becomes visibly a cast specialization rather than a second copy, so future changes to rpow monotonicity or positivity arguments need only one edit and the two proofs cannot drift apart.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "IsBigO.mul_atTop_rpow_of_isBigO_rpow",
+          "excerpt": "  refine (hf.mul hg).trans (Eventually.isBigO ?_)\n  filter_upwards [eventually_ge_atTop 1] with t ht\n  rw [← Real.rpow_add (zero_lt_one.trans_le ht), Real.norm_of_nonneg (Real.rpow_nonneg\n    (zero_le_one.trans ht) (a + b))]\n  exact Real.rpow_le_rpow_of_exponent_le ht h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "IsBigO.mul_atTop_rpow_natCast_of_isBigO_rpow",
+          "excerpt": "  refine (hf.mul hg).trans (Eventually.isBigO ?_)\n  filter_upwards [eventually_ge_atTop 1] with t ht\n  replace ht : 1 ≤ (t : ℝ) := Nat.one_le_cast.mpr ht\n  rw [← Real.rpow_add (zero_lt_one.trans_le ht), Real.norm_of_nonneg (Real.rpow_nonneg\n    (zero_le_one.trans ht) (a + b))]\n  exact Real.rpow_le_rpow_of_exponent_le ht h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Asymptotics/Lemmas.lean",
+          "declaration": "IsBigO.natCast_atTop",
+          "excerpt": "theorem IsBigO.natCast_atTop {R : Type*} [Semiring R] [PartialOrder R] [IsStrictOrderedRing R]\n    [Archimedean R]\n    {f : R → E} {g : R → F} (h : f =O[atTop] g) :\n    (fun (n : ℕ) => f n) =O[atTop] (fun n => g n) :=\n  IsBigO.comp_tendsto h tendsto_natCast_atTop_atTop"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Real.lean",
+          "declaration": "Real.rpow_le_rpow_of_exponent_le",
+          "excerpt": "theorem rpow_le_rpow_of_exponent_le (hx : 1 ≤ x) (hyz : y ≤ z) : x ^ y ≤ x ^ z := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1020142,
+    "cached_input_tokens": 954880,
+    "output_tokens": 26661,
+    "reasoning_output_tokens": 21802
+  },
+  "cost_usd": 0.0261905,
+  "generation_ids": [
+    "gen-1792625039-mZCPrQvbMLORhsoxwGQd",
+    "gen-1792625049-pYRBO6m2QkRR3eRJiOgi",
+    "gen-1792625054-dAqwrgegNXIE9b9DBNa7",
+    "gen-1792625062-yGdlvibcfg4pEkrJxwof",
+    "gen-1792625077-fizAwdoNpEOABHvTQ5MO",
+    "gen-1792625089-Eighzp6ghDMUWoaVW0e3",
+    "gen-1792625123-iZj3Z4Zx0FqP6OPuxgzt",
+    "gen-1792625128-oot2WjGuEM5Aiwt36fgW",
+    "gen-1792625151-yjL7Ja260k5PoEAAaHDx",
+    "gen-1792625156-ZbpdRBb0lLtpdguaIbYU",
+    "gen-1792625163-TuFz7oEAJx2u5Qv6xbVn",
+    "gen-1792625206-h4xc5GnqajznJUVyQM8r",
+    "gen-1792625213-X5ugO1PJRT8KmUNBZiXY",
+    "gen-1792625276-OWIL9itiVvEURrDn8POA",
+    "gen-1792625286-2iYAtiPmRUr6oqtsZra8",
+    "gen-1792625309-Iddoeuu4qe9je3tCYWeR",
+    "gen-1792625311-dK9gRov4Dcucp0T0lKSA",
+    "gen-1792625329-y0026bhre7SXXF4im0Ym"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 18,
+  "duration_ms": 308730,
+  "judged": "2026-10-21T23:29:00+00:00",
+  "unit": "file",
+  "rubric": "repeated-proof-machinery",
+  "source_sha256": "f736afe5ee0e392168895c13ce258c142fdc5d3b45ecb5d3dd12af9299a8ee42"
+}

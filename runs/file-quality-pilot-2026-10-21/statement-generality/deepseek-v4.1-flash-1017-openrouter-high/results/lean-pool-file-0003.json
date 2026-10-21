@@ -1,0 +1,152 @@
+{
+  "id": "lean-pool-file-0003",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (definition of sectorCurve at lines 64-70, all segment/derivative/integrand lemmas, the private cutoff-integrability lemmas, and the main theorem pv_sector_dz_over_z), and checked the uses of these lemmas in the sibling file Residue/SectorCurveLemma.lean (lines 76-110, 113-142, 719-725) and Mathlib's gluing tool Continuous.if_le (Mathlib/Topology/Order/OrderClosed.lean:667-681). The findings reported are weakenings of conditions that are visibly unused by the definitions or by the proofs (one-sided bounds instead of closed intervals, 0 < r instead of r ≠ 0, and interval-restricted continuity instead of global continuity). I did not report the totally unused angle binders `_hα_nonneg`, `_hα_le` of `pv_sector_dz_over_z` (lines 636-637) or the unused `_hε1` binders of `integral_seg1_eq_neg_log`/`integral_seg3_eq_log`, because deleting unused binders belongs to the separate unnecessary-hypotheses experiment rather than this rubric; likewise I did not flag that the latter two lemmas appear unused elsewhere (log_cancellation re-derives the same integrals). No proposed replacement was compiled (Lean cannot be executed here); the proof sketches rely on existing lemmas whose statements I read: `Iio_mem_nhds`/`Ioi_mem_nhds` usage in the current proofs, `Continuous.if_le`, and `Complex.exp_zero`.",
+  "findings": [
+    {
+      "declaration": "sectorCurve_continuousOn",
+      "start_line": 120,
+      "end_line": 146,
+      "excerpt": "theorem sectorCurve_continuousOn (r : ℝ) (α : ℝ) :\n    ContinuousOn (sectorCurve r α) (Icc 0 3) := by",
+      "problem": "Continuity is only established on the fixed interval Icc 0 3, although `sectorCurve r α` is defined as a three-branch piecewise function whose branches agree at t = 1 and t = 2 (see the definition, lines 64-70). The restriction of the domain is a structural assumption that the definition does not need: the curve is continuous at every real t, including t < 0 and t > 3. Every current consumer therefore has to be phrased on Icc 0 3 (e.g. `((sectorCurve_continuousOn r α).pow n).div_const _` in SectorCurveLemma.lean:122) and any future use on another set forces a re-proof.",
+      "proposed_change": "State the more general `theorem sectorCurve_continuous (r : ℝ) (α : ℝ) : Continuous (sectorCurve r α)` and derive the existing statement as `(sectorCurve_continuous r α).continuousOn` (downstream `.mono` uses become `.continuousOn.mono`). Proof sketch with the glue lemma `Continuous.if_le`: the two branch functions `fun t : ℝ => (↑r : ℂ) * exp (I * ↑((t - 1) * α))` and `fun t : ℝ => ↑((3 - t) * r) * exp (I * ↑α)` are continuous and agree where `t ≤ 2` and `2 ≤ t` holds, i.e. at t = 2 (`2 - 1 = 1` and `3 - 2 = 1`, so both sides are `↑r * exp (I * ↑α)`); then glue `fun t : ℝ => (↑(t * r) : ℂ)` to the resulting function across the condition `t ≤ 1`, where they agree at t = 1 (`1 - 1 = 0` and `exp 0 = 1`). Each branch is continuous via `continuous_ofReal.comp (continuous_id.mul continuous_const)` and `Complex.continuous_exp.comp`. No hypothesis on r or α is needed, so the degenerate cases r = 0 and α = 0 are included (all branches then agree with the constant computations).",
+      "benefit": "Users obtain continuity of the sector curve at arbitrary points of ℝ and on arbitrary intervals (needed for `ContinuousOn.comp`, `IntervalIntegrable`, or differentiable-on-neighbourhood arguments) without reproving continuity from the piecewise definition, while the currently used `ContinuousOn (Icc 0 3)` version remains a one-line corollary, so the four existing consumers in SectorCurveLemma.lean continue to work.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "sectorCurve",
+          "excerpt": "  if t ≤ 1 then\n    ↑(t * r)\n  else if t ≤ 2 then\n    ↑r * exp (I * ↑((t - 1) * α))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Topology/Order/OrderClosed.lean",
+          "declaration": "Continuous.if_le",
+          "excerpt": "(hf' : Continuous f') (hg' : Continuous g') (hf : Continuous f) (hg : Continuous g)\n    (hfg : ∀ x, f x = g x → f' x = g' x) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "pv_sector_higher_power",
+          "excerpt": "    ((sectorCurve_continuousOn r α).pow n).div_const _"
+        }
+      ]
+    },
+    {
+      "declaration": "sectorCurve_seg1",
+      "start_line": 99,
+      "end_line": 101,
+      "excerpt": "theorem sectorCurve_seg1 (r : ℝ) (α : ℝ) (t : ℝ) (ht : t ∈ Icc 0 1) :\n    sectorCurve r α t = ↑(t * r) := by simp [sectorCurve, ht.2]",
+      "problem": "The first branch of `sectorCurve` is guarded only by `t ≤ 1`, so the value `↑(t * r)` holds for every real t with t ≤ 1. The lemma nevertheless demands the two-sided hypothesis `t ∈ Icc 0 1`, and its proof uses only `ht.2`. Callers must therefore manufacture an irrelevant lower bound at each use, e.g. `sectorCurve_seg1 r α t ⟨le_of_lt (lt_trans hδ htδ), le_of_lt ht1⟩` (line 506) and `sectorCurve_seg1 r α δ ⟨hδ_pos.le, hδ_lt_1.le⟩` (SectorCurveLemma.lean:719).",
+      "proposed_change": "Replace the hypothesis by the one-sided condition: `theorem sectorCurve_seg1 (r : ℝ) (α : ℝ) (t : ℝ) (ht : t ≤ 1) : sectorCurve r α t = ↑(t * r) := by simp [sectorCurve, ht]`. This is exactly the definition's first branch; no further assumption on r or α is used, and the lower bound 0 ≤ t is not needed. Existing call sites simply pass their upper bound, e.g. `sectorCurve_seg1 r α t (le_of_lt ht.2)`.",
+      "benefit": "The statement matches the definition and is applicable to all t ≤ 1 (including t < 0, where the curve formula is the same), and every call site becomes shorter because no lower bound has to be proved; the change also makes it obvious that the segment-1 formula carries no orientation assumption on r.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "sectorCurve",
+          "excerpt": "  if t ≤ 1 then\n    ↑(t * r)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_integral_seg1_eq_inv",
+          "excerpt": "    · rw [sectorCurve_seg1 r α t ⟨le_of_lt (lt_trans hδ htδ), le_of_lt ht1⟩,"
+        }
+      ]
+    },
+    {
+      "declaration": "sectorCurve_seg3",
+      "start_line": 110,
+      "end_line": 118,
+      "excerpt": "theorem sectorCurve_seg3 (r : ℝ) (α : ℝ) (t : ℝ) (ht : t ∈ Icc 2 3) :\n    sectorCurve r α t = ↑((3 - t) * r) * exp (I * ↑α) := by\n  rcases eq_or_lt_of_le ht.1 with rfl | h2",
+      "problem": "For t > 2 the definition takes its final `else` branch, so the formula `↑((3 - t) * r) * exp (I * ↑α)` holds for every t ≥ 2, in particular for t > 3; the upper bound `t ≤ 3` in `t ∈ Icc 2 3` is never used, and indeed the proof body never mentions `ht.2` (it only splits `eq_or_lt_of_le ht.1`). The upper bound is superfluous work for users, as visible in the call `sectorCurve_seg3 r α (3 - δ) ⟨h3δ_gt_2.le, by linarith⟩` (SectorCurveLemma.lean:721), where the second component has to be discharged by `linarith`.",
+      "proposed_change": "Replace the hypothesis by `(ht : 2 ≤ t)`. The existing proof body works unchanged: the case t = 2 reduces to `↑r * exp (I * ↑((2 - 1) * α)) = ↑((3 - 2) * r) * exp (I * ↑α)` by `push_cast; ring_nf`, and for `2 < t` the two `ite_eq_right` rewrites using `not_le.mpr h2` and `not_le.mpr (lt_trans one_lt_two h2)` apply verbatim, since the third branch has no upper bound.",
+      "benefit": "The lemma becomes usable at points beyond 3 (for example when investigating the curve extended past the parameter range) and at the right endpoint without an extra `linarith` proof; callers only have to supply the geometrically meaningful condition that the point lies on the returning ray.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "sectorCurve",
+          "excerpt": "  else\n    ↑((3 - t) * r) * exp (I * ↑α)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "zpow_ftc_vanishes",
+          "excerpt": "    have := sectorCurve_seg3 r α (3 - δ) ⟨h3δ_gt_2.le, by linarith⟩"
+        }
+      ]
+    },
+    {
+      "declaration": "deriv_sectorCurve_seg1",
+      "start_line": 163,
+      "end_line": 172,
+      "excerpt": "theorem deriv_sectorCurve_seg1 (r : ℝ) (α : ℝ) (t : ℝ) (ht : t ∈ Ioo 0 1) :\n    deriv (sectorCurve r α) t = ↑r := by\n  have h_eq : sectorCurve r α =ᶠ[𝓝 t] fun s => ↑(s * r) := by\n    have h_nhds : Iio 1 ∈ 𝓝 t := Iio_mem_nhds ht.2",
+      "problem": "The derivative formula on the first radial ray only needs the neighbourhood `Iio 1 ∈ 𝓝 t`, i.e. `t < 1`; the proof uses `ht.2` and never `ht.1`, so the hypothesis `t ∈ Ioo 0 1` is stronger than needed. The same pattern occurs in `deriv_sectorCurve_seg3` (lines 199-218), whose proof uses only `Ioi_mem_nhds ht.1` (i.e. `2 < t`) and never `ht.2`; the formula `-(↑r) * exp (I * ↑α)` in fact holds for all t > 2, including t > 3. Callers must currently build pairs, e.g. `deriv_sectorCurve_seg1 r α t ⟨lt_trans hδ htδ, ht1⟩` (line 507).",
+      "proposed_change": "State `theorem deriv_sectorCurve_seg1 (r : ℝ) (α : ℝ) (t : ℝ) (ht : t < 1) : deriv (sectorCurve r α) t = ↑r` with the same proof (`have h_nhds : Iio 1 ∈ 𝓝 t := Iio_mem_nhds ht`), and analogously `theorem deriv_sectorCurve_seg3 (r : ℝ) (α : ℝ) (t : ℝ) (ht : 2 < t) : deriv (sectorCurve r α) t = -(↑r) * exp (I * ↑α)` with `Ioi_mem_nhds ht`. Both are true as stated because the eventual-equality step only inspects the branch of the definition in a whole one-sided neighbourhood of t, and the derivative computation (`hasDerivAt_id.mul_const`, `ofReal_comp`, `push_cast; ring`) is independent of the extra bound.",
+      "benefit": "The derivative lemmas become usable on the whole open half-line (including t < 0 and t > 3, where the same branch applies) and existing calls simplify from `⟨lt_trans hδ htδ, ht1⟩` to just `lt_trans hδ htδ`, removing bookkeeping from every downstream proof (lines 507, 562, 644, 683 in the two sector files).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "deriv_sectorCurve_seg3",
+          "excerpt": "    have h_nhds : Ioi 2 ∈ 𝓝 t := Ioi_mem_nhds ht.1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "pv_integrand_seg1'",
+          "excerpt": "      deriv_sectorCurve_seg1 r α t ht])"
+        }
+      ]
+    },
+    {
+      "declaration": "pv_integrand_seg1",
+      "start_line": 222,
+      "end_line": 230,
+      "excerpt": "theorem pv_integrand_seg1 (r : ℝ) (hr : 0 < r) (α : ℝ) (t : ℝ) (ht : t ∈ Ioo 0 1) :\n    (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t = ↑(t⁻¹) := by",
+      "problem": "The identities (sectorCurve)⁻¹ * deriv = ↑(t⁻¹), = I * ↑α and = -↑((3 - t)⁻¹) are pure cancellations of the factor ↑r ((↑(t*r))⁻¹ * ↑r = ↑(t⁻¹), (↑r * e)⁻¹ * (↑r * (I * ↑α) * e) = I * ↑α, (↑((3-t)*r) * e)⁻¹ * (↑(-r) * e) = -↑((3 - t)⁻¹), each requiring only t ≠ 0, resp. 3 - t ≠ 0, and r ≠ 0). They are nevertheless stated with the strictly stronger hypothesis `hr : 0 < r`, and the proofs use only `ne_of_gt hr` to get `(r : ℂ) ≠ 0`. The positivity is not part of the mathematics of these lemmas; it only comes from the later cutoff estimates where a positive radius is used to form ε / r.",
+      "proposed_change": "Weaken the hypothesis of the three integrand lemmas to `(hr : r ≠ 0)` (statements unchanged): `theorem pv_integrand_seg1 (r : ℝ) (hr : r ≠ 0) (α : ℝ) (t : ℝ) (ht : t ∈ Ioo 0 1) : (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t = ↑(t⁻¹)`, and similarly for `pv_integrand_seg2` (lines 232-239) and `pv_integrand_seg3` (lines 241-250). The proofs only need the single substitution `Complex.ofReal_ne_zero.mpr hr` in place of `Complex.ofReal_ne_zero.mpr (ne_of_gt hr)`; the field_simp/ring step is unchanged. The case r = 0 is correctly excluded, since the curve is then degenerate and the integrand is a division by zero.",
+      "benefit": "The lemmas become available whenever the radius is merely known to be nonzero (e.g. when r is itself a product or a signed factor), and the hypothesis documents the actual requirement, so a reader can see that the orientation/sign of r plays no role in the integrand simplification; downstream statements that only assume r ≠ 0 are no longer blocked.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_integrand_seg1",
+          "excerpt": "  have hr_ne : (r : ℂ) ≠ 0 := Complex.ofReal_ne_zero.mpr (ne_of_gt hr)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_integrand_seg2",
+          "excerpt": "theorem pv_integrand_seg2 (r : ℝ) (hr : 0 < r) (α : ℝ) (t : ℝ) (ht : t ∈ Ioo 1 2) :\n    (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t = I * ↑α := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 254875,
+    "cached_input_tokens": 221824,
+    "output_tokens": 19229,
+    "reasoning_output_tokens": 13455
+  },
+  "cost_usd": 0.014033172,
+  "generation_ids": [
+    "gen-1792624368-hlUE19R1pHaMW1pOFLnL",
+    "gen-1792624395-EBsf10H7uFl3TFTxMmc9",
+    "gen-1792624418-7C4rZswDqFFLGYk6uODc",
+    "gen-1792624440-zJUczVILs4vet1wX2kro",
+    "gen-1792624473-Pt9MA9uyJL1tyWDng45b",
+    "gen-1792624495-ApuQSeXL7JjDx39kw9N3",
+    "gen-1792624508-LyeLKrnttL1bu5ZqHlKX",
+    "gen-1792624538-mitEvlBI7DBQuEIfjjcB"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 8,
+  "duration_ms": 220353,
+  "judged": "2026-10-21T23:16:17+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "de515c586469d139beb62e3a244ba09c5de602aaa08004cf221d4a24cc69ce21"
+}

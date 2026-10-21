@@ -1,0 +1,130 @@
+{
+  "id": "lean-pool-file-0003",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 652 lines of the target file and checked the related sources: `GeneralizedResidueTheory/Basic.lean` (for `cauchyPrincipalValueIntegrand'`/`cauchyPrincipalValue'`), `Residue/SectorCurveLemma.lean` (how the sector-curve lemmas are reused elsewhere), and Mathlib's `Order/Interval/Set/LinearOrder.lean`, `Order/Interval/Set/UnorderedInterval.lean` and `MeasureTheory/Integral/IntervalIntegral/Basic.lean`. I verified the cited Mathlib lemma statements (`Set.Icc_union_Icc_eq_Icc`, `Set.uIoo_of_le`, `IntervalIntegrable.congr_uIoo`) and the exact statements of the target's `integral_seg1_eq_neg_log`, `integral_seg3_eq_log` and `pv_integrand_seg1/2/3`. I could not run Lean, so the proposed replacements are untested; they are presented as concrete proposals, not as compiled proofs. No rubric-eligible issue was found outside the four reported points (the remaining verbosity, e.g. the repeated `let F`/`set F` pattern, would require an API-level refactor rather than a local proof simplification and was not reported).",
+  "findings": [
+    {
+      "declaration": "log_cancellation",
+      "start_line": 288,
+      "end_line": 296,
+      "excerpt": "  have h1 : ∫ t in (ε / r)..(1 : ℝ), (t⁻¹ : ℝ) = -(Real.log (ε / r)) := by\n    rw [integral_inv_of_pos hεr_pos one_pos, Real.log_div one_ne_zero (ne_of_gt hεr_pos),\n      Real.log_one, zero_sub]\n  have h2 : ∫ t in (2 : ℝ)..(3 - ε / r), -((3 - t)⁻¹ : ℝ) = Real.log (ε / r) := by\n    rw [intervalIntegral.integral_neg]\n    have h_sub : ∫ t in (2 : ℝ)..(3 - ε / r), (3 - t)⁻¹ = ∫ u in (ε / r)..1, u⁻¹ := by\n      have := intervalIntegral.integral_comp_sub_left (fun u => u⁻¹) (3 : ℝ)\n        (a := (2 : ℝ)) (b := 3 - ε / r)",
+      "problem": "`log_cancellation` re-derives the two real logarithmic interval integrals inline (`h1` via `integral_inv_of_pos`/`Real.log_div`, `h2` via `integral_neg` + `integral_comp_sub_left`), even though `integral_seg1_eq_neg_log` (lines 255-257) and `integral_seg3_eq_log` (lines 260-261) state exactly these facts, with `ε := ε / r`. Those two public lemmas are used nowhere in the repository, so the file contains two unreferenced statements plus their duplicated inline proofs. The hypothesis `hεr_lt1 : ε / r < 1` of `log_cancellation` is also never used in the current proof, precisely because the named lemmas (which need `ε < 1`) are not cited.",
+      "proposed_change": "Replace the bodies of `h1` and `h2` by direct applications of the existing lemmas, e.g.\n```lean\n  have h1 : ∫ t in (ε / r)..(1 : ℝ), (t⁻¹ : ℝ) = -(Real.log (ε / r)) :=\n    integral_seg1_eq_neg_log (ε / r) hεr_pos hεr_lt1\n  have h2 : ∫ t in (2 : ℝ)..(3 - ε / r), -((3 - t)⁻¹ : ℝ) = Real.log (ε / r) :=\n    integral_seg3_eq_log (ε / r) hεr_pos hεr_lt1\n```\n(the statements match up to the notationally identical `t⁻¹`/`(t : ℝ)⁻¹` and `3 - ε / r`/`3 - ε / r`), leaving the rest of `log_cancellation` (`h1c`, `h2c`, the final `neg_add_cancel` step) unchanged.",
+      "benefit": "This removes roughly ten lines of duplicated integral manipulation, makes the two otherwise-unused named lemmas the single source of truth for the logarithmic integrals, and lets a reader see the intended key idea immediately: `h1` gives `-log(ε/r)` and `h2` gives `+log(ε/r)`, so the radial contributions cancel. The `hεr_lt1` hypothesis becomes meaningful rather than dead.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "integral_seg1_eq_neg_log",
+          "excerpt": "theorem integral_seg1_eq_neg_log (ε : ℝ) (hε : 0 < ε) (_hε1 : ε < 1) :\n    ∫ t in ε..1, (t : ℝ)⁻¹ = -Real.log ε := by\n  simp_all"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "integral_seg3_eq_log",
+          "excerpt": "theorem integral_seg3_eq_log (ε : ℝ) (hε : 0 < ε) (_hε1 : ε < 1) :\n    ∫ t in (2 : ℝ)..(3 - ε), -((3 - t)⁻¹) = Real.log ε := by"
+        }
+      ]
+    },
+    {
+      "declaration": "pv_cutoff_integral_seg1_eq_inv (and pv_cutoff_integral_seg2_eq_Ialpha, pv_cutoff_integral_seg3_eq_neg_inv, pv_cutoff_F_integrable_1_2, pv_cutoff_F_integrable_2_3delta)",
+      "start_line": 504,
+      "end_line": 510,
+      "excerpt": "  have h_on_Ioo : ∀ t ∈ Ioo δ 1, F t = (↑(t⁻¹) : ℂ) := fun t ⟨htδ, ht1⟩ => by\n    dsimp only [F]; simp only [sub_zero]; rw [ite_eq_left]\n    · rw [sectorCurve_seg1 r α t ⟨le_of_lt (lt_trans hδ htδ), le_of_lt ht1⟩,\n          deriv_sectorCurve_seg1 r α t ⟨lt_trans hδ htδ, ht1⟩]\n      have ht_ne : (t : ℂ) ≠ 0 := Complex.ofReal_ne_zero.mpr (ne_of_gt (lt_trans hδ htδ))\n      have hr_ne : (r : ℂ) ≠ 0 := Complex.ofReal_ne_zero.mpr (ne_of_gt hr)\n      push_cast; field_simp",
+      "problem": "The integrand simplification `(sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t = ...` is proved from scratch with `sectorCurve_seg*`, `deriv_sectorCurve_seg*`, `field_simp` inside five proofs in this file, although the public lemmas `pv_integrand_seg1` (224-230), `pv_integrand_seg2` (233-239) and `pv_integrand_seg3` (242-250) state exactly these identities. Occurrences: `pv_cutoff_F_integrable_1_2` (383-387), `pv_cutoff_F_integrable_2_3delta` (415-421), `pv_cutoff_integral_seg1_eq_inv` (506-510), `pv_cutoff_integral_seg2_eq_Ialpha` (529-533), `pv_cutoff_integral_seg3_eq_neg_inv` (560-566). Notably `pv_integrand_seg3` has no use anywhere in the repository, so the lemma exists only as an unreferenced duplicate of this inline algebra.",
+      "proposed_change": "After the existing `dsimp only [F]; simp only [sub_zero]; rw [ite_eq_left]`, close the first branch by citing the named lemma, exactly as the sibling file already does:\n```lean\n    · exact pv_integrand_seg1 r hr α t ⟨lt_trans hδ htδ, ht1⟩\n```\nand analogously `· exact pv_integrand_seg2 r hr α t ⟨ht1, ht2⟩` (lines 529-533 and 383-387) and `· exact pv_integrand_seg3 r hr α t ⟨ht2, h3⟩` (lines 560-566 and 415-421). The second branch (the cutoff/norm inequality) stays as is, since that is the part genuinely specific to each `h_eq`.",
+      "benefit": "Each proof shrinks by five or six algebra lines, and the reader is sent to the earlier, documented statement of the integrand value instead of re-reading the same `field_simp` computation five times. It also makes the distinction between the two conceptual obligations (integrand value vs. cutoff condition) explicit, and removes the current inconsistency where `SectorCurveLemma.lean` already uses these lemmas while this file does not.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "cauchyPV_inv_integrableOn_δ1",
+          "excerpt": "    rw [ite_eq_left]; · exact pv_integrand_seg1 r hr α t ⟨lt_trans hδ htδ, ht1⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurveLemma.lean",
+          "declaration": "cauchyPV_inv_integrableOn_12",
+          "excerpt": "    rw [ite_eq_left]; · exact pv_integrand_seg2 r hr α t ⟨ht1, ht2⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_integrand_seg3",
+          "excerpt": "theorem pv_integrand_seg3 (r : ℝ) (hr : 0 < r) (α : ℝ) (t : ℝ) (ht : t ∈ Ioo 2 3) :\n    (sectorCurve r α t)⁻¹ * deriv (sectorCurve r α) t = -↑((3 - t)⁻¹) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "sectorCurve_continuousOn",
+      "start_line": 123,
+      "end_line": 132,
+      "excerpt": "  have h_union : Icc (0 : ℝ) 3 = Icc 0 1 ∪ Icc 1 2 ∪ Icc 2 3 := by\n    ext x; simp only [mem_Icc, mem_union]\n    constructor\n    · intro ⟨h0, h3⟩",
+      "problem": "The set equality `Icc 0 3 = Icc 0 1 ∪ Icc 1 2 ∪ Icc 2 3` is proved by a ten-line `ext`/`constructor`/nested `by_cases` argument, although it is exactly two applications of the standard Mathlib lemma `Set.Icc_union_Icc_eq_Icc` (tagged `@[simp]`). The manual proof forces the reader through element chasing that carries no mathematical content for the continuity argument.",
+      "proposed_change": "Replace the body of `h_union` with the two rewrites (the file already has `open Set`, so the unqualified name also works):\n```lean\n  have h_union : Icc (0 : ℝ) 3 = Icc 0 1 ∪ Icc 1 2 ∪ Icc 2 3 := by\n    rw [Set.Icc_union_Icc_eq_Icc (by norm_num) (by norm_num),\n      Set.Icc_union_Icc_eq_Icc (by norm_num) (by norm_num)]\n```\nThis first collapses `Icc 0 1 ∪ Icc 1 2` to `Icc 0 2` and then `Icc 0 2 ∪ Icc 2 3` to `Icc 0 3`.",
+      "benefit": "The reader reaches the real content of `sectorCurve_continuousOn` (three continuous pieces glued with `union_of_isClosed`) much sooner, and the adjacencies `0 ≤ 1 ≤ 2 ≤ 3` that justify the union are stated explicitly instead of being hidden in case splits.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Order/Interval/Set/LinearOrder.lean",
+          "declaration": "Set.Icc_union_Icc_eq_Icc",
+          "excerpt": "@[simp]\ntheorem Icc_union_Icc_eq_Icc (h₁ : a ≤ b) (h₂ : b ≤ c) : Icc a b ∪ Icc b c = Icc a c :="
+        }
+      ]
+    },
+    {
+      "declaration": "pv_cutoff_F_integrable_delta_1",
+      "start_line": 357,
+      "end_line": 370,
+      "excerpt": "  have h_g_Ioo : IntegrableOn (fun t : ℝ => (↑(t⁻¹) : ℂ)) (Ioo δ 1) volume :=\n    (intervalIntegrable_iff.mp hcont.intervalIntegrable).mono_set\n      (by rw [Set.uIoc_of_le hδ1.le]; exact Ioo_subset_Ioc_self)\n  have h_F_Ioo : IntegrableOn F (Ioo δ 1) volume :=\n    Integrable.congr h_g_Ioo\n      ((ae_restrict_mem measurableSet_Ioo).mono fun t ht => (h_eq t ht).symm)\n  rw [IntegrableOn, ← Measure.restrict_congr_set Ioo_ae_eq_Ioc]; exact h_F_Ioo",
+      "problem": "To transfer interval-integrability from `fun t => (↑(t⁻¹) : ℂ)` to `F`, the proof leaves the interval-integral API: it rewrites with `intervalIntegrable_iff` into `IntegrableOn` on `uIoc`, restricts to `Ioo` via `mono_set`, proves the `IntegrableOn` statement on `Ioo`, and finally converts back with `Measure.restrict_congr_set Ioo_ae_eq_Ioc`. This is a long detour for an equality that `h_eq` already gives on the open interval. The same pattern recurs in `pv_cutoff_F_integrable_2_3delta` (lines 434-441) and, with a constant function, in `pv_cutoff_F_integrable_1_2` (lines 391-398).",
+      "proposed_change": "Use Mathlib's dedicated lemma `IntervalIntegrable.congr_uIoo`, which applies precisely when two functions agree on the open interval:\n```lean\n  refine (hcont.intervalIntegrable).congr_uIoo (g := F) fun t ht => ?_\n  rw [Set.uIoo_of_le hδ1.le] at ht\n  exact (h_eq t ht).symm\n```\nand delete `h_g_Ioo` and `h_F_Ioo`. The same replacement works for `pv_cutoff_F_integrable_2_3delta` (using `h3δ.le`) and `pv_cutoff_F_integrable_1_2` (constant function; `h_eq` there is on `Ioo 1 2`).",
+      "benefit": "The proof states the mathematical reason in one step (\"`F` agrees with the continuous function on the open interval, hence is interval-integrable\") instead of switching between `IntervalIntegrable`, `IntegrableOn`, `uIoc` and `Ioc` several times. Measurable-set bookkeeping (`ae_restrict_mem`, `mono_set`, `restrict_congr_set`) disappears, so the reader can follow the argument without reconstructing why each conversion is legitimate.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Integral/IntervalIntegral/Basic.lean",
+          "declaration": "IntervalIntegrable.congr_uIoo",
+          "excerpt": "theorem IntervalIntegrable.congr_uIoo [NullSingletonClass μ] {g : ℝ → ε}\n    (hf : IntervalIntegrable f μ a b) (h : EqOn f g (uIoo a b)) : IntervalIntegrable g μ a b :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Order/Interval/Set/UnorderedInterval.lean",
+          "declaration": "Set.uIoo_of_le",
+          "excerpt": "@[simp] lemma uIoo_of_le (h : a ≤ b) : uIoo a b = Ioo a b := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 492361,
+    "cached_input_tokens": 451200,
+    "output_tokens": 23351,
+    "reasoning_output_tokens": 17642
+  },
+  "cost_usd": 0.01857798,
+  "generation_ids": [
+    "gen-1792625166-EOowuZpCLbdvo9ZYXAau",
+    "gen-1792625173-RMi8SiC1Ak1ywLpTw62b",
+    "gen-1792625181-uAEkSbCVmRCYaRE7kDoY",
+    "gen-1792625208-H7ARGKm6FsHMTdW1OeuE",
+    "gen-1792625216-YfoQLcffeefsip4T5qx8",
+    "gen-1792625231-UIPALM4q28WfRlyJ0KGB",
+    "gen-1792625249-lwTSKV99Y5jxl0bxnPp2",
+    "gen-1792625261-9GoZFoQyzKgUnFPoQVuS",
+    "gen-1792625291-f5LMtVc88MMI4S4Niqk2",
+    "gen-1792625319-YOI956kaan7J6awr6IPV",
+    "gen-1792625356-fZJuyfeTbGIQEU0PzKvD",
+    "gen-1792625376-gEmwu4xQJBRcCaq5X2Gj"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 12,
+  "duration_ms": 247730,
+  "judged": "2026-10-21T23:30:07+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "de515c586469d139beb62e3a244ba09c5de602aaa08004cf221d4a24cc69ce21"
+}
