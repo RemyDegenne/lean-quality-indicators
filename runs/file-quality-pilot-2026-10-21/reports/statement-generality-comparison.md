@@ -1,6 +1,6 @@
 # statement-generality
 
-Generated 2026-10-21T21:31:52+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-21T21:41:28+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## Library comparison
 
@@ -8,7 +8,7 @@ Generated 2026-10-21T21:31:52+00:00 · [Methods and notation](../../../AUDIT_MET
 |---|---:|---:|---:|---:|---:|
 | Mathlib | — | — | 6/10<br>60.0% [31.3%, 83.2%] | 2/10<br>20.0% [5.7%, 51.0%] | — |
 | Tau Ceti | — | — | 3/10<br>30.0% [10.8%, 60.3%] | 1/10<br>10.0% [1.8%, 40.4%] | — |
-| Lean Pool | — | — | 9/10<br>90.0% [59.6%, 98.2%] | 8/10<br>80.0% [49.0%, 94.3%] | — |
+| Lean Pool | — | — | 9/10<br>90.0% [59.6%, 98.2%] | 8/10<br>80.0% [49.0%, 94.3%] | 1/1<br>100.0% [20.7%, 100.0%] |
 | OpenAI Math | 67/100<br>67.0% [57.3%, 75.4%] | 79/100<br>79.0% [70.0%, 85.8%] | 60/100<br>60.0% [50.2%, 69.1%] | 47/100<br>47.0% [37.5%, 56.7%] | — |
 
 ## All libraries
@@ -21,7 +21,7 @@ Full-pass reference: **130 targets**.
 | Sol | 100 | 1/1 | 100/100 | 79 | 79 | 79.0% [70.0%, 85.8%] | $13.16 / $17.11 |
 | Sonnet | 130 | 1/1 | 130/130 | 78 | 78 | 60.0% [51.4%, 68.0%] | $16.38 / $16.38 |
 | Luna | 130 | 1/1 | 130/130 | 58 | 58 | 44.6% [36.3%, 53.2%] | $0.63 / $0.63 |
-| DeepSeek | 40 | 0/1 | 0/40 | 0 | 0 | — | $0.00 / — |
+| DeepSeek | 40 | 0/1 | 1/40 | 1 | 1 | 100.0% [20.7%, 100.0%] | $0.02 / $2.56 |
 
 ### Correlation matrix
 
@@ -29,9 +29,9 @@ Full-pass reference: **130 targets**.
 |---|---:|---:|---:|---:|---:|
 | Opus | — | 0.47 [0.28, 0.66]; n=100 | 0.51 [0.33, 0.67]; n=100 | 0.36 [0.18, 0.53]; n=100 | — |
 | Sol | 0.47 [0.28, 0.66]; n=100 | — | 0.48 [0.30, 0.63]; n=100 | 0.39 [0.22, 0.53]; n=100 | — |
-| Sonnet | 0.51 [0.33, 0.67]; n=100 | 0.48 [0.30, 0.63]; n=100 | — | 0.48 [0.34, 0.61]; n=130 | — |
-| Luna | 0.36 [0.18, 0.53]; n=100 | 0.39 [0.22, 0.53]; n=100 | 0.48 [0.34, 0.61]; n=130 | — | — |
-| DeepSeek | — | — | — | — | — |
+| Sonnet | 0.51 [0.33, 0.67]; n=100 | 0.48 [0.30, 0.63]; n=100 | — | 0.48 [0.34, 0.61]; n=130 | —; n=1 |
+| Luna | 0.36 [0.18, 0.53]; n=100 | 0.39 [0.22, 0.53]; n=100 | 0.48 [0.34, 0.61]; n=130 | — | —; n=1 |
+| DeepSeek | — | — | —; n=1 | —; n=1 | — |
 
 Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 0 not applicable; Sonnet: 0 partial, 1 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
 
@@ -45,7 +45,7 @@ Full-pass reference: **10 targets**.
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sonnet | 10 | 1/1 | 10/10 | 6 | 6 | 60.0% [31.3%, 83.2%] | $1.04 / $1.04 |
 | Luna | 10 | 1/1 | 10/10 | 2 | 2 | 20.0% [5.7%, 51.0%] | $0.05 / $0.05 |
-| DeepSeek | 10 | 0/1 | 0/10 | 0 | 0 | — | $0.00 / — |
+| DeepSeek | 10 | 0/1 | 0/10 | 0 | 0 | — | $0.01 / — |
 
 ### Correlation matrix
 
@@ -93,7 +93,7 @@ Full-pass reference: **10 targets**.
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sonnet | 10 | 1/1 | 10/10 | 9 | 9 | 90.0% [59.6%, 98.2%] | $1.37 / $1.37 |
 | Luna | 10 | 1/1 | 10/10 | 8 | 8 | 80.0% [49.0%, 94.3%] | $0.06 / $0.06 |
-| DeepSeek | 10 | 0/1 | 0/10 | 0 | 0 | — | $0.00 / — |
+| DeepSeek | 10 | 0/1 | 1/10 | 1 | 1 | 100.0% [20.7%, 100.0%] | $0.01 / $0.10 |
 
 ### Correlation matrix
 
@@ -101,9 +101,9 @@ Full-pass reference: **10 targets**.
 |---|---:|---:|---:|---:|---:|
 | Opus | — | — | — | — | — |
 | Sol | — | — | — | — | — |
-| Sonnet | — | — | — | 0.67 [—]; n=10 | — |
-| Luna | — | — | 0.67 [—]; n=10 | — | — |
-| DeepSeek | — | — | — | — | — |
+| Sonnet | — | — | — | 0.67 [—]; n=10 | —; n=1 |
+| Luna | — | — | 0.67 [—]; n=10 | — | —; n=1 |
+| DeepSeek | — | — | —; n=1 | —; n=1 | — |
 
 Coverage annotations: Opus: 0 partial, 0 not applicable; Sol: 0 partial, 0 not applicable; Sonnet: 0 partial, 0 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
 

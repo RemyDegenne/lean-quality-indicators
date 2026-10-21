@@ -44,6 +44,20 @@ class OpenRouterTests(unittest.TestCase):
                 self.assertEqual(second['request_spacing_seconds'], 40)
                 self.assertEqual(second['not_before'], 1600)
 
+    def test_successful_requests_recover_to_configured_spacing_floor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'budget.json'
+            budget = backend.Budget(path)
+            state = budget.read()
+            state.update(request_spacing_seconds=20, minimum_request_spacing_seconds=5)
+            backend.write_json(path, state)
+            for _ in range(20):
+                budget.succeeded()
+            self.assertEqual(budget.read()['request_spacing_seconds'], 10)
+            for _ in range(40):
+                budget.succeeded()
+            self.assertEqual(budget.read()['request_spacing_seconds'], 5)
+
     def test_tools_provider_reasoning_and_billed_cost(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

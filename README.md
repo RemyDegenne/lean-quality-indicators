@@ -429,7 +429,7 @@ of the two theorem audits and 10 files per library for each of the six file audi
 `runs/deepseek-pilot-2026-10-21/`; results join the existing audit reports.
 
 Resume with `python3 scripts/deepseek_pilot.py`. The runner verifies the saved protocol
-and rejects invalid judgments. API requests are spaced at least ten seconds apart;
+and rejects invalid judgments. API requests currently use a five-second baseline gap after a stable ten-second calibration;
 HTTP 429 doubles the spacing and triggers an increasing cooldown. It exposes only
 Read, Grep and Glob source tools. Interrupted sessions resume from saved responses
 and source-tool results. A final JSON phase follows at most 32 source-inspection turns.

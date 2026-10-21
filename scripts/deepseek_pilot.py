@@ -210,7 +210,7 @@ def main():
                 continue  # Preserve rejection and let other selected targets complete.
             (ROOT / task["output"] / "results" / f"{task['row']['id']}.failure.json").unlink(missing_ok=True)
             status("running", tasks, budget, failures=failures)
-            time.sleep(10)
+            time.sleep(budget.read().get("judgment_spacing_seconds", 10))
         done = status("running", tasks, budget, failures=failures)
         status("complete" if done == len(tasks) else "incomplete", tasks, budget, failures=failures)
 

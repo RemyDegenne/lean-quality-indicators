@@ -86,7 +86,8 @@ The endpoint has flat rates, so no off-peak wait is needed.
 A persistent $20 inference budget reserves conservative peak-rate input and maximum
 output costs before each request; uncertain requests retain their reservation.
 
-DeepSeek requests are spaced at least ten seconds apart. A 429 doubles the spacing
+DeepSeek started with a ten-second request gap, reduced to five seconds after more
+than 60 successful requests on InferenceNet without a 429. A 429 doubles the spacing
 (up to two minutes) and increases the cooldown (five to thirty minutes); a request
 gets at most three attempts. Resuming a worker preserves previous attempt transcripts
 and their expenditure. Invalid file evidence never becomes an accepted judgment:
@@ -99,5 +100,5 @@ source-tool outputs. It preserves one representation of the model's reasoning co
 supplies the actual source working directory, and reserves a final JSON phase after
 32 source-inspection turns, with at most three finalization/validation attempts.
 These are recorded harness changes; the audit rubrics and selected targets are unchanged.
-Twenty successful API requests halve elevated spacing back toward the ten-second floor.
+Twenty successful API requests halve elevated spacing back toward the configured baseline (currently five seconds).
 Unsettled requests retain their conservative budget reservation and are not called spend.

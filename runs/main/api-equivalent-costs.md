@@ -1,6 +1,6 @@
 # API-equivalent costs
 
-Generated 2026-10-21T21:31:55+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-21T21:41:31+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 | Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |
 |---|---|---:|---:|---:|---:|
@@ -18,12 +18,12 @@ Generated 2026-10-21T21:31:55+00:00 · [Methods and notation](../../AUDIT_METHOD
 | concept-reinvention | Sol | 100 | 130 | $8.47 / $11.02 | $84.75 |
 | concept-reinvention | Sonnet | 130 | 130 | $8.99 / $8.99 | $69.14 |
 | concept-reinvention | Luna | 130 | 130 | $0.65 / $0.65 | $5.04 |
-| concept-reinvention | DeepSeek | 0 | 130 | $0.00 / — | $0.00 |
+| concept-reinvention | DeepSeek | 4 | 130 | $0.02 / $0.67 | $5.12 |
 | statement-generality | Opus | 100 | 130 | $32.26 / $41.93 | $322.57 |
 | statement-generality | Sol | 100 | 130 | $13.16 / $17.11 | $131.61 |
 | statement-generality | Sonnet | 130 | 130 | $16.38 / $16.38 | $125.96 |
 | statement-generality | Luna | 130 | 130 | $0.63 / $0.63 | $4.83 |
-| statement-generality | DeepSeek | 0 | 130 | $0.00 / — | $0.00 |
+| statement-generality | DeepSeek | 1 | 130 | $0.02 / $2.56 | $19.65 |
 | vacuity-and-misstatement | Opus | 100 | 130 | $21.38 / $27.79 | $213.77 |
 | vacuity-and-misstatement | Sol | 100 | 130 | $9.89 / $12.85 | $98.86 |
 | vacuity-and-misstatement | Sonnet | 130 | 130 | $12.33 / $12.33 | $94.88 |
@@ -53,8 +53,8 @@ Generated 2026-10-21T21:31:55+00:00 · [Methods and notation](../../AUDIT_METHOD
 | Sol | $534.09 |
 | Sonnet | $318.02 |
 | Luna | $26.56 |
-| DeepSeek | $0.14 |
-| **Total** | **$1520.65** |
+| DeepSeek | $0.18 |
+| **Total** | **$1520.69** |
 
 ## Rate sources
 

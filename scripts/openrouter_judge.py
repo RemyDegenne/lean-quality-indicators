@@ -111,7 +111,7 @@ class Budget:
             state = self.read()
             state["success_streak"] = state.get("success_streak", 0) + 1
             if state["success_streak"] >= 20:
-                state["request_spacing_seconds"] = max(10, state.get("request_spacing_seconds", 10) / 2)
+                state["request_spacing_seconds"] = max(state.get("minimum_request_spacing_seconds", 10), state.get("request_spacing_seconds", 10) / 2)
                 state["success_streak"] = 0
                 state["backoff_level"] = 0
             write_json(self.path, state)
