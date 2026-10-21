@@ -1,0 +1,101 @@
+{
+  "id": "lean-pool-file-0002",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and checked the local definitions against Mathlib's EuclideanSpace/PiLp API (PiLp.lean, PiL2.lean) and the project's own L2Vec3/Vec3/basisVec definitions. I also checked how widely l2Vec3Equiv and l2BasisVec are used (many uses in 5 files, so the cost is real). Other definitions (gradientOfCovector, weakTest*Schwartz, realPartValue, realPartVectorL2Representative) are project-specific wrappers or different representations, so I did not flag them. fourier_postcompCLM and the other theorems are excluded as theorem-level duplication. Uncertainty: I did not confirm that the Mathlib replacements compile with every downstream use; I only established that the definitions are defeq.",
+  "findings": [
+    {
+      "declaration": "CKN.Leray.l2BasisVec (with private l2BasisVec_norm)",
+      "start_line": 45,
+      "end_line": 49,
+      "excerpt": "def l2BasisVec (i : Fin 3) : L2Vec3 :=\n  WithLp.toLp 2 (CKN.basisVec i)",
+      "problem": "L2Vec3 is `PiLp 2 (fun _ : Fin 3 => ℝ)`, which is definitionally `EuclideanSpace ℝ (Fin 3)`. `l2BasisVec i` is `WithLp.toLp 2 (Pi.single i 1)`, which is exactly Mathlib's `EuclideanSpace.single i 1` (`PiLp.single 2 i 1`). So this is a competing local definition of the standard basis vector. The private `l2BasisVec_norm` reproves `PiLp.norm_single`. Other parts of this repo (EllipticPDE) already use `EuclideanSpace.single i 1` or `PiLp.single`, so the two conventions coexist and the `PiLp.single` simp lemmas cannot be applied directly to `l2BasisVec`.",
+      "proposed_change": "Remove `l2BasisVec` and the private norm lemma, or make `l2BasisVec` a reducible abbreviation for `PiLp.single 2 i (1 : ℝ)` (or `EuclideanSpace.single i 1`). Use `PiLp.norm_single`, `PiLp.single_eq_same` and `PiLp.single_eq_of_ne` in `gradientOfCovectorLinear_norm_bound`, `inner_l2BasisVec` and the `l2Vec3Equiv (l2BasisVec i) = CKN.basisVec i` step of `weakTestGradientSchwartz_apply`. Keep a lemma linking `CKN.basisVec` to `Pi.single` only where needed.",
+      "benefit": "There is one standard basis-vector notion on L2Vec3. The `PiLp.single`/`EuclideanSpace.single` API (norm, apply, inner) becomes usable directly. Several local simp calls and the private norm lemma go away, and the code is consistent with the rest of the repo.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/InnerProductSpace/PiL2.lean",
+          "declaration": "EuclideanSpace.single",
+          "excerpt": "abbrev EuclideanSpace.single (i : ι) (a : 𝕜) : EuclideanSpace 𝕜 ι := PiLp.single 2 i a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Normed/Lp/PiLp.lean",
+          "declaration": "PiLp.norm_single",
+          "excerpt": "lemma norm_single (i : ι) (b : β i) : ‖single p i b‖ = ‖b‖"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Basic.lean",
+          "declaration": "CKN.Foundation.Parabolic.L2Vec3",
+          "excerpt": "abbrev L2Vec3 := PiLp 2 (fun _ : Fin 3 => ℝ)"
+        }
+      ]
+    },
+    {
+      "declaration": "CKN.Leray.l2Vec3Equiv",
+      "start_line": 35,
+      "end_line": 36,
+      "excerpt": "def l2Vec3Equiv : L2Vec3 ≃L[ℝ] Vec3 :=\n  PiLp.continuousLinearEquiv 2 ℝ (fun _ : Fin 3 => ℝ)",
+      "problem": "This is a new definition whose body is Mathlib's `EuclideanSpace.equiv (Fin 3) ℝ`. That abbrev is `PiLp.continuousLinearEquiv 2 𝕜 _` on `EuclideanSpace 𝕜 ι ≃L[𝕜] ι → 𝕜`. Here `L2Vec3` is `PiLp 2 (fun _ => ℝ)` (defeq to `EuclideanSpace ℝ (Fin 3)`) and `Vec3` is `Fin 3 → ℝ`, so the type is the same too. The new name hides the standard constant. It is used about 70 times across 5 files in this development, always with ad hoc unfolding via `simp [l2Vec3Equiv, ...]`.",
+      "proposed_change": "Replace the body by `EuclideanSpace.equiv (Fin 3) ℝ`, or make `l2Vec3Equiv` a `reducible` abbrev for it. Better, drop the definition and use `EuclideanSpace.equiv (Fin 3) ℝ` directly, with a short notation if the name is wanted. This lets Mathlib's simp/continuity lemmas about `EuclideanSpace.equiv` apply without unfolding.",
+      "benefit": "This avoids a parallel name for a standard Mathlib equivalence and lets library lemmas about `EuclideanSpace.equiv` apply directly. It also removes the need to unfold `l2Vec3Equiv` by hand in downstream simp calls.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/InnerProductSpace/PiL2.lean",
+          "declaration": "EuclideanSpace.equiv",
+          "excerpt": "abbrev EuclideanSpace.equiv : EuclideanSpace 𝕜 ι ≃L[𝕜] ι → 𝕜 :=\n  PiLp.continuousLinearEquiv 2 𝕜 _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/InnerProductSpace/PiL2.lean",
+          "declaration": "EuclideanSpace",
+          "excerpt": "abbrev EuclideanSpace (𝕜 : Type*) (n : Type*) : Type _ :=\n  PiLp 2 fun _ : n => 𝕜"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 21166,
+    "cache_read_input_tokens": 84083,
+    "output_tokens": 5080,
+    "output_tokens_details": {
+      "thinking_tokens": 1119
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21166,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2559,
+        "cache_read_input_tokens": 24562,
+        "cache_creation_input_tokens": 685,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 685
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14389230000000003,
+  "duration_ms": 34188,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T02:50:33",
+  "unit": "file",
+  "source_sha256": "b8ef72c373bf6ce6441335c9b87f592a65fa1e978b9b2de2240636ba3850ed17",
+  "rubric": "concept-reinvention"
+}

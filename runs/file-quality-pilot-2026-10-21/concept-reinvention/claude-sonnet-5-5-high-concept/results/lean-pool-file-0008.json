@@ -1,0 +1,101 @@
+{
+  "id": "lean-pool-file-0008",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I checked the Mathlib bivariate API in Mathlib/Algebra/Polynomial/Bivariate.lean (equivMvPolynomial, Bivariate.swap). I read the local transposeBivariate in BivariateResultant.lean and the constants map in PerfectConstants.lean. perfectConstantsToFrobeniusSubfield is just a codRestrict of algebraMap, so I treated it as fine. degreeOf_map_eq_of_injective is a standalone theorem, which the rubric excludes. Uncertainty: the two oriented presentations may be deliberate, since the source follows the paper's orientation. The case for consolidation rests on the repeated bridging work, and I did not check whether replacing the definitions would be cheap across the roughly 178 uses of transposeBivariate.",
+  "findings": [
+    {
+      "declaration": "planeCurveToBivariate",
+      "start_line": 45,
+      "end_line": 48,
+      "excerpt": "(MvPolynomial.finSuccEquiv K 1).trans\n    (Polynomial.mapAlgEquiv (MvPolynomial.uniqueAlgEquiv K (Fin 1)))",
+      "problem": "This defines a second equivalence between `MvPolynomial (Fin 2) K` and `K[X][Y]`, next to Mathlib's `Polynomial.Bivariate.equivMvPolynomial`. The two differ only by the variable swap. The file itself proves this in `transposeBivariate_planeCurveToBivariate`, which states `transposeBivariate (planeCurveToBivariate K f) = (equivMvPolynomial K).symm f`. As a result the file carries parallel API for both orientations. There are three simp lemmas (`_X_zero`, `_X_one`, `_C`) and two degree lemmas: `planeCurveToBivariate_natDegree_eq_degreeOf_zero` and `bivariateEquiv_symm_natDegree_eq_degreeOf_one`. Several of these are reproved by `ringHom_ext` and `fin_cases` arguments. Neither the docstring nor the module docs justify keeping a separate equivalence rather than defining this one from the Mathlib one.",
+      "proposed_change": "Define `planeCurveToBivariate K` as `(Polynomial.Bivariate.equivMvPolynomial K).symm.trans Polynomial.Bivariate.swap`, or as `swap` composed with `equivMvPolynomial.symm`. Keep the name, and keep the orientation if the rest of the development needs it. Derive the `_X_zero`, `_X_one`, `_C` and natDegree lemmas from the Mathlib simp lemmas `equivMvPolynomial_symm_X_0`, `equivMvPolynomial_symm_X_1`, `equivMvPolynomial_symm_C`, `swap_X`, `swap_Y`, `swap_C_C`, and from the single degree lemma `bivariateEquiv_symm_natDegree_eq_degreeOf_one`. This removes the `finSuccEquiv` proofs and the bridging theorem `transposeBivariate_planeCurveToBivariate`.",
+      "benefit": "There would be one canonical bivariate presentation, with the oriented name kept as a thin wrapper. Readers would not have to convert between two presentations, and the duplicated generator, constant and degree proofs would shrink to reuse of Mathlib simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Algebra/Polynomial/Bivariate.lean",
+          "declaration": "Polynomial.Bivariate.equivMvPolynomial",
+          "excerpt": "def equivMvPolynomial : R[X][Y] ≃ₐ[R] MvPolynomial (Fin 2) R :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Algebra/Polynomial/Bivariate.lean",
+          "declaration": "Polynomial.Bivariate.swap",
+          "excerpt": "def Bivariate.swap : R[X][Y] ≃ₐ[R] R[X][Y] :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean",
+          "declaration": "transposeBivariate_planeCurveToBivariate",
+          "excerpt": "transposeBivariate (planeCurveToBivariate K f) =\n      (Polynomial.Bivariate.equivMvPolynomial K).symm f"
+        }
+      ]
+    },
+    {
+      "declaration": "transposeBivariate_planeCurveToBivariate (use of the local transposeBivariate)",
+      "start_line": 117,
+      "end_line": 126,
+      "excerpt": "transposeBivariate (planeCurveToBivariate K f) =\n      (Polynomial.Bivariate.equivMvPolynomial K).symm f := by\n  let lhs : MvPolynomial (Fin 2) K →+* Polynomial (Polynomial K) :=\n    transposeBivariate.comp",
+      "problem": "The file leans on `transposeBivariate`, a local `RingHom` on `C[X][Y]` defined by `eval₂RingHom (mapRingHom C) (C X)`. It exchanges the two variables, which is exactly what Mathlib's `Polynomial.Bivariate.swap` does. `swap` is an `AlgEquiv` defined as `aevalAeval Y (C X)`. The local copy comes with its own API in BivariateResultant.lean: `transposeBivariate_C`, `transposeBivariate_X` and an involution lemma. Here it forces a hand-written `ringHom_ext` bridge to Mathlib's `equivMvPolynomial`, and it is used in the main theorem statements and proofs. Mathlib already has `swap_C`, `swap_X`, `swap_Y`, `swap_swap_apply` and `aevalAeval_swap`, but the local copy cannot use them. No comment explains why the Mathlib swap was not used.",
+      "proposed_change": "Redefine `transposeBivariate` as `Polynomial.Bivariate.swap.toRingEquiv.toRingHom`, or replace it by `Polynomial.Bivariate.swap` throughout. Prove its `_C`, `_X` and involution lemmas from `Bivariate.swap_C`, `swap_X` and `swap_swap_apply`. Then `transposeBivariate_planeCurveToBivariate` becomes a direct consequence of the definition of `planeCurveToBivariate` as `swap ∘ equivMvPolynomial.symm`.",
+      "benefit": "This removes a competing variable-exchange operation. It also lets downstream proofs reuse Mathlib's `swap` and `aevalAeval_swap` lemmas, and it cuts the conversions between the local and Mathlib presentations.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/BivariateResultant.lean",
+          "declaration": "transposeBivariate",
+          "excerpt": "Polynomial.eval₂RingHom\n    (Polynomial.mapRingHom (Polynomial.C : C →+* Polynomial C))\n    (Polynomial.C Polynomial.X)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Algebra/Polynomial/Bivariate.lean",
+          "declaration": "Polynomial.Bivariate.swap_apply",
+          "excerpt": "theorem Bivariate.swap_apply (p : R[X][Y]) : swap p = p.aevalAeval (A := R[X][Y]) Y (C X) := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 23573,
+    "cache_read_input_tokens": 69620,
+    "output_tokens": 5053,
+    "output_tokens_details": {
+      "thinking_tokens": 1181
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23573,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3069,
+        "cache_read_input_tokens": 25635,
+        "cache_creation_input_tokens": 2019,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2019
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1518,
+  "duration_ms": 34483,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T02:52:49",
+  "unit": "file",
+  "source_sha256": "c501674797f0929cf181974d55cd178a57ba3fbe59a6531a8e6ccef3c787e8ec",
+  "rubric": "concept-reinvention"
+}

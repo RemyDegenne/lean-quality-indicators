@@ -1,0 +1,106 @@
+{
+  "id": "mathlib-file-0004",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and Mathlib/LinearAlgebra/TensorProduct/Basis.lean. I compared `Algebra.TensorProduct.basis` with `Module.Basis.baseChange` and `Module.Free.tensor`. I grepped for uses: `Algebra.TensorProduct.basis` is used directly in Trace.lean and in this file, and `Basis.baseChange` in Kaehler/Cotangent files. I did not check whether `Free.lean` transitively imports `TensorProduct/Basis.lean`; it probably does via Matrix.ToLin, but I did not confirm it. I did not check whether the two bases are definitionally equal, so a migration may need a bridging lemma. The `toMatrix_baseChange` lemma and the `baseChange_linearMap`/`baseChange_end` lemmas are useful API and are not flagged as duplicates. They would have to be restated for the surviving basis.",
+  "findings": [
+    {
+      "declaration": "Algebra.TensorProduct.basis (with basisAux, basisAux_tmul, basisAux_map_smul, basis_repr_tmul, basis_apply, basis_repr_symm_apply, basis_repr_symm_apply')",
+      "start_line": 63,
+      "end_line": 81,
+      "excerpt": "noncomputable def basis : Basis ι A (A ⊗[R] M) where\n  repr := { basisAux A b with map_smul' := basisAux_map_smul b }",
+      "problem": "This file builds the A-basis of `A ⊗[R] M` induced by an R-basis of `M` from scratch. Mathlib already has `Module.Basis.baseChange`, which builds the same basis under the same hypotheses: `S` a `Semiring` with an `R`-algebra structure, and `b : Basis ι R M`. It comes with the same simp API: `baseChange_apply : b.baseChange S i = 1 ⊗ₜ b i` and `baseChange_repr_tmul`. The two bases therefore have separate constructions, separate `basis_apply`/`baseChange_apply` lemmas and separate repr lemmas. Downstream files use both: Trace.lean uses `Algebra.TensorProduct.basis`, while the Kaehler and Cotangent files use `Basis.baseChange`. Even this file shows the clash: it adds `Module.Basis.baseChange_linearMap` and `Module.Basis.baseChange_end` in the `Basis.baseChange` namespace, but states them for `Algebra.TensorProduct.basis`.",
+      "proposed_change": "Make one construction canonical. The simplest option is to define `Algebra.TensorProduct.basis A b` as `b.baseChange A`, or deprecate it. Then derive `basis_repr_tmul`, `basis_apply` and `basis_repr_symm_apply'` from `Basis.baseChange_repr_tmul` and `Basis.baseChange_apply`, or drop them. Delete `basisAux` and its two lemmas. State `toMatrix_baseChange`, `Basis.baseChange_linearMap` and `Basis.baseChange_end` with `b.baseChange A`. Keep `Algebra.TensorProduct.basis` as an abbreviation or deprecated alias only if the name is wanted. The reverse direction also works: make `Basis.baseChange` the thin wrapper over this construction, if that is preferred.",
+      "benefit": "There is one basis of the base change with one set of simp lemmas, so users no longer need to convert between `Algebra.TensorProduct.basis A b` and `b.baseChange A`. Simp sets are no longer split between two equal bases, and about 40 lines of duplicated construction and proof go away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/TensorProduct/Basis.lean",
+          "declaration": "Module.Basis.baseChange",
+          "excerpt": "def baseChange (b : Basis ι R M) : Basis ι S (S ⊗[R] M) :=\n  (tensorProduct (.singleton Unit S) b).reindex (Equiv.punitProd ι)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/TensorProduct/Basis.lean",
+          "declaration": "Module.Basis.baseChange_apply",
+          "excerpt": "b.baseChange S i = 1 ⊗ₜ b i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/TensorProduct/Basis.lean",
+          "declaration": "Module.Basis.baseChange_repr_tmul",
+          "excerpt": "(b.baseChange S).repr (x ⊗ₜ y) i = b.repr y i • x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/Trace.lean",
+          "declaration": "use of Algebra.TensorProduct.basis",
+          "excerpt": "let b' := Algebra.TensorProduct.basis A b"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/Kaehler/JacobiZariski.lean",
+          "declaration": "use of Basis.baseChange_apply",
+          "excerpt": "Basis.baseChange_apply"
+        }
+      ]
+    },
+    {
+      "declaration": "Algebra.TensorProduct.instFree",
+      "start_line": 109,
+      "end_line": 113,
+      "excerpt": "instance instFree (R A M : Type*)\n    [CommSemiring R] [AddCommMonoid M] [Module R M] [Module.Free R M]\n    [CommSemiring A] [Algebra R A] :\n    Module.Free A (A ⊗[R] M) :=",
+      "problem": "This instance is a second route to the same fact as Mathlib's `Module.Free.tensor`. `Module.Free.tensor` gives `Module.Free S (M ⊗[R] N)` from `Module.Free S M` and `Module.Free R N`. Taking `M := A` and `N := M` gives the same statement, because `Module.Free A A` is available as an instance. Instance resolution therefore has two ways to find the same class instance. This is the weakest part of the finding: the two are not literally the same declaration, and this one is proved from the competing basis.",
+      "proposed_change": "Either remove `instFree`, since `Module.Free.tensor` should already apply, or keep it and prove it with `Module.Free.of_basis (Module.Basis.baseChange A (Module.Free.chooseBasis R M))`. Check which instance is actually found before deleting. If it is kept, say in the docstring why it is kept.",
+      "benefit": "This avoids two competing instances and proofs of the same class, and removes the last dependence of the instance on the file's own basis construction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/TensorProduct/Basis.lean",
+          "declaration": "Module.Free.tensor",
+          "excerpt": "instance Module.Free.tensor [Module.Free S M] [Module.Free R N] : Module.Free S (M ⊗[R] N) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 14059,
+    "cache_read_input_tokens": 62405,
+    "output_tokens": 4172,
+    "output_tokens_details": {
+      "thinking_tokens": 713
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14059,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2689,
+        "cache_read_input_tokens": 19064,
+        "cache_creation_input_tokens": 2360,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2360
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10421649999999999,
+  "duration_ms": 31482,
+  "turns": 7,
+  "attempts": 2,
+  "judged": "2026-10-21T02:51:32",
+  "unit": "file",
+  "source_sha256": "bf2a088d5d9404a37658323baf8d0825590608855a2535f70fb894423f686432",
+  "rubric": "concept-reinvention"
+}
