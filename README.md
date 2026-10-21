@@ -166,8 +166,10 @@ lemma, a proof sketch and rewritten existing uses. Its
 [results](runs/file-quality-pilot-2026-10-21/reports/claude-sonnet-5-5-high-structure-machinery/summary.md)
 use the same file sample.
 Every positive has an [individual source review](runs/file-quality-pilot-2026-10-21/reviews/repeated-machinery-2026-10-21.md).
-Luna is reproducing the four selected audits (generality, vacuity/misstatement, simp and
-readable simplification) on the same thirty files, in 120 blind sessions, one at a time.
+Luna is reproducing all six audits on the same thirty files in 180 blind sessions, one at
+a time. Concept reinvention and repeated machinery are queued after its original four
+audits. A [pi SDK backend](audits/file-quality-v1/README.md) is prepared for GLM-5.3 on
+the same six audits; its model run awaits provider credentials.
 
 ## Results so far: unnecessary hypotheses
 

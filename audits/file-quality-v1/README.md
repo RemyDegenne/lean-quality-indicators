@@ -20,10 +20,29 @@ python3 -u scripts/repeated_machinery_audit.py --run file-quality-pilot-2026-10-
   --label claude-sonnet-5-5-high-structure-machinery --jobs 2
 ```
 
-Four selected audits are being independently reproduced by Luna on the same thirty files:
-generality, vacuity/misstatement, simp interface and readable proof simplification.
-`scripts/reproduce_file_audits.py` restricts that run and its reports to those four rubrics
-(120 reviews). It uses one active session behind the shared Codex guard.
+Luna independently reproduces all six audits on the same thirty files (180 reviews).
+Its original four-rubric run finishes first; concept reinvention and repeated machinery
+then extend it by sixty reviews. `scripts/reproduce_file_audits.py` selects all six.
+It uses one active session behind the shared Codex guard. The queued extension uses the
+original frozen runner so existing protocol hashes and accepted judgments remain valid.
+
+The pi SDK backend supports GLM-5.3 at high effort on the same sample and protocols.
+Install the pinned harness with `npm ci --prefix tools/pi`. Set `ZAI_API_KEY_FILE` to
+the path of a Z.ai key, set `ZAI_API_KEY`, or configure pi's saved provider credentials.
+Then run:
+
+```sh
+python3 -u scripts/file_audits.py --run file-quality-pilot-2026-10-21 \
+  --files-per-library 10 --backend pi --pi-provider zai --model glm-5.3 \
+  --label glm-5.3-pi-high --jobs 1
+```
+
+Pi sessions expose only the same Python Read, Grep and Glob implementation. Extensions,
+skills, context files, saved sessions and built-in execution/write tools are excluded.
+The JSON schema is appended to the user message, and every verdict passes the existing
+source-evidence validator before acceptance. Provider failures stop new admissions;
+invalid verdicts may be retried. The pi package lock and adapter hashes are recorded
+in each protocol manifest. No GLM judgments have been made yet; credentials are needed.
 
 Six independent rubrics review whole files: concepts already present in Mathlib,
 statement generality, vacuity or misstatement, simp
