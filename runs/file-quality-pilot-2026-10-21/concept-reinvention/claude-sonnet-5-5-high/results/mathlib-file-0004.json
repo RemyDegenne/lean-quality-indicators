@@ -1,0 +1,101 @@
+{
+  "id": "mathlib-file-0004",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I compared it with Mathlib/LinearAlgebra/TensorProduct/Basis.lean, which defines `Module.Basis.tensorProduct` and `Module.Basis.baseChange` with simp lemmas, and `Module.Free.tensor`. I also checked uses of `Algebra.TensorProduct.basis`; the only one outside this file is `trace_baseChange` in LinearAlgebra/Trace.lean. The `Basis.baseChange` definition is the same in the setting of this file's `basis`: both take an R-basis of M and an R-algebra A that is only a `Semiring`, and both give an A-basis of A ⊗[R] M indexed by ι. Their repr formulas differ in form: `baseChange_repr_tmul` gives `b.repr y i • x` and `basis_repr_tmul` gives `a • mapRange (algebraMap R A) ..`, but they are propositionally equal. I could not compile anything. I did not confirm that every import is available transitively, or that the instance `Module.Free A A` and the `IsScalarTower R A A` instance resolve inside the `Module.Free.tensor` migration. They very likely do. The other declarations in the file are lemmas, instances or specialisations, not independent concepts. I did not flag the `toMatrix_baseChange`/`baseChange_linearMap` statements, because the rubric excludes duplicate theorem statements.",
+  "findings": [
+    {
+      "declaration": "Algebra.TensorProduct.basis (with basisAux)",
+      "start_line": 45,
+      "end_line": 66,
+      "excerpt": "noncomputable def basis : Basis ι A (A ⊗[R] M) where\n  repr := { basisAux A b with map_smul' := basisAux_map_smul b }",
+      "problem": "Mathlib already has `Module.Basis.baseChange`. It has the same type: for `b : Basis ι R M` and `[Semiring S] [Algebra R S]`, it gives `Basis ι S (S ⊗[R] M)`. It satisfies `baseChange_apply : b.baseChange S i = 1 ⊗ₜ b i` and `baseChange_repr_tmul`. It is built from the more general `Basis.tensorProduct`, which already comes with its own API and `Module.Free.tensor`. This file builds a second, separate A-basis of `A ⊗[R] M`, using a hand-rolled `basisAux` and an `ext`/`simp` proof of A-linearity (`basisAux_map_smul`). It also re-proves the same simp API: `basis_apply` is `baseChange_apply`, and `basis_repr_tmul` is `baseChange_repr_tmul` up to rewriting. So the library has two non-defeq presentations of the same basis. Its only outside user, `trace_baseChange` in LinearAlgebra/Trace.lean, uses `Algebra.TensorProduct.basis`, while the Kaehler and Cotangent files use `Basis.baseChange`. Simp lemmas for one do not fire on the other.",
+      "proposed_change": "Make `Module.Basis.baseChange` the single definition. Redefine `Algebra.TensorProduct.basis A b` as `b.baseChange A` (or deprecate it), and delete `basisAux`, `basisAux_tmul` and `basisAux_map_smul`. Keep `basis_repr_tmul` and `basis_repr_symm_apply'` only if needed, as thin corollaries of `Basis.baseChange_repr_tmul` and `Basis.baseChange_apply`. Restate `Basis.baseChange_linearMap`, `Basis.baseChange_end` and `toMatrix_baseChange` for `b.baseChange A`. Switch `trace_baseChange` to `b.baseChange A`. The hypotheses match (`CommSemiring R`, `Semiring A`, `Algebra R A`), so no assumptions are lost. Since `basis_apply` is already `1 ⊗ₜ b i`, the proofs of `baseChange_linearMap` should go through with `Basis.baseChange_apply`. Only the `basis_repr_symm_apply'` proof needs a small reproof.",
+      "benefit": "The library gets one canonical base-change basis. Simp lemmas and results such as `Basis.baseChange_apply` and `liftBaseChange_injective_iff` then apply to the bases used in the matrix and trace lemmas. About 25 lines of bespoke construction are removed, and `Module.Free.tensor` and the `Basis.tensorProduct` API are reused.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/TensorProduct/Basis.lean",
+          "declaration": "Module.Basis.baseChange",
+          "excerpt": "def baseChange (b : Basis ι R M) : Basis ι S (S ⊗[R] M) :=\n  (tensorProduct (.singleton Unit S) b).reindex (Equiv.punitProd ι)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/TensorProduct/Basis.lean",
+          "declaration": "Module.Basis.baseChange_apply",
+          "excerpt": "b.baseChange S i = 1 ⊗ₜ b i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/TensorProduct/Basis.lean",
+          "declaration": "Module.Basis.baseChange_repr_tmul",
+          "excerpt": "(b.baseChange S).repr (x ⊗ₜ y) i = b.repr y i • x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/Trace.lean",
+          "declaration": "LinearMap.trace_baseChange",
+          "excerpt": "let b' := Algebra.TensorProduct.basis A b"
+        }
+      ]
+    },
+    {
+      "declaration": "Algebra.TensorProduct.instFree",
+      "start_line": 109,
+      "end_line": 113,
+      "excerpt": "Module.Free.of_basis <| Algebra.TensorProduct.basis A (Module.Free.chooseBasis R M)",
+      "problem": "This is a second route to freeness of `A ⊗[R] M`, via the duplicate basis. Mathlib already has the general instance `Module.Free.tensor [Module.Free S M] [Module.Free R N] : Module.Free S (M ⊗[R] N)`. Taking `S := A`, `M := A` and `N := M` gives the same statement here, since `Module.Free A A` is an instance. Its proof uses `Basis.tensorProduct`, not this file's `basis`.",
+      "proposed_change": "Once `Algebra.TensorProduct.basis` is replaced by `Basis.baseChange`, prove this instance as `Module.Free.of_basis ((Module.Free.chooseBasis R M).baseChange A)`. Alternatively, check whether `Module.Free.tensor` already provides it and delete this instance. In that case, check that the instance diamond-free resolution still works for downstream `Module.Free A (A ⊗[R] M)` uses.",
+      "benefit": "This removes a parallel instance path to the same fact and ties the file's headline result to the shared tensor-product basis API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/TensorProduct/Basis.lean",
+          "declaration": "Module.Free.tensor",
+          "excerpt": "instance Module.Free.tensor [Module.Free S M] [Module.Free R N] : Module.Free S (M ⊗[R] N) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 19306,
+    "cache_read_input_tokens": 55700,
+    "output_tokens": 5657,
+    "output_tokens_details": {
+      "thinking_tokens": 1866
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19306,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3061,
+        "cache_read_input_tokens": 19458,
+        "cache_creation_input_tokens": 3892,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3892
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.139384,
+  "duration_ms": 40292,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T01:43:40",
+  "unit": "file",
+  "source_sha256": "bf2a088d5d9404a37658323baf8d0825590608855a2535f70fb894423f686432",
+  "rubric": "concept-reinvention"
+}

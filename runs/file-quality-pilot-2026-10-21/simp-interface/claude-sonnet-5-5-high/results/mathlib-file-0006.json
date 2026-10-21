@@ -1,0 +1,101 @@
+{
+  "id": "mathlib-file-0006",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and grepped for uses of the relevant lemmas in Mathlib. Not run in Lean, so both findings are static analysis of how simp should behave. The first (missing simp lemma for linearMapAt off the base set) is fairly solid. The second (localTrivAt_def pre-empting the localTriv_* simp lemmas) depends on simp's reducible-transparency unification of `Z.localTriv ?i` with `Z.localTrivAt b`, which I have not tested. I checked and found no clear problem in the other simp attributes (symm_linearMapAt, continuousLinearEquivAt_apply', baseSet_at).",
+  "findings": [
+    {
+      "declaration": "Bundle.Trivialization.linearMapAt_def_of_notMem (and Pretrivialization.linearMapAt_def_of_notMem / linearMapAt_eq_zero)",
+      "start_line": 245,
+      "end_line": 247,
+      "excerpt": "theorem linearMapAt_def_of_notMem (e : Trivialization F (π F E)) [e.IsLinear R] {b : B}\n    (hb : b ∉ e.baseSet) : e.linearMapAt R b = 0 :=\n  dite_eq_right hb",
+      "problem": "The simp interface for the extended-by-zero maps is asymmetric. For `symmₗ` and `symmL` there are simp lemmas for both cases (`symmₗ_apply_of_notMem`, `symmL_apply_of_notMem`, alongside the `_apply` lemma for `b ∈ baseSet`). For `linearMapAt`, only the in-base-set case `coe_linearMapAt_of_mem` is `@[simp]`. The off-base-set case `linearMapAt_def_of_notMem` is not simp, so `e.linearMapAt R b y` with `hb : b ∉ e.baseSet` in context is not reduced to `0`. `continuousLinearMapAt` has no off-base-set rule either, and its simps lemma only rewrites it to `linearMapAt`. The Pretrivialization section also states the same fact twice (`linearMapAt_def_of_notMem` and `linearMapAt_eq_zero`, both `= 0` by `dite_eq_right hb`), none tagged simp.",
+      "proposed_change": "Mark the Trivialization (and Pretrivialization) `linearMapAt_def_of_notMem` as `@[simp]`. It is oriented `linearMapAt R b = 0`, has the hypothesis `b ∉ e.baseSet`, which simp can discharge from context, and cannot loop. Optionally add a matching `continuousLinearMapAt_of_notMem` simp lemma. Drop the duplicate `linearMapAt_eq_zero` or make it the single canonical name.",
+      "benefit": "Users can simplify the zero-extended fiber maps outside the base set the same way they already do for `symmₗ` and `symmL`. They no longer need to unfold via `linearMapAt_apply` and `if_neg` by hand, and the near-duplicate lemmas stop competing for the same role.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.symmL_apply_of_notMem",
+          "excerpt": "lemma symmL_apply_of_notMem (e : Trivialization F (π F E)) [e.IsLinear R] {b : B}\n    (hb : b ∉ e.baseSet) (y : F) : e.symmL R b y = 0 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Pretrivialization.linearMapAt_eq_zero",
+          "excerpt": "theorem linearMapAt_eq_zero (e : Pretrivialization F (π F E)) [e.IsLinear R] {b : B}\n    (hb : b ∉ e.baseSet) : e.linearMapAt R b = 0 :="
+        }
+      ]
+    },
+    {
+      "declaration": "VectorBundleCore.localTrivAt_def together with localTriv_continuousLinearMapAt, localTriv_symmL, localTriv_symm_apply, localTriv_coordChange_eq",
+      "start_line": 720,
+      "end_line": 722,
+      "excerpt": "@[simp, mfld_simps]\ntheorem localTrivAt_def : Z.localTriv (Z.indexAt b) = Z.localTrivAt b :=\n  rfl",
+      "problem": "`localTrivAt_def` is a simp/mfld_simps rewrite of `Z.localTriv (Z.indexAt b)` to `Z.localTrivAt b`. `localTrivAt` is an ordinary (non-reducible) def. The simp lemmas stated for `Z.localTriv i` are `localTriv_continuousLinearMapAt`, `localTriv_symmL`, `localTriv_symm_apply`, `localTriv_coordChange_eq` and `mem_localTriv_source`. For an expression like `(Z.localTriv (Z.indexAt b₀)).continuousLinearMapAt R b`, simp visits the subterm first, rewrites it to `Z.localTrivAt b₀`, and the outer lemma probably no longer matches because `Z.localTriv ?i` cannot be unified with `Z.localTrivAt b₀` at simp's transparency. There are `trivializationAt_*` versions of these lemmas, but no `localTrivAt_*` versions of continuousLinearMapAt, symmL or coordChange. This is untested, and the unification claim is from reading the definitions.",
+      "proposed_change": "Either add `localTrivAt_continuousLinearMapAt` and `localTrivAt_symmL` simp lemmas (and a coordChange analogue), each stated with `Z.localTrivAt b₀`, proved by `Z.localTriv_continuousLinearMapAt hb` etc. Or drop `simp` from `localTrivAt_def` and keep `localTriv (indexAt b)` as the normal form, with the `trivializationAt_*` lemmas covering the other side.",
+      "benefit": "This gives a single canonical normal form, so the VectorBundleCore simp lemmas apply to the preferred trivialization `localTrivAt b₀` (which `trivializationAt` unfolds to). The coordinate-change, `symmL` and `continuousLinearMapAt` rules would no longer depend on which spelling simp reaches first.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "VectorBundleCore.localTriv_continuousLinearMapAt",
+          "excerpt": "(Z.localTriv i).continuousLinearMapAt R b = Z.coordChange (Z.indexAt b) i b"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "VectorBundleCore.trivializationAt_symmL",
+          "excerpt": "(trivializationAt F Z.Fiber b₀).symmL R b = Z.coordChange (Z.indexAt b₀) (Z.indexAt b) b"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/FiberBundle/Basic.lean",
+          "declaration": "FiberBundleCore.localTrivAt_def",
+          "excerpt": "theorem localTrivAt_def (b : B) : Z.localTriv (Z.indexAt b) = Z.localTrivAt b :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 32228,
+    "cache_read_input_tokens": 66779,
+    "output_tokens": 8946,
+    "output_tokens_details": {
+      "thinking_tokens": 5513
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32228,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2767,
+        "cache_read_input_tokens": 34408,
+        "cache_creation_input_tokens": 1833,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1833
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2250619,
+  "duration_ms": 58954,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T01:54:58",
+  "unit": "file",
+  "source_sha256": "115769215c14a8abc3b1ef7b15f774011ad3255f74f3d2deba17c7b22d47fedf",
+  "rubric": "simp-interface"
+}

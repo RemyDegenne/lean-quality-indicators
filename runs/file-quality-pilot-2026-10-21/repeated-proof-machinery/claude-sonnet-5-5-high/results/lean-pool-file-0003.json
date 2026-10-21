@@ -1,0 +1,122 @@
+{
+  "id": "lean-pool-file-0003",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked usages in the lean-pool tree. The `integral_seg*` lemmas are unused outside this file. I did not search other files for a pre-existing generic helper for \"F equals g on the open interval Ioo\". `Ioo_ae_eq_Ioc` and `integral_congr_ae` are used directly in the file. I did not compile any of the proposed replacements.",
+  "findings": [
+    {
+      "declaration": "pv_cutoff_F_integrable_delta_1 / pv_cutoff_F_integrable_1_2 / pv_cutoff_F_integrable_2_3delta vs pv_cutoff_integral_seg1_eq_inv / pv_cutoff_integral_seg2_eq_Ialpha / pv_cutoff_integral_seg3_eq_neg_inv",
+      "start_line": 372,
+      "end_line": 398,
+      "excerpt": "  have h_eq : ∀ t ∈ Ioo (1 : ℝ) 2, F t = I * ↑α := by\n    intro t ⟨ht1, ht2⟩\n    dsimp only [F]; simp only [sub_zero]; rw [ite_eq_left]",
+      "problem": "The cutoff integrand F is computed on each open segment twice. Three integrability lemmas (lines 342–441) and three integral lemmas (lines 493–574) each re-prove the same pointwise fact. For example, `F t = I * ↑α` on Ioo 1 2 is proved at 380–390 and again at 526–536, in near-identical text. The seg1 version appears at 358–363 and 504–513, and the seg3 version at 412–425 and 557–570. Each copy repeats the same steps: unfold F, `ite_eq_left`, rewrite with the segment formula and derivative, `field_simp`, then bound the norm against ε. After that, each lemma repeats the same a.e. transfer from Ioo to Ioc, once for integrability (`Integrable.congr`, `Ioo_ae_eq_Ioc`) and once for the integral (`integral_congr_ae`, `eventuallyEqSet_iff`). Each pointwise block is about 10 lines, and there are three such blocks, each duplicated.",
+      "proposed_change": "Introduce the cutoff integrand once as a private def `pvCutoff r α ε t`. Then prove three pointwise lemmas. `pvCutoff_seg1 : δ = ε/r → δ < t → t < 1 → pvCutoff r α ε t = ↑(t⁻¹)`. `pvCutoff_seg2 : 0 < r → ε < r → t ∈ Ioo 1 2 → pvCutoff r α ε t = I * ↑α`. `pvCutoff_seg3 : ... t ∈ Ioo 2 (3-δ) → pvCutoff r α ε t = -↑((3-t)⁻¹)`. Add a generic helper `intervalIntegral_congr_Ioo {f g : ℝ → ℂ} {a b} (hab : a ≤ b) (h : ∀ t ∈ Ioo a b, f t = g t) : ∫ t in a..b, f t = ∫ t in a..b, g t`. Add a companion `IntervalIntegrable.congr_Ioo` that transfers IntervalIntegrable the same way. Each of the six lemmas then reduces to the pointwise lemma plus one helper call, and the repeated `Ioo_ae_eq_Ioc` boilerplate disappears. Adding `pvCutoff_eq_zero_of_norm_le` would also cover the zero pieces at 307–340 and 593–610.",
+      "benefit": "This removes roughly 80 lines of duplicated case analysis and a.e. plumbing. Each segment formula is then stated and proved once, which makes `pv_sector_cutoff_eq` easier to audit. The free-standing Ioo-to-Ioc congruence helpers are reusable in other PV computations.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_integral_seg2_eq_Ialpha",
+          "excerpt": "  have h_on_Ioo : ∀ t ∈ Ioo 1 2, F t = I * ↑α := by\n    intro t ⟨ht1, ht2⟩\n    dsimp only [F]; simp only [sub_zero]; rw [ite_eq_left]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_integral_seg3_eq_neg_inv",
+          "excerpt": "  apply intervalIntegral.integral_congr_ae\n  filter_upwards [(Filter.eventuallyEqSet_iff.mp Ioo_ae_eq_Ioc)] with t ht"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_F_integrable_delta_1",
+          "excerpt": "  rw [IntegrableOn, ← Measure.restrict_congr_set Ioo_ae_eq_Ioc]; exact h_F_Ioo"
+        }
+      ]
+    },
+    {
+      "declaration": "log_cancellation (duplicating integral_seg3_eq_log / integral_seg1_eq_neg_log)",
+      "start_line": 291,
+      "end_line": 297,
+      "excerpt": "  have h2 : ∫ t in (2 : ℝ)..(3 - ε / r), -((3 - t)⁻¹ : ℝ) = Real.log (ε / r) := by\n    rw [intervalIntegral.integral_neg]\n    have h_sub : ∫ t in (2 : ℝ)..(3 - ε / r), (3 - t)⁻¹ = ∫ u in (ε / r)..1, u⁻¹ := by",
+      "problem": "`log_cancellation` re-proves the substitution argument already established by `integral_seg3_eq_log` (lines 259–268). Both use `integral_neg`, then `integral_comp_sub_left` with `a := 2, b := 3 - _`, then `congr 1 <;> ring`, then `simp_all`. They differ only in that the endpoint is `ε` rather than `ε / r`. The same applies to h1 (lines 288–290) and `integral_seg1_eq_neg_log` (lines 254–257). The existing lemmas are never used, and `log_cancellation` reproduces them under the name `ε / r`. The `hε1` hypothesis of both lemmas is unused, so they are only stated for ε < 1 and could not be applied directly. That is why the proof was copied.",
+      "proposed_change": "Generalize `integral_seg3_eq_log` to `(δ) (hδ : 0 < δ)` (the `_hε1` hypothesis is unused) and likewise `integral_seg1_eq_neg_log`. Then derive `h1` and `h2` in `log_cancellation` by instantiating them at δ = ε / r. The proof of `log_cancellation` then reduces to the two instantiations, the `integral_ofReal` casts and `neg_add_cancel`. Alternatively, delete the unused `integral_seg*` lemmas and keep one copy.",
+      "benefit": "This removes a duplicated ~10-line substitution proof and makes the unused lemmas actually used. It also leaves one copy of the logarithmic-divergence calculation to maintain.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "integral_seg3_eq_log",
+          "excerpt": "    have := intervalIntegral.integral_comp_sub_left (fun u => u⁻¹) (3 : ℝ)\n      (a := (2 : ℝ)) (b := 3 - ε)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "integral_seg1_eq_neg_log",
+          "excerpt": "    ∫ t in ε..1, (t : ℝ)⁻¹ = -Real.log ε := by"
+        }
+      ]
+    },
+    {
+      "declaration": "pv_cutoff_F_integrable_0_delta / pv_cutoff_F_integrable_3delta_3 / hI1 / hI5 in pv_sector_cutoff_eq",
+      "start_line": 307,
+      "end_line": 340,
+      "excerpt": "  dsimp only [F]; simp only [sub_zero]; rw [ite_eq_right (not_lt.mpr _)]\n  rw [sectorCurve_norm_seg1 r hr α t ⟨le_of_lt ht.1, le_trans ht.2 (le_of_lt hδ1)⟩]",
+      "problem": "The fact that F vanishes where the curve is within ε of 0 (t ∈ [0,δ] on segment 1, and t ∈ [3-δ,3] on segment 3) is proved four times. It appears in the two integrability lemmas (307–340) and again inside `hI1` and `hI5` (593–610). Each copy repeats the same steps. It unfolds F, applies `ite_eq_right (not_lt.mpr _)`, rewrites with `sectorCurve_norm_seg1` or `sectorCurve_norm_seg3'`, and closes with `δ * r = ε` via `field_simp`. The integrability statements and the integral-equals-zero statements both follow from the pointwise vanishing.",
+      "proposed_change": "Prove two pointwise lemmas once: `pvCutoff_eq_zero_seg1 : t ∈ Icc 0 δ → F t = 0` and `pvCutoff_eq_zero_seg3 : t ∈ Icc (3-δ) 3 → F t = 0`. Alternatively, prove a single lemma `F t = 0` under `‖sectorCurve r α t‖ ≤ ε`. Then `integral_congr` + `integral_zero` gives hI1 and hI5. `intervalIntegrable_const.congr` gives the integrability results.",
+      "benefit": "This replaces four copies of a ~6-line argument with two short lemmas, and removes the duplicated `δ * r = ε` bookkeeping.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_sector_cutoff_eq",
+          "excerpt": "      rw [sectorCurve_norm_seg3' r hr α t ⟨by linarith [ht.1], ht.2⟩]\n      calc (3 - t) * r ≤ δ * r := by nlinarith [ht.1]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/Residue/SectorCurve.lean",
+          "declaration": "pv_cutoff_F_integrable_3delta_3",
+          "excerpt": "  rw [sectorCurve_norm_seg3' r hr α t ⟨h2, ht.2⟩]\n  have : (3 - t) * r ≤ δ * r := mul_le_mul_of_nonneg_right (by linarith [ht.1]) hr.le"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 35792,
+    "cache_read_input_tokens": 66667,
+    "output_tokens": 5096,
+    "output_tokens_details": {
+      "thinking_tokens": 478
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35792,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4200,
+        "cache_read_input_tokens": 37556,
+        "cache_creation_input_tokens": 2216,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2216
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2008067,
+  "duration_ms": 32811,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T01:42:42",
+  "unit": "file",
+  "source_sha256": "de515c586469d139beb62e3a244ba09c5de602aaa08004cf221d4a24cc69ce21",
+  "rubric": "repeated-proof-machinery"
+}

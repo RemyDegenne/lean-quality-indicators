@@ -1,0 +1,102 @@
+{
+  "id": "tauceti-file-0008",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related declarations: `Iso.toLanguageEquiv_apply` (proved by `rfl`, in BackAndForth/Graph.lean), `BFEquiv.comp`, and Mathlib's `exists_ne`. The `fin_cases`/`decide` proofs are the most opaque parts, but I did not flag them because they are the idiomatic way to check small finite cases. I could not compile anything, so the replacements below are untested. Two of them rely on definitional unfolding of `Function.comp` and of `toLanguageEquiv_apply`, which is `rfl` in the sources. That unfolding is likely to elaborate but I haven't confirmed it. If it doesn't, `show` or a type ascription would fix it. The third (`exists_ne`) needs `Nontrivial (Fin 6)`, which Mathlib provides as an instance.",
+  "findings": [
+    {
+      "declaration": "TauCeti.rigidSixGraph_iso_eq_refl",
+      "start_line": 103,
+      "end_line": 111,
+      "excerpt": "have he : e.toLanguageEquiv ∘ (fun _ : Fin 1 => v) = fun _ => e v := by\n    funext i\n    exact e.toLanguageEquiv_apply v",
+      "problem": "The proof proves a function equality `he` and rewrites with it. That equality holds by definitional unfolding: `toLanguageEquiv_apply` is itself proved by `(rfl)`, and `Function.comp` unfolds. The restated type of `hb`, the `rw [he] at hb`, and the final `h`/`h.symm` pair are therefore bookkeeping. The mathematical content is just: automorphisms preserve level-two back-and-forth equivalence, and level two separates vertices.",
+      "proposed_change": "Drop `he`, the `rw`, and the restated type of `hb`:\n```lean\n  apply RelIso.ext\n  intro v\n  have hb := e.toLanguageEquiv.bfEquiv (2 : Ordinal.{0}) (fun _ : Fin 1 => v)\n  exact ((bfEquiv_two_rigidSixGraph_iff v (e v)).mp hb).symm\n```\nIf elaboration needs help, annotate with `show BFEquiv (L := Language.graph) (2 : Ordinal.{0}) 1 (fun _ => v) (fun _ => e v)` in place of `he`.",
+      "benefit": "The proof shrinks from nine lines to about four and states the key idea directly: transport back-and-forth equivalence along the automorphism, then apply the separation lemma. The reader no longer has to follow a function-equality detour that is true by `rfl`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/ModelTheory/BackAndForth/Graph.lean",
+          "declaration": "SimpleGraph.Iso.toLanguageEquiv_apply",
+          "excerpt": "e.toLanguageEquiv v = e v := (rfl)"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.two_mem_orbitStable_rigidSixGraph",
+      "start_line": 118,
+      "end_line": 125,
+      "excerpt": "have ha : a ∘ (fun _ : Fin 1 => i) = fun _ => a i := (rfl)\n    have hb : b ∘ (fun _ : Fin 1 => i) = fun _ => b i := (rfl)\n    exact (bfEquiv_two_rigidSixGraph_iff (a i) (b i)).mp\n      (by simpa only [ha, hb] using h.comp (fun _ : Fin 1 => i))",
+      "problem": "`ha` and `hb` are `rfl` facts used only to rewrite `h.comp ...` via `simpa` into the form the iff lemma expects. Since the two forms are definitionally equal, both `have`s and the `by simpa only [...]` wrapper are unnecessary. The `subst b; exact BFEquiv.refl β a` ending is fine.",
+      "proposed_change": "Pass the restricted equivalence directly:\n```lean\n  have hab : a = b := funext fun i =>\n    (bfEquiv_two_rigidSixGraph_iff (a i) (b i)).mp (h.comp (fun _ : Fin 1 => i))\n```\nThe rest (`subst b; exact BFEquiv.refl β a`) stays as is.",
+      "benefit": "This removes two auxiliary equalities and a `simpa`. The remaining one-line term reads as 'restrict the level-two equivalence to coordinate `i`, then use that level two separates vertices', which is the actual argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/ModelTheory/BackAndForth/Equivalence.lean",
+          "declaration": "BFEquiv.comp",
+          "excerpt": "(g : Fin m → Fin n) : BFEquiv (L := L) α m (a ∘ g) (b ∘ g)"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.orbitRank_rigidSixGraph",
+      "start_line": 135,
+      "end_line": 140,
+      "excerpt": "obtain ⟨w, hw⟩ : ∃ w : Fin 6, v ≠ w := by\n    by_cases hv : v = 0\n    · exact ⟨1, hv.trans_ne (by decide)⟩\n    · exact ⟨0, hv⟩",
+      "problem": "The proof builds a vertex different from `v` by hand, with a case split on `v = 0` and a `decide` side goal. Mathlib already provides `exists_ne` for any nontrivial type, and `Fin 6` is nontrivial, so the case split is avoidable.",
+      "proposed_change": "```lean\n  obtain ⟨w, hw⟩ := exists_ne v\n  exact hw ((bfEquiv_two_rigidSixGraph_iff v w).mp\n    (h (fun _ : Fin 1 => w) (bfEquiv_one_rigidSixGraph v w) 2)).symm\n```\nHere `exists_ne v : ∃ w, w ≠ v`, so the final equation `v = w` has to be flipped with `.symm` before it is applied to `hw`.",
+      "benefit": "A four-line ad hoc case analysis becomes one call to a standard lemma. It also makes plain that the argument uses only that the graph has a second vertex, not which one.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Basic/Nontrivial/Defs.lean",
+          "declaration": "exists_ne",
+          "excerpt": "theorem exists_ne [Nontrivial α] (x : α) : ∃ y, y ≠ x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 20012,
+    "cache_read_input_tokens": 160080,
+    "output_tokens": 6793,
+    "output_tokens_details": {
+      "thinking_tokens": 1759
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20012,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3200,
+        "cache_read_input_tokens": 22244,
+        "cache_creation_input_tokens": 1811,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1811
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.164026,
+  "duration_ms": 49025,
+  "turns": 16,
+  "attempts": 1,
+  "judged": "2026-10-21T02:07:21",
+  "unit": "file",
+  "source_sha256": "03472193d057c0321ffb3b7899a7c30ab8ea09194b63b83dffeaf9b5504dbfc1",
+  "rubric": "readable-proof-simplification"
+}

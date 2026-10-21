@@ -1,0 +1,107 @@
+{
+  "id": "mathlib-file-0006",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the neighbouring FiberBundle/Trivialization.lean and FiberBundle/Basic.lean for existing helpers. The Pretrivialization and Trivialization API blocks are mostly one-line delegations, so I did not count them. I also did not count the short simp-lemma pairs. The two repeats I report are the `mk_coordChangeL` / `VectorPrebundle.mk_coordChange` pair and the continuity arguments for fiberwise trivialization maps. The first is a verbatim duplicate and I am confident in it. The second is a smaller gain, and the proposed helper statement (whose hypotheses depend on the scope of `IsLinear`) is untested. Nothing was compiled.",
+  "findings": [
+    {
+      "declaration": "Bundle.Trivialization.mk_coordChangeL and Bundle.VectorPrebundle.mk_coordChange",
+      "start_line": 316,
+      "end_line": 323,
+      "excerpt": "  · rw [e.mk_symm hb.1 y, e'.coe_fst', e.proj_symm_apply' hb.1]\n    rw [e.proj_symm_apply' hb.1]\n    exact hb.2",
+      "problem": "`Trivialization.mk_coordChangeL` (lines 316–323) and `VectorPrebundle.mk_coordChange` (lines 858–868) are two different results with the same fragile proof. Both do `ext`, then rewrite with `mk_symm`, `coe_fst'` and `proj_symm_apply'`, apply `proj_symm_apply'` a second time, and close the side goal with `hb.2`. The first component of the goal is just the fact that `e'` preserves the base point on `⟨b, e.symm b y⟩`. That fact already exists as `Pretrivialization.mk_proj_snd'`, and `Pretrivialization.apply_mk_symm` also covers the `e.symm` side, but neither proof uses them. The proof is rederived by hand in each place.",
+      "proposed_change": "Prove the identity once at the level of the underlying data. Either add a small helper such as `Pretrivialization.mk_apply_symm_snd (e e' : Pretrivialization F (π F E)) {b} (hb : b ∈ e.baseSet ∩ e'.baseSet) (y : F) : (b, (e' ⟨b, e.symm b y⟩).2) = e' ⟨b, e.symm b y⟩`, or just apply `e'.mk_proj_snd' (x := ⟨b, e.symm b y⟩) hb.2` directly. The proof of the helper is the single lemma `mk_proj_snd'` (the point `⟨b, _⟩` has projection `b` definitionally). Then `mk_coordChangeL` becomes `by rw [coordChangeL_apply e e' hb]; exact e'.mk_proj_snd' hb.2`, and `VectorPrebundle.mk_coordChange` becomes `by rw [a.coordChange_apply he he' hb v]; exact e'.mk_proj_snd' hb.2`. `Trivialization.mk_coordChangeL` can use the `Trivialization` version of `mk_proj_snd'`, which exists at line 445 of FiberBundle/Trivialization.lean.",
+      "benefit": "This removes two copies of a 5-line `rw`/`exact` chain that depends on the exact shape of the goal after `ext`. Both lemmas shrink to two lines and say directly that the base point is preserved. If `proj_symm_apply'` or `mk_symm` change, one proof breaks instead of two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.VectorPrebundle.mk_coordChange",
+          "excerpt": "  · rw [e.mk_symm hb.1 v, e'.coe_fst', e.proj_symm_apply' hb.1]\n    rw [e.proj_symm_apply' hb.1]\n    exact hb.2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/FiberBundle/Trivialization.lean",
+          "declaration": "Pretrivialization.mk_proj_snd'",
+          "excerpt": "theorem mk_proj_snd' (ex : proj x ∈ e.baseSet) : (proj x, (e x).2) = e x :="
+        }
+      ]
+    },
+    {
+      "declaration": "Bundle.Trivialization.coordChangeL (continuous_toFun / continuous_invFun)",
+      "start_line": 275,
+      "end_line": 292,
+      "excerpt": "        refine (e'.continuousOn.comp_continuous ?_ ?_).snd\n        · exact e.continuousOn_symm.comp_continuous (Continuous.prodMk_right b) fun y =>\n            mk_mem_prod hb.1 (mem_univ y)",
+      "problem": "The `continuous_toFun` and `continuous_invFun` fields of `coordChangeL` are the same argument with `e` and `e'` swapped. Each does `by_cases hb`, rewrites with `dite_eq_left`, and proves continuity of `y ↦ (e' (e.symm (b, y))).2` by composing `continuousOn_symm`, `prodMk_right`, `mk_mem_prod`, `continuousOn` and `.snd`. Otherwise it uses `continuous_id`. Each field is about 9 lines, so about 18 lines are duplicated.",
+      "proposed_change": "Prove the one-directional fact once and use it twice. For example, add a private lemma `continuous_snd_apply_symm (e e' : Trivialization F (π F E)) {b} (hb : b ∈ e.baseSet ∩ e'.baseSet) : Continuous fun y : F => (e' ⟨b, e.symm b y⟩).2`, which contains the `comp_continuous` chain once. Alternatively, make the `by_cases` a single `have key : ∀ (e e') (hb), Continuous ...` inside the definition. Then `continuous_toFun` is `key e e' hb` and `continuous_invFun` is `key e' e hb.symm`, each with the `dite_eq_left` rewrite and the `continuous_id` fallback. This also matches the symmetry already used in `symm_coordChangeL`, which swaps `hb` with `hb.symm`.",
+      "benefit": "About half of the `coordChangeL` definition disappears, and the symmetry between the two directions becomes explicit instead of being visible only by comparing two similar blocks. A change to the continuity argument is made once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.coordChangeL",
+          "excerpt": "        refine (e.continuousOn.comp_continuous ?_ ?_).snd\n        · exact e'.continuousOn_symm.comp_continuous (Continuous.prodMk_right b) fun y =>\n            mk_mem_prod hb.2 (mem_univ y)"
+        }
+      ]
+    },
+    {
+      "declaration": "Bundle.Trivialization.continuousLinearMapAt and continuousLinearEquivAt (and symmL)",
+      "start_line": 398,
+      "end_line": 456,
+      "excerpt": "      exact (e.continuousOn.comp_continuous (FiberBundle.totalSpaceMk_isInducing F E b).continuous\n        fun x => e.mem_source.mpr hb).snd }",
+      "problem": "`continuousLinearMapAt.cont` (lines 402–407) and `continuousLinearEquivAt.continuous_toFun` (lines 454–455) both prove continuity of the fiber map `y ↦ (e ⟨b, y⟩).2` with the same term. The term is `(e.continuousOn.comp_continuous (FiberBundle.totalSpaceMk_isInducing F E b).continuous fun _ => e.mem_source.mpr hb).snd`. `symmL.cont` (lines 416–424) is the analogous argument for `e.symm b`. Each definition re-derives its own fact, although the three facts form one natural statement: the trivialization restricted to a fiber is continuous in both directions.",
+      "proposed_change": "Add a lemma, for example `Trivialization.continuous_snd_mk (e : Trivialization F (π F E)) [FiberBundle F E] {b} (hb : b ∈ e.baseSet) : Continuous fun y : E b => (e ⟨b, y⟩).2`, and a companion `continuous_symm_mk` for the inverse direction. Then `continuousLinearMapAt.cont` becomes `rw [e.coe_linearMapAt b]; classical; exact continuous_if_const _ (fun hb => e.continuous_snd_mk hb) fun _ => continuous_zero`, and `continuousLinearEquivAt.continuous_toFun := e.continuous_snd_mk hb`. The `symmL.cont` proof can use the companion lemma too. The same `Continuous (fun y => (e ⟨b, y⟩).2)` pattern also appears in the `coordChangeL` fields (previous finding), where it is combined with `continuousOn_symm`.",
+      "benefit": "One named lemma gives the fiberwise continuity of a trivialization. The three definitions no longer need to unpack `totalSpaceMk_isInducing`, `mem_source` and `.snd` by hand. The benefit is smaller than for the first two findings, but it removes a repeated multi-step term and gives users a reusable lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.continuousLinearEquivAt",
+          "excerpt": "    continuous_toFun := (e.continuousOn.comp_continuous\n      (FiberBundle.totalSpaceMk_isInducing F E b).continuous fun _ => e.mem_source.mpr hb).snd"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 36193,
+    "cache_read_input_tokens": 134464,
+    "output_tokens": 6984,
+    "output_tokens_details": {
+      "thinking_tokens": 2245
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36193,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3677,
+        "cache_read_input_tokens": 36186,
+        "cache_creation_input_tokens": 3987,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3987
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22807840000000001,
+  "duration_ms": 47571,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T01:56:34",
+  "unit": "file",
+  "source_sha256": "115769215c14a8abc3b1ef7b15f774011ad3255f74f3d2deba17c7b22d47fedf",
+  "rubric": "repeated-proof-machinery"
+}

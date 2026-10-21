@@ -1,0 +1,96 @@
+{
+  "id": "mathlib-file-0009",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped Mathlib for uses of toCircle_intCast, toCircle_natCast, stdAddChar_apply, stdAddChar_coe and rootsOfUnityAddChar_val. I did not open the ZMod.natCast_val or natCast_zmod_val statements, so the interaction I describe with the `-ZMod.natCast_val` simp argument is inferred from how the proof uses them. I could not run Lean, so I make no claim about observed simp behaviour. Both findings are modest, and the lemma attributes are plausibly deliberate.",
+  "findings": [
+    {
+      "declaration": "ZMod.stdAddChar_apply",
+      "start_line": 89,
+      "end_line": 89,
+      "excerpt": "lemma stdAddChar_apply (j : ZMod N) : stdAddChar j = ↑(toCircle j) := rfl",
+      "problem": "`stdAddChar_apply` is the canonical unfolding of `stdAddChar` to `toCircle`. It is not tagged `@[simp]`, so every user has to name it explicitly. Three downstream proofs do this: `simp only [dft_apply, stdAddChar_apply, ...]` in Analysis/Fourier/ZMod.lean, `simp only [sum_mul, mul_sum, smul_eq_mul, stdAddChar_apply, ← mul_assoc]` in LSeries/ZMod.lean, and a `rw [..., stdAddChar_apply, ...]` in Fourier/ZMod.lean. The interface also has two other normal forms for the same term. `stdAddChar_coe` rewrites `stdAddChar (j : ZMod N)` to an explicit `exp`. The `AddChar.compAddMonoidHom_apply` route used by `toCircle_intCast` rewrites it the other way. Nothing says which form simp should produce.",
+      "proposed_change": "Decide on one normal form and record it. Either mark `stdAddChar_apply` `@[simp]` (the RHS is a bare coercion of a character value, so the rewrite terminates), or add a docstring saying it is deliberately left non-simp. If the attribute is added, the `simp only [..., stdAddChar_apply, ...]` call sites could use plain `simp`, though I have not checked that they would still close.",
+      "benefit": "Readers and users of `stdAddChar` get one canonical form (`↑(toCircle j)`) from simp, and downstream proofs no longer have to remember to pass this lemma by name.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/LSeries/ZMod.lean",
+          "declaration": "line 218 (simp only call)",
+          "excerpt": "simp only [sum_mul, mul_sum, smul_eq_mul, stdAddChar_apply, ← mul_assoc]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Fourier/ZMod.lean",
+          "declaration": "line 138 (simp only call)",
+          "excerpt": "simp only [dft_apply, stdAddChar_apply, Fourier.fourierIntegral_def"
+        }
+      ]
+    },
+    {
+      "declaration": "ZMod.toCircle_natCast / rootsOfUnityCircleEquiv_comp_rootsOfUnityAddChar_val",
+      "start_line": 140,
+      "end_line": 143,
+      "excerpt": "simp [← ZMod.toCircle_natCast, -ZMod.natCast_val, ZMod.natCast_zmod_val]",
+      "problem": "The proof reverses `toCircle_natCast` (`← ZMod.toCircle_natCast`) and removes the simp lemma `ZMod.natCast_val` (`-ZMod.natCast_val`) by hand. It then re-adds `ZMod.natCast_zmod_val` to cancel the cast of `j.val`. That is a sign that the interface for `toCircle` applied to a casted `ZMod.val` is awkward. `toCircle_natCast` has the cast on the left and `exp (2 * π * I * j / N)` on the right, and the file uses it in both directions: backwards at line 143 and forwards at line 148, where `simp [..., ZMod.toCircle_natCast, mul_div_assoc]` needs `mul_div_assoc` to match the shape. The `exp (2 * π * I * ↑j.val / ↑N)` form produced by `toCircle_apply` is the same expression that `ZMod.natCast_val` would rewrite, so the two collide.",
+      "proposed_change": "State the evaluation lemma for the `exp` side in the form the downstream proofs consume, and give it a purpose-built simp lemma. One option is a lemma `(toCircle j : ℂ) = exp (2 * π * I * j.val / N)` (the coercion of `toCircle_apply`) with a `@[simp]` or `@[simp, norm_cast]` attribute, so that line 143 reduces to `simp`. Alternatively, restate `rootsOfUnityCircleEquiv_comp_rootsOfUnityAddChar_val` with the `ZMod.cast`-free `toCircle` value and drop the `-ZMod.natCast_val` argument.",
+      "benefit": "Removes the manual simp-set surgery and the back-and-forth use of `toCircle_natCast`. The proofs become robust if `ZMod.natCast_val` changes, and a new reader does not have to work out why that lemma is excluded.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "surjective_rootsOfUnityCircleEquiv_comp_rootsOfUnityAddChar",
+          "excerpt": "simp [Units.ext_iff, Subtype.ext_iff, ← hj2, ZMod.toCircle_natCast, mul_div_assoc]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "ZMod.toCircle_apply",
+          "excerpt": "rw [← toCircle_natCast, natCast_zmod_val]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 6118,
+    "cache_read_input_tokens": 12208,
+    "output_tokens": 3431,
+    "output_tokens_details": {
+      "thinking_tokens": 843
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 6118,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2980,
+        "cache_read_input_tokens": 8195,
+        "cache_creation_input_tokens": 1936,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1936
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0600108,
+  "duration_ms": 24747,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-21T02:09:47",
+  "unit": "file",
+  "source_sha256": "ee1e323e0d276bb12f0614141a7f650365c25b787683baa71cb19a7ec898d18e",
+  "rubric": "simp-interface"
+}

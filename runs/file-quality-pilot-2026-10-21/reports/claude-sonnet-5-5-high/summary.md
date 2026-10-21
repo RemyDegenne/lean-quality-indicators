@@ -6,15 +6,15 @@ Cells: files with findings / completed reviews (number of findings). The same fi
 
 | Rubric | Mathlib | Tau Ceti | Lean Pool |
 |---|---:|---:|---:|
-| concept-reinvention | 1/4 (2); 1 N/A | 0/4 (0); 1 N/A | 2/4 (4); 1 N/A |
-| statement-generality | 2/4 (2) | 1/4 (1) | 3/4 (4) |
-| vacuity-and-misstatement | 2/4 (2) | 0/3 (0) | 1/3 (1) |
-| missing-structure | 1/3 (2) | 1/3 (1); 1 N/A | 2/3 (3) |
-| simp-interface | 1/3 (1); 1 N/A | 0/3 (0) | 2/3 (4) |
-| fragile-proofs | 2/3 (4) | 2/3 (3) | 2/3 (8) |
-| repeated-proof-machinery | 2/3 (3) | 1/3 (2) | 2/3 (4) |
-| readable-proof-simplification | 2/3 (2) | 2/3 (3) | 2/3 (5) |
+| concept-reinvention | 3/10 (5); 1 N/A | 0/10 (0); 4 N/A | 5/10 (9); 1 N/A |
+| statement-generality | 6/10 (6) | 3/10 (3) | 9/10 (13) |
+| vacuity-and-misstatement | 3/10 (3) | 0/10 (0) | 2/10 (3) |
+| missing-structure | 3/10 (4); 1 N/A | 2/10 (2); 4 N/A | 3/10 (5) |
+| simp-interface | 4/10 (7); 1 N/A | 3/10 (3) | 6/10 (9) |
+| fragile-proofs | 9/10 (19) | 8/10 (14) | 9/10 (26) |
+| repeated-proof-machinery | 4/10 (8) | 4/10 (5) | 8/10 (18) |
+| readable-proof-simplification | 7/10 (10) | 8/10 (14) | 9/10 (23) |
 
-Completed judgments: 79/240.
+Completed judgments: 240/240.
 
 Flags are judge claims; replacements have not been compiled or independently audited. This small file sample does not estimate a theorem defect rate. Rubrics may flag the same issue.

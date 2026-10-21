@@ -1,0 +1,101 @@
+{
+  "id": "lean-pool-file-0005",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole of Tail.lean. I compared it with Kernel.lean and Adams.lean in the same Morrey directory, which contain the shell definition and sibling arguments. Two findings. (1) The pairwise-disjointness proof for dyadic shells is written four times, in Tail, Kernel (two versions) and Adams. (2) The floor-of-log shell-existence proof is written twice, in Tail and Kernel. I did not search other directories exhaustively for further repeats (Euclidean/Hedberg.lean has a similar rpow-exponent pattern at lines 85-106, which I did not inspect). I did not check whether Mathlib already has a helper for either argument. I could not compile anything, so the proposed lemmas are untested sketches. I also noticed that ennreal_mul_rpow may duplicate a Mathlib ENNReal.mul_rpow lemma for nonzero or non-top arguments. That is a duplication question, not repeated machinery, so I left it out.",
+  "findings": [
+    {
+      "declaration": "positiveShell_pairwise",
+      "start_line": 138,
+      "end_line": 160,
+      "excerpt": "  rcases lt_or_gt_of_ne hnm with hlt | hgt\n  · have hindex : (n : ℤ) + 1 ≤ (m : ℤ) := by",
+      "problem": "The proof that dyadic shells with different indices are disjoint is written out from scratch four times. It appears here for ℕ indices, in Kernel.lean for `{k : ℤ // k < 0}` (`pairwise_disjoint_parabolicRieszShells`), in Kernel.lean for `negativeShell`, and in Adams.lean for `nearShell` (`nearShell_pairwise`). Each copy runs the same steps: `rcases lt_or_gt_of_ne`, an index inequality `k+1 ≤ l`, `Real.rpow_le_rpow_of_exponent_le`, `mul_le_mul_of_nonneg_right ... hR.le`, `not_lt_of_ge`. Each copy then repeats the whole block with the roles of the two indices swapped. The only mathematical fact used is that shells `parabolicRieszShell R k z` and `parabolicRieszShell R l z` are disjoint whenever `k < l`. That fact is never stated for integer indices, so each caller rebuilds it.",
+      "proposed_change": "In Kernel.lean, next to `parabolicRieszShell`, add one lemma `parabolicRieszShell_disjoint_of_lt {R} (hR : 0 < R) {k l : ℤ} (hkl : k < l) (z) : Disjoint (parabolicRieszShell R k z) (parabolicRieszShell R l z)`. Prove it once: `2^(k+1) R ≤ 2^l R ≤ ρ`, which contradicts `ρ < 2^(k+1) R`. Derive the symmetric case with `Disjoint.symm`, so a `lt_or_gt_of_ne` split yields `parabolicRieszShell_disjoint_of_ne` in one line. Then `positiveShell_pairwise` becomes `fun n m h => parabolicRieszShell_disjoint_of_ne hR (by exact_mod_cast h) z`. The Kernel and Adams versions use the same lemma, with `Int.negSucc` injectivity or `Subtype` coercion for the index map.",
+      "benefit": "This replaces roughly 4 × 20 lines with one ~12-line lemma and four one-line uses. It also removes the duplicated mirror-image branches, and later shell decompositions can reuse the lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "negativeShell_pairwise",
+          "excerpt": "    have hrad := mul_le_mul_of_nonneg_right hpow hR.le\n    exact (not_lt_of_ge (hrad.trans hwn.1)) hwm.2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Adams.lean",
+          "declaration": "nearShell_pairwise",
+          "excerpt": "    have hrad := mul_le_mul_of_nonneg_right hpow hR.le\n    exact (not_lt_of_ge (hrad.trans hwn.1)) hwm.2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "pairwise_disjoint_parabolicRieszShells",
+          "excerpt": "      apply Real.rpow_le_rpow_of_exponent_le (by norm_num)\n      exact_mod_cast (Int.add_one_le_iff.mpr hlt)"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_positive_shell",
+      "start_line": 93,
+      "end_line": 128,
+      "excerpt": "  let k : ℤ := ⌊Real.log x / L⌋\n  have hL : 0 < L := Real.log_pos (by norm_num)",
+      "problem": "`exists_positive_shell` and `exists_shell_of_pos_lt` (Kernel.lean) share about 25 lines of identical machinery. Both take `x = ρ/R` and `k = ⌊log x / log 2⌋`. Both derive `2^k ≤ x < 2^(k+1)` through `Real.strictMonoOn_log`, `Real.log_rpow` and `field_simp`. Both convert this to `2^k R ≤ ρ < 2^(k+1) R` and apply `mem_parabolicRieszShell`. They differ only in the sign check on `k`: `0 ≤ k` here, `k < 0` there. The general fact is that every point with `ρ > 0` lies in some shell with an integer index. No lemma states this, so it is proved twice with sign handling mixed in.",
+      "proposed_change": "Add one lemma in Kernel.lean, `exists_int_shell {z w} {R} (hR : 0 < R) (hρ : 0 < parabolicRho₂ z w) : ∃ k : ℤ, (2:ℝ)^(k:ℝ) * R ≤ parabolicRho₂ z w ∧ parabolicRho₂ z w < (2:ℝ)^((k:ℝ)+1) * R`. A form that also carries `k = ⌊log x / log 2⌋`, or the facts `1 ≤ x → 0 ≤ k` and `x < 1 → k < 0`, would also work. Alternatively, derive the sign bounds from the shell membership: `1 ≤ ρ/R` together with `ρ < 2^(k+1) R` forces `0 ≤ k` by monotonicity of `2^·`. Then `exists_positive_shell` reduces to this lemma plus the sign argument and `Int.toNat`. `exists_shell_of_pos_lt` likewise reduces to this lemma plus a sign argument.",
+      "benefit": "This removes about 25 duplicated lines of floor/log bookkeeping. It states the natural covering fact `⋃ k : ℤ, shell R k z ⊇ {ρ > 0}` once, and the near-field and far-field decompositions then differ only in a short sign argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "exists_shell_of_pos_lt",
+          "excerpt": "  let k : ℤ := ⌊Real.log x / L⌋\n  have hL : 0 < L := Real.log_pos (by norm_num)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "exists_shell_of_pos_lt",
+          "excerpt": "      _ < ((k : ℝ) + 1) * L := mul_lt_mul_of_pos_right hkhi hL"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 27727,
+    "cache_read_input_tokens": 122080,
+    "output_tokens": 5359,
+    "output_tokens_details": {
+      "thinking_tokens": 753
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27727,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3000,
+        "cache_read_input_tokens": 28977,
+        "cache_creation_input_tokens": 2730,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2730
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17673,
+  "duration_ms": 36565,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T01:51:28",
+  "unit": "file",
+  "source_sha256": "d887bac2a8cb1a61b5f7a93914422e13484394d7568dcb01574bd1e1ce9e6d64",
+  "rubric": "repeated-proof-machinery"
+}

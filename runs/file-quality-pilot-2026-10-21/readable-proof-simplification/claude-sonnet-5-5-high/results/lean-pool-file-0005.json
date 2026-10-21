@@ -1,0 +1,102 @@
+{
+  "id": "lean-pool-file-0005",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Hedberg.lean helper that uses a similar lemma. I checked the Mathlib ENNReal rpow multiplication lemmas. I did not check the other candidates (the `hinv`/`1 * …` calc in `cylinderAbsIntegral_le_morreyNorm`, `hbreal`, and the `simpa [mul_comm]` steps), so they are not reported. The replacements are untested and were not compiled. Mathlib's `ENNReal.mul_rpow_of_ne_zero` takes `(hx : x ≠ 0) (hy : y ≠ 0) (z : ℝ)`; I read that statement in the source.",
+  "findings": [
+    {
+      "declaration": "ennreal_mul_rpow (private lemma)",
+      "start_line": 168,
+      "end_line": 190,
+      "excerpt": "private lemma ennreal_mul_rpow {x y : ℝ≥0∞} {e : ℝ} (hx0 : x ≠ 0) (hxtop : x ≠ ∞)\n    (_ : y ≠ 0) (_ : y ≠ ∞) :\n    (x * y) ^ e = x ^ e * y ^ e := by",
+      "problem": "This 23-line lemma reproves a Mathlib statement. It splits on the sign of e and goes through inverses. It also carries unused hypotheses: `y ≠ ∞` and `y ≠ 0` are anonymous, and the local `heq` is never used. Mathlib's `ENNReal.mul_rpow_of_ne_zero` already gives `(x*y)^z = x^z * y^z` from `x ≠ 0` and `y ≠ 0` alone.",
+      "proposed_change": "Delete `ennreal_mul_rpow`. At lines 331–333 use `have hfirst := ENNReal.mul_rpow_of_ne_zero hSn0 hT0 (-(5 - β))` and `have hsecond := ENNReal.mul_rpow_of_ne_zero hSn2_0 hT0 α`. Then `hSnTop` and `hSn2_Top` (lines 303–308) become unused and can be deleted. `hTTop` is still needed at line 345 by `ENNReal.rpow_add`.",
+      "benefit": "This removes about 25 lines of sign-case reasoning and unused hypotheses. A reader sees a direct call to the standard Mathlib lemma instead of re-deriving it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Pow/NNReal.lean",
+          "declaration": "ENNReal.mul_rpow_of_ne_zero",
+          "excerpt": "theorem mul_rpow_of_ne_zero {x y : ℝ≥0∞} (hx : x ≠ 0) (hy : y ≠ 0) (z : ℝ) :\n    (x * y) ^ z = x ^ z * y ^ z"
+        }
+      ]
+    },
+    {
+      "declaration": "parabolicRieszKernel_tail_le (final calc step with hfun)",
+      "start_line": 421,
+      "end_line": 431,
+      "excerpt": "      have hfun : (fun n : ℕ =>\n          (ENNReal.ofReal (2 : ℝ)) ^\n            ((n : ℝ) * (β - 5 / q) + 2 * (5 * (1 - 1 / q))) * T * N) =",
+      "problem": "`hfun` equates two lambdas that differ only by redundant parentheses, because `a ^ e * T * N` already parses as `((a ^ e) * T) * N`. It is proved by `funext n; rfl`, so it adds nothing. The `rw [hfun, …]` then `rfl` is also more indirect than needed.",
+      "proposed_change": "Replace the block with `by rw [ENNReal.tsum_mul_right, ENNReal.tsum_mul_right]; rfl`. Alternatively use `by simp only [ENNReal.tsum_mul_right]; rfl`, or `(ENNReal.tsum_mul_right.trans …)` if you prefer a term. The final `rfl` unfolds `parabolicTailKernelConstant`, as it does now.",
+      "benefit": "This removes a vacuous 8-line auxiliary equation. The key idea, pulling the constants `T` and `N` out of the sum, is then the only step shown.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Tail.lean",
+          "declaration": "parabolicRieszKernel_tail_le",
+          "excerpt": "          (fun n : ℕ =>\n            ((ENNReal.ofReal (2 : ℝ)) ^\n              ((n : ℝ) * (β - 5 / q) + 2 * (5 * (1 - 1 / q)))) * T * N) := by\n        funext n\n        rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "positiveShell_pairwise",
+      "start_line": 144,
+      "end_line": 160,
+      "excerpt": "  rcases lt_or_gt_of_ne hnm with hlt | hgt\n  · have hindex : (n : ℤ) + 1 ≤ (m : ℤ) := by",
+      "problem": "The `n < m` and `m < n` cases are the same argument with the roles of n and m swapped. That is about 8 duplicated lines, including the cast steps and the rpow monotonicity step.",
+      "proposed_change": "Prove one asymmetric statement, for example `have key : ∀ {a b : ℕ}, a < b → Disjoint (positiveShell R a z) (positiveShell R b z)`. Use `Nat.succ_le_of_lt`, `exact_mod_cast`, `Real.rpow_le_rpow_of_exponent_le` and `mul_le_mul_of_nonneg_right` once. Then finish with `(lt_or_gt_of_ne hnm).elim key (fun h => (key h).symm)`. This also removes the `Set.disjoint_left` rewrite and the `change`.",
+      "benefit": "Halving the proof makes the single idea visible: shell a lies below radius 2^(a+1)R ≤ 2^b R, where shell b starts. The symmetric case is clearly just `Disjoint.symm`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Tail.lean",
+          "declaration": "positiveShell_pairwise",
+          "excerpt": "  · have hindex : (m : ℤ) + 1 ≤ (n : ℤ) := by\n      exact_mod_cast (Nat.succ_le_of_lt hgt)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 21069,
+    "cache_read_input_tokens": 38854,
+    "output_tokens": 4368,
+    "output_tokens_details": {
+      "thinking_tokens": 1137
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21069,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3008,
+        "cache_read_input_tokens": 18361,
+        "cache_creation_input_tokens": 6751,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6751
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1318534,
+  "duration_ms": 28952,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T01:51:57",
+  "unit": "file",
+  "source_sha256": "d887bac2a8cb1a61b5f7a93914422e13484394d7568dcb01574bd1e1ce9e6d64",
+  "rubric": "readable-proof-simplification"
+}

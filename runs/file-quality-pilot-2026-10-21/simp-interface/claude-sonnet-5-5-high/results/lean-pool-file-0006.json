@@ -1,0 +1,96 @@
+{
+  "id": "lean-pool-file-0006",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and checked uses of the taylorCoeffAt lemmas in the repo (LaurentCoeff, PrincipalPart, RationalOnP1) plus Mathlib's DSlope simp attributes. The existing simp set (taylorCoeffAt_zero_apply, taylorCoeffAt_const, taylorCoeffAt_monomial) looks terminating and non-conflicting; for d = 0, `pow_zero` normalises the lambda body before the monomial lemma would apply. The two findings are modest interface gaps. I did not run Lean, so I have not checked how simp behaves on these lemmas. Whether the new simp lemmas fire depends on the lambda-body unification pattern.",
+  "findings": [
+    {
+      "declaration": "RS.taylorCoeffAt_const_mul / RS.taylorCoeffAt_neg (unconditional linearity lemmas not tagged simp, while taylorCoeffAt_const is)",
+      "start_line": 97,
+      "end_line": 118,
+      "excerpt": "theorem taylorCoeffAt_const_mul (c : ℂ) (j : ℕ) :\n    taylorCoeffAt (fun z => c * g z) z₀ j = c * taylorCoeffAt g z₀ j := by",
+      "problem": "The simp set handles `taylorCoeffAt (fun _ => c) z₀ j` (simp) and the monomial case (simp), but not the unconditional scalar-multiple and negation rules. A goal like `taylorCoeffAt (fun z => c * (z - z₀)^d) z₀ j` therefore does not simplify to `c * if j = d then 1 else 0`, because the `const_mul` step is left to a manual `rw`. The proof of `exists_taylor_remainder` does this by hand (`rw [taylorCoeffAt_const_mul, taylorCoeffAt_monomial]`), and LaurentCoeff.lean line 293 does `rw [taylorCoeffAt_const_mul]`. Both lemmas need no hypotheses, have a smaller right-hand side (a head multiplication or negation moved outside), and cannot loop. They are canonical simp lemmas, unlike the add/sub lemmas, which need analyticity hypotheses.",
+      "proposed_change": "Mark `taylorCoeffAt_const_mul` and `taylorCoeffAt_neg` as `@[simp]`. Then `simp` normalises `c * (monomial)` automatically. The manual `rw [taylorCoeffAt_const_mul, taylorCoeffAt_monomial]` in `hterm` could become `simp`, and the `split_ifs <;> simp` there would be simplified or removed. Keep in mind that `taylorCoeffAt_neg` and the simp-normal form `-g z` versus `(-1) * g z` need to be checked against existing simp lemmas such as `neg_mul` and `one_mul`.",
+      "benefit": "Callers get a canonical normal form for scalar multiples and negations of Taylor coefficients without finding the lemma names. Proofs about monomial combinations no longer need explicit rewrite chains.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/LaurentCoeff.lean",
+          "declaration": "laurent coefficient proof using taylorCoeffAt_const_mul",
+          "excerpt": "· rw [taylorCoeffAt_const_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.AnalyticAt.exists_taylor_remainder (hterm)",
+          "excerpt": "rw [taylorCoeffAt_const_mul, taylorCoeffAt_monomial]"
+        }
+      ]
+    },
+    {
+      "declaration": "RS.dslope_const (and RS.dslope_const_mul) – helper lemmas with no simp attribute, used only through manual rewrites",
+      "start_line": 89,
+      "end_line": 95,
+      "excerpt": "theorem dslope_const (c : ℂ) (z₀ : ℂ) : dslope (fun _ => c) z₀ = fun _ => 0 := by",
+      "problem": "`dslope_same` is simp in Mathlib, but `dslope` of a constant function is not. Hence `dslope (fun _ => c) z₀` stays unsimplified, and the file has to `rw [dslope_const]` by hand in `taylorCoeffAt_const`. This is an unconditional lemma with a strictly simpler right-hand side. It is also the key step for the `taylorCoeffAt_succ` unfolding that the file keeps non-simp. The lemma is public in namespace `RS` with a Mathlib-style name (`RS.dslope_const`), so it is not a clearly scoped local helper.",
+      "proposed_change": "Tag `dslope_const` with `@[simp]`. Then `simp [taylorCoeffAt_succ]` on a constant-function goal reduces fully. Also tag `taylorCoeffAt_zero_fun` (or drop it, since `taylorCoeffAt_const` with `c = 0` plus `ite_self` already gives it).",
+      "benefit": "`simp [taylorCoeffAt_succ]` on constant functions then closes goals that currently need explicit `rw`. The redundancy between `taylorCoeffAt_zero_fun` and the simp lemma `taylorCoeffAt_const` is also removed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/DSlope.lean",
+          "declaration": "dslope_same",
+          "excerpt": "theorem dslope_same (f : 𝕜 → E) (a : 𝕜) : dslope f a a = deriv f a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.taylorCoeffAt_const",
+          "excerpt": "| succ j => rw [taylorCoeffAt_succ, dslope_const, taylorCoeffAt_zero_fun]; simp"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 11878,
+    "cache_read_input_tokens": 30083,
+    "output_tokens": 4417,
+    "output_tokens_details": {
+      "thinking_tokens": 1554
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 11878,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2282,
+        "cache_read_input_tokens": 14717,
+        "cache_creation_input_tokens": 1174,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1174
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0947023,
+  "duration_ms": 30615,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T01:55:10",
+  "unit": "file",
+  "source_sha256": "3e82a82475e8b77b7278b6d06fb86d1f0a00271666d05221126ea38cc71e85ab",
+  "rubric": "simp-interface"
+}

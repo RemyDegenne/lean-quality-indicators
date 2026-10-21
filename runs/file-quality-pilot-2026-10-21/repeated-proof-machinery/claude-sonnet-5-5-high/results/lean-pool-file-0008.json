@@ -1,0 +1,96 @@
+{
+  "id": "lean-pool-file-0008",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I checked other files in the CorvajaZannier directory for existing helpers and for the same patterns. Two findings are reported: the repeated unfold-and-`change` setup in the `planeCurveToBivariate` lemmas, and the repeated three-`let` preamble in the four plane-curve theorems. I rejected several other candidates as too short or too different. These were the two degree theorems `planeCurveFrobeniusRelation_natDegree` and `transposeBivariate_planeCurveFrobeniusRelation_natDegree`, and the three `ringHom_ext` plus `fin_cases` proofs. Nothing was compiled. The proposed helper statements are untested sketches. I did not check whether importing `PlaneCurveBidegreeBridge` into the target would create an import cycle. Its imports are a subset of the target's, plus `External.GeneralCurveTheorems`, so a cycle looks unlikely.",
+  "findings": [
+    {
+      "declaration": "planeCurveToBivariate_X_zero / planeCurveToBivariate_X_one / planeCurveToBivariate_C / planeCurveToBivariate_natDegree_eq_degreeOf_zero",
+      "start_line": 54,
+      "end_line": 110,
+      "excerpt": "  rw [planeCurveToBivariate]\n  change Polynomial.map (MvPolynomial.uniqueAlgEquiv K (Fin 1)).toRingHom\n    (MvPolynomial.finSuccEquiv K 1 (MvPolynomial.X 0)) = Polynomial.X",
+      "problem": "Four lemmas about `planeCurveToBivariate` each unfold the definition with `rw [planeCurveToBivariate]` and then restate the goal with an explicit `change Polynomial.map (uniqueAlgEquiv K (Fin 1)).toRingHom (finSuccEquiv K 1 _)`. Three of them (`X_zero`, `X_one`, `C`) then repeat the same pattern: prove an inner `finSuccEquiv` identity `hinner`, rewrite with it, and finish with `simp`. The `change` blocks are long and fragile, and they reproduce the definition body in each place. No lemma states `planeCurveToBivariate K f = (finSuccEquiv K 1 f).map (uniqueAlgEquiv K (Fin 1)).toRingHom`, so every proof redoes it.",
+      "proposed_change": "Add one unfolding lemma, `planeCurveToBivariate_apply (f) : planeCurveToBivariate K f = Polynomial.map (MvPolynomial.uniqueAlgEquiv K (Fin 1)).toRingHom (MvPolynomial.finSuccEquiv K 1 f) := rfl`. Each of the four lemmas then starts with `rw [planeCurveToBivariate_apply]`. The `change` blocks go away. The three simp lemmas keep only their `hinner` computation and a closing `simp`. The `natDegree` lemma becomes `rw [planeCurveToBivariate_apply, Polynomial.natDegree_map_eq_of_injective ...]; exact MvPolynomial.natDegree_finSuccEquiv f`.",
+      "benefit": "This removes four copies of the definition-restating `change`, about 12 lines in all. It gives one named, reusable unfolding statement and makes the proofs robust to changes in how `planeCurveToBivariate` is defined.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean",
+          "declaration": "planeCurveToBivariate_natDegree_eq_degreeOf_zero",
+          "excerpt": "((MvPolynomial.finSuccEquiv K 1 f).map\n      (MvPolynomial.uniqueAlgEquiv K (Fin 1)).toRingHom).natDegree = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean",
+          "declaration": "planeCurveToBivariate_C",
+          "excerpt": "(MvPolynomial.finSuccEquiv K 1 (MvPolynomial.C c)) =\n      Polynomial.C (Polynomial.C c)"
+        }
+      ]
+    },
+    {
+      "declaration": "planeCurve_auxiliaryFamily_linearIndependent_of_nonzero_partials / ..._of_absoluteIrreducible / ..._of_absoluteIrreducible_coordinateDegrees (and the main theorem)",
+      "start_line": 436,
+      "end_line": 554,
+      "excerpt": "  let hf : Irreducible f := by\n    simpa only [MvPolynomial.map_id] using\n      irreducible_map_of_irreducible_map_algebraicClosure\n      (RingHom.id K) f habsolute\n  let : IsDomain (PlaneCurveCoordinateRing f) :=\n    planeCurveCoordinateRing_isDomain hf\n  let : CharP (PlaneCurveFunctionField f) p :=\n    charP_of_injective_algebraMap\n      (algebraMap K (PlaneCurveFunctionField f)).injective p",
+      "problem": "The same instance-setup block appears in four theorems: the main theorem and the `_of_nonzero_partials`, `_of_absoluteIrreducible` and `_coordinateDegrees` variants. The block has three parts: `IsDomain (PlaneCurveCoordinateRing f)`, `CharP (PlaneCurveFunctionField f) p`, and, in the last two, the derivation of `Irreducible f` from absolute irreducibility. In the last two theorems it is written out twice each, once in the `let`/`letI` header of the statement and once in the proof body. The `Irreducible f` derivation is exactly `irreducible_of_irreducible_map_algebraicClosure` in `PlaneCurveBidegreeBridge.lean`. Re-deriving it costs four copies of the `simpa only [MvPolynomial.map_id] using ...` block, 2 in statements and 2 in proofs. The `CharP` instance for the function field is likewise rebuilt from `charP_of_injective_algebraMap` in each of the four theorems.",
+      "proposed_change": "Reuse the existing `irreducible_of_irreducible_map_algebraicClosure habsolute` by importing `PlaneCurveBidegreeBridge`. Its imports are a subset of this file's, plus `External.GeneralCurveTheorems`. Alternatively, move that lemma into `AbsoluteIrreducibilityBaseChange`, which the target already imports. Then replace the `let hf : Irreducible f := by simpa ...` header and body blocks with `irreducible_of_irreducible_map_algebraicClosure habsolute`. Also add a small lemma or instance, such as `planeCurveFunctionField_charP (hf : Irreducible f) : CharP (PlaneCurveFunctionField f) p`, stating the injective-algebraMap argument once. The statements and proofs would then use it instead of re-inlining the `charP_of_injective_algebraMap` block.",
+      "benefit": "This removes about 20 lines of duplicated setup across the four theorems. It also removes the duplicated derivation of `Irreducible f`, because an existing lemma already proves it. The statements become easier to read, and the instance construction lives in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveBidegreeBridge.lean",
+          "declaration": "irreducible_of_irreducible_map_algebraicClosure",
+          "excerpt": "have h := irreducible_map_of_irreducible_map_algebraicClosure\n    (RingHom.id K) f habsolute\n  rw [MvPolynomial.map_id] at h\n  exact h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/CorvajaZannier/PlaneCurveAuxiliaryIndependence.lean",
+          "declaration": "planeCurve_auxiliaryFamily_linearIndependent",
+          "excerpt": "let : CharP (PlaneCurveFunctionField f) p :=\n    charP_of_injective_algebraMap\n      (algebraMap K (PlaneCurveFunctionField f)).injective p"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 24081,
+    "cache_read_input_tokens": 114190,
+    "output_tokens": 5879,
+    "output_tokens_details": {
+      "thinking_tokens": 1381
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24081,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3185,
+        "cache_read_input_tokens": 27614,
+        "cache_creation_input_tokens": 447,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 447
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.166557,
+  "duration_ms": 39758,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T02:06:43",
+  "unit": "file",
+  "source_sha256": "c501674797f0929cf181974d55cd178a57ba3fbe59a6531a8e6ccef3c787e8ec",
+  "rubric": "repeated-proof-machinery"
+}

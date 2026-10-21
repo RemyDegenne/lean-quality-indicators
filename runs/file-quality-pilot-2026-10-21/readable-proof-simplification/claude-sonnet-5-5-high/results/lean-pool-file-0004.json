@@ -1,0 +1,128 @@
+{
+  "id": "lean-pool-file-0004",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the full file and checked the Mathlib hyperbolic lemmas that the first suggested replacement relies on. I did not run Lean, so none of the replacements are compiled. The suggestions are conservative and local. The long calc chains look mostly intentional, so I did not flag them. The first replacement leans on `Real.sinh_lt_cosh` having an explicit argument, which Metric.lean's use `sinh_lt_cosh _` suggests, and on `Real.cosh_abs` being the right rewrite direction. Both are untested.",
+  "findings": [
+    {
+      "declaration": "NumberField.Odlyzko.abs_sinh_le_cosh",
+      "start_line": 200,
+      "end_line": 206,
+      "excerpt": "have hid := Real.cosh_sq_sub_sinh_sq x",
+      "problem": "The proof goes through the identity cosh² − sinh² = 1, then `nlinarith`, then `simp_all`, then `sq_le_sq₀`. Mathlib already has `Real.abs_sinh : |sinh x| = sinh |x|`, `Real.cosh_abs`, and `Real.sinh_lt_cosh`. These give the statement directly. The `simp_all` step is also opaque.",
+      "proposed_change": "Replace the proof body with:\n  rw [Real.abs_sinh, ← Real.cosh_abs x]\n  exact (Real.sinh_lt_cosh _).le\nThe idea is that |sinh x| = sinh |x| < cosh |x| = cosh x. If the `rw` direction proves fiddly, `abs_le.2 ⟨by simpa using (Real.sinh_lt_cosh (-x)).le, (Real.sinh_lt_cosh x).le⟩` is an alternative.",
+      "benefit": "The two-line proof states the mathematical reason: sinh < cosh, plus the symmetry in x. It removes `nlinarith` and `simp_all`, and it avoids reproving a fact Mathlib already has.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Complex/Trigonometric.lean",
+          "declaration": "Real.sinh_lt_cosh",
+          "excerpt": "theorem sinh_lt_cosh : sinh x < cosh x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Trigonometric/DerivHyp.lean",
+          "declaration": "Real.abs_sinh",
+          "excerpt": "theorem abs_sinh (x : ℝ) : |sinh x| = sinh |x| := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Complex/Trigonometric.lean",
+          "declaration": "Real.cosh_abs",
+          "excerpt": "theorem cosh_abs : cosh |x| = cosh x := by"
+        }
+      ]
+    },
+    {
+      "declaration": "NumberField.Odlyzko.abs_poitouKernelSecondDerivative_le",
+      "start_line": 681,
+      "end_line": 687,
+      "excerpt": "_ = |f' x| * c ^ 2 := rfl",
+      "problem": "The last calc step rewrites `|f' x| * c ^ 2` as itself by `rfl`, so it does nothing. The preceding step also proves `|f' x| * c ≤ |f' x| * c ^ 2` with `gcongr; nlinarith`, which is more indirect than needed.",
+      "proposed_change": "Delete the line `_ = |f' x| * c ^ 2 := rfl`. For the middle step, use `mul_le_mul_of_nonneg_left (by nlinarith) (abs_nonneg _)`. Alternatively, `gcongr` followed by `nlinarith` can be kept as it is.",
+      "benefit": "Dropping the vacuous step shortens the calc, and the reader no longer wonders what the final `rfl` line contributes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "NumberField.Odlyzko.abs_poitouKernelSecondDerivative_le",
+          "excerpt": "_ = |f' x| * c ^ 2 := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "NumberField.Odlyzko.norm_poitouVerticalProfileSecondDerivative_regularized_le",
+      "start_line": 1053,
+      "end_line": 1122,
+      "excerpt": "have hP₁ : 0 ≤ D₁ + 2 * δ * |x| + 1 / 2 := by positivity",
+      "problem": "The nonnegativity fact `hP` (together with its sub-facts `hP₂` and `hP₁`) is proved twice. The first proof is at lines 1053–1072, inside the second calc step. The second is at lines 1108–1122, inside the third calc step. The two proofs are the same `add_nonneg … (sq_nonneg a)` argument with the same expression typed out in full.",
+      "proposed_change": "Prove `hP` once, just before `unfold poitouVerticalProfileSecondDerivative` or just after `hk''`. Give the polynomial a name, for example `let P := P₂ + 2 * a * P₁ + a ^ 2` with `P₂` and `P₁` defined at that point. Both calc steps then use the single `hP`, and the second `have hP … ` block (lines 1108–1122) is deleted.",
+      "benefit": "This removes about 15 duplicated lines and one place where the two proofs could drift apart. It also makes it clearer that both steps rely on the same positivity fact about the polynomial prefactor.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "NumberField.Odlyzko.norm_poitouVerticalProfileSecondDerivative_regularized_le",
+          "excerpt": "have hP₂ : 0 ≤ P₂ := by"
+        }
+      ]
+    },
+    {
+      "declaration": "NumberField.Odlyzko.hasDerivAt_integral_tartarAmplitudeDerivativeIntegrand",
+      "start_line": 74,
+      "end_line": 86,
+      "excerpt": "(continuous_const.mul continuous_id))).aestronglyMeasurable)",
+      "problem": "The same measurability term, `((continuous_id.neg.mul tartarWeight_continuous).mul (Real.continuous_sin.comp (continuous_const.mul continuous_id))).aestronglyMeasurable`, is written out twice. The first copy is the `hF_meas` argument and the second is inside the `mono'` argument. Each copy is wrapped in a redundant `by exact`.",
+      "proposed_change": "Before the main `exact`, add `have hmeas : ∀ z, AEStronglyMeasurable (tartarAmplitudeDerivativeIntegrand z) volume := fun z ↦ (...).aestronglyMeasurable`. Then pass `.of_forall hmeas` or `Filter.Eventually.of_forall hmeas` for the first argument, and use `hmeas x` inside `mono'`. Also drop the `by exact` wrappers.",
+      "benefit": "One named measurability fact replaces two copies of a long term. The shape of the `hasDerivAt_integral_of_dominated_loc_of_deriv_le` call (measurability, integrable bound, derivative bound) is easier to follow.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "NumberField.Odlyzko.hasDerivAt_integral_tartarAmplitudeDerivativeIntegrand",
+          "excerpt": "exact abs_mul_tartarWeight_integrable.mono'"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 38780,
+    "cache_read_input_tokens": 179560,
+    "output_tokens": 6517,
+    "output_tokens_details": {
+      "thinking_tokens": 1744
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 38780,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3432,
+        "cache_read_input_tokens": 39351,
+        "cache_creation_input_tokens": 3472,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3472
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.23827,
+  "duration_ms": 43952,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T01:48:19",
+  "unit": "file",
+  "source_sha256": "56ef8d471d0ee3f0b24a9cdf7f0d1a043ae91df828c144b9a95b83891efe9b66",
+  "rubric": "readable-proof-simplification"
+}

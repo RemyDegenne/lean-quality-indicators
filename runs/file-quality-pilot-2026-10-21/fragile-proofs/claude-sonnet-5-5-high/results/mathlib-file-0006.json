@@ -1,0 +1,122 @@
+{
+  "id": "mathlib-file-0006",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, focusing on non-terminal automation (simp_all), unfolding of definitions via rw, convert, positional `exacts` for side goals, and backward.isDefEq options. Checked the surrounding statements of the flagged proofs. I did not run Lean, so the proposed replacements are untested. Other candidates (dite_eq_left rewrites, set_option backward.isDefEq.respectTransparency false) I judged not justified as findings without a concrete stable alternative.",
+  "findings": [
+    {
+      "declaration": "VectorBundleCore.localTriv_continuousLinearMapAt",
+      "start_line": 768,
+      "end_line": 772,
+      "excerpt": "  ext1 v\n  simp_all\n  rfl",
+      "problem": "The proof uses non-terminal `simp_all` followed by a bare `rfl`. `simp_all` simplifies every hypothesis and the goal with the full simp set (including the `mfld_simps`/`@[simp]` lemmas of this file such as `localTriv_apply`, `coordChange_self`, `coe_coordChange`), and the `rfl` depends on whatever normal form it leaves. Adding a simp lemma or changing a simp-normal form could leave a different goal, or close it so that `rfl` errors with 'no goals'. The mathematical content is just `continuousLinearMapAt_apply_of_mem` plus `localTriv_apply`, and this is hidden.",
+      "proposed_change": "Rewrite with the public lemma instead of relying on `simp_all`: after `ext1 v`, use `rw [Trivialization.continuousLinearMapAt_apply_of_mem R (Z.localTriv i) hb v]` (or `(Z.localTriv i).continuousLinearMapAt_apply_of_mem R hb v`) and close with `rfl`, which holds by `localTriv_apply`. Alternatively use `simp only [Trivialization.continuousLinearMapAt_apply_of_mem _ hb, localTriv_apply]`.",
+      "benefit": "The proof states which lemmas are used, and it no longer depends on the global simp set or on `simp_all` handling unrelated hypotheses. It is less likely to break when simp lemmas change.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.continuousLinearMapAt_apply_of_mem",
+          "excerpt": "(continuousLinearMapAt R e b) y = (e ⟨b, y⟩).2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "VectorBundleCore.localTriv_apply",
+          "excerpt": "(Z.localTriv i) p = ⟨p.1, Z.coordChange (Z.indexAt p.1) i p.1 p.2⟩"
+        }
+      ]
+    },
+    {
+      "declaration": "VectorPrebundle.toVectorBundle",
+      "start_line": 939,
+      "end_line": 944,
+      "excerpt": "      rw [trivializationOfMemPretrivializationAtlas] at h₁ h₂\n      rw [a.coordChange_apply he he' hb v, ContinuousLinearEquiv.coe_coe,\n        Trivialization.coordChangeL_apply]\n      exacts [rfl, hb] }",
+      "problem": "The proof gets the `IsLinear` instances needed by `Trivialization.coordChangeL_apply` by `have`-ing the linearity lemma and then `rw [trivializationOfMemPretrivializationAtlas] at h₁ h₂`, which unfolds the wrapper definition so that the local hypotheses syntactically match the `a.toFiberPrebundle.trivializationOfMemPretrivializationAtlas` term in the goal. The proof therefore depends on the definitional body of `trivializationOfMemPretrivializationAtlas` and on the instance-synthesis behaviour under the `backward.isDefEq.respectTransparency false` option. If the definition is reshaped, the `rw` fails or the instances stop being found. The final `exacts [rfl, hb]` also depends on the order and form of the side goals produced by the `rw`.",
+      "proposed_change": "State `linear_trivializationOfMemPretrivializationAtlas` (or an instance version of it) directly for the term that appears in the goal, `a.toFiberPrebundle.trivializationOfMemPretrivializationAtlas he`. Alternatively, supply the instances explicitly to `Trivialization.coordChangeL_apply` instead of rewriting hypotheses. Then provide the membership side condition `hb` as an explicit argument, e.g. `Trivialization.coordChangeL_apply _ _ hb v`, so the closing step is not `exacts [rfl, hb]`.",
+      "benefit": "The proof no longer depends on unfolding a definition or on the order of generated side goals. It states which trivialization carries which linear structure, which matches the public API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "VectorPrebundle.linear_trivializationOfMemPretrivializationAtlas",
+          "excerpt": "Trivialization.IsLinear R (trivializationOfMemPretrivializationAtlas a he)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "VectorPrebundle.trivializationOfMemPretrivializationAtlas",
+          "excerpt": "a.toFiberPrebundle.trivializationOfMemPretrivializationAtlas he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.coordChangeL_apply",
+          "excerpt": "coordChangeL R e e' b y = (e' ⟨b, e.symm b y⟩).2"
+        }
+      ]
+    },
+    {
+      "declaration": "Bundle.Trivialization.continuousLinearEquivAt",
+      "start_line": 456,
+      "end_line": 456,
+      "excerpt": "continuous_invFun := by convert (e.symmL R b).continuous; ext; simp [hb] }",
+      "problem": "`convert` followed by `ext; simp [hb]` depends on the exact goals `convert` generates. These are the shape of the `invFun` goal inside the structure update, how `ext` splits it, and which simp lemmas fire. The needed fact is just that `e.symm b` and `⇑(e.symmL R b)` agree pointwise on `b ∈ e.baseSet`, which is `symmL_apply`. A routine change to the `toFun`/`invFun` fields or to the `ext` lemmas would change what `convert` leaves.",
+      "proposed_change": "Use the public lemma explicitly: `continuous_invFun := (e.symmL R b).continuous.congr fun y => e.symmL_apply hb y`. This is the same `Continuous.congr` pattern already used in the `symmL` definition, which uses `continuous_zero.congr fun x => ...`.",
+      "benefit": "This is a term-mode proof that names the lemma it relies on (`symmL_apply`). It does not depend on what `convert` and `ext` produce, so it is more robust and easier to read.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.symmL_apply",
+          "excerpt": "e.symmL R b y = e.symm b y"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.symmL",
+          "excerpt": "exact continuous_zero.congr fun x => (e.symmₗ_apply_of_notMem hb x).symm }"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 29576,
+    "cache_read_input_tokens": 92135,
+    "output_tokens": 5469,
+    "output_tokens_details": {
+      "thinking_tokens": 1937
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29576,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2905,
+        "cache_read_input_tokens": 30769,
+        "cache_creation_input_tokens": 2782,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2782
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18222349999999998,
+  "duration_ms": 39017,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T01:55:38",
+  "unit": "file",
+  "source_sha256": "115769215c14a8abc3b1ef7b15f774011ad3255f74f3d2deba17c7b22d47fedf",
+  "rubric": "fragile-proofs"
+}
