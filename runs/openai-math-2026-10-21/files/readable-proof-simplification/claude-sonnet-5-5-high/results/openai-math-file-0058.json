@@ -1,0 +1,91 @@
+{
+  "id": "openai-math-file-0058",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related definitions in CompactWordCost.lean (compactWeightedNorm, metricGroupNorm, wordLength_le_weightedNorm_add) and MetricCoarseBridge.lean (dist_one_groupDifference). I considered the other proofs too: metric_le_weightedDistance, weightedDistance_le_near, weightedGroupMetric_isometric, weighted_ball_subset_compact_power. I left them alone. The explicit `@compactWeightedNorm … m₀` in the isometry proof exists to handle the two competing MetricSpace instances, and I could not find a safer simplification without compiling. The two findings below are small cleanups. I could not compile either replacement. The second one relies on the `ofDistTopology` distance unfolding definitionally to `N (x⁻¹ * y)`, which is what the existing `change` already assumes.",
+  "findings": [
+    {
+      "declaration": "OAI.PolycyclicRecognition.weightedDistance_topology",
+      "start_line": 52,
+      "end_line": 57,
+      "excerpt": "have hxy : dist x y < min δ ε := by simpa only [mem_ball, dist_comm] using hy\n    exact hsub y ((weightedDistance_le_near K hK hsymm hbounded δ hball\n      (lt_of_lt_of_le hxy (min_le_left _ _)).le).trans_lt\n        (lt_of_lt_of_le hxy (min_le_right _ _)))",
+      "problem": "The proof first packs the two bounds into `min δ ε`, then extracts them again with two `lt_of_lt_of_le … (min_le_left/right _ _)` calls. This is a roundabout way to say that `dist x y` is below both `δ` and `ε`. The nesting is hard to read, and the `min` is destructured by hand where `lt_min_iff` does it directly.",
+      "proposed_change": "Split the conjunction once with `lt_min_iff`:\n```lean\n    intro y hy\n    have hxy : dist x y < min δ ε := by simpa only [mem_ball, dist_comm] using hy\n    obtain ⟨hxyδ, hxyε⟩ := lt_min_iff.mp hxy\n    exact hsub y ((weightedDistance_le_near K hK hsymm hbounded δ hball hxyδ.le).trans_lt hxyε)\n```\nIf `lt_min_iff` does not fit, `hxy.trans_le (min_le_left _ _)` and `hxy.trans_le (min_le_right _ _)` are shorter than the current `lt_of_lt_of_le` forms.",
+      "benefit": "The two roles are now named: `hxyδ` puts us in the near regime and `hxyε` gives the strict bound. The reader sees at once that the argument is \"near, so N ≤ dist, so N < ε\". The unreadable nested term goes away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Geometry/WeightedChainMetric.lean",
+          "declaration": "weightedDistance_le_near",
+          "excerpt": "theorem weightedDistance_le_near {x y : G} (hxy : dist x y ≤ δ) :\n    N (x⁻¹ * y) ≤ dist x y"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.PolycyclicRecognition.weightedGroupMetric_proper",
+      "start_line": 97,
+      "end_line": 112,
+      "excerpt": "change n₀ (y⁻¹ * x) ≤ R at hy\n  have he : n₀ (x⁻¹ * y) = n₀ (y⁻¹ * x) := by\n    simpa only [mul_inv_rev, inv_inv] using map_inv_eq_map n₀ (y⁻¹ * x)\n  exact he.trans_le hy",
+      "problem": "The last step proves symmetry of the weighted norm by hand. It needs the auxiliary `n₀ : GroupNorm G := N` (line 97, introduced only to keep the original instance in scope), a `change`, and a `simpa` with `map_inv_eq_map`. This repeats what `dist_comm` says for the metric structure `weightedGroupMetric` that was just installed. `weightedGroupMetric` uses `N (x⁻¹ * y)` as its distance, so `y ∈ closedBall x R` is definitionally `N (y⁻¹ * x) ≤ R`. The goal is `N (x⁻¹ * y) ≤ R`, and `dist_comm x y` converts one to the other.",
+      "proposed_change": "Replace the symmetry bookkeeping with `dist_comm` and drop `n₀`:\n```lean\n  intro y hy\n  apply hcontain x R\n  rw [mem_closedBall, dist_comm] at hy\n  exact hy\n```\nThe goal `y ∈ {y | N (x⁻¹ * y) ≤ R}` should match `hy : dist x y ≤ R` by definitional unfolding of `weightedGroupMetric`. As a fallback, keep the `change` but prove symmetry with `(dist_comm x y).trans_le hy`. The `n₀` line and the `he` lemma are no longer needed. `hcontain` and `hcompactPow` are each used once, so they could also be inlined.",
+      "benefit": "The proof now reads as: a closed ball is a closed subset of the compact image of a power of K, and the distance is symmetric. It no longer carries an instance-juggling `n₀` or a separate inverse-norm identity. A reader does not have to check the `mul_inv_rev`/`inv_inv` rewriting.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Geometry/WeightedChainMetric.lean",
+          "declaration": "weightedGroupMetric",
+          "excerpt": "MetricSpace.ofDistTopology (fun x y => N (x⁻¹ * y))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Geometry/WeightedChainMetric.lean",
+          "declaration": "weighted_ball_subset_compact_power",
+          "excerpt": "{y | N (x⁻¹ * y) ≤ R} ⊆"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 22152,
+    "cache_read_input_tokens": 16331,
+    "output_tokens": 4434,
+    "output_tokens_details": {
+      "thinking_tokens": 1800
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22152,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4093,
+        "cache_read_input_tokens": 12288,
+        "cache_creation_input_tokens": 13907,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 13907
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.13458910000000002,
+  "duration_ms": 30899,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-21T12:17:51",
+  "unit": "file",
+  "source_sha256": "1339637bf9a7cb4999a3843331254ac26171bab4399c158fd85be6aa0ad5de8f",
+  "rubric": "readable-proof-simplification"
+}

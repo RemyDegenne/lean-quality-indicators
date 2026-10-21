@@ -1,0 +1,128 @@
+{
+  "id": "openai-math-file-0093",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the project lemmas it relies on: norm_cubicSymbol_of_isCoprime, cubicSymbol_cube_of_isCoprime, omega_cube, and the existing cubicTheta_omega_zpow_add_three. I also grepped the project for similar non-vanishing and omega zpow patterns and for uses of eisenstein_unit_eq_signed_omega. I did not flag the Eisenstein coordinate computations (linear_combination/ring/omega), the nlinarith/interval_cases unit classification, or the reciprocity argument, because they are already readable and I found no clearly simpler replacement. The proposed replacements are untested and have not been compiled. In particular, the `key` lemma's linear_combination coefficient and the exact rewrite sequences need checking by Lean.",
+  "findings": [
+    {
+      "declaration": "cubicSymbol_omega_norm / cubicSymbol_omega_periodic",
+      "start_line": 175,
+      "end_line": 176,
+      "excerpt": "show omega ^ (3 : ℤ) = 1 by simpa using omega_cube,one_zpow,mul_one]",
+      "problem": "The same four-step exponent reduction is written out twice: `zpow_add₀ omega_ne_zero`, `zpow_mul`, `omega ^ (3:ℤ) = 1`, `one_zpow`, `mul_one` (lines 151–152 and 175–176). It shows only that `omega ^ (a + 3*b) = omega ^ a`, and a reader has to re-derive that from the rewrite chain each time. The project already has exactly this fact as `cubicTheta_omega_zpow_add_three`, with the same proof, in CubicThetaCuspCharacter.lean.",
+      "proposed_change": "Add one local lemma before `cubicSymbol_omega_norm`:\n\nprivate lemma omega_zpow_add_three (a b : ℤ) : omega ^ (a + 3*b) = omega ^ a := by\n  rw [zpow_add₀ omega_ne_zero, zpow_mul, show omega ^ (3 : ℤ) = 1 by simpa using omega_cube, one_zpow, mul_one]\n\nThen replace the tail at line 151 with `rw [hdk, hdiv, omega_zpow_add_three, zpow_add₀ omega_ne_zero]`. Replace the tail at line 175 with `rw [hdj, hdk, hjk, omega_zpow_add_three]`. Alternatively, if the import graph allows it, reuse the existing `cubicTheta_omega_zpow_add_three`.",
+      "benefit": "The key fact, that omega exponents only matter mod 3, is stated once with a name. The two main proofs then show their real steps (exponent `j+k+3jk` versus `j+k`, and `k+3t` versus `k`) without repeated low-level zpow rewriting.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaCuspCharacter.lean",
+          "declaration": "cubicTheta_omega_zpow_add_three",
+          "excerpt": "lemma cubicTheta_omega_zpow_add_three (a b : ℤ) : omega^(a+3*b)=omega^a := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/CubicSupplementaryPeriodicityProof.lean",
+          "declaration": "cubicSymbol_omega_norm",
+          "excerpt": "zpow_mul,show omega ^ (3 : ℤ) = 1 by simpa using omega_cube,one_zpow,mul_one]"
+        }
+      ]
+    },
+    {
+      "declaration": "cubicSymbol_lambda_periodic",
+      "start_line": 92,
+      "end_line": 101,
+      "excerpt": "    cubicSymbol a lambdaE = (cubicSymbol a lambdaE ^ 2)^2 := by\n      calc\n        _ = cubicSymbol a lambdaE * cubicSymbol a lambdaE ^ 3 := by rw [hca,mul_one]",
+      "problem": "The final calc proves `x = (x^2)^2` for x = cubicSymbol a λ and again for b, using two nested calcs that mirror each other. The only mathematical content is that `x^3 = 1` implies `x = (x^2)^2`, i.e. x is its own fourth power. That fact is hidden in the duplicated blocks.",
+      "proposed_change": "State the algebraic fact once and use it twice:\n\n  have key : ∀ x : ℂ, x ^ 3 = 1 → x = (x ^ 2) ^ 2 := fun x h => by\n    linear_combination (-x) * h\n  calc cubicSymbol a lambdaE = (cubicSymbol a lambdaE ^ 2) ^ 2 := key _ hca\n    _ = (cubicSymbol b lambdaE ^ 2) ^ 2 := congrArg (· ^ 2) he\n    _ = cubicSymbol b lambdaE := (key _ hcb).symm\n\n(`x - (x^2)^2 - (-x)*(x^3-1) = 0` by ring, so the linear_combination coefficient is right.)",
+      "benefit": "The argument reads as three steps: x equals (x²)², the squares agree by the 3-symbol periodicity, and then y equals (y²)². The nested calcs and the repeated `by ring` / `rw [hca,mul_one]` steps disappear, and the single fact `x^3=1 → x=(x^2)^2` is easy to check.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicGram/MixedPoisson.lean",
+          "declaration": "cubicSymbol_cube_of_isCoprime",
+          "excerpt": "(v : Eisenstein) (hv : IsCoprime c v) : cubicSymbol c v ^ 3 = 1 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "cubicSupplementaryPeriodicity_proved (main induction, both coprime-to-3 and ramified branches) and symbol_three_aux",
+      "start_line": 288,
+      "end_line": 291,
+      "excerpt": "rw [hz,norm_zero] at hnorm\n          norm_num at hnorm",
+      "problem": "The same \"symbol of a primary b against something coprime is nonzero\" argument is spelled out three times: in `symbol_three_aux` (lines 36–39) and in the two branches of the main proof (lines 288–291 and 307–309). Each time it takes `norm_cubicSymbol_of_isCoprime`, rewrites the norm to 0, and calls `norm_num` to close `0 = 1`, wrapped in `apply mul_right_cancel₀ _ ...; intro hz`. The grep found no existing lemma for this, so each use re-proves it.",
+      "proposed_change": "Add a private lemma:\n\nprivate lemma cubicSymbol_ne_zero_of_isCoprime {b v : Eisenstein} (hb : primary b) (hv : IsCoprime b v) : cubicSymbol b v ≠ 0 :=\n  norm_ne_zero_iff.mp (by rw [norm_cubicSymbol_of_isCoprime hb hv]; exact one_ne_zero)\n\nThen `hn` in `symbol_three_aux` becomes `cubicSymbol_ne_zero_of_isCoprime hr hrx`. The two branches become `exact mul_right_cancel₀ (cubicSymbol_ne_zero_of_isCoprime hb (unit_coprime_right b hu)) heq` and `exact mul_right_cancel₀ (cubicSymbol_ne_zero_of_isCoprime hb (unit_coprime_right b u.isUnit)) he`.",
+      "benefit": "Each cancellation site states the cancellation hypothesis directly (symbol is nonzero because of coprimality) and drops about four lines of boilerplate. The lemma is also reusable, since similar `rw [hz,norm_zero]` proofs appear elsewhere, e.g. CubicThetaKubotaProduct.lean.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicGram/SquarefreeGauss.lean",
+          "declaration": "norm_cubicSymbol_of_isCoprime",
+          "excerpt": "(hv : IsCoprime b v) : ‖cubicSymbol b v‖ = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaKubotaProduct.lean",
+          "declaration": "(nonvanishing step)",
+          "excerpt": "rw [hz,norm_zero] at h"
+        }
+      ]
+    },
+    {
+      "declaration": "eisenstein_unit_eq_signed_omega",
+      "start_line": 252,
+      "end_line": 253,
+      "excerpt": "lemma eisenstein_unit_eq_signed_omega {u : Eisenstein} (hu : IsUnit u) :\n    ∃ j : ℕ, u = omegaE^j ∨ u = -(omegaE^j) := unit_eq_signed_omega hu",
+      "problem": "`unit_eq_signed_omega` (private, line 178) and `eisenstein_unit_eq_signed_omega` (public, line 252) have identical statements, and the second is only a restatement of the first. The grep shows the private name is used only inside this file (line 214), while the public name is used in other files. Nothing else in the file needs the private name.",
+      "proposed_change": "Delete the wrapper and make the original lemma public under the used name. Rename `private lemma unit_eq_signed_omega` to `lemma eisenstein_unit_eq_signed_omega` with its docstring \"Explicit classification of the six Eisenstein units.\", and use that name at line 214 (`obtain ⟨j,hj | hj⟩ := eisenstein_unit_eq_signed_omega hu`). External callers are unaffected.",
+      "benefit": "This removes a redundant declaration and a layer of indirection, so a reader sees one lemma, its statement and its proof, instead of two names for the same fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/RamifiedCubicNonprincipal.lean",
+          "declaration": "(use of the public name)",
+          "excerpt": "obtain ⟨j,hj⟩ := eisenstein_unit_eq_signed_omega hu"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 43525,
+    "cache_read_input_tokens": 125780,
+    "output_tokens": 7872,
+    "output_tokens_details": {
+      "thinking_tokens": 3003
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 43525,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4653,
+        "cache_read_input_tokens": 44068,
+        "cache_creation_input_tokens": 3500,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3500
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.265418,
+  "duration_ms": 58441,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T14:29:54",
+  "unit": "file",
+  "source_sha256": "1a8c463254738f4873471eed721bd8a41b93585e368459327e4935023756ed31",
+  "rubric": "readable-proof-simplification"
+}

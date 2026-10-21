@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0081",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the Fourier.lean definitions it uses (bit, degree, synth, fourier, diff, flip). I also searched the IndependentSets directory for other walsh definitions and for uses of this file's lemmas. The file has no simp attributes. The findings are therefore about missing canonical simp lemmas, shown by repeated manual unfolding with `simp only [...]` and a trailing `rfl`. I did not run Lean, so I make no claim that a replacement compiles or that a rewrite loops. The other lemmas (truncate_*, influence_*, noise_*) are arithmetic or inequality statements where simp annotations would not be justified. I did not read every downstream use of walsh in the other files. I only confirmed that Fourier/Walsh.lean defines a separate `walsh` over `Cube I` with its own @[simp] walsh_sq.",
+  "findings": [
+    {
+      "declaration": "degree_eq_sum",
+      "start_line": 10,
+      "end_line": 19,
+      "excerpt": "zero_add, ih] <;> rfl",
+      "problem": "The proof reduces `bit (b,s) i` and `degree (b,s)` by unfolding the definitions inside `simp only [degree, bit, ..., Fin.cases_zero, Fin.cases_succ, ...]`. It then needs a trailing `<;> rfl` to close what is left. That means the simp set does not reach a normal form on its own. There are no canonical simp lemmas for `bit` on a cons cube (`bit (b,x) 0 = b`, `bit (b,x) i.succ = bit x i`) or for `degree (b,x)` (`(if b then 1 else 0) + degree x`). Every proof about these constructors, here and in Fourier.lean (fourier_diff, fourier_noise), has to unfold the structural recursion by hand.",
+      "proposed_change": "Next to the definitions of `bit` and `degree` in Fourier.lean, add equation lemmas such as `@[simp] bit_cons_zero : bit (b,x) 0 = b`, `@[simp] bit_cons_succ : bit (b,x) i.succ = bit x i` and `@[simp] degree_cons : degree (b,x) = (if b then 1 else 0) + degree x`. Then `cases b <;> simp [ih]` should replace the `simp only [... Fin.cases_zero, Fin.cases_succ ...] <;> rfl` call. Do not make `degree_eq_sum` itself simp: it expands `degree` into a sum and would inflate goals.",
+      "benefit": "Readers and later proofs get a stable normal form for `bit` and `degree` on cons cubes. Proofs no longer depend on the internal `Fin.cases` encoding or on a fragile closing `rfl`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Fourier/Fourier.lean",
+          "declaration": "bit",
+          "excerpt": "| _+1, (b,x), i => Fin.cases b (bit x) i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Fourier/Fourier.lean",
+          "declaration": "degree",
+          "excerpt": "| _+1, (b,x) => (if b then 1 else 0) + degree x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Fourier/Fourier.lean",
+          "declaration": "fourier_diff",
+          "excerpt": "cases b <;> simp [fourier, bit, evenPart_diff_zero, oddPart_diff_zero, fourier_zero]"
+        }
+      ]
+    },
+    {
+      "declaration": "walsh",
+      "start_line": 24,
+      "end_line": 26,
+      "excerpt": "| _+1, (b,s), (c,x) => (if b && c then -1 else 1) * walsh s x",
+      "problem": "`walsh` is defined by structural recursion with no simp equation lemmas for the cons case (`walsh (b,s) (c,x) = (if b && c then -1 else 1) * walsh s x`) or the zero case. `synth_eq_sum` and `walsh_depends` each unfold it with `simp [walsh, ...]` or `simp only [synth, walsh, Bool.false_and, Bool.true_and, Bool.false_eq_true, ↓reduceIte, one_mul, ih]`. That set mixes unfolding of the definition with hand-picked Bool and `ite` lemmas. The expected normal forms `walsh (false,s) (c,x) = walsh s x` and `walsh (b,s) (false,x) = walsh s x` are not available as lemmas. This file also defines a second `walsh` in the same project, over `Cube I` and `Finset.prod`, with `@[simp] walsh_sq`, so the name and its simp behaviour are easy to confuse.",
+      "proposed_change": "Add targeted lemmas right after the definition: `walsh_succ` (the cons equation), and simp lemmas `walsh_false_left : walsh (false,s) (c,x) = walsh s x` and `walsh_false_right : walsh (b,s) (false,x) = walsh s x`, plus `walsh_zero`. Then use `simp [walsh_succ, ih]` in `synth_eq_sum` and `walsh_depends` instead of the long `simp only` list. If the unfolding `simp [walsh]` is meant to stay the only interface, say so in a docstring.",
+      "benefit": "The Boolean case analysis (`false && c`, `true && c`) is done once instead of in each proof. The proofs become shorter and no longer need the exact list `Bool.false_and, Bool.true_and, Bool.false_eq_true, ↓reduceIte, one_mul`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Expansion/Supported.lean",
+          "declaration": "synth_eq_sum",
+          "excerpt": "simp only [synth, walsh, Bool.false_and, Bool.true_and, Bool.false_eq_true,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Expansion/Supported.lean",
+          "declaration": "walsh_depends",
+          "excerpt": "· simp [walsh, ht]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Fourier/Walsh.lean",
+          "declaration": "walsh_sq",
+          "excerpt": "@[simp] theorem walsh_sq {I : Type*} [Fintype I] [DecidableEq I] (s x : Cube I) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 18854,
+    "cache_read_input_tokens": 129029,
+    "output_tokens": 5424,
+    "output_tokens_details": {
+      "thinking_tokens": 1755
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18854,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2459,
+        "cache_read_input_tokens": 28254,
+        "cache_creation_input_tokens": 3000,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3000
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1425869,
+  "duration_ms": 39183,
+  "turns": 9,
+  "attempts": 3,
+  "judged": "2026-10-21T13:40:51",
+  "unit": "file",
+  "source_sha256": "0dc0f2001bd90936e76f5260aed27d6483724f2ee3ad3382e58efc97a877969e",
+  "rubric": "simp-interface"
+}

@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0074",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, the definitions of interpolation, endpointCoupling, QuadraticTransportCost, timeZero, timeOne and timeHalf, and the sibling files that repeat the same proof patterns. I grepped the WeakHessian directory for existing simp or smul lemmas about these definitions and found none. I did not run Lean, so I make no claim that any proposed lemma compiles or that simp would close the goals. The main remaining uncertainty is whether the proposed simp lemmas would clash with other rules downstream.",
+  "findings": [
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan (he, hξend, hs, hs')",
+      "start_line": 94,
+      "end_line": 166,
+      "excerpt": "Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable",
+      "problem": "`interpolation` and `endpointCoupling` are plain `def`s with no simp lemmas for scalar multiplication of the plan. The general `Measure.map_smul` has a measurability side condition, so `simp` cannot use it on `interpolation (q • π) t`. The proof therefore uses `change (q • π).map _ = _`, `change q • interpolation π t = _` and `change (q • π).map _ Bᶜ = 0 at hs`. It also rebuilds `(continuous_eval_const t).measurable.aemeasurable` by hand in `he`, `hξend` and `hs'`, and the pair-measurability proof in `hs`. The scalar-multiplication rewrites should be canonical simp rules, but they are hidden behind `change`.",
+      "proposed_change": "Add lemmas in the Model/TimeHalf layer, with the curve measurability discharged once inside the proof: `@[simp] lemma interpolation_smul (c : ℝ≥0∞) (π : Measure (Curve X)) (t : Time) : interpolation (c • π) t = c • interpolation π t`, and `@[simp] lemma endpointCoupling_smul (c) (π) : endpointCoupling (c • π) = c • endpointCoupling π`. Add a cost lemma `QuadraticTransportCost (c • q) = c * QuadraticTransportCost q`, which follows from `lintegral_smul_measure`. With these, `he` becomes `interpolation_smul ..`. `hξend` and `hs` collapse to `simp [..]` or `rw`, and `hs'` no longer needs `change`.",
+      "benefit": "Normalising `interpolation (c • π) t` and `endpointCoupling (c • π)` to `c • …` becomes automatic, without unfolding the definitions. The same hand-built `change`/`Measure.map_smul` blocks, duplicated in OptimalPlansShort.lean, RerouteFiniteSubplanShort.lean and LiftBoundedCoupling.lean, can be deleted. The measurability argument is written once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Model.lean",
+          "declaration": "interpolation",
+          "excerpt": "def interpolation (π : Measure (Curve X)) (t : Time) : Measure X :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/OptimalPlansShort.lean",
+          "declaration": "hξend (duplicate pattern in another file)",
+          "excerpt": "change (q • η).map _ = θ.map _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/LiftBoundedCoupling.lean",
+          "declaration": "lift proof",
+          "excerpt": "· change (q univ • π).map _ = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Map.lean",
+          "declaration": "MeasureTheory.Measure.map_smul",
+          "excerpt": "(c : R) {μ : Measure α} {f : α → β} (hf : AEMeasurable f μ) : (c • μ).map f = c • μ.map f"
+        }
+      ]
+    },
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan (final timeHalf step)",
+      "start_line": 170,
+      "end_line": 170,
+      "excerpt": "simpa only [timeHalf, show (1 : ℝ)-1/2 = 1/2 by norm_num] using hent N le_rfl timeHalf",
+      "problem": "`timeHalf` is a `def` with no simp lemma for its real value. Closing the goal means unfolding the definition inside `simpa only` and adding a one-off `1 - 1/2 = 1/2` fact. The same unfolding appears again in RerouteFiniteSubplanShort.lean line 144. Unfolding `timeHalf` to the anonymous-constructor form exposes the proof term, so this is not a canonical normal form. A reader cannot tell which side conditions are being normalised.",
+      "proposed_change": "Add `@[simp] lemma coe_timeHalf : (timeHalf : ℝ) = 1/2 := rfl`, and a lemma such as `one_sub_coe_timeHalf : (1:ℝ) - (timeHalf : ℝ) = 1/2` (by `norm_num [timeHalf]`) next to the definition in TimeHalf.lean. Then replace line 170 with `simpa using hent N le_rfl timeHalf` or an `rw` of those lemmas. Check the interaction with `halfTime_zero`/`halfTime_one` before marking anything `@[simp]`.",
+      "benefit": "The arithmetic on the half-time is normalised by a named lemma, not by unfolding a definition with a bundled proof. Later uses of `timeHalf` that need `1 - t = 1/2` or `(timeHalf : ℝ) = 1/2` can use the lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/LocalBounds/TimeHalf.lean",
+          "declaration": "timeHalf",
+          "excerpt": "def timeHalf : Time := ⟨1/2, by norm_num, by norm_num⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/RerouteFiniteSubplanShort.lean",
+          "declaration": "duplicate of the same step",
+          "excerpt": "simpa only [timeHalf, show (1 : ℝ)-1/2 = 1/2 by norm_num] using hent N le_rfl timeHalf"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 26890,
+    "cache_read_input_tokens": 128120,
+    "output_tokens": 5001,
+    "output_tokens_details": {
+      "thinking_tokens": 899
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26890,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2434,
+        "cache_read_input_tokens": 29960,
+        "cache_creation_input_tokens": 943,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 943
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17041,
+  "duration_ms": 47826,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T13:09:59",
+  "unit": "file",
+  "source_sha256": "659acbb3a82e0e7548787ca860f4814b3dd1940c61d717d0b3b39fece39b5163",
+  "rubric": "simp-interface"
+}

@@ -1,0 +1,102 @@
+{
+  "id": "openai-math-file-0056",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions and lemmas it uses: exists_remote_scaling_sequence, exists_remote_scaling_conjugations, scaling_vector_limit, scaling_defect_tendsto_of_cyclic, rightAction_adjoint_defect_tendsto, and Mathlib's pow_lt_one₀. I also grepped SpatialModularCoisometries.lean, which has the same centrality-negation block. I didn't compile anything, so the replacements are untested. For the heq block, the simp lemma set in the proposed replacement might need small adjustment.",
+  "findings": [
+    {
+      "declaration": "OAI.KadisonKastler.PointedMatrixSites.exists_modular_scaling_all_vectors / exists_modular_coisometry_sequence",
+      "start_line": 37,
+      "end_line": 45,
+      "excerpt": "have he (n : ℕ) : d.rightAction (v n) Ω =\n      tomitaPolarConjugation J Ω S.separating S.cyclic (star (v n).val Ω) := by\n    change d.conjugation (star (v n).val (d.conjugation Ω)) = _\n    rw [d.fixes_vector,hd]",
+      "problem": "The two theorems repeat the same `hscale` call, the same `he` lemma with its `change`/`rw` proof, and the same `simpa only [he, Real.sqrt_sq ht.le] using hscale`. In the first theorem this produces `hΩ` (lines 43-45). In the second (lines 73-79) it produces the goal directly. The only difference is which sequence `s`, `v` they run it on. The `change` step also hides a definitional unfolding of `rightAction` inside each copy.",
+      "proposed_change": "Extract one helper lemma from the common core. It takes `J`, `d`, `hd`, `s`, `v`, `hs`, `hpos`, `hv`, `hscale` and `ht : 0 < t` with `hr : s → t^2`. It concludes `Tendsto (fun n => (v n).val Ω - (t:ℂ) • d.rightAction (v n) Ω) atTop (𝓝 0)`. Its body is the current `scaling_vector_limit` call, then `he`, then the `simpa`. Both theorems then become `have hΩ := S.modular_scaling_defect_tendsto J d hd ht hs (fun n => (hv n).1) (fun n => (hv n).2.2.1) (fun n => (hv n).2.2.2)`. The second ends with `exact ⟨v, fun n => (hv n).2.2.1, hΩ, hconv⟩`.",
+      "benefit": "The `change`/`rw` conjugation argument is written and checked once and gets a name. Each existence theorem then shows only what is specific to it: which remote-scaling sequence is chosen and how the defect is extended to all vectors or to conjugations. Reducing to `Ω` is no longer repeated.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/RemoteModularCoisometries.lean",
+          "declaration": "exists_modular_coisometry_sequence",
+          "excerpt": "have he (n : ℕ) : d.rightAction (v n) Ω =\n      tomitaPolarConjugation J Ω S.separating S.cyclic (star (v n).val Ω) := by\n    change d.conjugation (star (v n).val (d.conjugation Ω)) = _\n    rw [d.fixes_vector,hd]\n  simpa only [he,Real.sqrt_sq ht.le] using hscale"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.KadisonKastler.PointedMatrixSites.exists_modular_scaling_all_vectors (centrality at Ω)",
+      "start_line": 50,
+      "end_line": 56,
+      "excerpt": "have heq : (fun n => (v n*a-a*v n).val Ω) =\n      (fun n => -((a*v n-v n*a).val Ω)) := by\n    funext n\n    simp only [AddSubgroupClass.coe_sub,sub_apply,neg_sub]\n  rw [heq]\n  simpa only [neg_zero] using (hcentral a Ω).neg",
+      "problem": "This is a five-step detour to flip the sign of a commutator. It states an auxiliary function equality, proves it with `funext`, rewrites with it, and then closes with a second `simpa`. The same block is copy-pasted in SpatialModularCoisometries.lean, which suggests it should be a single step or a lemma.",
+      "proposed_change": "Close the goal in one `simpa` that uses the negated hypothesis directly: `simpa only [AddSubgroupClass.coe_sub, sub_apply, neg_sub, neg_zero] using (hcentral a Ω).neg`. If that doesn't normalise cleanly, write the step as a `Tendsto.congr` or `(hcentral a Ω).neg.congr (fun n => by simp only [AddSubgroupClass.coe_sub, sub_apply, neg_sub])`. A better option is a small lemma `tendsto_commutator_swap` shared by this file and SpatialModularCoisometries. It would turn `∀ a, Tendsto (fun n => (a*v n - v n*a).val η) atTop (𝓝 0)` into the swapped version. Each use site then becomes `exact tendsto_commutator_swap hcentral`.",
+      "benefit": "The reader sees the idea directly: the commutator with the factors swapped is the negation, so it also tends to 0. They no longer have to follow an intermediate function equality, `funext` and `rw`. A shared lemma also removes the copy in the Spatial file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/SpatialModularCoisometries.lean",
+          "declaration": "SpatialModularCoisometries (same commutator-negation block)",
+          "excerpt": "simpa only [neg_zero] using (hcentral a (tensorVector ξ Ω)).neg"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.KadisonKastler.PointedMatrixSites.exists_modular_scaling_all_vectors / exists_modular_coisometry_sequence (t^2 < 1)",
+      "start_line": 36,
+      "end_line": 36,
+      "excerpt": "(sq_pos_of_pos ht) (show t^2 < 1 by nlinarith)",
+      "problem": "Both theorems prove `t^2 < 1` from `0 < t` and `t < 1` with `nlinarith` (lines 36 and 70). This is a standard lemma, and `nlinarith` hides which fact is used.",
+      "proposed_change": "Use `pow_lt_one₀ ht.le ht1 two_ne_zero` in place of `show t^2 < 1 by nlinarith`, at both lines 36 and 70. Its signature is `pow_lt_one₀ (h₀ : 0 ≤ a) (h₁ : a < 1) : n ≠ 0 → a ^ n < 1`. Alternatively `by nlinarith` could stay in one shared helper.",
+      "benefit": "The step reads as a named fact (a power of a number in [0,1) is below 1). It doesn't depend on a heuristic search and is less likely to break.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/GroupWithZero/Basic.lean",
+          "declaration": "pow_lt_one₀",
+          "excerpt": "lemma pow_lt_one₀ [PosMulMono M₀] (h₀ : 0 ≤ a) (h₁ : a < 1) : ∀ {n : ℕ}, n ≠ 0 → a ^ n < 1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 20327,
+    "cache_read_input_tokens": 37650,
+    "output_tokens": 4530,
+    "output_tokens_details": {
+      "thinking_tokens": 1131
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20327,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2959,
+        "cache_read_input_tokens": 21237,
+        "cache_creation_input_tokens": 3133,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3133
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.130385,
+  "duration_ms": 33319,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T12:11:51",
+  "unit": "file",
+  "source_sha256": "ebb373198a88dccc8c0dccd1f18c69f893c5f1b8d7a12a77f472def9999ab757",
+  "rubric": "readable-proof-simplification"
+}

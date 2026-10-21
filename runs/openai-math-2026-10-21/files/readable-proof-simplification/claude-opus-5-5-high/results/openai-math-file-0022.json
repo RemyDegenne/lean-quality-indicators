@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0022",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–93) and the declarations it uses: `cubicThetaArithmeticRowTerm`, `_phase`, `_summable` and `cubicThetaArithmeticRowSeries` in CubicThetaArithmeticRowSeries.lean; `cubicThetaTorusCoefficient_basis` (proved in a file with `Classical.propDecidable` as a local instance); `cubicThetaTorusCoefficientMap` and `_apply`; `cubicThetaTorusFourier`, `_zero` and `_actual`; and `cubicThetaTorusFourier_toLp`. I compared these proofs with the sibling versions in CubicThetaEisensteinTorus.lean, CubicThetaInvertedTorus.lean, CubicThetaShiftedTorus.lean and CubicThetaShiftedModelSeries.lean, which all follow the same pattern.\n\nI looked into replacing the `evalCLM.map_tsum` + `change ... at he` step in `cubicThetaArithmeticModelRemainder_real` with Mathlib's FunLike `tsum_apply` (Topology/Algebra/InfiniteSum/ContinuousEval.lean). I dropped the idea because I found no `IsAddApply`/`IsZeroApply` instance for `C(X, Y)` in Mathlib.\n\nI also considered `tsum_ite_eq'` for the coefficient lemma. I did not propose it because the `if` produced by `cubicThetaTorusCoefficient_basis` uses classical decidability. That could clash with whatever `DecidablePred` instance gets synthesized in this file, which has no classical instance.\n\nThe by_cases split at the end of `cubicThetaArithmeticModelTorus_coefficient` follows the `if h=0` in the statement, so I left it alone. The other short proofs (summability, `_real`, `ModelTorus_real`) already look direct. None of the proposed code has been compiled.",
+  "findings": [
+    {
+      "declaration": "cubicThetaArithmeticModelRemainder_coefficient",
+      "start_line": 46,
+      "end_line": 54,
+      "excerpt": "  · simp only [L,ContinuousLinearMap.comp_apply,map_smul,cubicThetaTorusFourier_toLp,\n      cubicThetaTorusCoefficientMap_apply,cubicThetaTorusCoefficient_basis,ite_true,\n      smul_eq_mul,mul_one]\n  · intro h hne\n    simp only [L,ContinuousLinearMap.comp_apply,map_smul,cubicThetaTorusFourier_toLp,\n      cubicThetaTorusCoefficientMap_apply,cubicThetaTorusCoefficient_basis,\n      ite_eq_right hne.symm,smul_zero]",
+      "problem": "The proof calls `tsum_eq_single k` first and then runs the same six-lemma simplification twice (`L`, `comp_apply`, `map_smul`, `cubicThetaTorusFourier_toLp`, `cubicThetaTorusCoefficientMap_apply`, `cubicThetaTorusCoefficient_basis`): once for the surviving term and once for the vanishing terms. Only the last one or two lemmas differ between the branches. The real point, that the k-th coefficient of a series of basis vectors picks out the k-th scalar, gets lost in the repeated bookkeeping.",
+      "proposed_change": "Simplify the summand once, under the binder, before isolating the single term:\n\n```lean\n  rw [cubicThetaArithmeticModelRemainder,L.map_tsum\n    (cubicThetaArithmeticModelRemainder_summable hv)]\n  simp only [L,ContinuousLinearMap.comp_apply,map_smul,cubicThetaTorusFourier_toLp,\n    cubicThetaTorusCoefficientMap_apply,cubicThetaTorusCoefficient_basis,smul_eq_mul]\n  -- goal: ∑' h, rowTerm 0 v h * (if k = h then 1 else 0) = rowTerm 0 v k\n  rw [tsum_eq_single k fun h hne => by rw [if_neg hne.symm,mul_zero],if_pos rfl,mul_one]\n```\n\nThe same restructuring also applies to the identical proofs of `cubicThetaTorusRemainder_coefficient`, `cubicThetaInvertedTorus...` and `cubicThetaShiftedTorus...`. Alternatively, all of them could share a small helper lemma stating that the coefficient of `toLp (∑' h, c h • cubicThetaTorusFourier h)` at k is `c k`. This has not been compiled.",
+      "benefit": "The simp set appears once instead of twice, and the proof now reads in two steps: write each summand's coefficient as `c h * δ_{k,h}`, then keep only `h = k`. That is how the argument goes on paper. The off-diagonal case becomes a one-line `if_neg` instead of a second copy of the normalization, so a reader no longer has to compare two long simp lists to see where they differ.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaCuspFourierSurjective.lean",
+          "declaration": "cubicThetaTorusCoefficient_basis",
+          "excerpt": "cubicThetaTorusCoefficient (cubicThetaTorusBasis h) k=if k=h then 1 else 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/Algebra/InfiniteSum/Basic.lean",
+          "declaration": "tprod_eq_mulSingle",
+          "excerpt": "theorem tprod_eq_mulSingle [L.LeAtTop] {f : β → α} (b : β) (hf : ∀ b' ≠ b, f b' = 1) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaEisensteinTorus.lean",
+          "declaration": "cubicThetaTorusFourier_toLp",
+          "excerpt": "ContinuousMap.toLp 2 (volume : Measure (UnitAddTorus (Fin 2))) ℂ (cubicThetaTorusFourier h)=cubicThetaTorusBasis h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaEisensteinTorus.lean",
+          "declaration": "cubicThetaTorusRemainder_coefficient",
+          "excerpt": "  rw [tsum_eq_single k]\n  · simp only [L,ContinuousLinearMap.comp_apply,map_smul,cubicThetaTorusFourier_toLp,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 30,
+    "cache_creation_input_tokens": 40449,
+    "cache_read_input_tokens": 407318,
+    "output_tokens": 9548,
+    "output_tokens_details": {
+      "thinking_tokens": 4141
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40449,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2578,
+        "cache_read_input_tokens": 41543,
+        "cache_creation_input_tokens": 2949,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2949
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5961356000000001,
+  "duration_ms": 92282,
+  "turns": 17,
+  "attempts": 1,
+  "judged": "2026-10-21T11:11:28",
+  "unit": "file",
+  "source_sha256": "f75b1aa429756b4856085c0fa248413c70cf673f091ab0194bc92513148457f6",
+  "rubric": "readable-proof-simplification"
+}

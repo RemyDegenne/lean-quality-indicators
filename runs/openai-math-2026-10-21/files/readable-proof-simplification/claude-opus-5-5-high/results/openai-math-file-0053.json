@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0053",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read every proof in the file (lines 1–199). I also read the definitions and lemmas they use: `analyzingCoefficient` (Packets/AnalyzingCoefficients.lean), `physicalFrozenCenteredCoefficient` (SourceLabeledCoefficientSplit.lean), `physicalMainScale`, `physicalMainSquare`, `sum_reference_frozen` and `sum_referenceLabels_of_zero` (SourceReferenceMainRestriction.lean), and `referenceFamily_physicalPacket` (SourceReferenceRestriction.lean).\n\nMost proofs are already direct: unfold, rewrite with a transfer lemma, then apply `sum_reference_frozen`. I found two places where a roundabout step can be replaced by a plain rewrite or simp call without losing clarity. Some small things I chose not to flag: `by exact` in `referenceSelf_alt_physicalPacket`, and the nested `Finset.sum_congr` blocks inside the `calc` proofs. Changing those would mostly be a matter of taste.\n\nI could not compile anything. For finding 1, I can't confirm that the reducible `rfl` that `rw` runs afterwards will close the goal. If it doesn't, a trailing `rfl` should work, because the original `exact congrArg … (hp z)` shows the two sides become definitionally equal after the packet rewrite. For finding 2, the simp set needs `PiLp.zero_apply` and `zero_mul`. The file's first theorem shows that `PiLp.zero_apply` reduces the zero coefficient applied to `k`.",
+  "findings": [
+    {
+      "declaration": "referenceSelf_frozenCenteredCoefficient",
+      "start_line": 70,
+      "end_line": 78,
+      "excerpt": "  congr 1\n  apply integral_congr_ae\n  filter_upwards [] with z\n  exact congrArg (fun f : ℂ => g z k*starRingEnd ℂ\n    (if |v z-t| ≤ a*(2:ℝ)^j.val then b j (orig j l) k t*f else 0)) (hp z)",
+      "problem": "After the `change`, the only remaining difference between the two sides is the packet `(Q).physicalPacket t j l u k`, which `referenceFamily_physicalPacket` already identifies with `P.physicalPacket t j (orig j l) u k`. The proof does not rewrite with that equation. Instead it builds a pointwise version `hp` with `congrArg (fun f => f z)`, strips the outer factor with `congr 1`, and passes through an a.e. congruence (`integral_congr_ae` plus `filter_upwards []`) even though the equality holds everywhere. It then rebuilds the entire integrand by hand in a second `congrArg` lambda that repeats the `if |v z-t| ≤ …` expression. The packet term does not depend on the integration variable `z`, so a single rewrite works under the integral binder.",
+      "proposed_change": "Keep lines 64–69 (`ext k`, `simp only […]`, `change … = _`) and replace lines 70–78 with\n```lean\n  rw [P.referenceFamily_physicalPacket t t R cone w F hw hcone hF hwide hfrequency j l u k]\n```\nIf the reducible `rfl` that `rw` runs afterwards leaves the goal open, add `rfl`. The original `exact congrArg … (hp z)` shows the sides are definitionally equal after this rewrite.",
+      "benefit": "The proof then reads as \"unfold both coefficients, then replace the restricted family's packet by the original packet\", which is the whole mathematical content. The reader no longer has to work through a measure-theoretic detour (a.e. congruence with an empty filter list) or check a second copy of the integrand written inside a lambda.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceReferenceRestriction.lean",
+          "declaration": "referenceFamily_physicalPacket",
+          "excerpt": "(P.referenceFamily oldSlope newSlope referenceLength cone w F hw hcone hF hwide hfrequency).physicalPacket\n      newSlope j l u k =\n      P.physicalPacket oldSlope j (P.referenceOriginalLabel oldSlope newSlope referenceLength cone w j l) u k"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Packets/AnalyzingCoefficients.lean",
+          "declaration": "analyzingCoefficient",
+          "excerpt": "WithLp.toLp 2 (fun k => ((area i)⁻¹ : ℂ) * ∫ z, g z k * conj (wave i k z) ∂μ)"
+        }
+      ]
+    },
+    {
+      "declaration": "physicalCenteredMaskedBand_eq_narrow_reference",
+      "start_line": 158,
+      "end_line": 163,
+      "excerpt": "      have hc := congrArg (fun c : EuclideanSpace ℂ κ => c k)\n        (P.physicalFrozenCenteredCoefficient_eq_zero t a b v g j l u hz)\n      dsimp only [f]\n      rw [hc]\n      simp)",
+      "problem": "The vanishing side condition only needs this: the frozen coefficient is zero, so the product `coeff k * mask * packet` is zero. The proof first builds the auxiliary equation `hc` by applying `congrArg (fun c => c k)` to the zero lemma, which gives a statement that is not beta-reduced. It then unfolds `f`, rewrites with `hc`, and finishes with a bare `simp`. Since a final `simp` runs anyway, the zero lemma can go straight into it. The first theorem of this file shows that `PiLp.zero_apply` evaluates the zero vector applied to `k`.",
+      "proposed_change": "Replace the `by` block with\n```lean\n    (fun l u hz => by\n      simp [f, P.physicalFrozenCenteredCoefficient_eq_zero t a b v g j l u hz])\n```\n(or `simp only [f, P.physicalFrozenCenteredCoefficient_eq_zero t a b v g j l u hz, PiLp.zero_apply, zero_mul]` if a closed simp set is preferred).",
+      "benefit": "The side goal then says in one line that the coefficient vanishes and therefore the term vanishes. This matches the parallel vanishing proof in `physicalMainScale_eq_narrow_reference` (line 98), which rewrites with the same zero lemma directly. The reader no longer has to work out what the non-beta-reduced `congrArg` equation `hc` says.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledMainRestriction.lean",
+          "declaration": "physicalFrozenCenteredCoefficient_eq_zero",
+          "excerpt": "hz k,zero_mul,ite_self,map_zero,mul_zero,integral_zero,PiLp.zero_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledMainRestriction.lean",
+          "declaration": "physicalMainScale_eq_narrow_reference",
+          "excerpt": "rw [P.physicalFrozenCenteredCoefficient_eq_zero t a b v g j l u hz,norm_zero,zero_mul])"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceReferenceMainRestriction.lean",
+          "declaration": "sum_reference_frozen",
+          "excerpt": "(hvanish : ∀ l u, (∀ k, c l u k = 0) → f l u = 0) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 41863,
+    "cache_read_input_tokens": 142890,
+    "output_tokens": 9963,
+    "output_tokens_details": {
+      "thinking_tokens": 5655
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 41863,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2991,
+        "cache_read_input_tokens": 39668,
+        "cache_creation_input_tokens": 6238,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6238
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5627900000000001,
+  "duration_ms": 94241,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T13:56:33",
+  "unit": "file",
+  "source_sha256": "d011bdb2db8bf771fea5df508d45696bc8c8a177484d16d21f9a098a910bb359",
+  "rubric": "readable-proof-simplification"
+}

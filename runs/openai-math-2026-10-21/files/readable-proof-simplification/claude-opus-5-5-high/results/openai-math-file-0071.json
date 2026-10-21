@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0071",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 242 lines of the file. I also checked the definitions it depends on: `axisHeight`, `axisDirection`, `height_axisDirection`, `axisHeight_add` and `axisHeight_zero` in Axis.lean; `Site` and `stepVector` in Model.lean; `RegenerationWord` in Words.lean; and `annealed_exit_band` in HittingWords.lean. In Mathlib I checked `Finset.sum_apply` and `Finset.sum_neg_distrib`; both are simp lemmas generated with `to_additive`. I also read the `omega` docstring to see which logical forms it accepts.\n\nMost proofs are already fairly direct: case splits on the `Bool` field followed by `simp`, or short `filter_upwards` blocks. I report two small but real simplifications.\n\nCandidates I looked at and rejected:\n- `annealed_axis_exit`: removing its `by_cases` would mean relying on `omega` to handle an implication hypothesis, and the `omega` docstring does not clearly say it does that.\n- `axis_barriers_disjoint` and `axis_word_last_step`: the possible changes there (a term-mode proof, or `rwa` instead of `rw ... at hf; exact hf`) only save characters or come down to taste.\n- `opposed_departure_band`: this proof is complex, but it is not clear that any change would make it easier to read.\n\nI have not compiled either replacement. How confident I am in each one is stated in its finding.",
+  "findings": [
+    {
+      "declaration": "axisHeight_sum",
+      "start_line": 30,
+      "end_line": 35,
+      "excerpt": "  classical\n  induction s using Finset.induction_on with\n  | empty => simp [axisHeight_zero]\n  | @insert i s hi ih => simp [Finset.sum_insert hi,axisHeight_add,ih]",
+      "problem": "`axisHeight e x` is just one coordinate of `x`, possibly negated (`if e.2 then x e.1 else -(x e.1)`). So the lemma says that a coordinate of a sum is the sum of the coordinates. The current proof instead rebuilds additivity by induction on the finset. That needs a `classical` block, a named `@insert` case and two separate simp calls. It also hides the reason the lemma holds.",
+      "proposed_change": "Use the same coordinate-wise proof as the neighbouring lemmas `axisHeight_neg`, `axisHeight_opposite` and `axisHeight_step_self`:\n```lean\nlemma axisHeight_sum {d : ℕ} {ι : Type*} (e : Step d) (s : Finset ι) (f : ι → Site d) :\n    axisHeight e (∑ i ∈ s, f i) = ∑ i ∈ s, axisHeight e (f i) := by\n  rcases e with ⟨j,b⟩\n  cases b <;> simp [axisHeight, Finset.sum_apply]\n```\n`Finset.sum_apply` moves the coordinate evaluation inside the sum. In the `false` case, the simp lemma `Finset.sum_neg_distrib` turns the sum of negations on the right into the negation of the sum. This replacement has not been compiled.",
+      "benefit": "The proof now says directly why the lemma is true: evaluating a coordinate commutes with finite sums. It matches the `rcases`/`cases b <;> simp [axisHeight]` pattern the reader has just seen in the three lemmas above it, and it drops the `classical` and induction scaffolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/Axis.lean",
+          "declaration": "axisHeight",
+          "excerpt": "if e.2 then x e.1 else -(x e.1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Pi.lean",
+          "declaration": "Finset.prod_apply",
+          "excerpt": "(s : Finset ι) (g : ι → ∀ a, M a) : (∏ c ∈ s, g c) a = ∏ c ∈ s, g c a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean",
+          "declaration": "Finset.prod_inv_distrib",
+          "excerpt": "theorem prod_inv_distrib (f : ι → G) : (∏ x ∈ s, (f x)⁻¹) = (∏ x ∈ s, f x)⁻¹ :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ContactGeometry.lean",
+          "declaration": "axisHeight_neg",
+          "excerpt": "  rcases e with ⟨i,b⟩\n  cases b <;> simp [axisHeight]"
+        }
+      ]
+    },
+    {
+      "declaration": "axisHeight_word_interior",
+      "start_line": 53,
+      "end_line": 57,
+      "excerpt": "  exact ⟨by exact_mod_cast h.1,by exact_mod_cast h.2⟩",
+      "problem": "After the `rw`, `h` is the real-valued conjunction `0 ≤ ↑(axisHeight e (wordPath a i)) ∧ ↑(axisHeight e (wordPath a i)) < ↑(↑(slabRecords ..))`. That is exactly the goal with casts added. The proof splits the conjunction into an anonymous constructor and runs two separate nested `by exact_mod_cast` calls on the two parts.",
+      "proposed_change": "Replace line 57 with a single cast transfer of the whole conjunction:\n```lean\n  exact_mod_cast h\n```\n`norm_cast` rewrites casts throughout a proposition, including under `∧`. This replacement has not been compiled.",
+      "benefit": "The last step now reads as one fact: the hypothesis is the goal after removing casts. There is no repeated bracketed sub-tactic, which makes this proof match the sibling lemma `axisHeight_wordEnd` (which ends in `exact_mod_cast h`).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/Words.lean",
+          "declaration": "RegenerationWord",
+          "excerpt": "(∀ i < γ.1, 0 ≤ height v (wordPath γ i) ∧ height v (wordPath γ i) < height v (wordPath γ γ.1)) ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/Axis.lean",
+          "declaration": "height_axisDirection",
+          "excerpt": "height (axisDirection e) x = (axisHeight e x : ℝ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ContactGeometry.lean",
+          "declaration": "axisHeight_wordEnd",
+          "excerpt": "  rw [height_axisDirection] at h\n  exact_mod_cast h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 32861,
+    "cache_read_input_tokens": 241329,
+    "output_tokens": 8069,
+    "output_tokens_details": {
+      "thinking_tokens": 3821
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32861,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2690,
+        "cache_read_input_tokens": 35413,
+        "cache_creation_input_tokens": 1491,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1491
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4726058,
+  "duration_ms": 73022,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T15:18:42",
+  "unit": "file",
+  "source_sha256": "da3aefb78fa1adc7f32dd727f3e28cf41241b7607f06d20345271c4be7e8482b",
+  "rubric": "readable-proof-simplification"
+}

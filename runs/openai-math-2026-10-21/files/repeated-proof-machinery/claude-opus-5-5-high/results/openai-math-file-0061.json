@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0061",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 202 lines of TreeCanonical.lean: contains, dedup, orderedInsert/insertStep, insertionSort, canonical and canonical_eq_sort. I also read the supporting API: polynomial_fold and polynomial_congr in Complexity/TreePolynomial.lean, weight_prefix and weight_append in Complexity/TreePolynomialLists.lean, the uses of polynomial_fold in TreePolynomialCollections.lean, and fold in Machines/TreeFold.lean. Grep shows that weight_dedupFold and weight_insertFold are each used only once, in the polynomial proof right after them.\n\nThe one clear repetition is the \"fold step grows the weight by at most 1+weight a+weight b, so the fold is polynomial with bound 2*X+1\" argument. It appears in the dedup pair (lines 39–63) and again in the insertionSort pair (lines 162–182).\n\nI don't report the orderedInsert machinery (insert_fold, insert_fold_bound, polynomial_orderedInsert). It uses a three-component state and a different polynomial, so it is not a repeat of this pattern.\n\ndedup_fold proves its reverse-fold correctness by induction, while insertionSort's congr uses List.foldl_reverse. That is a style inconsistency, not repeated nontrivial reasoning, so I leave it out.\n\nCaveat: I couldn't compile anything, so the proposed helper and the rewritten proofs are untested sketches. The arithmetic steps are the same omega steps the file already uses. Where to put the helper (this file or TreePolynomialLists.lean) is a judgement call.",
+  "findings": [
+    {
+      "declaration": "weight_dedupFold / polynomial_dedup and weight_insertFold / polynomial_insertionSort",
+      "start_line": 39,
+      "end_line": 182,
+      "excerpt": "  intro as bs pre post he\n  have hh:=weight_dedupFold pre bs\n  have hp:=weight_prefix he",
+      "problem": "Two parts of the file repeat the same proof machinery to show that a list fold is polynomial time.\n\n(1) Weight lemmas. weight_dedupFold (lines 39–52) and weight_insertFold (lines 162–171) are each a separate induction, generalizing the accumulator, proving that weight (as.foldl (fun bs a => step (a,bs)) bs) is at most weight as + weight bs. Each one first derives the same per-step fact: weight (step (a,bs)) ≤ 1+weight a+weight bs. This is the local `hs` for dedupStep and `weight_orderedInsert` for orderedInsert.\n\n(2) Polynomial bounds. polynomial_dedup (lines 58–63) and polynomial_insertionSort (lines 177–182) then repeat the same closing block word for word: `polynomial_fold … (2*X+1)`, `intro as bs pre post he`, the fold-weight lemma, `weight_prefix he`, the same `simp only [Polynomial.eval_add,…,weight_prod]`, and `omega`.\n\nThe only real difference between the two cases is the per-step weight inequality. polynomial_filter and polynomial_append in TreePolynomialCollections.lean use the same 2*X+1 fold pattern, which suggests this is a recurring obligation rather than a one-off.",
+      "proposed_change": "Add one generic lemma pair, with variables {A B : Type} [Codec A] [Codec B]. It can go just above polynomial_dedup, or in TreePolynomialLists.lean next to weight_prefix.\n\n```lean\nlemma weight_foldl_le {f : A×B → B}\n    (hf : ∀ a b, weight (f (a,b)) ≤ 1+weight a+weight b) (as : List A) (b : B) :\n    weight (as.foldl (fun z a=>f (a,z)) b) ≤ weight as+weight b := by\n  induction as generalizing b with\n  | nil => simp only [List.foldl_nil,weight_nil]; omega\n  | cons a as ih =>\n    rw [List.foldl_cons]\n    have := ih (f (a,b)); have := hf a b\n    rw [weight_cons]; omega\n\nlemma polynomial_fold_of_step {f : A×B → B} {F : Realizer f} (hF : PolynomialTime F)\n    (hf : ∀ a b, weight (f (a,b)) ≤ 1+weight a+weight b) : PolynomialTime (fold F) :=\n  polynomial_fold hF (2*X+1) fun as b pre post he => by\n    have hh := weight_foldl_le hf pre b\n    have hp := weight_prefix he\n    simp only [Polynomial.eval_add,Polynomial.eval_mul,Polynomial.eval_ofNat,Polynomial.eval_X,weight_prod]\n    omega\n```\n\nThe proofs above are sketches; I could not compile them. Each step reuses tactics the file already applies to the same goals.\n\nRewritten uses under the existing hypotheses and imports:\n\npolynomial_dedup ([DecidableEq A], hE). Keep `unfold dedup; apply polynomial_congr; apply polynomial_composition (polynomial_pair polynomial_reverse (polynomial_constant []))`, then write:\n```lean\n  refine polynomial_fold_of_step (polynomial_congr _ (polynomial_choose (polynomial_contains hE) polynomial_second polynomial_listCons)) fun a bs => ?_\n  change weight (if a∈bs then bs else a::bs)≤_\n  split_ifs\n  · omega\n  · rw [weight_cons]\n```\nThis deletes weight_dedupFold.\n\npolynomial_insertionSort (hR). Keep the same first three lines, then write:\n```lean\n  exact polynomial_fold_of_step (polynomial_orderedInsert r hR) fun a bs => (weight_orderedInsert r a bs).le\n```\nThis deletes weight_insertFold.",
+      "benefit": "Two single-use induction lemmas and two copies of the polynomial-fold closing script become one named lemma. That lemma states the actual reason these folds are polynomial: each step adds at most the weight of the consumed element plus one.\n\nEach caller then contains only the fact specific to it: a three-line case split for dedupStep, and an existing lemma for orderedInsert. A reader no longer has to check that two near-identical omega blocks prove the same thing.\n\nMaintenance also gets easier. A change to polynomial_fold's hypothesis shape, or to how Polynomial.eval is simplified, needs one edit instead of several. The same helper could later simplify polynomial_filter and polynomial_append in TreePolynomialCollections.lean, which use the same 2*X+1 pattern.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Machines/TreeCanonical.lean",
+          "declaration": "weight_dedupFold",
+          "excerpt": "    have hs : weight (dedupStep (a,bs))≤1+weight a+weight bs := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Machines/TreeCanonical.lean",
+          "declaration": "polynomial_insertionSort",
+          "excerpt": "  apply polynomial_fold (polynomial_orderedInsert r hR) (2*X+1)\n  intro as bs pre post he\n  have hh:=weight_insertFold r pre bs\n  have hp:=weight_prefix he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Machines/TreeCanonical.lean",
+          "declaration": "weight_insertFold",
+          "excerpt": "    have hh:=ih (List.orderedInsert r a bs)\n    rw [weight_orderedInsert] at hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolynomial.lean",
+          "declaration": "polynomial_fold",
+          "excerpt": "    (hsize : ∀ (as : List A) (b : B) pre post,as=pre++post →\n      weight (pre.foldl (fun z a=>f (a,z)) b)≤p.eval (weight (as,b))) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolynomialCollections.lean",
+          "declaration": "polynomial_filter",
+          "excerpt": "  apply polynomial_fold (polynomial_choose (polynomial_composition polynomial_first hF) polynomial_listCons polynomial_second) (2*X+1)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 29813,
+    "cache_read_input_tokens": 120362,
+    "output_tokens": 6460,
+    "output_tokens_details": {
+      "thinking_tokens": 2105
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29813,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3239,
+        "cache_read_input_tokens": 31499,
+        "cache_creation_input_tokens": 2243,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2243
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3918244,
+  "duration_ms": 60190,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T14:28:26",
+  "unit": "file",
+  "source_sha256": "5f540834d45a416f4899c4c95e97a28efdcd27afc8fe157fb1c441c84b4612a5",
+  "rubric": "repeated-proof-machinery"
+}

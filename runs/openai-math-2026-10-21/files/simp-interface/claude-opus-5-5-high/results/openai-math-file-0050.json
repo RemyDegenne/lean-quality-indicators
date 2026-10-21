@@ -1,0 +1,132 @@
+{
+  "id": "openai-math-file-0050",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and looked for missing simp attributes, competing rules and unwanted unfolding. The file contains no `@[simp]` attribute at all. For the `LoewnerLocalized`/`FiniteTilt` parts, the companion lemmas (`clampIm_eq`, the `LoewnerField` `position_initial`, `logDerivative_initial`) come from other files, so their simp status is outside this file. I put most of the weight on the `BoundaryFunctional` section (lines 932–1249), which this file defines. Downstream it is used through `open BoundaryFunctional` in SwallowingLaws.lean and BoundaryDiffusion.lean. I checked the actual uses there: `simp only [... logDerivative_initial ... position_initial ...]`, three uses of `simp [position_im_zero]`, and `change BoundaryCutoff.clamp 1 ε _ = _` / `change 2/clampRe ε _ = _` used to see through the wrappers. I also read `BoundaryCutoff.clamp`, `BoundaryCutoff.velocity` and `BoundaryCutoff.clamp_eq` in SobolevMeans.lean, and the comparable `clampIm_eq` in StoppedIto.lean.\n\nI found no rewrite cycles and no wrongly oriented rules. The `Swallowing` defs (`radial`, `radialX`, …) are unfolded on purpose with `unfold`/`dsimp` inside derivative proofs, so I did not flag them.\n\nLimitations: I could not run Lean, so I have not checked that the proposed attributes or lemmas compile or that existing `simp` calls still close their goals. For example, a `simp only` list that already names a lemma would just become redundant. There is also a risk of name clashes: `BoundaryDiffusion.lean` reopens the `BoundaryFunctional` namespace (line 573), so any new names (`clampRe_eq`, `velocity_eq`) need to be checked against what it defines there. I did not read that section.",
+  "findings": [
+    {
+      "declaration": "SLEExactGauge.BoundaryFunctional.position_initial (also logDerivative_initial, solution_initial)",
+      "start_line": 1170,
+      "end_line": 1172,
+      "excerpt": "lemma position_initial {ε T : ℝ} (hε : 0 < ε) (hT : 0 ≤ T)\n    (U : C(I, ℝ)) (z : ℂ) : position hε hT U z 0 = z := by",
+      "problem": "The initial-value lemmas `solution_initial` (l.1060), `logDerivative_initial` (l.1153) and `position_initial` (l.1170) state the obvious normal forms: `position hε hT U z 0` should become `z` and `logDerivative hε hT U z 0` should become `0`. They have no hypotheses beyond the proof arguments, which unify, and each right-hand side is strictly smaller than its left-hand side. They are still not simp lemmas, so every caller has to list them by hand next to the usual arithmetic cleanup lemmas (`mul_zero`, `Real.exp_zero`, `sub_zero`). This happens in the file itself (`rw [solution_initial]; simp` in position_im_zero) and downstream.",
+      "proposed_change": "Mark `solution_initial`, `logDerivative_initial` and `position_initial` as `@[simp]`. The orientation is already correct (complex term to atom, cannot loop). Callers such as `simp only [field,factor,logDerivative_initial,mul_zero,Real.exp_zero,position_initial,...]` can then use plain `simp`/`simp [field, factor]`.",
+      "benefit": "Expressions evaluated at time 0 then simplify automatically to their canonical values, so downstream simp sets get shorter and easier to maintain. This matters because the same evaluation at time 0 appears in several files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/SwallowingLaws.lean",
+          "declaration": "SLEExactGauge.BoundaryGreen.field_initial",
+          "excerpt": "simp only [field,factor,logDerivative_initial,mul_zero,Real.exp_zero,position_initial,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/BoundaryDiffusion.lean",
+          "declaration": "SLEExactGauge.BoundaryGreen.ratio_energy",
+          "excerpt": "rw [position_initial,logDerivative_initial,mul_zero,Real.exp_zero,mul_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/GreenTilts.lean",
+          "declaration": "SLEExactGauge.BoundaryFunctional.logDerivative_initial",
+          "excerpt": "(U : C(I, ℝ)) (z : ℂ) : logDerivative hε hT U z 0 = 0 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "SLEExactGauge.BoundaryFunctional.position_im_zero",
+      "start_line": 1236,
+      "end_line": 1237,
+      "excerpt": "lemma position_im_zero {ε T : ℝ} (hε : 0 < ε) (hT : 0 ≤ T)\n    (U : C(I, ℝ)) (x t : ℝ) : (position hε hT U (x:ℂ) t).im = 0 := by",
+      "problem": "`(position hε hT U (↑x) t).im` always equals `0` with no side conditions: a flow that starts on the real line stays real. Every downstream use passes the lemma to `simp` by hand to prove `position … = ↑(position …).re`. That is three identical `apply Complex.ext <;> simp [position_im_zero]` blocks across two files. The left-hand side is a projection of a specific term and the right-hand side is the literal `0`, so the rule terminates and does not overlap with any rule I found.",
+      "proposed_change": "Tag the lemma `@[simp]`. Optionally also add `@[simp] lemma ofReal_re_position : ((position hε hT U (x:ℂ) t).re : ℂ) = position hε hT U (x:ℂ) t`, proved by `Complex.ext` with `position_im_zero`. The repeated `hz` helper could then be dropped or proved by plain `simp`.",
+      "benefit": "`simp` then knows the real-line invariant without being told, which removes the repeated hand-written `simp [position_im_zero]` blocks and makes the gap and real-part computations downstream shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/BoundaryDiffusion.lean",
+          "declaration": "SLEExactGauge.BoundaryGreen.gap_coefficients",
+          "excerpt": "apply Complex.ext <;> simp [position_im_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/SwallowingLaws.lean",
+          "declaration": "SLEExactGauge.BoundaryGreen.generator_field",
+          "excerpt": "have hz : position hε hT U (x:ℂ) t = ((position hε hT U (x:ℂ) t).re:ℂ) := by\n    apply Complex.ext <;> simp [position_im_zero]"
+        }
+      ]
+    },
+    {
+      "declaration": "SLEExactGauge.BoundaryFunctional.clampRe / velocity",
+      "start_line": 939,
+      "end_line": 941,
+      "excerpt": "def clampRe (ε : ℝ) (w : ℂ) : ℂ := BoundaryCutoff.clamp 1 ε w\n\ndef velocity (ε u : ℝ) (w : ℂ) : ℂ := BoundaryCutoff.velocity 1 ε u w",
+      "problem": "These wrapper definitions come with no equation lemmas. There is no `clampRe_eq` (the clamp does nothing once `ε ≤ w.re`), unlike the analogous `clampIm_eq` that this file uses heavily. There is also no lemma saying `velocity ε u w = 2 / clampRe ε (w - u)`. As a result, callers either unfold two layers of definitions with simp (`simp [velocity,BoundaryCutoff.velocity]`, l.973) or use `change` to expose `BoundaryCutoff.clamp 1 ε _` / `2/clampRe ε _` before rewriting with `BoundaryCutoff.clamp_eq (by norm_num : |(1:ℝ)|=1)`. Both spill the σ = 1 implementation detail into downstream proofs.",
+      "proposed_change": "Add `lemma clampRe_eq {ε : ℝ} {w : ℂ} (hw : ε ≤ w.re) : clampRe ε w = w := BoundaryCutoff.clamp_eq (by norm_num) (by simpa using hw)`. This is the conditional counterpart of `clampIm_eq` and is usable in `simp [clampRe_eq h]`. Also add `lemma velocity_eq (ε u : ℝ) (w : ℂ) : velocity ε u w = 2 / clampRe ε (w - (u:ℂ)) := rfl`. Rewrite `norm_velocity_driver_sub_le`'s `he` with `simp [velocity_eq]`, and replace the downstream `change BoundaryCutoff.clamp 1 ε _ = _; rw [BoundaryCutoff.clamp_eq …]` with `rw [clampRe_eq …]`.",
+      "benefit": "Users get rewrite rules stated in terms of the file's own vocabulary, so proofs no longer depend on how `BoundaryCutoff` is parameterised. The `change` steps, which break easily, go away. The boundary API also ends up matching the `clampIm_eq` interface that the interior version already provides.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/BoundaryDiffusion.lean",
+          "declaration": "SLEExactGauge.BoundaryGreen.gap_coefficients",
+          "excerpt": "change BoundaryCutoff.clamp 1 ε _ = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/SwallowingLaws.lean",
+          "declaration": "SLEExactGauge.BoundaryGreen.generator_field",
+          "excerpt": "change 2/clampRe ε _ = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/StoppedIto.lean",
+          "declaration": "clampIm_eq",
+          "excerpt": "lemma clampIm_eq {ε : ℝ} {w : ℂ} (hw : ε ≤ w.im) : clampIm ε w = w := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/GreenTilts.lean",
+          "declaration": "SLEExactGauge.BoundaryFunctional.norm_velocity_driver_sub_le",
+          "excerpt": "simp [velocity,BoundaryCutoff.velocity]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 56714,
+    "cache_read_input_tokens": 458381,
+    "output_tokens": 8031,
+    "output_tokens_details": {
+      "thinking_tokens": 1748
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 56714,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4298,
+        "cache_read_input_tokens": 59668,
+        "cache_creation_input_tokens": 1059,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1059
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.7060881999999999,
+  "duration_ms": 78748,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-21T13:35:22",
+  "unit": "file",
+  "source_sha256": "f114303badbc5e031a5cce0ccbc3a2417f85fb8343ee138b4e092834b896b8f7",
+  "rubric": "simp-interface"
+}

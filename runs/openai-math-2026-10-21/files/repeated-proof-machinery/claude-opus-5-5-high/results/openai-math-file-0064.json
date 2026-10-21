@@ -1,0 +1,147 @@
+{
+  "id": "openai-math-file-0064",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of ColorPolynomials.lean (lines 1–140). I also read the definitions it depends on: `lowDegree`, `lowDegree_mono`, `one_mem_lowDegree` and `mul_mem_lowDegree` in EdgeProducts.lean, `colorAverage` in EdgeMonomials.lean (a `Module.End`), `Pairing.act` in Pairings.lean (a `≃ₗ[ℝ]`), and `tableCoordinate` in PartialColorings.lean. I then searched the MatchingPSD directory for other `span_induction` arguments over `lowDegree` and found matching proofs in EquivariantCompression.lean and PolynomialInterpolation.lean.\n\nI traced the import chain to place the helpers. EdgeProducts.lean is upstream of both ColorPolynomials.lean and EquivariantCompression.lean. PolynomialInterpolation.lean imports ColorPolynomials.lean, by way of MatrixAverages → … → TableCoordinates.\n\nI left `colorAverage_recurrence` and `colorAverage_monomial_mem` alone. They are specific to this file, and their only repeated pieces are short membership side goals.\n\nI could not run Lean, so the replacement proofs are untested sketches. The main open question is in finding 3: whether `fun x => (l.map coord).prod (affine x)` turns into `(l.map affineCoord).prod` with just `Pi.list_prod_apply`/`List.map_map` simp lemmas, or needs a small extra rewrite step.",
+  "findings": [
+    {
+      "declaration": "colorAverage_lowDegree",
+      "start_line": 81,
+      "end_line": 92,
+      "excerpt": "  apply Submodule.span_induction (p := fun f _ => colorAverage z f ∈\n    lowDegree (tableCoordinate z) d) _ _ _ _ hf",
+      "problem": "This proof shows that a linear map sends `lowDegree x d` into another `lowDegree` submodule by running a four-branch span induction: generators, then `simp` for zero, then `map_add` for addition, then `map_smul` for scalars. `Pairing.lowDegree_invariant` in EquivariantCompression.lean repeats the same structure, with an identical zero/add/smul tail, for the linear equivalence `act p`. `lowDegree_affine_pullback` in PolynomialInterpolation.lean writes the same zero/add/smul tail a third time for a pullback map. In each proof only the generator case has real content.",
+      "proposed_change": "Add one helper to EdgeProducts.lean, which is upstream of all three files:\n\n```lean\nlemma map_mem_lowDegree {F Y : Type*} (x : E → X → ℝ) (y : F → Y → ℝ)\n    (L : (X → ℝ) →ₗ[ℝ] (Y → ℝ)) {d : ℕ}\n    (h : ∀ l : List E, l.length ≤ d → L (l.map x).prod ∈ lowDegree y d)\n    {f : X → ℝ} (hf : f ∈ lowDegree x d) : L f ∈ lowDegree y d :=\n  (Submodule.span_le (p := (lowDegree y d).comap L)).mpr\n    (by rintro _ ⟨l, hl, rfl⟩; exact h l hl) hf\n```\n\nThen the target proof becomes:\n\n```lean\nlemma colorAverage_lowDegree ... :=\n  map_mem_lowDegree _ _ (colorAverage z)\n    (fun l hl => lowDegree_mono _ hl (colorAverage_monomial_mem z l)) hf\n```\n\n`Pairing.lowDegree_invariant` becomes `map_mem_lowDegree _ _ (act p).toLinearMap (fun l hl => by rw [hprod l]; exact Submodule.subset_span ⟨_, by simpa, rfl⟩) hf`, keeping its existing `hprod` monomial computation. `lowDegree_affine_pullback` can use the same helper with `L := LinearMap.funLeft ℝ ℝ (fun x a => b a + L * x a)`.",
+      "benefit": "Each proof is reduced to its one meaningful step: what happens to a monomial. The routine linearity bookkeeping lives in one named lemma instead of three copies. Any later change to how `lowDegree` is defined only needs to be handled in that one helper.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/EquivariantCompression.lean",
+          "declaration": "OAI.MatchingSmoothing.Pairing.lowDegree_invariant",
+          "excerpt": "  apply Submodule.span_induction (p := fun f _ => act p f ∈ lowDegree edgeCoord d)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/EquivariantCompression.lean",
+          "declaration": "OAI.MatchingSmoothing.Pairing.lowDegree_invariant",
+          "excerpt": "    simpa only [map_smul] using (lowDegree edgeCoord d).smul_mem c hf"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/PolynomialInterpolation.lean",
+          "declaration": "OAI.MatchingSmoothing.lowDegree_affine_pullback",
+          "excerpt": "  | smul c f _ hf => exact (lowDegree coord d).smul_mem c hf"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/EdgeMonomials.lean",
+          "declaration": "OAI.MatchingSmoothing.colorAverage",
+          "excerpt": "noncomputable def colorAverage (z : V → C) : Module.End ℝ (Pairing V → ℝ) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/Pairings.lean",
+          "declaration": "OAI.MatchingSmoothing.Pairing.act",
+          "excerpt": "def act (p : Equiv.Perm α) : (Pairing α → ℝ) ≃ₗ[ℝ] (Pairing α → ℝ) where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/Span/Defs.lean",
+          "declaration": "Submodule.span_le",
+          "excerpt": "theorem span_le {p} : span R s ≤ p ↔ s ⊆ p :="
+        }
+      ]
+    },
+    {
+      "declaration": "lowDegree_lift",
+      "start_line": 122,
+      "end_line": 127,
+      "excerpt": "    induction l with\n    | nil => rfl\n    | cons e l ih =>\n      simp only [List.map_cons, List.prod_cons, Pi.mul_apply]",
+      "problem": "In the monomial case, the proof uses a nested induction on `l` to show `(l.map x).prod a = (l.map fun e v => v e).prod (fun e => x e a)`. That is just pointwise evaluation of a product of functions. `lowDegree_interpolation` in PolynomialInterpolation.lean repeats the same nested induction for `(l.map coord).prod v = (l.map v).prod`, including the same awkward length-bound rewrite (`Nat.le_trans (Nat.le_succ _) hl`) for the inductive hypothesis. Mathlib already proves this identity as `Pi.list_prod_apply`.",
+      "proposed_change": "Next to the `lowDegree` API, add a small evaluation lemma, or just use `Pi.list_prod_apply` inline:\n\n```lean\nlemma list_prod_map_apply (x : E → X → ℝ) (l : List E) (a : X) :\n    (l.map x).prod a = (l.map fun e => x e a).prod := by\n  rw [Pi.list_prod_apply, List.map_map]; rfl\n```\n\nIn `lowDegree_lift`, the nested induction becomes `intro a; simp only [list_prod_map_apply]`, since both sides reduce to `(l.map fun e => x e a).prod`. In `lowDegree_interpolation`, `have he (v : Point) : (l.map coord).prod v = (l.map v).prod := by simp only [list_prod_map_apply, coord]` replaces the inner induction. Neither proof then needs a length bound inside the induction.",
+      "benefit": "Two hand-written list inductions, each with a fiddly length-bound side goal, become one-line rewrites using a standard Mathlib fact. This makes it plain that the monomial case is just evaluation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/PolynomialInterpolation.lean",
+          "declaration": "OAI.MatchingSmoothing.lowDegree_interpolation",
+          "excerpt": "    have he (v : Point) : (l.map coord).prod v = (l.map v).prod := by\n      induction l with"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Pi.lean",
+          "declaration": "Pi.list_prod_apply",
+          "excerpt": "    (l : List (∀ a, M a)) : l.prod a = (l.map fun f : ∀ a, M a ↦ f a).prod :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/ColorPolynomials.lean",
+          "declaration": "OAI.MatchingSmoothing.lowDegree_lift",
+          "excerpt": "      rw [ih (by simpa only [List.length_cons] using Nat.le_trans (Nat.le_succ _) hl)]"
+        }
+      ]
+    },
+    {
+      "declaration": "list_prod_mem_lowDegree",
+      "start_line": 99,
+      "end_line": 105,
+      "excerpt": "  induction l with\n  | nil => exact one_mem_lowDegree x 0\n  | cons i l ih =>\n    simpa only [List.map_cons, List.prod_cons, List.length_cons, Nat.add_comm] using\n      mul_mem_lowDegree x (hy i) ih",
+      "problem": "This lemma shows that a product of degree-1 functions lies in `lowDegree x l.length`. `lowDegree_affine_pullback` in PolynomialInterpolation.lean, which imports this file, proves the same thing again by its own list induction: `nil` via `one_mem_lowDegree coord 0`, `cons` via `mul_mem_lowDegree coord (hcoord a) ih` and a length rewrite. Its affine coordinates `hcoord` play exactly the role of `hy`. That whole lemma is really `lowDegree_substitute`'s argument applied to a pullback.",
+      "proposed_change": "Keep `list_prod_mem_lowDegree` as the shared lemma and use it in the later file. In the `mem` case of `lowDegree_affine_pullback`, after `obtain ⟨l, hl, rfl⟩ := hP`, replace the inner induction with\n\n```lean\napply lowDegree_mono coord hl\nsimpa only [Pi.list_prod_apply, List.map_map, Function.comp_def] using\n  list_prod_mem_lowDegree coord l (fun a x => b a + L * x a) hcoord\n```\n\nThe `simpa` rewrites the pulled-back monomial into a product of the affine coordinates. Combined with finding 1 (taking `L := LinearMap.funLeft ℝ ℝ _`), the zero/add/smul branches go away as well.",
+      "benefit": "The rule that a product of k degree-1 functions has degree at most k is then proved once, in this file, instead of being re-derived inside an unrelated interpolation proof. Readers of `lowDegree_affine_pullback` see one appeal to substitution rather than a duplicated induction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/PolynomialInterpolation.lean",
+          "declaration": "OAI.MatchingSmoothing.lowDegree_affine_pullback",
+          "excerpt": "    | nil => exact one_mem_lowDegree coord 0\n    | cons a l ih =>\n      convert mul_mem_lowDegree coord (hcoord a) ih using 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/PolynomialInterpolation.lean",
+          "declaration": "OAI.MatchingSmoothing.lowDegree_affine_pullback",
+          "excerpt": "  have hcoord (a : Fin 3) : (fun x : Point => b a + L*x a) ∈ lowDegree coord 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Pi.lean",
+          "declaration": "Pi.list_prod_apply",
+          "excerpt": "    (l : List (∀ a, M a)) : l.prod a = (l.map fun f : ∀ a, M a ↦ f a).prod :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 39716,
+    "cache_read_input_tokens": 232993,
+    "output_tokens": 11638,
+    "output_tokens_details": {
+      "thinking_tokens": 4908
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 39716,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4846,
+        "cache_read_input_tokens": 42547,
+        "cache_creation_input_tokens": 1098,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1098
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5971586000000001,
+  "duration_ms": 121699,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-21T14:42:05",
+  "unit": "file",
+  "source_sha256": "8631f821dd3f4a388502ee940735dcbd714578b65ae546acc03d06bb122c3df9",
+  "rubric": "repeated-proof-machinery"
+}

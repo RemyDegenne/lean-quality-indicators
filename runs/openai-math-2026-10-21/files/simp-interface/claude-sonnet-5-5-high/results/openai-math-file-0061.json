@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0061",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I checked the simp-relevant weight lemmas in TreePolynomial.lean and TreePolynomialLists.lean. I also checked how other files in the Complexity directory discharge the same polynomial-evaluation goals, and I inspected the tree_poly macro. weight_prod, weight_nil and weight_cons are already @[simp], so the file has no competing rules or rewrite cycles that I could identify. I found no problem with the orientation of any existing lemma. The two findings are interface gaps, both stated without running Lean. First, the same long `simp only` list is copied into each polynomial bound proof. Second, insertStep and dedupStep have no equation lemmas, so proofs unfold them by `simp [insertStep,h]` or `change`. I did not recommend making weight_orderedInsert or weight_perm simp lemmas, because that would be only marginal benefit.",
+  "findings": [
+    {
+      "declaration": "polynomial_dedup / polynomial_orderedInsert / polynomial_insertionSort (repeated polynomial-evaluation simp set)",
+      "start_line": 181,
+      "end_line": 181,
+      "excerpt": "simp only [Polynomial.eval_add,Polynomial.eval_mul,Polynomial.eval_ofNat,Polynomial.eval_X,weight_prod]",
+      "problem": "The same five-lemma `simp only` list is pasted into each polynomial-time bound proof. It appears at lines 62, 152 and 181 of this file, and again in TreePolynomialCollections, TreePolynomialArithmetic, TreePolynomialLists, TreePolynomialLoop and others. Each copy is the same hand-maintained normal form (evaluate the bound polynomial, split weight of pairs) that the proofs hand to `omega`. There is no named simp set or macro for it. `tree_poly` handles only the realizer-structure side. The list has to be retyped in every file, and the copies already drift: some add eval_one, eval_C or eval_comp, others omit weight_prod. Bare `simp` is not a substitute: it can also rewrite the weight and arithmetic terms before `omega` sees them.",
+      "proposed_change": "In TreePolynomial.lean, next to weight_prod, register a dedicated simp attribute with `register_simp_attr`, for example `tree_eval`. Tag it onto weight_prod, weight_cons and weight_nil, and onto Polynomial.eval_add, eval_mul, eval_ofNat, eval_X, eval_one and eval_C. Alternatively, define a small macro such as `tree_eval_simp` that expands to this `simp only` call. In this file, replace the three copies with that single call, e.g. `simp only [tree_eval]` followed by `omega`.",
+      "benefit": "The canonical normal form for these polynomial-bound goals is defined once. Proofs get shorter. A new Polynomial or weight evaluation lemma needs to be added in one place only, not in every copy.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolynomialCollections.lean",
+          "declaration": "polynomial bound proof (same simp list)",
+          "excerpt": "simp only [Polynomial.eval_add,Polynomial.eval_mul,Polynomial.eval_ofNat,Polynomial.eval_X,weight_prod]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolynomial.lean",
+          "declaration": "weight_prod",
+          "excerpt": "@[simp] lemma weight_prod (a : A) (b : B) : weight (a,b)=1+weight a+weight b"
+        }
+      ]
+    },
+    {
+      "declaration": "insertStep and dedupStep (no equation or simp lemmas for the case split)",
+      "start_line": 117,
+      "end_line": 117,
+      "excerpt": "have hs : insertStep r (b,(a,(bs,cs)))=(a,(b::bs,a::b::bs)) := by simp [insertStep,h]",
+      "problem": "insertStep and dedupStep are plain defs whose behaviour depends on a decidable test (`r x.2.1 x.1`, and `x.1∈x.2` for dedupStep). There are no equation lemmas for them. Every proof therefore unfolds the definition ad hoc. Examples are `simp [insertStep,h]` at lines 117 and 128 (restating the full result tuple each time), `simp [insertStep]` at lines 28 and 72, and `change weight (if a∈bs then bs else a::bs)≤_` at line 48, which relies on defeq. Passing the full definition to simp exposes the projection-heavy body `(x.2.1,(x.1::x.2.2.1,if …))` to the simplifier at every use. Callers also must restate the exact normal form.",
+      "proposed_change": "Add equation lemmas on constructor-form arguments. For insertStep: `insertStep r (b,(a,(bs,cs)))=(a,(b::bs,if r a b then a::b::bs else b::cs))`, plus the two hypothesis-guarded versions `insertStep_of_rel (h : r a b)` and `insertStep_of_not_rel (h : ¬ r a b)`. For dedupStep: `dedupStep (a,bs)=if a∈bs then bs else a::bs`, plus `dedupStep_of_mem` and `dedupStep_of_not_mem`. Mark the guarded versions @[simp]. Their hypotheses are discharged by simp, they do not loop, and each shrinks to one cons-form output. Then lines 117 and 128 become `by simp [h]` (or rw), and line 48 can `simp [dedupStep]` or `rw` instead of using `change`.",
+      "benefit": "The case analysis is stated once as rewrite rules, not re-derived with `simp [insertStep,h]` in every proof. Proofs no longer depend on definitional unfolding. The simp normal form of a step on a pair is predictable, so later lemmas about these folds are easier to write.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Machines/TreeCanonical.lean",
+          "declaration": "insertStep",
+          "excerpt": "(x.2.1,(x.1::x.2.2.1,if r x.2.1 x.1 then x.2.1::x.1::x.2.2.1 else x.1::x.2.2.2))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Machines/TreeCanonical.lean",
+          "declaration": "weight_dedupFold",
+          "excerpt": "change weight (if a∈bs then bs else a::bs)≤_"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Machines/TreeCanonical.lean",
+          "declaration": "insert_fold_bound",
+          "excerpt": "have hs : insertStep r (b,(a,(bs,cs)))=(a,(b::bs,b::cs)) := by simp [insertStep,h]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 36841,
+    "cache_read_input_tokens": 196720,
+    "output_tokens": 6408,
+    "output_tokens_details": {
+      "thinking_tokens": 1582
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36841,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2870,
+        "cache_read_input_tokens": 39877,
+        "cache_creation_input_tokens": 977,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 977
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.23114800000000002,
+  "duration_ms": 64088,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T12:26:16",
+  "unit": "file",
+  "source_sha256": "5f540834d45a416f4899c4c95e97a28efdcd27afc8fe157fb1c441c84b4612a5",
+  "rubric": "simp-interface"
+}

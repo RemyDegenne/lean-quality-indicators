@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0062",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–53), the helper `continuous_integral_compact_function` in CompactProbabilityProduct.lean, Mathlib's `exists_le_integral` (Integral/Average.lean) and `squeeze_zero` (Topology/MetricSpace/Pseudo/Lemmas.lean). A grep found no other uses of either target theorem in the project, so the generalisations below break nothing downstream.\n\nBoth theorems fix the index to `ℕ`, and the second also fixes the filter to `atTop`. The mathematics never uses that structure. The first theorem is a claim about one measure, wrapped in a sequence and closed by `choose`. The second is a squeeze argument that works for any filter. The sibling lemma `productOccupationLaw_tendsto_fixed` already uses `{ι} {l : Filter ι}`, so the general form matches the project's own style.\n\nDegenerate cases: a `ProbabilityMeasure` on an empty type cannot exist, so `S` is nonempty whenever there is a measure. If `ι` is empty, `choose` gives the empty function and the claim holds vacuously. If `l = ⊥`, every `Tendsto` holds trivially.\n\nI did not count the apparently unused `[T2Space S]` (neither `continuous_integral_compact_function` nor `exists_le_integral` needs it) as a finding, because dropping a binder belongs to a separate experiment. I could not compile the proposed statements, and they have not been compiled.",
+  "findings": [
+    {
+      "declaration": "exists_deterministic_profile_centers",
+      "start_line": 16,
+      "end_line": 33,
+      "excerpt": "(F : S → Y) (hF : Continuous F) (μ : ℕ → ProbabilityMeasure S) :\n    ∃ center : ℕ → S, ∀ n,",
+      "problem": "The theorem is a statement about one probability measure: for each `n` it finds a point `y` with mean error at most the pairwise mean error, then uses `choose` to collect the points. Wrapping it in an `ℕ`-indexed family hides the basic first-moment statement. A user with a single measure, or a family indexed by some other type (a scale parameter, a finite set, a filter index), has to build a fake sequence and evaluate it at one index.",
+      "proposed_change": "State the single-measure lemma as the primary result:\n\ntheorem exists_deterministic_profile_center {S Y : Type*} [TopologicalSpace S] [CompactSpace S] [T2Space S] [MeasurableSpace S] [BorelSpace S] [PseudoMetricSpace Y] (F : S → Y) (hF : Continuous F) (μ : ProbabilityMeasure S) : ∃ y : S, (∫ x, dist (F x) (F y) ∂(μ : Measure S)) ≤ ∫ z, ∫ x, dist (F x) (F z) ∂(μ : Measure S) ∂(μ : Measure S)\n\nThe proof is the current `hmean`/`hex` body with `μ n` replaced by `μ`. Continuity of `y ↦ ∫ x, dist (F x) (F y) ∂μ` comes from `(continuous_integral_compact_function μ).comp d.curry.continuous`. Then `exists_le_integral` applies to it, after `integrable_of_hasCompactSupport (HasCompactSupport.of_compactSpace _)`. If a family version is still wanted, state it for `{ι : Type*} (μ : ι → ProbabilityMeasure S)` with `∃ center : ι → S, ∀ i, …`. Its proof is `choose center hc using fun i => exists_deterministic_profile_center F hF (μ i)`.",
+      "benefit": "The single-measure lemma states the first-moment fact directly and can be used without making a dummy sequence. The `ι`-indexed family version contains the `ℕ` version as a special case. The proof does not get more complicated.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/Average.lean",
+          "declaration": "MeasureTheory.exists_le_integral",
+          "excerpt": "theorem exists_le_integral (hf : Integrable f μ) : ∃ x, f x ≤ ∫ a, f a ∂μ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Analysis/CompactProbabilityProduct.lean",
+          "declaration": "OAI.PolycyclicRecognition.continuous_integral_compact_function",
+          "excerpt": "[MeasurableSpace X] [BorelSpace X] (μ : ProbabilityMeasure X) :\n    Continuous (fun f : C(X, ℝ) => ∫ x, f x ∂(μ : Measure X)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Analysis/DeterministicProfileCenters.lean",
+          "declaration": "OAI.PolycyclicRecognition.exists_deterministic_profile_centers",
+          "excerpt": "choose center hc using hex\n  exact ⟨center, hc⟩"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_deterministic_concentration_centers",
+      "start_line": 35,
+      "end_line": 47,
+      "excerpt": "atTop (𝓝 0)) :\n    ∃ center : ℕ → S, Tendsto (fun n =>",
+      "problem": "The theorem works only for sequences `ℕ → ProbabilityMeasure S` converging along `atTop`. The proof is a pointwise squeeze: `squeeze_zero` with `integral_nonneg` and the pointwise bound from the first theorem. `squeeze_zero` accepts any filter `t₀` on any type. So both the index type and the filter are needlessly fixed. In the same project, `productOccupationLaw_tendsto_fixed` already works with a general `{l : Filter ι}`.",
+      "proposed_change": "Generalise the statement to:\n\ntheorem exists_deterministic_concentration_centers {S Y ι : Type*} [TopologicalSpace S] [CompactSpace S] [T2Space S] [MeasurableSpace S] [BorelSpace S] [PseudoMetricSpace Y] {l : Filter ι} (F : S → Y) (hF : Continuous F) (μ : ι → ProbabilityMeasure S) (hpair : Tendsto (fun i => ∫ y, ∫ x, dist (F x) (F y) ∂(μ i : Measure S) ∂(μ i : Measure S)) l (𝓝 0)) : ∃ center : ι → S, Tendsto (fun i => ∫ x, dist (F x) (F (center i)) ∂(μ i : Measure S)) l (𝓝 0)\n\nThe proof is unchanged once the first theorem is `ι`-indexed (see the other finding): `obtain ⟨center, hc⟩ := …` and then `squeeze_zero (fun _ => integral_nonneg (fun _ => dist_nonneg)) hc hpair`. If `ι` is empty or `l = ⊥`, the claim is trivially true, so nothing breaks.",
+      "benefit": "The lemma then applies directly to continuous scale parameters (`ι = ℝ`, `l = atTop` or `𝓝[>] 0`), nets and other filters, which fits the docstring's \"at each scale\". The proof stays the same, and the result matches the general-filter style of the neighbouring lemma `productOccupationLaw_tendsto_fixed`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/MetricSpace/Pseudo/Lemmas.lean",
+          "declaration": "squeeze_zero",
+          "excerpt": "lemma squeeze_zero {α} {f g : α → ℝ} {t₀ : Filter α} (hf : ∀ t, 0 ≤ f t) (hft : ∀ t, f t ≤ g t)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Analysis/CompactProbabilityProduct.lean",
+          "declaration": "OAI.PolycyclicRecognition.productOccupationLaw_tendsto_fixed",
+          "excerpt": "{l : Filter ι} (μs : ι → ProbabilityMeasure A) (μ : ProbabilityMeasure A)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Analysis/DeterministicProfileCenters.lean",
+          "declaration": "OAI.PolycyclicRecognition.exists_deterministic_concentration_centers",
+          "excerpt": "exact ⟨center, squeeze_zero (fun _ => integral_nonneg (fun _ => dist_nonneg)) hc hpair⟩"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 12151,
+    "cache_read_input_tokens": 56074,
+    "output_tokens": 5286,
+    "output_tokens_details": {
+      "thinking_tokens": 1141
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12151,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3895,
+        "cache_read_input_tokens": 15149,
+        "cache_creation_input_tokens": 1026,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1026
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2141828,
+  "duration_ms": 51664,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T14:31:32",
+  "unit": "file",
+  "source_sha256": "e8ba8fdb84c11aaf883a3d15e397e5cf23e25c53aa4ae3dcc9e829e0dc948483",
+  "rubric": "statement-generality"
+}

@@ -1,0 +1,80 @@
+{
+  "id": "openai-math-file-0080",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 85 lines of the file, the definition of `unitRadial` and `unitRadial_norm` in Simplicial/UnitRadial.lean, and the downstream uses of the chart lemmas (LocalMix, SphereBlock, RegularModel, and ChartRegular, which defines `hemisphereChart_zero`). I found one piece of repeated reasoning. Two proofs both compute the pole component of the chart, ⟪w, hemisphereChart w e v⟫ = ‖w + e v‖⁻¹, with the same simp set copied word for word.\n\nI don't count the other overlaps as findings:\n- The `norm_ne_zero_iff.mpr (hemisphere_add_ne_zero …)` pattern repeated in `hemisphereChart_contDiff` and `hemisphereInverse_chart` is a one-line call to existing API.\n- The `smul_smul`/`mul_inv_cancel₀`/`one_smul` cleanup appears in both inverse proofs, but it is a short routine calculation.\n- `adjoint_isometry_apply`, `adjoint_normal` and `frame_decomposition` are already factored-out helpers, and each is used where needed.\n\nThere is a borderline point. The repeated block is a single simp call. I still report it because it is the main geometric fact about the chart (its w-coordinate is the reciprocal norm) and because it is copied exactly. The rewritten proofs below have not been compiled. In particular, the `rw` of the inner product inside `hemisphereInverse_chart` should match, since the term ⟪w, hemisphereChart w e v⟫ appears literally after unfolding `hemisphereInverse`, but this has not been checked.",
+  "findings": [
+    {
+      "declaration": "hemisphereChart_inner_pos / hemisphereInverse_chart",
+      "start_line": 54,
+      "end_line": 65,
+      "excerpt": "  simp only [hemisphereChart,unitRadial,inner_smul_right,inner_add_right,\n    real_inner_self_eq_norm_sq,hw,one_pow,he,add_zero,mul_one]",
+      "problem": "Both proofs work out the inner product of the chart point with the pole by hand. They unfold `hemisphereChart` and `unitRadial`, split the inner product with `inner_add_right` and `inner_smul_right`, use ‖w‖ = 1 and ⟪w,e v⟫ = 0, and arrive at ‖w + e v‖⁻¹. `hemisphereChart_inner_pos` (lines 56–57) does this with exactly the same ten simp lemmas that open the simp call in `hemisphereInverse_chart` (lines 63–64). In the second proof the inverse-specific steps (`inv_inv`, `adjoint_normal`, `adjoint_isometry_apply`, `mul_inv_cancel₀`) are mixed into one large simp call, so it is hard to see which part handles the scalar factor and which part handles the W-component.",
+      "proposed_change": "Add the shared fact as a lemma before `hemisphereChart_inner_pos`:\n\nomit [CompleteSpace E] [CompleteSpace W] in\nlemma inner_hemisphereChart (hw : ‖w‖ = 1) (he : ∀ v, ⟪w,e v⟫ = 0) (v : W) :\n    ⟪w,hemisphereChart w e v⟫ = ‖w + e v‖⁻¹ := by\n  simp only [hemisphereChart,unitRadial,inner_smul_right,inner_add_right,\n    real_inner_self_eq_norm_sq,hw,one_pow,he,add_zero,mul_one]\n\nProof sketch: ⟪w, ‖x‖⁻¹ • (w + e v)⟫ = ‖x‖⁻¹ * (‖w‖² + ⟪w,e v⟫) = ‖x‖⁻¹ * (1 + 0).\n\nThen the two uses become:\n\nlemma hemisphereChart_inner_pos … :\n    0 < ⟪w,hemisphereChart w e v⟫ := by\n  rw [inner_hemisphereChart w e hw he]\n  exact inv_pos.mpr (norm_pos_iff.mpr (hemisphere_add_ne_zero w e hw he v))\n\nlemma hemisphereInverse_chart … :\n    hemisphereInverse w e (hemisphereChart w e v) = v := by\n  have hn : ‖w + e v‖ ≠ 0 := norm_ne_zero_iff.mpr (hemisphere_add_ne_zero w e hw he v)\n  rw [hemisphereInverse, inner_hemisphereChart w e hw he, inv_inv]\n  simp only [hemisphereChart,unitRadial,map_smul,map_add,adjoint_normal w e he,\n    adjoint_isometry_apply,zero_add,smul_smul,mul_inv_cancel₀ hn,one_smul]\n\nBoth uses keep their current hypotheses (hw, he) and need no new imports. The `inner_pos` lemma keeps its `omit` of the completeness instances, which the new lemma also omits.",
+      "benefit": "The geometric fact that the chart's w-coordinate equals 1/‖w + e v‖ gets a name and is proved once. Positivity then follows in one step, and the inverse proof only has to handle the W-component through the adjoint. If `unitRadial` or the chart definition changes later, only one proof needs fixing. Downstream files that reason about ⟪w, chart v⟫ (for example the hemisphere arguments in LocalParity) would also get a reusable lemma in place of rebuilding the ten-lemma simp set.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/SphereGeometry/HemisphereChart.lean",
+          "declaration": "hemisphereChart_inner_pos",
+          "excerpt": "  simp only [hemisphereChart,unitRadial,inner_smul_right,inner_add_right,\n    real_inner_self_eq_norm_sq,hw,one_pow,he,add_zero,mul_one]\n  exact inv_pos.mpr (norm_pos_iff.mpr (hemisphere_add_ne_zero w e hw he v))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/SphereGeometry/HemisphereChart.lean",
+          "declaration": "hemisphereInverse_chart",
+          "excerpt": "  simp only [hemisphereInverse,hemisphereChart,unitRadial,inner_smul_right,inner_add_right,\n    real_inner_self_eq_norm_sq,hw,one_pow,he,add_zero,mul_one,inv_inv,map_smul,map_add,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/Simplicial/UnitRadial.lean",
+          "declaration": "unitRadial",
+          "excerpt": "noncomputable def unitRadial {E : Type*} [NormedAddCommGroup E] [NormedSpace ℝ E] (x : E) : E :=\n  ‖x‖⁻¹ • x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 27990,
+    "cache_read_input_tokens": 40910,
+    "output_tokens": 4972,
+    "output_tokens_details": {
+      "thinking_tokens": 1880
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27990,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2647,
+        "cache_read_input_tokens": 19312,
+        "cache_creation_input_tokens": 769,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 769
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.33157400000000004,
+  "duration_ms": 46444,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T16:01:06",
+  "unit": "file",
+  "source_sha256": "0df4b120b3f4abb3cb225117d383cfc1d6b31727e4cee5b97a8d099e84ca9668",
+  "rubric": "repeated-proof-machinery"
+}

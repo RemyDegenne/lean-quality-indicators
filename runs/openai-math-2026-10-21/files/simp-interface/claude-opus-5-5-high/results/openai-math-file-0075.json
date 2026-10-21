@@ -1,0 +1,132 @@
+{
+  "id": "openai-math-file-0075",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Reviewed all 512 lines. The file declares no `@[simp]` lemmas, so every evaluation lemma has to be passed to `simp` or `rw` by hand. I checked how the candidate lemmas are used within the file and in files that import it: RelativeAmpleness.lean, SurfaceSquare.lean, CompleteIntersections.lean and ProjectiveCoordinates.lean. I also checked the related definitions: `PolynomialCurveChart` and `curveFunctionPolynomial` in PolynomialCharts.lean, and Mathlib's `HomogeneousLocalization.Away.isLocalizationElem`, which is an `abbrev` for `Away.mk 𝒜 hf e (g ^ d) _`. The project does use `@[simp]` in sibling files, for example NormalizationStalks.lean and NormalDivisors.lean. Three findings had concrete repeated uses to back them.\n\nI chose not to report some other candidates:\n- `germ_scalar` is stated as an equality of composed maps (`comp`), and RelativeAmpleness rewrites with it in that form. A pointwise version had no current users.\n- `homogeneousFieldEval_mk` is used by `rw` only twice, both inside this file.\n- `projectiveChartRingHom_constants` is only used through `exact`.\n\nUncertainty: I could not run Lean. I have not checked that the proposed simp attributes fire on every listed use, that they pass the simpNF linter, or that the suggested new lemma compiles as written. In particular, whether `simp` sees through the reducible `isLocalizationElem` to match `projectiveChartRingHom_mk` is untested. That is why I proposed a separate named lemma for it.",
+  "findings": [
+    {
+      "declaration": "NumericalDimensionOne.PolynomialCurveChart.germ_X",
+      "start_line": 54,
+      "end_line": 59,
+      "excerpt": "lemma PolynomialCurveChart.germ_X {C : Scheme} [IsIntegral C]\n    {sC : C ⟶ Spec (.of ℂ)} {a : C.functionField} (A : PolynomialCurveChart sC a) :\n    A.germ (A.poly Polynomial.X) = a := by",
+      "problem": "`A.germ (A.poly Polynomial.X)` is always meant to simplify to the chart coordinate `a`. The right-hand side is a free variable and the left-hand side is built from the `germ` def and the `poly` field, so the rule cannot loop. However, the lemma has no simp attribute, so every simp call has to list it by name. In this file that happens three times: `simpa only [B.germ_X] using hbi` (line 118), `simp [x,y,map_pow,B.germ_X]` (line 184) and `simp only [...,map_pow,A.germ_X]` (line 186). Line 107 uses `rw [B.germ_scalar,B.germ_X,inv_inv]`. RelativeAmpleness.lean ends a proof with `exact B.germ_X`.",
+      "proposed_change": "Mark the lemma `@[simp] lemma PolynomialCurveChart.germ_X ...`. Then `simp [x,y,map_pow,B.germ_X]` at line 184 can become `simp [x,y]`, and line 118 can become `simpa using hbi`. `map_pow` and `map_one` are already simp lemmas, so after `map_pow` the subterm `B.germ (B.poly X) ^ d` rewrites to `a⁻¹ ^ d` automatically.",
+      "benefit": "`a` becomes the standard simp normal form for germs of the chart coordinate. Later proofs about `ProjectiveCurveCoordinates`, such as `compatible`, `xj` and `yi`, can then simplify with plain `simp` without the reader having to remember and cite the lemma name.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "NumericalDimensionOne.exists_projectiveCurveCoordinates",
+          "excerpt": "· simp [x,y,map_pow,B.germ_X]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "NumericalDimensionOne.PolynomialCurveChart.clear",
+          "excerpt": "simpa only [B.germ_X] using hbi"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/RelativeAmpleness.lean",
+          "declaration": "NumericalDimensionOne.PolynomialCurveChart.basicOpen_le_inverse_chart",
+          "excerpt": "rw [C.algebraMap_germ_eq_germToFunctionField]\n    exact B.germ_X"
+        }
+      ]
+    },
+    {
+      "declaration": "NumericalDimensionOne.projectiveChartRingHom_ratio",
+      "start_line": 235,
+      "end_line": 239,
+      "excerpt": "lemma projectiveChartRingHom_ratio (c : k →+* R) (x : σ → R)\n    (i : σ) (hi : x i = 1) (j : σ) :\n    projectiveChartRingHom c x i hi (projectiveChartRatio (k := k) i j) = x j := by",
+      "problem": "This is the basic evaluation rule for the chart map: it sends the ratio `X_j/X_i` to `x j`. The right-hand side is a plain coordinate, so it is a natural normalising rewrite. It is not tagged `@[simp]`, so each `simp only` that needs it must name it. In this file that is line 265 (`simp only [map_mul, hp', projectiveChartRingHom_ratio, MvPolynomial.eval₂Hom_X']`). In SurfaceSquare.lean it is `simpa only [CommRingCat.hom_ofHom,projectiveChartRingHom_ratio] using he`. `projectiveChartRingHom_mk` has the same orientation: it evaluates on the canonical `Away.mk` constructor to `eval₂Hom c x p`. It is applied by `rw` at lines 238, 245 and 312, by `simp only` at line 492, and by `rw` in ProjectiveCoordinates, SurfaceSquare and CompleteIntersections.",
+      "proposed_change": "Tag `projectiveChartRingHom_ratio` with `@[simp]`, and also tag `projectiveChartRingHom_mk`. Its left-hand side is the constructor form `projectiveChartRingHom c x i hi (Away.mk _ _ n p hp)` and its right-hand side is `MvPolynomial.eval₂Hom c x p`, which is already reduced by Mathlib simp lemmas such as `eval₂Hom_X'`. Neither rule's output feeds back into the other's input.",
+      "benefit": "Expressions such as `projectiveChartRingHom c x i hi (p' * projectiveChartRatio i j)` would simplify with `simp [hp']`. The constructor and ratio cases would be handled automatically wherever these chart maps are evaluated, which happens in at least four files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "NumericalDimensionOne.projectiveChartRingHom_surjective",
+          "excerpt": "simp only [map_mul, hp', projectiveChartRingHom_ratio, MvPolynomial.eval₂Hom_X']⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/SurfaceSquare.lean",
+          "declaration": "NumericalDimensionOne.projectiveAffineMap_coords_injective",
+          "excerpt": "simpa only [CommRingCat.hom_ofHom,projectiveChartRingHom_ratio] using he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/ProjectiveCoordinates.lean",
+          "declaration": "NumericalDimensionOne.projectiveChart_hom_reconstruct",
+          "excerpt": "rw [projectiveChartRingHom_mk]"
+        }
+      ]
+    },
+    {
+      "declaration": "NumericalDimensionOne.projectiveAffineMap_preimage",
+      "start_line": 308,
+      "end_line": 312,
+      "excerpt": "  have he : projectiveChartRingHom c x i hi\n      (Away.isLocalizationElem (projectiveVariable_mem i)\n        (projectiveVariable_mem j)) = x j := by\n    change projectiveChartRingHom c x i hi (Away.mk _ _ 1 (MvPolynomial.X j ^ 1) _) = _\n    rw [projectiveChartRingHom_mk, map_pow, MvPolynomial.eval₂Hom_X', pow_one]",
+      "problem": "The file has no lemma that evaluates `projectiveChartRingHom` on Mathlib's `Away.isLocalizationElem`. That term is what `Proj.awayι_preimage_basicOpen` produces. As a result, every preimage computation repeats the same steps by hand: `change` to the unfolded `Away.mk _ _ d (P ^ 1) _`, then `rw [projectiveChartRingHom_mk, map_pow, pow_one]`. This happens here (lines 308–312) and again in `projectiveAffineMap_preimage_homogeneous` (SurfaceSquare.lean) and in CompleteIntersections.lean. In Mathlib, `isLocalizationElem` is an `abbrev` for `Away.mk 𝒜 hf e (g ^ d) _`.",
+      "proposed_change": "Add a dedicated rewrite next to `projectiveChartRingHom_mk`, for example `@[simp] lemma projectiveChartRingHom_isLocalizationElem (c : ℂ →+* R) (x : Fin (N+1) → R) (i : Fin (N+1)) (hi : x i = 1) {d : ℕ} {P} (hP : P ∈ MvPolynomial.homogeneousSubmodule _ ℂ d) : projectiveChartRingHom c x i hi (Away.isLocalizationElem (projectiveVariable_mem i) hP) = MvPolynomial.eval₂Hom c x P`. Prove it once with the existing `change`/`rw [projectiveChartRingHom_mk, map_pow, pow_one]` steps. The current `he` blocks then become `by simp`, or `by simp [projectiveLinearPolynomial, Algebra.smul_def]` in CompleteIntersections. This lemma has not been compiled.",
+      "benefit": "Rewriting this term would no longer depend on restating the unfolded `Away.mk` form in a `change` with matching degree and proof arguments. Basic-open preimage proofs would rewrite the term directly to its canonical value, `eval₂Hom c x P`, so the three copies of this step would no longer have to be kept in sync.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/SurfaceSquare.lean",
+          "declaration": "NumericalDimensionOne.projectiveAffineMap_preimage_homogeneous",
+          "excerpt": "change projectiveChartRingHom c x i hi (Away.mk _ _ d (P ^ 1) _) = _\n    rw [projectiveChartRingHom_mk,map_pow,pow_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CompleteIntersections.lean",
+          "declaration": "(proof containing line 405, preimage of a linear basic open)",
+          "excerpt": "change projectiveChartRingHom c x i hi (Away.mk _ _ 1 (projectiveLinearPolynomial a ^ 1) _) = _\n    rw [projectiveChartRingHom_mk,map_pow,pow_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/GradedAlgebra/HomogeneousLocalization.lean",
+          "declaration": "HomogeneousLocalization.Away.isLocalizationElem",
+          "excerpt": "abbrev Away.isLocalizationElem : Away 𝒜 f :=\n  Away.mk 𝒜 hf e (g ^ d)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 36825,
+    "cache_read_input_tokens": 161616,
+    "output_tokens": 7982,
+    "output_tokens_details": {
+      "thinking_tokens": 2172
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36825,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4942,
+        "cache_read_input_tokens": 36624,
+        "cache_creation_input_tokens": 4214,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4214
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4866112,
+  "duration_ms": 74130,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T15:37:57",
+  "unit": "file",
+  "source_sha256": "bc944b38a7f78265930c550938f48cc2a0be622227f457149e460cfb09aa6713",
+  "rubric": "simp-interface"
+}

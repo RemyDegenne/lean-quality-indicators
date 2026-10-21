@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0077",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file (lines 1–77) and checked the definitions it relies on. `affineComplexPoint` and `affineComplexPoint_factor` are in AffinePointParameters.lean, `openScalars` is in SmoothAffineRefinement.lean, `Surface` and `complexBase` are in Model.lean, and `fieldPoint` is in SmoothRationalPoints.lean. I also read Mathlib's `IsAffineOpen.fromSpec_preimage_basicOpen`.\n\nThere is one finding. The helper `affineComplexPoint_not_mem_basicOpen` asks for a whole `Surface`, but it only uses the scheme and the structure map. The upstream definition it talks about, `affineComplexPoint`, already works for any `{X : Scheme} (f : X ⟶ complexBase)`. The lemma's only use, at line 63, would still work after a one-word change.\n\n`Surface.hartogs_chart` really does need the surface structure. It calls `S.etale_line_frame_inside`, and the Hartogs/centre conditions (`Configuration S r`, `centreIdeal S r p`) are stated for surfaces, so I found no reasonable way to generalise it. Moving from ℂ to a general field is not possible here either, because `affineComplexPoint` and `fieldPoint ℂ` are tied to ℂ upstream.\n\nRemaining uncertainty: I could not run Lean. The claim that the generalised proof elaborates rests on the proof using only `U.2.fromSpec`, `S.scheme.basicOpen` and `fromSpec_preimage_basicOpen`, none of which involve `Surface`.",
+  "findings": [
+    {
+      "declaration": "OAI.MaximalSeshadri.Geometry.affineComplexPoint_not_mem_basicOpen",
+      "start_line": 18,
+      "end_line": 26,
+      "excerpt": "lemma affineComplexPoint_not_mem_basicOpen (S : Surface) (U : S.scheme.affineOpens)",
+      "problem": "The lemma takes a whole `S : Surface`, which brings along integrality, smoothness of relative dimension 2 and a projective embedding. It only ever uses `S.scheme` and `S.structureMap`. The object it describes, `affineComplexPoint f U ρ`, is defined in AffinePointParameters.lean for any scheme `X` with any `f : X ⟶ complexBase`. Neighbouring lemmas such as `affineComplexPoint_factor` and `affineComplexPoint_ideal` are stated in that general form too. The proof is purely about affine opens: it builds `z := ker ρ`, unfolds `affineComplexPoint` with `change`, and rewrites with Mathlib's `IsAffineOpen.fromSpec_preimage_basicOpen`. Nothing in it depends on the surface structure.",
+      "proposed_change": "State the lemma for an arbitrary scheme over ℂ:\n```lean\nlemma affineComplexPoint_not_mem_basicOpen {X : Scheme} (f : X ⟶ complexBase)\n    (U : X.affineOpens)\n    (ρ : letI := (openScalars f U.1).toAlgebra; Γ(X, U.1) →ₐ[ℂ] ℂ)\n    (t : Γ(X, U.1)) (ht : ρ t = 0) :\n    (affineComplexPoint f U ρ).left (fieldPoint ℂ) ∉ X.basicOpen t := by\n  let z : PrimeSpectrum Γ(X, U.1) := ⟨RingHom.ker ρ, RingHom.ker_isPrime _⟩\n  change ¬ U.2.fromSpec z ∈ X.basicOpen t\n  change ¬ z ∈ U.2.fromSpec ⁻¹ᵁ X.basicOpen t\n  rw [U.2.fromSpec_preimage_basicOpen]\n  exact fun h => h ht\n```\nThe proof body is the same as before, with `S.scheme` replaced by `X`. The `change` steps rely only on how `affineComplexPoint` unfolds (`Spec.map (ofHom ρ) ≫ U.2.fromSpec`), so they do not depend on `Surface`. At line 63 the call becomes `affineComplexPoint_not_mem_basicOpen S.structureMap U ρ (a i) (by simp [a])`. The later `rw [hρ] at hn` still matches, because `hρ : affineComplexPoint S.structureMap U ρ = p.val j`. There are no degenerate cases to worry about: the statement is about a single affine open and a single ℂ-point.",
+      "benefit": "The fact holds for any ℂ-scheme and any affine open: the ℂ-point given by `ρ` lies outside `D(t)` whenever `ρ t = 0`. With the general statement it can be reused for blowups, products and other non-surface schemes over ℂ. This matches the generality of the `affineComplexPoint` API it extends, and callers no longer need a `Surface` they do not otherwise use.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Configurations/AffinePointParameters.lean",
+          "declaration": "OAI.MaximalSeshadri.Geometry.affineComplexPoint",
+          "excerpt": "def affineComplexPoint {X : Scheme} (f : X ⟶ complexBase) (U : X.affineOpens)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Configurations/AffinePointParameters.lean",
+          "declaration": "OAI.MaximalSeshadri.Geometry.affineComplexPoint",
+          "excerpt": "refine Over.homMk (Spec.map (CommRingCat.ofHom ρ.toRingHom) ≫ U.2.fromSpec) ?_"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Configurations/AffinePointParameters.lean",
+          "declaration": "OAI.MaximalSeshadri.Geometry.affineComplexPoint_factor",
+          "excerpt": "lemma affineComplexPoint_factor {X : Scheme} (f : X ⟶ complexBase) (U : X.affineOpens)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/AlgebraicGeometry/AffineScheme.lean",
+          "declaration": "AlgebraicGeometry.IsAffineOpen.fromSpec_preimage_basicOpen",
+          "excerpt": "hU.fromSpec ⁻¹ᵁ X.basicOpen f = PrimeSpectrum.basicOpen f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Model.lean",
+          "declaration": "OAI.Surface",
+          "excerpt": "smooth : SmoothOfRelativeDimension 2 structureMap"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 23007,
+    "cache_read_input_tokens": 37812,
+    "output_tokens": 4033,
+    "output_tokens_details": {
+      "thinking_tokens": 729
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23007,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2966,
+        "cache_read_input_tokens": 22184,
+        "cache_creation_input_tokens": 4847,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4847
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2723024,
+  "duration_ms": 37786,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T15:46:14",
+  "unit": "file",
+  "source_sha256": "8dcdf087f5dd8ee2e6e5bb5072e1e0e02d02018f313070a7c4e9be1703fe5006",
+  "rubric": "statement-generality"
+}

@@ -1,0 +1,96 @@
+{
+  "id": "openai-math-file-0053",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and checked uses of the referenceSelf_* lemmas and physicalFrozenCenteredCoefficient_eq_zero across the repo (Grep). I also checked the referenceOriginalLabel and referenceFamily_physicalPacket declarations. None of the referenceSelf_* lemmas has a @[simp] attribute. Each is applied only through `rw` with the full explicit argument list `t R cone w F hw hcone hF hwide hfrequency`. I did not inspect the definitions of `snappedSite` or `positiveEnvelope` in detail. I cannot run Lean, so I don't know whether simp would unify the dependent `(Q).labels j` binder types, or whether the proof arguments of `referenceFamily` unify. The proposals are therefore framed as targeted simp lemmas whose behaviour needs checking. They are not claimed to compile. Nothing in the file looks like a loop. The hypothesis-carrying lemma physicalFrozenCenteredCoefficient_eq_zero is rightly not a simp lemma.",
+  "findings": [
+    {
+      "declaration": "LipschitzHilbert.SourceLabeledLattice.referenceSelf_snappedSite / referenceSelf_positiveEnvelope / referenceSelf_frozenCenteredCoefficient / referenceSelf_alt_physicalPacket",
+      "start_line": 43,
+      "end_line": 56,
+      "excerpt": "theorem referenceSelf_snappedSite (j : Fin N) (l : (Q).labels j) (u : Item j l) :\n    (Q).snappedSite j l u = P.snappedSite j (orig j l) u := by",
+      "problem": "These lemmas rewrite a quantity of the self-reference family `Q` back to the original lattice `P` at `orig j l`. That is the canonical normal form, since `orig` is the only way to compare the two families. None is tagged `@[simp]`. Every use, at lines 107-108 and 172-173 and in the proof of `referenceSelf_positiveEnvelope` at line 55, is a `rw` that spells out the whole parameter list `t R cone w F hw hcone hF hwide hfrequency`. Several proofs also need manual `change`/`unfold` steps to expose the `Q` structure: line 46 `change snappedLatticeSite ... = _` followed by `simp only [sub_self,zero_mul,add_zero]`, and line 64 `change ((↑(P.length j*P.width):ℂ)⁻¹)*...`. The explicit-argument `rw` style makes every call site brittle: the hypotheses `hw hcone hF hwide hfrequency` are only proofs and are irrelevant to the rewrite. It also means a `simp` call cannot normalise `Q`-expressions on its own.",
+      "proposed_change": "Mark `referenceSelf_snappedSite`, `referenceSelf_positiveEnvelope`, `referenceSelf_frozenCenteredCoefficient` and `referenceSelf_alt_physicalPacket` as `@[simp]`. All four have LHS head `(Q).…` and RHS in terms of `P` and `orig j l`, so the direction is terminating and `P`-normalising. If simp turns out to have trouble with the dependent `(Q).labels j` binders, state them with the proof arguments implicit/instance-like or keep them as `simp` lemmas only inside a local `simp only [...]` set. Then the `rw [P.referenceSelf_… t R cone w F hw hcone hF hwide hfrequency, …]` blocks in `physicalMainScale_eq_narrow_reference` and `physicalCenteredMaskedBand_eq_narrow_reference` can become `simp only [referenceSelf_frozenCenteredCoefficient, referenceSelf_positiveEnvelope]`. Check that this compiles; I have not tested it.",
+      "benefit": "Call sites no longer repeat ten explicit arguments. Proofs about `Q` reduce to `P` by simp, so a family of restriction lemmas shares one rewrite set. The proof of `referenceSelf_positiveEnvelope` also shrinks, because its `rw` is replaced by simp.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledMainRestriction.lean",
+          "declaration": "physicalMainScale_eq_narrow_reference",
+          "excerpt": "rw [P.referenceSelf_frozenCenteredCoefficient t R cone w F hw hcone hF hwide hfrequency,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledMainRestriction.lean",
+          "declaration": "referenceSelf_positiveEnvelope",
+          "excerpt": "rw [P.referenceSelf_snappedSite t R cone w F hw hcone hF hwide hfrequency]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledMainRestriction.lean",
+          "declaration": "physicalCenteredMaskedBand_eq_narrow_reference",
+          "excerpt": "P.referenceSelf_alt_physicalPacket t R cone w F hw hcone hF hwide hfrequency]"
+        }
+      ]
+    },
+    {
+      "declaration": "LipschitzHilbert.SourceLabeledLattice.referenceSelf_absoluteConstant / referenceSelf_constant",
+      "start_line": 36,
+      "end_line": 41,
+      "excerpt": "theorem referenceSelf_absoluteConstant : (Q).absoluteConstant = P.absoluteConstant := rfl",
+      "problem": "`referenceSelf_absoluteConstant` is a definitional equation that normalises `(Q).absoluteConstant` to `P.absoluteConstant`. `referenceSelf_constant` computes the `constant` of `Q` as `P.absoluteConstant*(F*cone+2)`. Neither has a simp attribute, and neither is used anywhere in the repo except `referenceSelf_constant`, which the narrow-tail file applies by `rw` with the full explicit argument list. `referenceSelf_absoluteConstant` has no use outside its own declaration. So any later goal that mentions `(Q).constant` or `(Q).absoluteConstant` is left to manual `unfold`/`rw` steps.",
+      "proposed_change": "Add `@[simp]` to `referenceSelf_absoluteConstant`. Its LHS head is `absoluteConstant (referenceFamily ...)` and it rewrites to the original `P`, so it cannot loop. Consider `@[simp]` on `referenceSelf_constant` too, since its RHS contains only `P.absoluteConstant`, `F` and `cone`. Alternatively state that lemma with the shared parameters implicit so `rw [referenceSelf_constant]` suffices. Otherwise delete `referenceSelf_absoluteConstant` if no rewrite uses it.",
+      "benefit": "Constants of the narrow family normalise to constants of `P` in one step, and call sites such as the two in `SourceLabeledNarrowTail` no longer need all ten explicit arguments. If the lemma is deleted instead, the unused API shrinks.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledNarrowTail.lean",
+          "declaration": "(narrow tail proof using referenceSelf_constant)",
+          "excerpt": "rw [P.referenceSelf_constant t R cone w F hw hcone hF hwide hfrequency]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 20896,
+    "cache_read_input_tokens": 37087,
+    "output_tokens": 4550,
+    "output_tokens_details": {
+      "thinking_tokens": 1133
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20896,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3513,
+        "cache_read_input_tokens": 18425,
+        "cache_creation_input_tokens": 6484,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6484
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1328047,
+  "duration_ms": 41130,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T12:00:57",
+  "unit": "file",
+  "source_sha256": "d011bdb2db8bf771fea5df508d45696bc8c8a177484d16d21f9a098a910bb359",
+  "rubric": "simp-interface"
+}

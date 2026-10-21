@@ -1,0 +1,117 @@
+{
+  "id": "openai-math-file-0074",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions of `interpolation` and `endpointCoupling` in ComparatorChallenges/WeakHessian.lean. I also read Mathlib's `Measure.map_smul`, `ae_map_iff` and `ae_of_ae_map`. The proposed replacements have not been compiled. The details of the `rw` and `change` steps, and the unification of the let-bound `ξ`, are untested. I considered replacing `hp` with Mathlib's `isProbabilityMeasureSMul`, which needs a `NeZero θ` instance. I dropped it because the gain is small. The `rnDeriv_le_of_le_smul` calc and the final `simpa` looked fine.",
+  "findings": [
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan (he / hξend / hs')",
+      "start_line": 94,
+      "end_line": 147,
+      "excerpt": "change (q • π).map _ = _\n    rw [Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable]\n    change q • interpolation π t = _",
+      "problem": "`he` states the scaling rule `interpolation (c • ν) t = c • interpolation ν t` only for `θ'` and `q⁻¹`. The same `Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable` is then rebuilt three more times. These are in `hξend` (twice, lines 143 and 147) and in `hs'` (line 164). Each use needs `change` steps to unfold `interpolation` as `Measure.map`. The proofs of `hξend` and `hs'` are mostly this unfolding and refolding. That hides the idea: scaling commutes with taking marginals, so `q • θ' = θ` transfers the equality.",
+      "proposed_change": "State the scaling rule once, for arbitrary scalar and measure:\n`have hsmul (c : ℝ≥0∞) (ν : Measure (Curve X)) (t : Time) : interpolation (c • ν) t = c • interpolation ν t := Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable`.\nThen `he` is just `hsmul _ _ t`. `hξend` becomes\n`show interpolation (q • π) t = _; rw [hsmul, ht, ← hsmul, hcanc]`.\n`hs'` becomes\n`change interpolation (q • π) timeHalf Bᶜ = 0 at hs; rw [hsmul, Measure.smul_apply, smul_eq_mul] at hs; exact (mul_eq_zero.mp hs).resolve_left hq`.\nAlternatively, make `hsmul` a top-level lemma `interpolation_smul`.",
+      "benefit": "The measurability side condition is proved once, and the three `change ... map ...` unfoldings disappear. `hξend` then reads as the mathematical argument: push the scalar through, use `ht`, pull it back, apply `hcanc`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Map.lean",
+          "declaration": "MeasureTheory.Measure.map_smul",
+          "excerpt": "(c : R) {μ : Measure α} {f : α → β} (hf : AEMeasurable f μ) : (c • μ).map f = c • μ.map f"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/ComparatorChallenges/WeakHessian.lean",
+          "declaration": "interpolation",
+          "excerpt": "Measure.map (fun γ : Curve X => γ t) π"
+        }
+      ]
+    },
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan (hb0, hb1, hπ0, hπ1)",
+      "start_line": 110,
+      "end_line": 131,
+      "excerpt": "apply ae_of_ae_map (f := fun γ : Curve X => γ timeZero) (p := fun x => dist x o ≤ R) (continuous_eval_const timeZero).measurable.aemeasurable\n    change ∀ᵐ x ∂interpolation π timeZero, dist x o ≤ R",
+      "problem": "There are two nearly identical pairs of proofs that differ only in `timeZero` versus `timeOne`. `hb0`/`hb1` repeat the long `ae_map_iff` term with the same measurability proof of `{x | dist x o ≤ R}`. `hπ0`/`hπ1` use `apply ae_of_ae_map` with explicitly supplied `f` and `p`, then `change`, then `rw [he0]; exact hb0`. The explicit arguments and the `change` exist only to steer elaboration.",
+      "proposed_change": "Prove the marginal/pointwise equivalence once for any time, using the equation `interpolation ν t = Measure.map (fun γ => γ t) ν`:\n`have hball : MeasurableSet {x : X | dist x o ≤ R} := measurableSet_le (continuous_id.dist continuous_const).measurable measurable_const`\n`have hmarg (ν : Measure (Curve X)) (t : Time) : (∀ᵐ x ∂interpolation ν t, dist x o ≤ R) ↔ ∀ᵐ γ ∂ν, dist (γ t) o ≤ R := ae_map_iff (continuous_eval_const t).measurable.aemeasurable hball`.\nThen `hb0 := (hmarg θ' timeZero).2 (hb'.mono fun _ h => h.1)` and `hb1` likewise with `h.2`. Also `hπ0 := (hmarg π timeZero).1 (by rw [he0]; exact hb0)` and `hπ1` likewise with `timeOne`, `he1` and `hb1`.",
+      "benefit": "The measurability proof and the `ae_map_iff` plumbing are written once. The four facts become one-line applications of the same statement, `hlen` follows unchanged, and the explicit `(f := …) (p := …)` arguments go away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Map.lean",
+          "declaration": "MeasureTheory.ae_map_iff",
+          "excerpt": "theorem ae_map_iff {f : α → β} (hf : AEMeasurable f μ) {p : β → Prop}"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Map.lean",
+          "declaration": "MeasureTheory.ae_of_ae_map",
+          "excerpt": "theorem ae_of_ae_map {f : α → β} (hf : AEMeasurable f μ) {p : β → Prop} (h : ∀ᵐ y ∂μ.map f, p y)"
+        }
+      ]
+    },
+    {
+      "declaration": "endpointCoupling_couples and the local hs in reroute_finite_subplan",
+      "start_line": 154,
+      "end_line": 158,
+      "excerpt": "have hmeas : Measurable (fun γ : Curve X => (γ timeZero,γ timeOne)) :=\n        (continuous_eval_const timeZero).measurable.prodMk\n          (continuous_eval_const timeOne).measurable",
+      "problem": "The measurability proof for the endpoint map `γ ↦ (γ timeZero, γ timeOne)` is written out in `endpointCoupling_couples` (line 60, `hm`). It is written again inside the local `hs` here. Both times the term is a copy-paste. `hs` is also a general statement about `endpointCoupling (q • η)` that is buried inside one bullet of a long proof.",
+      "proposed_change": "Add one small lemma, e.g. `lemma measurable_endpoints : Measurable (fun γ : Curve X => (γ timeZero, γ timeOne)) := (continuous_eval_const timeZero).measurable.prodMk (continuous_eval_const timeOne).measurable`. Use it as `measurable_endpoints` in `endpointCoupling_couples`, where `hm` is then not needed. Use `measurable_endpoints.aemeasurable` inside `hs`, which makes the `hmeas` block disappear. Optionally lift `hs` to a lemma `QuadraticTransportCost_endpointCoupling_smul`.",
+      "benefit": "The duplicated 3-line term is stated once, and `hs` reduces to a single `simp only [QuadraticTransportCost, endpointCoupling, Measure.map_smul _ measurable_endpoints.aemeasurable, lintegral_smul_measure, smul_eq_mul]`. The main proof then concentrates on the scaling argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Calculus/RnDerivSmul.lean",
+          "declaration": "endpointCoupling_couples",
+          "excerpt": "have hm : Measurable (fun γ : Curve X => (γ timeZero,γ timeOne)) := (continuous_eval_const timeZero).measurable.prodMk (continuous_eval_const timeOne).measurable"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/ComparatorChallenges/WeakHessian.lean",
+          "declaration": "endpointCoupling",
+          "excerpt": "Measure.map (fun γ : Curve X => (γ timeZero, γ timeOne)) π"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 24584,
+    "cache_read_input_tokens": 88080,
+    "output_tokens": 8734,
+    "output_tokens_details": {
+      "thinking_tokens": 3810
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24584,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5022,
+        "cache_read_input_tokens": 26784,
+        "cache_creation_input_tokens": 1843,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1843
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19450399999999995,
+  "duration_ms": 75667,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T13:12:24",
+  "unit": "file",
+  "source_sha256": "659acbb3a82e0e7548787ca860f4814b3dd1940c61d717d0b3b39fece39b5163",
+  "rubric": "readable-proof-simplification"
+}

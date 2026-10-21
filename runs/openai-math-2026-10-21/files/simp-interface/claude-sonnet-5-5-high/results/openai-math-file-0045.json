@@ -1,0 +1,122 @@
+{
+  "id": "openai-math-file-0045",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the related definitions and simp attributes in RelativeTwoConjugation, RelativeTwoDiagonal, RelativeUnitary, PartialIsometryDilation and RelativeIsometry. I grepped for existing lemmas such as `conjugatedTwoUnitary_one` and found none. I could not run Lean, so I don't know how simp actually behaves on these goals, and the suggested lemmas and attributes are untested. The file has no simp annotations of its own. The findings concern gaps in the simp interface it depends on (`mapTwoUnitary_*`, `conjugatedTwoUnitary`, `relativeClass_one`). I found no loops or competing-rule issues.",
+  "findings": [
+    {
+      "declaration": "relativeClass_partialIsometry (h0 step; uses conjugatedTwoUnitary)",
+      "start_line": 46,
+      "end_line": 50,
+      "excerpt": "    rw [partialIsometryDilationPath_start, mapTwoUnitary_one]\n    simp [conjugatedTwoUnitary]",
+      "problem": "The goal `conjugatedTwoUnitary 1 w = w` is closed only by `simp [conjugatedTwoUnitary]`, which unfolds the definition to `1 * w * star 1`. There is no canonical simp lemma for conjugating by the identity. So `partialIsometryDilationPath_start` and `mapTwoUnitary_one` become `rw` steps followed by a definition-unfolding simp call. The same unfolding appears again in RelativeIsometry.lean (`simp [conjugatedTwoUnitary]` after `mapTwoUnitary_one`). Unfolding the def in simp calls leaks its implementation into every client.",
+      "proposed_change": "In RelativeTwoConjugation.lean, add `@[simp] theorem conjugatedTwoUnitary_one_left (u) : conjugatedTwoUnitary 1 u = u`, proved by unfolding with `one_mul`, `star_one` and `mul_one`. Optionally add the matching `conjugatedTwoUnitary_one_right`. Then h0 can be `simp [W]` or `simp` after the `change`, and the same for the analogous step in RelativeIsometry.lean.",
+      "benefit": "The identity-conjugation normal form is stated once. Client proofs no longer unfold `conjugatedTwoUnitary`, so they won't break if its definition changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeTwoConjugation.lean",
+          "declaration": "conjugatedTwoUnitary",
+          "excerpt": "    unitary (Matrix (Fin 2) (Fin 2) R) := w * u * star w"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeIsometry.lean",
+          "declaration": "relativeClass_isometry (analogous step)",
+          "excerpt": "    rw [isometryDilationPath_start, mapTwoUnitary_one]\n    simp [conjugatedTwoUnitary]"
+        }
+      ]
+    },
+    {
+      "declaration": "relativeClass_partialIsometry (h1 step; mapTwoUnitary_conjugate)",
+      "start_line": 60,
+      "end_line": 62,
+      "excerpt": "    rw [mapTwoUnitary_conjugate, mapTwoUnitary_diagonal, mapTwoUnitary_diagonal] at hm\n    simpa only [map_one] using hm",
+      "problem": "`mapTwoUnitary_diagonal` and `mapTwoUnitary_one` are `@[simp]`, but their sibling `mapTwoUnitary_conjugate` is not. The proof therefore needs a manual `rw` that lists `mapTwoUnitary_diagonal` twice. It then needs a separate `simpa only [map_one]` to push `φ` through the `1` entry. The same sequence is copied in RelativeIsometry.lean. The simp set is incomplete: it can normalise `mapTwoUnitary φ (diagonalTwoUnitary _ _)` and `mapTwoUnitary φ 1`, but not `mapTwoUnitary φ (conjugatedTwoUnitary _ _)`.",
+      "proposed_change": "Mark `mapTwoUnitary_conjugate` `@[simp]` in RelativeTwoConjugation.lean. Its RHS is `conjugatedTwoUnitary (mapTwoUnitary φ w) (mapTwoUnitary φ u)`. That is structurally smaller and cannot re-trigger the LHS, so it does not loop. Then h1 can be `simpa using congrArg (mapTwoUnitary φ) hd`, with no `rw` chain. Check whether `map_one` already handles `Unitary.map _ 1`.",
+      "benefit": "All three `mapTwoUnitary_*` rules push the map inward in the same direction. This removes the duplicated manual rewrite blocks here and in RelativeIsometry.lean.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeTwoConjugation.lean",
+          "declaration": "mapTwoUnitary_conjugate",
+          "excerpt": "theorem mapTwoUnitary_conjugate (φ : A →⋆ₐ[ℂ] R)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeTwoConjugation.lean",
+          "declaration": "mapTwoUnitary_diagonal",
+          "excerpt": "@[simp] theorem mapTwoUnitary_diagonal (φ : A →⋆ₐ[ℂ] R) (u v : unitary A) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeIsometry.lean",
+          "declaration": "relativeClass_isometry (analogous step)",
+          "excerpt": "    rw [mapTwoUnitary_conjugate, mapTwoUnitary_diagonal, mapTwoUnitary_diagonal] at hm"
+        }
+      ]
+    },
+    {
+      "declaration": "relativeClass_partialIsometry (final rewrite; relativeClass_one)",
+      "start_line": 68,
+      "end_line": 69,
+      "excerpt": "    relativeTwoClass_diagonal S 1 v' hz hvS, relativeClass_one S hz, add_zero, zero_add] at h",
+      "problem": "`relativeClass_one` (`relativeClass S 1 hu = 0`) is the canonical value of the K₁ class of the identity, but it is not a simp lemma. It is invoked by explicit `rw` here and in RelativeIsometry.lean, each time together with the `add_zero`/`zero_add` cleanup. The `rw` list also has to match the exact order in which zeros appear (`add_zero, zero_add` here and `zero_add, add_zero` in RelativeIsometry.lean). Since `hu` is a proof argument, a simp attribute would apply to any proof of the hypothesis, and the RHS `0` is a normal form. Without an attribute, `simp` can't reduce the `relativeClass S 1 _` terms that these proofs generate.",
+      "proposed_change": "Mark `relativeClass_one` in RelativeUnitary.lean `@[simp]`. Then replace the tail of the proof with `rw [relativeTwoClass_diagonal S u' 1 huS hz, relativeTwoClass_diagonal S 1 v' hz hvS] at h; simpa using h`. This removes the ordering dependence on `add_zero` and `zero_add`.",
+      "benefit": "The class of the identity always normalises to 0, and the zero-summand cleanup becomes order-independent. This is more robust than the current ordered `rw` lists.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeUnitary.lean",
+          "declaration": "relativeClass_one",
+          "excerpt": "theorem relativeClass_one (hu : ((1 : unitary A) : A) - 1 ∈ S) :\n    relativeClass S 1 hu = 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeIsometry.lean",
+          "declaration": "relativeClass_isometry (analogous step)",
+          "excerpt": "  rw [hleft, hright, relativeClass_one S hz, zero_add, add_zero] at h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 14804,
+    "cache_read_input_tokens": 32574,
+    "output_tokens": 4268,
+    "output_tokens_details": {
+      "thinking_tokens": 617
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14804,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3520,
+        "cache_read_input_tokens": 17229,
+        "cache_creation_input_tokens": 1588,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1588
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10516539999999999,
+  "duration_ms": 31437,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-21T11:26:22",
+  "unit": "file",
+  "source_sha256": "e8c0422f1bd340609ff651991560060b024fe6e3cc82e91604c950c4eab821d4",
+  "rubric": "simp-interface"
+}

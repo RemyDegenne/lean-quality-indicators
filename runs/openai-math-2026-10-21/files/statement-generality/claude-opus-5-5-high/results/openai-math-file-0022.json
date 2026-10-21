@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0022",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 93 lines of the target file. I also read the definitions and lemmas it depends on: cubicThetaArithmeticRowTerm, cubicThetaArithmeticRowTerm_summable and cubicThetaArithmeticRowTerm_phase in CubicThetaArithmeticRowSeries.lean; cubicThetaTorusFourier and cubicThetaTorusCoefficient in CubicThetaTorusModes.lean; cubicThetaTorusCoefficientMap in CubicThetaTorusSlices.lean; cubicThetaTorusCoefficient_basis in CubicThetaCuspFourierSurjective.lean; and cubicThetaTorusFourier_toLp in CubicThetaEisensteinTorus.lean. I checked that Mathlib provides `Summable.norm` as an alias of `summable_norm_iff` in Analysis/Normed/Module/FiniteDimension.lean.\n\nThe two remainder lemmas are stated only for the arithmetic coefficient family. Their proofs never use anything about that family beyond its summability. The same proof appears almost word for word in at least three other files (cubicThetaTorusRemainder_coefficient, cubicThetaShiftedTorusSeries_coefficient, and the InvertedTorus and ShiftedModelSeries counterparts), which shows a general statement would get real use.\n\nThe other declarations in the file are model-specific definitions or direct evaluations of them. I see no useful generalisation for those: cubicThetaArithmeticModel, cubicThetaArithmeticModelTorus, the `_real` lemmas, and cubicThetaArithmeticModelTorus_coefficient, whose `0<v` is genuinely needed for summability.\n\nRemaining uncertainty: I could not compile anything, so the proposed general lemma is untested. Its proof is the existing one with the concrete coefficient family replaced by an arbitrary family c.",
+  "findings": [
+    {
+      "declaration": "cubicThetaArithmeticModelRemainder_summable / cubicThetaArithmeticModelRemainder_coefficient",
+      "start_line": 19,
+      "end_line": 54,
+      "excerpt": "lemma cubicThetaArithmeticModelRemainder_coefficient {v : ℝ} (hv : 0<v) (k : Eisenstein) :\n    cubicThetaTorusCoefficient (ContinuousMap.toLp 2 volume ℂ\n      (cubicThetaArithmeticModelRemainder v)) k=cubicThetaArithmeticRowTerm 0 v k := by",
+      "problem": "Both lemmas are stated only for the coefficient family `cubicThetaArithmeticRowTerm 0 v` and only under `0<v`. Their proofs use nothing about that family except its summability. The summability proof combines `Summable.of_norm`, `norm_smul` and `UnitAddTorus.mFourier_norm` with `(cubicThetaArithmeticRowTerm_summable 0 hv).norm`. The coefficient proof applies `L.map_tsum`, `tsum_eq_single k` and `cubicThetaTorusCoefficient_basis`. Neither step depends on the particular coefficients. Because the statement is this narrow, the same 12-line proof is copied for each new torus series in the project: `cubicThetaTorusRemainder_coefficient` in CubicThetaEisensteinTorus.lean, `cubicThetaShiftedTorusSeries_coefficient` in CubicThetaShiftedTorus.lean, and the matching blocks in CubicThetaInvertedTorus.lean and CubicThetaShiftedModelSeries.lean.",
+      "proposed_change": "State the result once for an arbitrary summable family, then derive the arithmetic case from it:\n\n```lean\nlemma cubicThetaTorusSeries_summable {c : Eisenstein → ℂ} (hc : Summable c) :\n    Summable (fun h => c h • cubicThetaTorusFourier h) := by\n  apply Summable.of_norm\n  simpa only [norm_smul,cubicThetaTorusFourier,UnitAddTorus.mFourier_norm,mul_one] using hc.norm\n\nlemma cubicThetaTorusSeries_coefficient {c : Eisenstein → ℂ} (hc : Summable c) (k : Eisenstein) :\n    cubicThetaTorusCoefficient (ContinuousMap.toLp 2 volume ℂ\n      (∑' h, c h • cubicThetaTorusFourier h)) k = c k\n```\n\nThe coefficient proof is the existing one with `cubicThetaArithmeticRowTerm 0 v` replaced by `c`. Set `L := (cubicThetaTorusCoefficientMap k).comp (ContinuousMap.toLp 2 volume ℂ)` and rewrite with `L.map_tsum (cubicThetaTorusSeries_summable hc)`. Then `tsum_eq_single k` together with `cubicThetaTorusFourier_toLp` and `cubicThetaTorusCoefficient_basis` (the `ite_true` and `ite_eq_right hne.symm` branches) gives the result. The local lemma then becomes `cubicThetaTorusSeries_coefficient (cubicThetaArithmeticRowTerm_summable 0 hv) k`, and the same applies to the Eisenstein, shifted and inverted variants. Degenerate case: if c is not summable, the hypothesis fails, which matches the current `0<v` requirement (that hypothesis is used only to obtain summability).",
+      "benefit": "Every new torus series (arithmetic, Eisenstein, shifted, inverted, shifted-model) gets its coefficient and summability lemmas in one line, instead of another copy of the `L.map_tsum`/`tsum_eq_single` proof. The general statement also states the underlying fact directly, namely that an absolutely convergent Fourier series has the expected coefficients, rather than hiding it behind a particular family.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaEisensteinTorus.lean",
+          "declaration": "cubicThetaTorusRemainder_coefficient",
+          "excerpt": "  rw [cubicThetaTorusRemainder,L.map_tsum (cubicThetaTorusRemainder_summable hv hs)]\n  rw [tsum_eq_single k]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaShiftedTorus.lean",
+          "declaration": "cubicThetaShiftedTorusSeries_coefficient",
+          "excerpt": "  rw [cubicThetaShiftedTorusSeries,L.map_tsum (cubicThetaShiftedTorusSeries_summable b hv hs)]\n  rw [tsum_eq_single k]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaCuspFourierSurjective.lean",
+          "declaration": "cubicThetaTorusCoefficient_basis",
+          "excerpt": "cubicThetaTorusCoefficient (cubicThetaTorusBasis h) k=if k=h then 1 else 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaArithmeticRowSeries.lean",
+          "declaration": "cubicThetaArithmeticRowTerm_summable",
+          "excerpt": "lemma cubicThetaArithmeticRowTerm_summable (z : ℂ) {v : ℝ} (hv : 0<v) :\n    Summable (cubicThetaArithmeticRowTerm z v) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Module/FiniteDimension.lean",
+          "declaration": "Summable.norm",
+          "excerpt": "alias ⟨_, Summable.norm⟩ := summable_norm_iff"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 28704,
+    "cache_read_input_tokens": 137119,
+    "output_tokens": 5666,
+    "output_tokens_details": {
+      "thinking_tokens": 1086
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28704,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3055,
+        "cache_read_input_tokens": 31373,
+        "cache_creation_input_tokens": 449,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 449
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.37043180000000003,
+  "duration_ms": 55662,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T11:07:01",
+  "unit": "file",
+  "source_sha256": "f75b1aa429756b4856085c0fa248413c70cf673f091ab0194bc92513148457f6",
+  "rubric": "statement-generality"
+}

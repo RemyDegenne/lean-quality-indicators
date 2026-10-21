@@ -1,0 +1,80 @@
+{
+  "id": "openai-math-file-0062",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (two theorems). Inside the file, `exists_deterministic_concentration_centers` already reuses `exists_deterministic_profile_centers` through `squeeze_zero`, so nothing is duplicated within the file itself. I then searched the PolycyclicRecognition directory for other uses of the same machinery (`continuous_integral_compact_function`, `exists_le_integral`) and read CompactProbabilityProduct.lean, which defines `continuous_integral_compact_function`, and CompactSetMeanApproximation.lean, which imports the target. `exists_set_mean_approximation` repeats the target's argument that the mean-distance profile is continuous: it builds the same `d : C(S × S, ℝ)` and takes the same composition with `curry`. It also has to recover the bare continuity fact by subtracting the `infDist` term. Factoring this into a named lemma in the target file removes both copies. The other repeated step, `exists_le_integral` on a continuous function of a compact space, is a thin wrapper around existing API, so I did not report it. Remaining uncertainty: I could not compile the proposed rewrite. The proposed proof is the target's own lines 23–26 with `μ n` generalized to `μ`, and the instance assumptions needed (CompactSpace, BorelSpace, PseudoMetricSpace) hold in both theorems.",
+  "findings": [
+    {
+      "declaration": "exists_deterministic_profile_centers",
+      "start_line": 23,
+      "end_line": 26,
+      "excerpt": "have hmean (n) : Continuous (fun y => ∫ x, dist (F x) (F y) ∂(μ n : Measure S)) :=\n    (continuous_integral_compact_function (μ n)).comp d.curry.continuous",
+      "problem": "The proof that the mean-distance profile y ↦ ∫ x, dist (F x) (F y) ∂μ is continuous is written inline. It packages (p.1,p.2) ↦ dist (F p.2) (F p.1) as a `C(S × S, ℝ)`, curries it, and composes with `continuous_integral_compact_function`. `exists_set_mean_approximation` in CompactSetMeanApproximation.lean (which imports this file) repeats the same `let d` and composition. Because it only proves continuity of the sum `obj n`, it then needs four more lines (`(ho n).sub hd`, `change`, `simpa … add_sub_cancel_right`) to get back the continuity this file already proved.",
+      "proposed_change": "Add a lemma to this file, before the two theorems:\n\n```lean\ntheorem continuous_integral_dist_profile\n    {S Y : Type*} [TopologicalSpace S] [CompactSpace S]\n    [MeasurableSpace S] [BorelSpace S] [PseudoMetricSpace Y]\n    (F : S → Y) (hF : Continuous F) (μ : ProbabilityMeasure S) :\n    Continuous (fun y => ∫ x, dist (F x) (F y) ∂(μ : Measure S)) := by\n  let d : C(S × S, ℝ) := ⟨fun p => dist (F p.2) (F p.1),\n    (hF.comp continuous_snd).dist (hF.comp continuous_fst)⟩\n  exact (continuous_integral_compact_function μ).comp d.curry.continuous\n```\n\nThe proof sketch is the target's current lines 23–26 with `μ n` generalized to `μ`. Rewritten uses:\n(1) In `exists_deterministic_profile_centers`, delete `let d` and `hmean`, and write\n`exists_le_integral ((continuous_integral_dist_profile F hF (μ n)).integrable_of_hasCompactSupport (HasCompactSupport.of_compactSpace _))`.\n(2) In `exists_set_mean_approximation`, which has the same instances plus `T2Space`: `ho n` becomes `(continuous_integral_dist_profile F hF (μ n)).add hd`, with no local `d`. The `hc` block (lines 40–43, `(ho n).sub hd` / `change` / `simpa only [obj, add_sub_cancel_right]`) becomes `have hc := continuous_integral_dist_profile F hF (μ n)`.",
+      "benefit": "The continuity argument (curried continuous map plus continuity of integration in the uniform norm) gets one name and one proof, instead of two hand-built `C(S × S, ℝ)` packagings that must be kept in sync. The downstream proof also loses its roundabout subtract-and-simplify recovery of a fact proved upstream, so it is shorter and less fragile under `simp` changes. Readers of either file can see that both arguments rest on the same continuity fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Analysis/CompactSetMeanApproximation.lean",
+          "declaration": "exists_set_mean_approximation",
+          "excerpt": "let d : C(S × S, ℝ) := ⟨fun p => dist (F p.2) (F p.1),\n      (hF.comp continuous_snd).dist (hF.comp continuous_fst)⟩\n    exact ((continuous_integral_compact_function (μ n)).comp d.curry.continuous).add hd"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Analysis/CompactSetMeanApproximation.lean",
+          "declaration": "exists_set_mean_approximation",
+          "excerpt": "have hc : Continuous (fun y => ∫ x, dist (F x) (F y) ∂(μ n : Measure S)) := by\n      have hh := (ho n).sub hd\n      change Continuous (fun y => obj n y - infDist (F y) T) at hh\n      simpa only [obj, add_sub_cancel_right] using hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Analysis/CompactProbabilityProduct.lean",
+          "declaration": "continuous_integral_compact_function",
+          "excerpt": "Continuous (fun f : C(X, ℝ) => ∫ x, f x ∂(μ : Measure X)) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 15237,
+    "cache_read_input_tokens": 43758,
+    "output_tokens": 3948,
+    "output_tokens_details": {
+      "thinking_tokens": 1058
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15237,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2449,
+        "cache_read_input_tokens": 17649,
+        "cache_creation_input_tokens": 1517,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1517
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.20963959999999998,
+  "duration_ms": 38000,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T14:32:48",
+  "unit": "file",
+  "source_sha256": "e8ba8fdb84c11aaf883a3d15e397e5cf23e25c53aa4ae3dcc9e829e0dc948483",
+  "rubric": "repeated-proof-machinery"
+}

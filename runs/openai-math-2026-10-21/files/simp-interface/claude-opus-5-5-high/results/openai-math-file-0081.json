@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0081",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–142). I also read the definitions it depends on in Fourier/Fourier.lean (`fourier`, `synth`, `fourier_synth`, `fourier_sub`, `bit`, `degree`, `fourier_noise`, `fourier_diff`) and Reduction/Cube.lean (`Cube`, `mean`, `mean_succ`). Two files import the target: Reduction/Heavy.lean and Repetition/ScalarCell.lean. Neither the target file nor Fourier.lean uses any `@[simp]` attributes. All rewriting is done by unfolding definitions (`simp [walsh]`, `simp only [truncate, …]`, `rw [influence, …]`) or by explicit `rw`.\n\nConsidered and rejected:\n- `degree_eq_sum` rewrites a natural cast into a sum of `if` terms. It is used once, through `simp_rw`, so it correctly has no simp attribute.\n- `synth_eq_sum` expands `synth` and correctly has no simp attribute.\n- `walsh` has auto-generated equation lemmas, and `simp [walsh]` works wherever both arguments are pairs. The `change` in Heavy.walsh_merge_mean is mostly about `merge`, which is defined downstream, so I did not report it as a defect of this file.\n- `noise_weight_cancel` and `low_degree_coefficient` are used with `rw` and are fine as they are.\n\nRemaining uncertainty: I could not run Lean. I have not checked that the proposed lemmas compile, and I am not claiming any simp failure was observed. The `Supported` finding depends on `tailSet` (defined downstream in Heavy.lean), so following it means moving that small definition into this file or writing the cons lemma with `Finset.preimage`/`filter` instead.",
+  "findings": [
+    {
+      "declaration": "truncate / truncate_error",
+      "start_line": 59,
+      "end_line": 79,
+      "excerpt": "simp only [truncate, fourier_synth]",
+      "problem": "`truncate S f` is defined as `synth` applied to the masked Fourier coefficients, but the file never states the rewrite lemma for its Fourier transform. The expression `fourier (truncate S f)` comes up naturally: in `truncate_error`, `fourier_sub` turns `fourier (fun x => f x - truncate S f x)` into `fun s => fourier f s - fourier (truncate S f) s`. To get to the normal form `if Supported S s then fourier f s else 0`, the proof has to unfold the definition with `simp only [truncate, fourier_synth]`. Downstream (Heavy.truncate_eq_coordinate_mean) also unfolds with `rw [truncate, synth_eq_sum]`. Without a canonical lemma, every consumer has to know how `truncate` is implemented, and `simp [truncate]` will unfold every occurrence, including point evaluations `truncate S f x` where the unfolded form is not wanted.",
+      "proposed_change": "Add, next to the definition:\n```lean\n@[simp] lemma fourier_truncate {n : ℕ} (S : Finset (Fin n)) (f : Cube n → ℝ) :\n    fourier (truncate S f) = fun s => if Supported S s then fourier f s else 0 :=\n  fourier_synth _\n```\nThen use `simp only [fourier_truncate]` (or `rw [fourier_truncate]`) in `truncate_error` instead of unfolding `truncate`. The simp attribute is safe: the left side is the head symbol `fourier` applied to `truncate`, and the right side has no `truncate` in it, so the rule cannot loop.",
+      "benefit": "Users get a stable spectral rewrite for the truncation operator that is independent of its `synth` implementation. Proofs about Fourier coefficients of truncations can then go through by `simp` without unfolding `truncate` elsewhere in the goal.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Fourier/Fourier.lean",
+          "declaration": "fourier_synth",
+          "excerpt": "lemma fourier_synth {n : ℕ} (f : Cube n → ℝ) : fourier (synth f) = f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Fourier/Fourier.lean",
+          "declaration": "fourier_sub",
+          "excerpt": "fourier (fun x => f x - g x) = fun s => fourier f s - fourier g s := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Reduction/Heavy.lean",
+          "declaration": "truncate_eq_coordinate_mean",
+          "excerpt": "rw [truncate, synth_eq_sum]"
+        }
+      ]
+    },
+    {
+      "declaration": "Supported",
+      "start_line": 21,
+      "end_line": 22,
+      "excerpt": "def Supported {n : ℕ} (S : Finset (Fin n)) (s : Cube n) : Prop :=\n  ∀ i, bit s i = true → i ∈ S",
+      "problem": "`Supported` is a bare `∀`-predicate defined by structural recursion over `Cube`, and it comes with no simp-normal characterisations. Downstream proofs rebuild them by hand each time. In Heavy.walsh_merge_mean, the base case builds `have hs : Supported S s := fun i => Fin.elim0 i` and passes `hs` to `simp`. The cons step relies on `supported_cons`, which lives in a different file and has no simp attribute, so it must be cited with `simp only [supported_cons, walsh]`. In Heavy.low_degree_outside, `¬Supported S s` is unpacked manually with `not_forall.mp` and `Classical.not_imp.mp`. The predicate's natural reduction rules (empty cube, and the `(b,s)` cons case) are therefore not available to `simp`.",
+      "proposed_change": "In this file, next to `Supported`, add structural lemmas:\n```lean\n@[simp] lemma supported_zero (S : Finset (Fin 0)) (s : Cube 0) : Supported S s :=\n  fun i => Fin.elim0 i\n```\nAlso move `tailSet`/`mem_tailSet` and `supported_cons` (`Supported S (b,s) ↔ (b = true → 0 ∈ S) ∧ Supported (tailSet S) s`) here and mark `supported_cons` `@[simp]`. Its right side applies `Supported` to the smaller cube `s`, so repeated rewriting terminates. Optionally also add `not_supported_iff : ¬Supported S s ↔ ∃ i, bit s i = true ∧ i ∉ S` for the negated form used in `low_degree_outside`.",
+      "benefit": "Inductive proofs over `Cube` (such as `walsh_merge_mean`) could discharge `Supported` goals with plain `simp`, without hand-built witnesses or file-specific `simp only` lists. Keeping the predicate's API next to its definition also gives every consumer one canonical normal form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Reduction/Heavy.lean",
+          "declaration": "walsh_merge_mean",
+          "excerpt": "have hs : Supported S s := fun i => Fin.elim0 i\n    simp [mean_zero, walsh, hs]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Reduction/Heavy.lean",
+          "declaration": "supported_cons",
+          "excerpt": "Supported S (b,s) ↔ (b = true → 0 ∈ S) ∧ Supported (tailSet S) s := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Reduction/Heavy.lean",
+          "declaration": "low_degree_outside",
+          "excerpt": "obtain ⟨i, hi⟩ := not_forall.mp hs.2\n        exact ⟨i, (Classical.not_imp.mp hi).1, (Classical.not_imp.mp hi).2⟩"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 42427,
+    "cache_read_input_tokens": 311540,
+    "output_tokens": 7923,
+    "output_tokens_details": {
+      "thinking_tokens": 2965
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 42427,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3124,
+        "cache_read_input_tokens": 43740,
+        "cache_creation_input_tokens": 1805,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1805
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.56028,
+  "duration_ms": 87354,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-21T16:06:15",
+  "unit": "file",
+  "source_sha256": "0dc0f2001bd90936e76f5260aed27d6483724f2ee3ad3382e58efc97a877969e",
+  "rubric": "simp-interface"
+}

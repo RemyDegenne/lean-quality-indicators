@@ -1,0 +1,112 @@
+{
+  "id": "openai-math-file-0046",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read both proofs in the file: `exists_preparedFiniteScheduleProductiveSource` (lines 10–321) and `exists_preparedFiniteForwardProductiveSource` (lines 329–488). I also checked the lemmas they call: `exists_preparedFiniteScheduleGeometry`, `allocatedScaleLog_nonneg` and `preparedUniformDegreeDirectLate`. The latter is a nested `max`, which is why `hWitnessLate` is proved with a chain of `le_max_right` steps.\n\nI found three small simplifications. Each removes a redundant step or uses a standard tactic idiom, and none changes the mathematical argument.\n\nCandidates I rejected:\n- **Dropping the type ascriptions on `hstage` (lines 209–216 and 224–228).** These look redundant but are probably needed. They keep `Pk kModel` and similar terms folded, so the later `rw [hdegreeZero]` cannot reach into an unfolded `Pk` and spoil the match with the goal. Removing them is not safe.\n- **Rewriting `hWitnessLate`.** It is already a direct term proof. Alternatives such as `le_max_of_le_right` are not clearer.\n- **Replacing the nested `add_nonneg` in `hPseed` (lines 195–197) with `linarith only`.** Whether that reads better is a matter of taste.\n- **Removing hypotheses from `hGainMaster`'s `linarith only` list.** The component nonnegativity facts are genuinely needed: they are what show the `+ 32` entry in the sum is at least 8.\n\nEach finding is minor. None of the replacements was compiled.",
+  "findings": [
+    {
+      "declaration": "exists_preparedFiniteForwardProductiveSource",
+      "start_line": 483,
+      "end_line": 488,
+      "excerpt": "    hS, hgap, hgeometry, hscalar, ?_, ?_, hproductive⟩\n  · intro k\n    exact hdirect k rfl\n  · intro n\n    exact hmodel (preparedFiniteForwardModelSlot n) rfl rfl",
+      "problem": "The proof leaves two `?_` holes in the `refine` and then fills each one with a separate `intro`/`exact` bullet. Each hole is closed by one short application. The goals are `∀ k, …` and `∀ n, let k := preparedFiniteForwardModelSlot n; …`; a `let` binding is definitionally equal to its body.",
+      "proposed_change": "Fill the holes inside the anonymous constructor and remove the two bullets:\n```lean\n  exact ⟨hR, σ, hσ, S, hRadius, hRbounds, hσone, hσexp, hσinv, hFloor,\n    hS, hgap, hgeometry, hscalar, fun k => hdirect k rfl,\n    fun n => hmodel (preparedFiniteForwardModelSlot n) rfl rfl, hproductive⟩\n```",
+      "benefit": "All 17 components of the conclusion are then in one place, in the order of the statement. A reader can see directly that the two forward-specific components are the general results with the `rfl` side conditions supplied (`Cdetect k` is defined to be the sampled constant, and model slots have degree 0). There is no tactic state to track. The proof is four lines shorter and no reasoning is hidden.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedFiniteForwardProductiveSource.lean",
+          "declaration": "exists_preparedFiniteForwardProductiveSource",
+          "excerpt": "let Cdetect := fun k : K => sampledSupportedSlicedDetectionConstant (degree k) Pdetect"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedFiniteForwardProductiveSource.lean",
+          "declaration": "exists_preparedFiniteScheduleProductiveSource",
+          "excerpt": "(∀ k, Cdetect k = sampledSupportedSlicedDetectionConstant (degree k) Pdetect →"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_preparedFiniteScheduleProductiveSource",
+      "start_line": 217,
+      "end_line": 236,
+      "excerpt": "    rw [hdegreeZero, hCzero, hModelSource] at hstage\n    exact hstage",
+      "problem": "Both `scalar` (lines 217–218) and `hGeometryZero` (lines 235–236) end by rewriting a hypothesis and then closing the goal with that same hypothesis. Mathlib's `rwa` tactic does exactly this combination.",
+      "proposed_change": "Replace `rw [hdegreeZero, hCzero, hModelSource] at hstage` / `exact hstage` with `rwa [hdegreeZero, hCzero, hModelSource] at hstage`. Likewise, replace `rw [hdegreeZero, hCzero, hpd, had] at hstage` / `exact hstage` with `rwa [hdegreeZero, hCzero, hpd, had] at hstage`. Keep the type-ascribed `have hstage : … := …` lines unchanged, because they keep the `let`-bound names folded.",
+      "benefit": "`rwa` is a widely known idiom for 'rewrite, then this hypothesis is the goal'. The rewrite list, which carries the mathematical content (specialise to degree 0, the model detection constant and the model source precision), stays fully visible. Each proof loses a line that adds no information.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedFiniteForwardProductiveSource.lean",
+          "declaration": "exists_preparedFiniteScheduleProductiveSource",
+          "excerpt": "    rw [hdegreeZero, hCzero, hpd, had] at hstage\n    exact hstage"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_preparedFiniteScheduleProductiveSource",
+      "start_line": 179,
+      "end_line": 182,
+      "excerpt": "  obtain ⟨hpRadius, hR, hD, hlogs, t, ht, hsamplers⟩ := hactual",
+      "problem": "The proof names `hactual` with `have` on line 179 and destructures it on the very next line, 182. The name is never used again, so the intermediate binding only adds noise to the local context.",
+      "proposed_change": "Destructure the result directly:\n```lean\n  obtain ⟨hpRadius, hR, hD, hlogs, t, ht, hsamplers⟩ :=\n    exists_preparedFiniteScheduleGeometry m degree Cdetect\n      (EnlargedPreparedCommonSamplerBlock prep (modularInitialBlockCount m (nX + m * M))) nX\n      pDetect aDetect target hm hdegree hB ⟨hpNum, hnum⟩ (Nat.cast_le.mpr hvars)\n      (fun j => Nat.cast_le.mpr (hI j)) (fun j => Nat.cast_le.mpr (hn j)) hblocks\n      hpDetect haDetect hQstride htarget\n```\n(with `hpnum` spelled as in the original).",
+      "benefit": "The reader sees in one step which geometry lemma is invoked and which facts it supplies. There is no unused hypothesis name to keep track of. The second theorem in the file already uses this style when it destructures `preparedFiniteForwardSourceSlots_inputs` directly with `obtain … :=`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedFiniteForwardProductiveSource.lean",
+          "declaration": "exists_preparedFiniteForwardProductiveSource",
+          "excerpt": "  obtain ⟨hdegree, hsourceU, hmodelLog, hsliceModel, hcountModel, hmodels⟩ :=\n    preparedFiniteForwardSourceSlots_inputs depth m A"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedFiniteScheduleLocalProductiveSource.lean",
+          "declaration": "exists_preparedFiniteScheduleGeometry",
+          "excerpt": "    PreparedFiniteScheduleGeometryStatement (G := G) m degree Cdetect B"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 46849,
+    "cache_read_input_tokens": 73438,
+    "output_tokens": 6874,
+    "output_tokens_details": {
+      "thinking_tokens": 3281
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 46849,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3382,
+        "cache_read_input_tokens": 39469,
+        "cache_creation_input_tokens": 11423,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 11423
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5269836,
+  "duration_ms": 64292,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T13:15:54",
+  "unit": "file",
+  "source_sha256": "ff6eb8b2a9db165a960edf22176da67348105d429d0b22a24cb3da76cc92b325",
+  "rubric": "readable-proof-simplification"
+}

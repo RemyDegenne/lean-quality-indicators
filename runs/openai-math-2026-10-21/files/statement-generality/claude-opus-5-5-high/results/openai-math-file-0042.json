@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0042",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all three theorems in the file (lines 1–67). I also read the lemmas their proofs rely on: `infinitePi_map_disjoint_family` (InfiniteBlockIndependence), `indepFun_coordinate_rest` and `indepFun_fairSpin_rest` (LabelDecomposition), `branch_disjoint` and `branchEmbedding` (BroadcastBranchLabels), `BranchVertex` and `branchFactor` (BroadcastLocality), `labelMeasure` (Model) and `iCondIndepFun_latent_infinitePi` (LatentFamilyIndependence). I checked the downstream uses in BroadcastFamilyConditional.lean and NoisyBranchIndependence.lean.\n\nThe main evidence is in NoisyBranchIndependence.lean. `map_root_branch_family_of_sampler` and the last step of its proof state these two results for an arbitrary family of probability measures `ν` and any measurable `f`. That file imports the target only indirectly, through FreeIsingBranchFamily → BroadcastFamilyConditional. But its proof uses only lemmas the target already imports, not the target's own lemmas, so it is an independent check that the general statement is provable from what the target has available.\n\n`iCondIndepFun_branch_product` is a one-line instance of the general `iCondIndepFun_latent_infinitePi` with the specific `branchFactor`. I did not report it, because generalising it would just restate the existing lemma.\n\nDegenerate cases: when d = 0, `Fin 0` is empty and both sides are measures on a singleton or product space, so nothing changes. The probability-measure instance for `labelMeasure d` that the current proof builds by hand would instead come from `[∀ v, IsProbabilityMeasure (ν v)]` with `ν := fun _ => uniform01`.\n\nRemaining uncertainty: I could not compile anything. The claim that `labelMeasure d` unfolds definitionally to `Measure.infinitePi (fun _ => uniform01)` rests on the current proofs, which already elaborate exactly this way (via `exact` and `change`).",
+  "findings": [
+    {
+      "declaration": "map_branch_label_family",
+      "start_line": 13,
+      "end_line": 19,
+      "excerpt": "theorem map_branch_label_family (d : ℕ) :\n    (labelMeasure d).map (fun U c => fun v : BranchVertex c => U v.val) =",
+      "problem": "The statement is fixed to `labelMeasure d`, i.e. i.i.d. `uniform01` labels with real values. Nothing in the proof depends on that choice. It is a direct application of `infinitePi_map_disjoint_family`, which works for any family `ν : ∀ i, Measure (X i)` of probability measures. Because of this, NoisyBranchIndependence.lean has to prove the same branch decomposition again, inline, for an arbitrary `ν`.",
+      "proposed_change": "State it for a general product measure and keep the current statement as a corollary:\n\ntheorem map_branch_family_infinitePi {d : ℕ} {A : Type*} [MeasurableSpace A]\n    (ν : TreeVertex d → Measure A) [∀ v, IsProbabilityMeasure (ν v)] :\n    (Measure.infinitePi ν).map (fun U c => fun v : BranchVertex c => U v.val) =\n      Measure.infinitePi (fun c : Fin d =>\n        Measure.infinitePi (fun v : BranchVertex c => ν v.val)) :=\n  infinitePi_map_disjoint_family ν (fun c : Fin d => {v : TreeVertex d | [c] <+: v.val})\n    (fun _ _ hce => branch_disjoint hce)\n\ntheorem map_branch_label_family (d : ℕ) : ... := map_branch_family_infinitePi (fun _ => uniform01)\n\nThe proof is the current one with `fun _ => uniform01` replaced by `ν`. The step that identifies `(S c).domRestrict U` with `fun v : BranchVertex c => U v.val` is the same in both versions.",
+      "benefit": "One lemma covers both the uniform-label case and the noisy-sampler case. The duplicated step at the end of `map_root_branch_family_of_sampler` can then cite it, and readers can see that the branch decomposition holds for any independent vertex labels, not just uniform ones.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/FreeIsing/Estimates/InfiniteBlockIndependence.lean",
+          "declaration": "infinitePi_map_disjoint_family",
+          "excerpt": "(ν : ∀ i, Measure (X i)) [∀ i, IsProbabilityMeasure (ν i)]\n    (S : κ → Set ι) (hS : Pairwise fun i j => Disjoint (S i) (S j)) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/FreeIsing/Trees/NoisyBranchIndependence.lean",
+          "declaration": "map_root_branch_family_of_sampler",
+          "excerpt": "exact infinitePi_map_disjoint_family ν\n    (fun c : Fin d => {v : TreeVertex d | [c] <+: v.val})\n    (fun _ _ hce => branch_disjoint hce)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/FreeIsing/Model.lean",
+          "declaration": "labelMeasure",
+          "excerpt": "exact Measure.infinitePi (fun _ : TreeVertex d => uniform01)"
+        }
+      ]
+    },
+    {
+      "declaration": "map_root_branch_family",
+      "start_line": 21,
+      "end_line": 47,
+      "excerpt": "(labelMeasure d).map (fun U => (fairSpin (U (root d)),\n      fun c : Fin d => fun v : BranchVertex c => U v.val)) =",
+      "problem": "The theorem is fixed to the uniform label measure and the specific root observable `fairSpin`. Its proof only uses that the coordinates are independent (`indepFun_fairSpin_rest`, itself a special case of `indepFun_coordinate_rest`) and that `fairSpin` is measurable. Hence the general version `map_root_branch_family_of_sampler` (any `ν`, any measurable `f`) has been written out again in NoisyBranchIndependence.lean with an almost identical proof. Because the concrete version comes first, the general one cannot reuse it, and the concrete one can't be read as an instance of the general one. The concrete proof also needs a hand-built `IsProbabilityMeasure (labelMeasure d)` and a separate `hfair` computation, both of which the general form handles automatically.",
+      "proposed_change": "Move the general statement into this file, in place of or alongside the concrete one:\n\ntheorem map_root_branch_family_of_sampler {d : ℕ} {A S : Type*}\n    [MeasurableSpace A] [MeasurableSpace S]\n    (ν : TreeVertex d → Measure A) [∀ v, IsProbabilityMeasure (ν v)]\n    (f : A → S) (hf : Measurable f) :\n    (Measure.infinitePi ν).map (fun U => (f (U (root d)),\n      fun c : Fin d => fun v : BranchVertex c => U v.val)) =\n      ((ν (root d)).map f).prod (Measure.infinitePi (fun c : Fin d =>\n        Measure.infinitePi (fun v : BranchVertex c => ν v.val)))\n\nIts proof is the one in NoisyBranchIndependence.lean: `(indepFun_coordinate_rest ν (root d)).comp hf hF`, then `IndepFun.map_prod_eq_prod_map_map`, then `Measure.infinitePi_map_eval`, and finally the general branch lemma from the previous finding. All of these are available from the target's current imports. Then derive `map_root_branch_family d` as `map_root_branch_family_of_sampler (fun _ => uniform01) fairSpin measurable_fairSpin`.",
+      "benefit": "This removes a duplicated proof of about 25 lines. BroadcastFamilyConditional and NoisyBranchIndependence would then use the same root/branch factorisation lemma. It also shows that the root–branch product structure has nothing to do with uniform labels or `fairSpin`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/FreeIsing/Trees/NoisyBranchIndependence.lean",
+          "declaration": "map_root_branch_family_of_sampler",
+          "excerpt": "have hind := (LabelDecomposition.indepFun_coordinate_rest ν (root d)).comp hf hF"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/FreeIsing/Estimates/LabelDecomposition.lean",
+          "declaration": "indepFun_fairSpin_rest",
+          "excerpt": "exact (indepFun_coordinate_rest (fun _ : TreeVertex d => uniform01) r).comp\n    measurable_fairSpin measurable_id"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/FreeIsing/Estimates/LabelDecomposition.lean",
+          "declaration": "indepFun_coordinate_rest",
+          "excerpt": "(μ : ι → Measure A) [∀ i, IsProbabilityMeasure (μ i)] (r : ι) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/FreeIsing/Conditioning/BroadcastFamilyConditional.lean",
+          "declaration": "iCondIndepFun_factor_branches",
+          "excerpt": "(by fun_prop), map_root_branch_family d⟩"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 31319,
+    "cache_read_input_tokens": 111046,
+    "output_tokens": 6799,
+    "output_tokens_details": {
+      "thinking_tokens": 2008
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31319,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4129,
+        "cache_read_input_tokens": 32504,
+        "cache_creation_input_tokens": 2839,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2839
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4087892,
+  "duration_ms": 64638,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T12:53:43",
+  "unit": "file",
+  "source_sha256": "50a53b80847cc029bbd52543803c1526aafa04b699aa4793add77161583029f3",
+  "rubric": "statement-generality"
+}

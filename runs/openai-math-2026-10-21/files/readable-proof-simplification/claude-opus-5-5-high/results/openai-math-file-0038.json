@@ -1,0 +1,112 @@
+{
+  "id": "openai-math-file-0038",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all 70 lines and checked how normPartitionWeight_low, normPartitionWeight_high, normPartitionWeight_norm and normPartitionWeight_smooth are defined in SmoothNormPartition.lean. In Mathlib I read deriv_comp_mul_left in Mathlib/Analysis/Calculus/Deriv/CompMul.lean and Real.le_norm_self in Mathlib/Analysis/Normed/Group/Real.lean. Other files in this repo already use deriv_comp_mul_left, and at least one of them imports Mathlib.Analysis.Calculus.Deriv.CompMul explicitly. That module may not reach this file through its current imports, so the first finding may need that import added. Two parts are fine as written: the by_cases structure in normPartitionWeight_deriv_zero, and the max D 0 device in normPartitionWeight_radial_deriv_bound. scaledNormPartitionWeight_deriv_bound only uses the identity deriv_comp_mul_left gives, so it never needs differentiability of the weight. In particular it holds for every real c, including c = 0 and c < 0, which also covers the degenerate cases. None of the replacements has been compiled.",
+  "findings": [
+    {
+      "declaration": "scaledNormPartitionWeight_deriv_bound",
+      "start_line": 58,
+      "end_line": 60,
+      "excerpt": "have hd := ((normPartitionWeight_smooth.differentiable (by norm_num)).differentiableAt\n    (x := c*x)).hasDerivAt.scomp x (hasDerivAt_const_mul c)\n  have he : deriv (scaledNormPartitionWeight c) x = c • deriv normPartitionWeight (c*x) := hd.deriv",
+      "problem": "The proof needs the chain-rule identity deriv (f (c * ·)) x = c • deriv f (c * x). To get it, it builds a HasDerivAt fact by hand: it derives differentiability from smoothness, specialises at c*x, composes with hasDerivAt_const_mul using scomp, and then extracts .deriv. Mathlib has a lemma that states this identity directly, with no differentiability hypothesis.",
+      "proposed_change": "Replace lines 58–60 with\n```lean\n  have he : deriv (scaledNormPartitionWeight c) x = c • deriv normPartitionWeight (c*x) :=\n    deriv_comp_mul_left c normPartitionWeight x\n```\nThis relies on scaledNormPartitionWeight c unfolding by definition to fun x => normPartitionWeight (c*x). If Mathlib.Analysis.Calculus.Deriv.CompMul is not already imported transitively, add `import Mathlib.Analysis.Calculus.Deriv.CompMul`.",
+      "benefit": "Three lines of differentiability plumbing become one call to a lemma that says exactly what is needed: the derivative of a rescaled function is the scale factor times the rescaled derivative. The reader sees the chain-rule step by name and doesn't have to work through the scomp / hasDerivAt_const_mul construction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/Deriv/CompMul.lean",
+          "declaration": "deriv_comp_mul_left",
+          "excerpt": "theorem deriv_comp_mul_left : deriv (f <| c * ·) x = c • deriv f (c * x) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/NormPartitionVariation.lean",
+          "declaration": "scaledNormPartitionWeight",
+          "excerpt": "def scaledNormPartitionWeight (c x : ℝ) : ℂ := normPartitionWeight (c*x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/Deriv/CompMul.lean",
+          "declaration": "deriv_comp_mul_left",
+          "excerpt": "the theorems in this file require neither differentiability of `f`,"
+        }
+      ]
+    },
+    {
+      "declaration": "normPartitionWeight_radial_deriv_bound",
+      "start_line": 36,
+      "end_line": 39,
+      "excerpt": "have h := hD x hmem\n    change ‖‖deriv normPartitionWeight x‖*x‖ ≤ D at h\n    rw [Real.norm_of_nonneg (mul_nonneg (_root_.norm_nonneg _) hx.le)] at h\n    exact h.trans (le_max_left _ _)",
+      "problem": "The compactness bound gives ‖r‖ ≤ D for the real number r = ‖deriv f x‖*x. The proof restates h with `change`, proves r is nonnegative, and rewrites ‖r‖ to r before chaining. Only the inequality r ≤ ‖r‖ is needed, and that holds for every real number, so the nonnegativity proof and both rewriting steps are unnecessary.",
+      "proposed_change": "Replace lines 36–39 with\n```lean\n  · exact ((Real.le_norm_self _).trans (hD x hmem)).trans (le_max_left _ _)\n```",
+      "benefit": "The bullet becomes a single, readable chain: the quantity is at most its norm, which is at most D, which is at most max D 0. It no longer needs the restated goal, the explicit nonnegativity proof or the _root_.norm_nonneg disambiguation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Group/Real.lean",
+          "declaration": "Real.le_norm_self",
+          "excerpt": "theorem le_norm_self (r : ℝ) : r ≤ ‖r‖ :="
+        }
+      ]
+    },
+    {
+      "declaration": "normPartitionWeight_deriv_zero",
+      "start_line": 19,
+      "end_line": 22,
+      "excerpt": "have hhi : 2 < x := by\n      rcases not_and_or.mp hx with h | h\n      · exact False.elim (h (le_of_not_gt hlo))\n      · exact lt_of_not_ge h",
+      "problem": "To get 2 < x from x ∉ [1,2] and ¬ x < 1, the proof converts ¬(a ∧ b) into a disjunction, splits into two cases and discharges one by contradiction. A direct contrapositive is simpler: if x ≤ 2, then together with 1 ≤ x it would put x in [1,2].",
+      "proposed_change": "Replace lines 19–22 with\n```lean\n  · have hhi : 2 < x := lt_of_not_ge fun h => hx ⟨le_of_not_gt hlo, h⟩\n```",
+      "benefit": "This removes the not_and_or conversion and the extra case split with its False.elim branch. The single line reads as the mathematical argument itself: assuming x ≤ 2 would give x ∈ [1,2], contradicting hx. It uses the same lemmas the original already uses (le_of_not_gt, lt_of_not_ge).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/NormPartitionVariation.lean",
+          "declaration": "normPartitionWeight_deriv_zero",
+          "excerpt": "lemma normPartitionWeight_deriv_zero {x : ℝ} (hx : x ∉ Icc (1:ℝ) 2) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 9756,
+    "cache_read_input_tokens": 101834,
+    "output_tokens": 6191,
+    "output_tokens_details": {
+      "thinking_tokens": 2218
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 9756,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2892,
+        "cache_read_input_tokens": 18491,
+        "cache_creation_input_tokens": 2359,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2359
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22229079999999998,
+  "duration_ms": 58224,
+  "turns": 9,
+  "attempts": 2,
+  "judged": "2026-10-21T12:37:24",
+  "unit": "file",
+  "source_sha256": "ccc6c7fb60624dd03c7da0082eabfd0113752db6c6d9ee5af4c43dea7b84ae7d",
+  "rubric": "readable-proof-simplification"
+}

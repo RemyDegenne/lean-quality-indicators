@@ -1,0 +1,127 @@
+{
+  "id": "openai-math-file-0075",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked its upstream and downstream sources. These were PolynomialCharts.lean (`exists_pow_mul_integer_of_integral_inverse`), RationalPullbacks.lean (`complexProjectiveSpace`, `projectiveConstants`), the Seshadri `projectiveToSpec` development, and the Mathlib lemma `Localization.awayLift_mk`. I found three real specialisations: the scalar field ℂ in `nonconstant_inv`, the `Field`/`≠ 0` hypothesis in `homogeneousFieldEval`, and the hard-wired ℂ and `Type` in the projective-affine-map family. I did not report `Fintype ι` versus `Finite ι` in `exists_uniform_pow_mul_integer_of_integral_inverse` or the `Fintype σ` assumption in `eval₂_homogeneous_scaling`, because the gain is marginal. I could not run Lean, so none of the proposed statements has been compiled. The third finding would need a general-base `Proj` version of the `projectiveConstants` and `Proj.toSpecZero` lemmas. The Seshadri file appears to have one, but I only inspected part of it.",
+  "findings": [
+    {
+      "declaration": "OAI.NumericalDimensionOne.nonconstant_inv",
+      "start_line": 80,
+      "end_line": 85,
+      "excerpt": "lemma nonconstant_inv {K : Type*} [Field K] (c : ℂ →+* K) {a : K}",
+      "problem": "The statement and proof use nothing specific to ℂ. The only property used is that the source of `c` is a field (division ring), because `b⁻¹` is formed in the source and `map_inv₀` is applied. The result is therefore true for any ring hom from a field into a field, but it is stated only for ℂ.",
+      "proposed_change": "State it as `lemma nonconstant_inv {F K : Type*} [Field F] [Field K] (c : F →+* K) {a : K} (ha : a ∉ Set.range c) : a⁻¹ ∉ Set.range c`. The proof is unchanged. `rintro ⟨b,hb⟩; apply ha; refine ⟨b⁻¹, ?_⟩; rw [map_inv₀, hb, inv_inv]` only needs `map_inv₀` for `F →+* K`, which holds because `F` has `GroupWithZero` structure. The only caller, RelativeAmpleness.lean, passes `curveFieldScalar sC : ℂ →+* _`, so it still elaborates with `F := ℂ`. A division ring is not needed, since the target is already a `Field`. The field hypothesis cannot be dropped, as the ℤ → ℚ counterexample with a = 1/2 shows.",
+      "benefit": "The fact 'the complement of a subfield image is closed under inversion' becomes reusable for other base fields, such as ℚ-curves, and no longer looks ℂ-specific. The generalisation is free: there is no new mathematics and no change to the proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "nonconstant_inv",
+          "excerpt": "rw [map_inv₀, hb, inv_inv]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/RelativeAmpleness.lean",
+          "declaration": "use of nonconstant_inv",
+          "excerpt": "nonconstant_inv (curveFieldScalar sC) ha"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.NumericalDimensionOne.homogeneousFieldEval (and homogeneousFieldEval_mk, homogeneousFieldEval_awayMap, homogeneousFieldPoint_independent)",
+      "start_line": 358,
+      "end_line": 369,
+      "excerpt": "noncomputable def homogeneousFieldEval (h : A →+* K) (f : A) (hf : h f ≠ 0) :",
+      "problem": "`homogeneousFieldEval` requires `K` to be a `Field` and `h f ≠ 0`. The definition only uses `Localization.awayLift`, which asks for `IsUnit (h f)`. The code itself converts via `isUnit_iff_ne_zero.mpr hf`. `homogeneousFieldEval_mk` only uses an inverse `v` with `h f * v = 1`, as the Mathlib lemma `awayLift_mk` is stated. The `Field` assumption therefore forces a parallel development. `projectiveChartRingHom` (the case `f = X i`, `h f = 1`, in a general ring `R`) has to be built and proved separately, together with its `_mk`, `_ratio` and naturality lemmas, instead of being an instance of one construction.",
+      "proposed_change": "Take `K` to be a `CommRing` (rename it `R`) and replace `hf : h f ≠ 0` by `hf : IsUnit (h f)`. Define `homogeneousFieldEval 𝒜 h f hf := (Localization.awayLift h f hf).comp (algebraMap _ (Localization.Away f))`. State `_mk` as `... = h a * (↑(hf.unit⁻¹))^n`, or equivalently for any `v` with `h f * v = 1`, and prove it with `Localization.awayLift_mk h f a v hv n`, using `hf.mul_val_inv`. The `awayMap` compatibility and `homogeneousFieldPoint_independent` carry over with `mul_ne_zero hf hg` replaced by `IsUnit.mul hf hg`. Keep the `Field` form as a corollary via `isUnit_iff_ne_zero`, so `projectiveFieldMap` and its callers are unchanged. `projectiveChartRingHom c x i hi` then becomes the special case with `hf := hi ▸ isUnit_one`.",
+      "benefit": "A single construction covers both the field-valued points (`projectiveFieldMap`) and the ring-valued affine charts (`projectiveChartRingHom`). That removes duplicated lemmas (`projectiveFieldMap_eq_affine` is currently proved with an unfolding `congr`), and it would let the independence-of-chart argument apply to local rings or arbitrary rings whose chosen coordinate is a unit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "homogeneousFieldEval",
+          "excerpt": "(Localization.awayLift h f (isUnit_iff_ne_zero.mpr hf)).comp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/Localization/Away/Basic.lean",
+          "declaration": "Localization.awayLift_mk",
+          "excerpt": "(a : R) (v : A) (hv : f r * v = 1) (j : ℕ) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "projectiveChartRingHom",
+          "excerpt": "(Localization.awayLift (MvPolynomial.eval₂Hom c x) (MvPolynomial.X i)"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.NumericalDimensionOne.projectiveAffineMap (with projectiveVariable_mem, projectiveAffineMap_preimage, projectiveAffineMap_immersion, projectiveAffineMap_naturality)",
+      "start_line": 277,
+      "end_line": 284,
+      "excerpt": "noncomputable def projectiveAffineMap (c : ℂ →+* R) (x : Fin (N+1) → R)",
+      "problem": "The family is specialised to base ring ℂ and to `R : Type`, although none of the arguments uses ℂ. `projectiveChartRingHom`, `projectiveChartRingHom_mk`, `_ratio`, `_constants`, `_surjective` and `_naturality` are already stated for an arbitrary `k` and `σ`. `projectiveVariable_mem` is just `MvPolynomial.isHomogeneous_X ℂ i`. `projectiveAffineMap_preimage` and `projectiveAffineMap_immersion` use only `Proj.awayι` and `IsClosedImmersion.spec_of_surjective`. The ℂ comes only from the target `complexProjectiveSpace N`, which is `Proj (homogeneousSubmodule (Fin (N+1)) ℂ)`. The result is a general statement about the standard affine chart of ℙⁿ over a base `k`, proved only for ℂ.",
+      "proposed_change": "Make `projectiveVariable_mem` take an arbitrary `{k} [CommRing k]`. Define `projectiveAffineMap (c : k →+* R) (x : Fin (N+1) → R) (i) (hi : x i = 1) : Spec (.of R) ⟶ Proj (MvPolynomial.homogeneousSubmodule (Fin (N+1)) k)` by the same formula. Take `k R : Type u` instead of `R : Type`, which matches the universe handling in the Seshadri `projectiveToSpec` development. Prove `_preimage`, `_immersion` and `_naturality` verbatim for general `k`. Then recover the current statements with `complexProjectiveSpace N` as the `k = ℂ` instance. `projectiveAffineMap_over` generalises similarly, with `projectiveConstants N` replaced by the general `projectiveConstants`/`projectiveToSpec` for the base `k`.",
+      "benefit": "Users can apply the chart-to-projective-space construction over any base, such as ℚ, finite fields or ℤ, for example in the arithmetic setting. The ℂ-specific names then become thin specialisations, and the `Type` universe restriction on `R` disappears.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "projectiveChartRingHom",
+          "excerpt": "variable {σ k R : Type*} [CommRing k] [CommRing R]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/RationalPullbacks.lean",
+          "declaration": "complexProjectiveSpace",
+          "excerpt": "Proj (MvPolynomial.homogeneousSubmodule (Fin (N + 1)) ℂ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Projective/PolynomialCharts.lean",
+          "declaration": "projectiveToSpec",
+          "excerpt": "def projectiveToSpec : Proj (PolyGrade R σ) ⟶ Spec (CommRingCat.of R) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 36293,
+    "cache_read_input_tokens": 167570,
+    "output_tokens": 10028,
+    "output_tokens_details": {
+      "thinking_tokens": 4415
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36293,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4153,
+        "cache_read_input_tokens": 38485,
+        "cache_creation_input_tokens": 1832,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1832
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.262233,
+  "duration_ms": 73061,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T13:15:25",
+  "unit": "file",
+  "source_sha256": "bc944b38a7f78265930c550938f48cc2a0be622227f457149e460cfb09aa6713",
+  "rubric": "statement-generality"
+}

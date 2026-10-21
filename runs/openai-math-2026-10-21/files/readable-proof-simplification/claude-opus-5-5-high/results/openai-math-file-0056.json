@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0056",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all four theorems in the file (lines 1–118). I also read the lemmas they call: `exists_remote_scaling_sequence` (RemoteScalingSequence.lean), `exists_remote_scaling_conjugations` and `scaling_vector_limit` (RemoteScalingLimit.lean), `scaling_defect_tendsto_of_cyclic` (ModularDefectDensity.lean), `ModularConjugationData` (including `fixes_vector`) and `rightAction` (ModularRightAction.lean). The proofs of `exists_modular_graph_shift` and `exists_modular_graph_shift_adjoint` are already a single `obtain` plus `exact`, and I found nothing to simplify there.\n\nThere are two findings, both in the first two theorems:\n1. A `funext`/`rw` detour that only flips the sign of a commutator can be folded into one `simpa`.\n2. The derivation of the limit at Ω is copied word for word in two proofs.\n\nI could not run Lean, so neither replacement has been compiled. The `simp only` lemma set in finding 1 is the same one the existing `heq` proof uses. Finding 2 only moves existing proof lines into a helper lemma.",
+  "findings": [
+    {
+      "declaration": "OAI.KadisonKastler.PointedMatrixSites.exists_modular_scaling_all_vectors",
+      "start_line": 50,
+      "end_line": 56,
+      "excerpt": "  have heq : (fun n => (v n*a-a*v n).val Ω) =\n      (fun n => -((a*v n-v n*a).val Ω)) := by\n    funext n\n    simp only [AddSubgroupClass.coe_sub,sub_apply,neg_sub]\n  rw [heq]\n  simpa only [neg_zero] using (hcentral a Ω).neg",
+      "problem": "The proof needs `v n*a - a*v n → 0`. It gets this from `hcentral`, which gives the reversed commutator `a*v n - v n*a → 0`. To do so it states a function equality with `funext`, rewrites the goal with it, and then calls a separate `simpa` to clear `-0`. That is three steps, two of them bookkeeping, for what is just negating a limit.",
+      "proposed_change": "Replace lines 50–56 with a single normalization step using the same lemmas:\n```lean\n  intro a\n  simpa only [AddSubgroupClass.coe_sub, sub_apply, neg_sub, neg_zero] using\n    (hcentral a Ω).neg\n```\n(not compiled). `simp only` rewrites `-((a*v n - v n*a).val Ω)` in the hypothesis to `(v n*a).val Ω - (a*v n).val Ω` and `-0` to `0`. The goal normalizes to the same form, which is exactly what the `heq` proof already does.",
+      "benefit": "The idea, \"swap the commutator by negating the known limit\", now fits in one line that names the source (`(hcentral a Ω).neg`). The reader no longer has to read a function-level equality and a `rw` whose only job is to reverse a subtraction. Nothing becomes more opaque: the `simp only` set is explicit and is the one the original `heq` proof uses.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/ModularDefectDensity.lean",
+          "declaration": "OAI.KadisonKastler.ModularConjugationData.scaling_defect_tendsto_of_cyclic",
+          "excerpt": "Tendsto (fun n => (v n*a-a*v n).val Ω) atTop (𝓝 0))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/RemoteScalingSequence.lean",
+          "declaration": "OAI.KadisonKastler.PointedMatrixSites.exists_remote_scaling_sequence",
+          "excerpt": "Tendsto (fun n => (a*v n-v n*a).val η) atTop (𝓝 0)) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.KadisonKastler.PointedMatrixSites.exists_modular_coisometry_sequence (and exists_modular_scaling_all_vectors, lines 37–45)",
+      "start_line": 73,
+      "end_line": 79,
+      "excerpt": "  have hscale := scaling_vector_limit J S.separating S.cyclic s v hs\n    (fun n => (hv n).1) (fun n => (hv n).2.2.1) (fun n => (hv n).2.2.2)\n  have he (n : ℕ) : d.rightAction (v n) Ω =\n      tomitaPolarConjugation J Ω S.separating S.cyclic (star (v n).val Ω) := by\n    change d.conjugation (star (v n).val (d.conjugation Ω)) = _\n    rw [d.fixes_vector,hd]\n  simpa only [he,Real.sqrt_sq ht.le] using hscale",
+      "problem": "Lines 73–79 repeat lines 37–45 of `exists_modular_scaling_all_vectors` character for character. Both use the same `hscale` call, the same `he` proof (`change` then `rw [d.fixes_vector,hd]`), and the same closing `simpa`. Both upstream lemmas (`exists_remote_scaling_sequence` and `exists_remote_scaling_conjugations`) give the same hypothesis shape `Tendsto s atTop (𝓝 r) ∧ (∀ n, 0 < s n ∧ s n < 1 ∧ v n*star (v n)=1 ∧ StateScales …)`. So this one step, \"a scaling sequence with ratio t² has Ω-defect tending to 0 for the modular right action\", is proved twice.",
+      "proposed_change": "Factor the shared step into one helper placed before both theorems, for example:\n```lean\ninclude S in\nprivate theorem modular_scaling_defect_at_vector (J : H ≃ₗᵢ⋆[ℂ] H)\n    (d : ModularConjugationData M Ω)\n    (hd : d.conjugation = tomitaPolarConjugation J Ω S.separating S.cyclic)\n    {t : ℝ} (ht : 0 ≤ t) (s : ℕ → ℝ) (v : ℕ → Algebra M)\n    (hs : Tendsto s atTop (𝓝 (t^2)))\n    (hv : ∀ n, 0 < s n ∧ s n < 1 ∧ v n*star (v n)=1 ∧ StateScales M Ω (s n) (v n).val) :\n    Tendsto (fun n => (v n).val Ω-(t : ℂ) • d.rightAction (v n) Ω) atTop (𝓝 0) := by\n  have hscale := scaling_vector_limit J S.separating S.cyclic s v hs\n    (fun n => (hv n).1) (fun n => (hv n).2.2.1) (fun n => (hv n).2.2.2)\n  have he (n : ℕ) : d.rightAction (v n) Ω =\n      tomitaPolarConjugation J Ω S.separating S.cyclic (star (v n).val Ω) := by\n    change d.conjugation (star (v n).val (d.conjugation Ω)) = _\n    rw [d.fixes_vector,hd]\n  simpa only [he,Real.sqrt_sq ht] using hscale\n```\nThen lines 37–45 become `have hΩ := S.modular_scaling_defect_at_vector J d hd ht.le s v hs hv`. In `exists_modular_coisometry_sequence`, the `?_` at line 72 is filled by the same term, which removes lines 73–79. (Not compiled.)",
+      "benefit": "Each theorem then shows only what makes it different: which remote sequence it uses, and, in the first theorem, the extension from Ω to all vectors. The shared step (identify the right action at Ω with the Tomita conjugation, then apply `scaling_vector_limit` with √(t²) = t) is stated once under a descriptive name. A reader no longer has to check that two seven-line blocks really are identical.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/RemoteModularCoisometries.lean",
+          "declaration": "OAI.KadisonKastler.PointedMatrixSites.exists_modular_scaling_all_vectors",
+          "excerpt": "  have hΩ : Tendsto (fun n => (v n).val Ω-(t : ℂ) • d.rightAction (v n) Ω)\n      atTop (𝓝 0) := by\n    simpa only [he,Real.sqrt_sq ht.le] using hscale"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/RemoteScalingLimit.lean",
+          "declaration": "OAI.KadisonKastler.PointedMatrixSites.exists_remote_scaling_conjugations",
+          "excerpt": "(∀ n, 0 < s n ∧ s n < 1 ∧ v n*star (v n)=1 ∧ StateScales M Ω (s n) (v n).val) ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/RemoteScalingSequence.lean",
+          "declaration": "OAI.KadisonKastler.PointedMatrixSites.exists_remote_scaling_sequence",
+          "excerpt": "(∀ n, 0 < s n ∧ s n < 1 ∧ v n*star (v n)=1 ∧ StateScales M Ω (s n) (v n).val) ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/RemoteScalingLimit.lean",
+          "declaration": "OAI.KadisonKastler.scaling_vector_limit",
+          "excerpt": "Tendsto (fun n => (v n).val Ω - (Real.sqrt r : ℂ) •\n      tomitaPolarConjugation J Ω hsep hcyc (star (v n).val Ω)) atTop (𝓝 0) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 29165,
+    "cache_read_input_tokens": 105571,
+    "output_tokens": 6645,
+    "output_tokens_details": {
+      "thinking_tokens": 1813
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29165,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4162,
+        "cache_read_input_tokens": 25694,
+        "cache_creation_input_tokens": 7514,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 7514
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3873822,
+  "duration_ms": 62721,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T14:09:55",
+  "unit": "file",
+  "source_sha256": "ebb373198a88dccc8c0dccd1f18c69f893c5f1b8d7a12a77f472def9999ab757",
+  "rubric": "readable-proof-simplification"
+}

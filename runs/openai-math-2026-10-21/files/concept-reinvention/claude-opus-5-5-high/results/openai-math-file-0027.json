@@ -1,0 +1,100 @@
+{
+  "id": "openai-math-file-0027",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 384 lines. Most of the file consists of theorems that thread together existing Mathlib tools: transcendence bases, `IsAlgClosed.lift`, `Algebra.TensorProduct.cancelBaseChange` and `tensorQuotientEquiv`. Those are uses of Mathlib API, not competing versions of Mathlib concepts. The countable-embedding lemmas (`field_embedding_over_countable`, `generic_field_embedding`) are theorem-level results; I found no Mathlib definition or concept that they reimplement, so I did not report them.\n\nThe only new definition is `polynomialQuotientBaseChange`. It and the two \"countable model\" theorems manually rebuild the descent of a finitely presented algebra to a smaller coefficient ring. Mathlib already provides this as `Algebra.Presentation.ModelOfHasCoeffs` and `tensorModelOfHasCoeffsEquiv` in Mathlib/RingTheory/Extension/Presentation/Core.lean. Within this project, only `countable_model_with_elements` is used outside the file (SimultaneousHyperplanes.lean:66 and Descent.lean:189). Both callers just destructure the existential, so the public statement can stay the same. `countable_polynomial_model` has no uses and is essentially the k = 0 case of `countable_model_with_elements`; that is theorem duplication, which the rubric excludes, so it is not a separate finding.\n\nRemaining uncertainty: I could not compile the proposed refactor. Mathlib's API needs `[Algebra S A] [IsScalarTower S K A]` for the subfield S. These would probably have to be supplied locally, e.g. via `((algebraMap K A).comp S.subtype).toAlgebra`. Mathlib's model is also the quotient by the span of chosen lifts of the relations, not `I.comap`, so the existential witness I would change. The existential statement can still be met.",
+  "findings": [
+    {
+      "declaration": "polynomialQuotientBaseChange / polynomialQuotientBaseChange_tmul / countable_polynomial_model / countable_model_with_elements",
+      "start_line": 266,
+      "end_line": 375,
+      "excerpt": "def polynomialQuotientBaseChange {R K n : Type*} [CommRing R] [CommRing K]\n    [Algebra R K] (I : Ideal (MvPolynomial n R)) :\n    (K ⊗[R] (MvPolynomial n R ⧸ I)) ≃ₐ[K]\n      MvPolynomial n K ⧸ I.map (MvPolynomial.map (algebraMap R K)) := by",
+      "problem": "These declarations build their own version of a concept Mathlib already has: the model of a finitely presented K-algebra over a subring that contains the coefficients of its relations, plus the isomorphism `K ⊗[S] model ≃ₐ[K] A`. Concretely, the file:\n- defines a custom base-change equivalence `polynomialQuotientBaseChange` and its `_tmul` simp lemma;\n- collects the relations' coefficients into `d := q.biUnion MvPolynomial.coeffs`;\n- lifts polynomials with `MvPolynomial.mem_range_map_iff_coeffs_subset`;\n- proves `(I.comap (MvPolynomial.map S.subtype)).map (MvPolynomial.map S.subtype) = I` by hand.\nThat ideal-descent proof appears twice, at lines 299–311 and 350–358. Mathlib provides all of this as `Algebra.Presentation.coeffs`, the `HasCoeffs R₀` class, `relationOfHasCoeffs`, `ModelOfHasCoeffs` and `tensorModelOfHasCoeffsEquiv`, with simp lemmas for how elements map across. The local version duplicates that API (an equivalence, its tmul lemma and two copies of the ideal proof) and is incompatible with it: anything Mathlib proves about `ModelOfHasCoeffs`, such as its `FinitePresentation R₀` instance or submersive descent via `SubmersivePresentation.ofHasCoeffs`, cannot be applied to the locally built `MvPolynomial (Fin n) S ⧸ I₀`.",
+      "proposed_change": "Rebuild `countable_model_with_elements` on Mathlib's presentation-core API:\n1. Take `P := Algebra.Presentation.ofFinitePresentation K A` (this needs `FinitePresentation`, which the file already gets from `FiniteType` over a field).\n2. Set `S := Subfield.closure (c ∪ P.coeffs ∪ ⋃ i, (p i).coeffs)`, where `p i` are polynomials with `MvPolynomial.aeval P.val (p i) = v i` (they exist because `aeval P.val` is surjective). Countability follows as now, from `P.finite_coeffs`.\n3. Supply `Algebra S A` and `IsScalarTower S K A` locally, and the instance `P.HasCoeffs S` from `Subfield.subset_closure`.\n4. Use `P.tensorModelOfHasCoeffsEquiv S` as the equivalence `e`.\n5. Take each `v₀ i` to be the class of a lift of `p i` to `MvPolynomial _ S`. `tensorModelOfHasCoeffsEquiv_tmul` (`… (x ⊗ₜ y) = algebraMap R S x * MvPolynomial.aeval P.val y`) plus `MvPolynomial.aeval_map_algebraMap` then gives `e (1 ⊗ₜ v₀ i) = v i`.\nAfter this, `polynomialQuotientBaseChange`, `polynomialQuotientBaseChange_tmul` and both hand-written `hI` proofs can be deleted. The unused `countable_polynomial_model` can be deleted, or stated as the k = 0 case. The existential statement of `countable_model_with_elements` that the two downstream callers use stays the same.",
+      "benefit": "This removes a local definition, its simp lemma and a duplicated ideal-descent proof in favour of Mathlib's maintained API for models of presentations. Readers see the standard concept (`ModelOfHasCoeffs`) instead of a one-off construction, and later steps can use Mathlib's existing facts about the model (finite presentation over S, submersive/étale descent) instead of re-proving them for `MvPolynomial (Fin n) S ⧸ I.comap _`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/Extension/Presentation/Core.lean",
+          "declaration": "Algebra.Presentation.ModelOfHasCoeffs",
+          "excerpt": "abbrev ModelOfHasCoeffs : Type _ :=\n  MvPolynomial ι R₀ ⧸ (Ideal.span <| Set.range (P.relationOfHasCoeffs R₀))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/Extension/Presentation/Core.lean",
+          "declaration": "Algebra.Presentation.tensorModelOfHasCoeffsEquiv",
+          "excerpt": "noncomputable def tensorModelOfHasCoeffsEquiv : R ⊗[R₀] P.ModelOfHasCoeffs R₀ ≃ₐ[R] S :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/Extension/Presentation/Core.lean",
+          "declaration": "Algebra.Presentation.HasCoeffs",
+          "excerpt": "class HasCoeffs (R₀ : Type*) [CommRing R₀] [Algebra R₀ R] [Algebra R₀ S]\n    [IsScalarTower R₀ R S] where\n  coeffs_subset_range : P.coeffs ⊆ Set.range (algebraMap R₀ R)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/Extension/Presentation/Basic.lean",
+          "declaration": "Algebra.Presentation.ofFinitePresentation",
+          "excerpt": "def ofFinitePresentation [FinitePresentation R S] :\n    Presentation R S (Fin (ofFinitePresentationVars R S)) (Fin (ofFinitePresentationRels R S)) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_polynomial_model",
+          "excerpt": "have hI : (I.comap (MvPolynomial.map S.subtype)).map (MvPolynomial.map S.subtype) = I := by\n    apply le_antisymm Ideal.map_comap_le"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_model_with_elements",
+          "excerpt": "let e₀ := (polynomialQuotientBaseChange (K := K) I₀).trans\n    ((Ideal.quotientEquivAlgOfEq K hI).trans e)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/Descent.lean",
+          "declaration": "(caller of countable_model_with_elements)",
+          "excerpt": "obtain ⟨S, hS, hcS, m, I, e, v₀, hv⟩ := countable_model_with_elements v c hc"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 35264,
+    "cache_read_input_tokens": 236487,
+    "output_tokens": 6869,
+    "output_tokens_details": {
+      "thinking_tokens": 1674
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35264,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4069,
+        "cache_read_input_tokens": 38445,
+        "cache_creation_input_tokens": 900,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 900
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4668614,
+  "duration_ms": 65115,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T11:38:38",
+  "unit": "file",
+  "source_sha256": "a385fec0279b02bb275f224192cc0e8ba7a096c4bc1e082be18e433746a5ff7e",
+  "rubric": "concept-reinvention"
+}

@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0075",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Inspected all 512 lines, the imported chart definitions, relevant Mathlib evaluation/localization rules, and downstream coordinate proofs. The findings concern missing computation rules in the simp interface, not mathematical correctness. No Lean execution was performed.",
+  "findings": [
+    {
+      "declaration": "PolynomialCurveChart.germ_X",
+      "excerpt": "lemma PolynomialCurveChart.germ_X {C : Scheme} [IsIntegral C]\n    {sC : C ⟶ Spec (.of ℂ)} {a : C.functionField} (A : PolynomialCurveChart sC a) :\n    A.germ (A.poly Polynomial.X) = a := by",
+      "problem": "The canonical computation from the chart coordinate to its function-field value is not a simp rule. Existing homomorphism rules normalize A.germ ((A.poly Polynomial.X)^d) to A.germ (A.poly Polynomial.X)^d, but do not supply the final normal form a^d. The coordinate construction repeatedly supplies germ_X explicitly for precisely this normalization.",
+      "proposed_change": "Add @[simp] to PolynomialCurveChart.germ_X, retaining its current left-to-right orientation. Keep germ and poly opaque rather than unfolding their implementations during simplification.",
+      "benefit": "Coordinate compatibility calculations can normalize chart-coordinate powers automatically. The rule removes the germ application, introduces no reverse rewrite, and remains valid for a = 0 and exponent zero.",
+      "start_line": 54,
+      "end_line": 56,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/PolynomialCharts.lean",
+          "declaration": "PolynomialCurveChart.germ_poly",
+          "excerpt": "  germ_poly : (C.presheaf.germ U (genericPoint C) generic_mem).hom.comp poly = curveFunctionPolynomial sC a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "exists_projectiveCurveCoordinates",
+          "excerpt": "    · simp [x,y,map_pow,B.germ_X]\n    · refine Fin.lastCases ?_ (fun k => ?_) k\n      · simp only [x,y,Fin.snoc_castSucc,Fin.snoc_last,map_one,map_pow,A.germ_X]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Group/Hom/Defs.lean",
+          "declaration": "map_pow",
+          "excerpt": "@[to_additive (attr := simp mid, grind =) (reorder := a n)]\ntheorem map_pow [Monoid G] [Monoid H] [MonoidHomClass F G H] (f : F) (a : G) :\n    ∀ n : ℕ, f (a ^ n) = f a ^ n"
+        }
+      ]
+    },
+    {
+      "declaration": "projectiveChartRingHom_mk, projectiveChartRingHom_ratio, projectiveChartRingHom_constants",
+      "excerpt": "lemma projectiveChartRingHom_ratio (c : k →+* R) (x : σ → R)\n    (i : σ) (hi : x i = 1) (j : σ) :\n    projectiveChartRingHom c x i hi (projectiveChartRatio (k := k) i j) = x j := by",
+      "problem": "The chart evaluator has computation lemmas for homogeneous fractions, ratios, and constants, but none are registered with simp. Thus its constructor evaluations require explicitly named rewrites even though their intended normal forms are polynomial evaluation, x j, and c a. This recurs in the surjectivity/naturality proofs and downstream coordinate-injectivity proof. The existing MvPolynomial simp rules only handle evaluation after the chart evaluator has been eliminated.",
+      "proposed_change": "Mark projectiveChartRingHom_mk, projectiveChartRingHom_ratio, and projectiveChartRingHom_constants @[simp] in their existing orientations. Preserve the named ratio and constant rules so callers need not unfold those representations to reach the general mk rule.",
+      "benefit": "Provides a consistent computation interface for both raw fractions and named chart coordinates. Each rule eliminates projectiveChartRingHom rather than expanding its localization construction; overlapping representations yield the same scalar/coordinate normal forms. The existing hi assumption suffices, including when R is the zero ring or n = 0.",
+      "start_line": 225,
+      "end_line": 246,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "projectiveChartRingHom",
+          "excerpt": "  (Localization.awayLift (MvPolynomial.eval₂Hom c x) (MvPolynomial.X i)\n    (by simpa only [MvPolynomial.eval₂Hom_X', hi] using (isUnit_one : IsUnit (1 : R)))).comp\n      (algebraMap _ (Localization.Away (MvPolynomial.X i : MvPolynomial σ k)))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "projectiveChartRingHom_naturality",
+          "excerpt": "  obtain ⟨n,p,hp,rfl⟩ := Away.mk_surjective _ (MvPolynomial.isHomogeneous_X k i) a\n  simp only [RingHom.comp_apply, projectiveChartRingHom_mk, MvPolynomial.map_eval₂Hom]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/SurfaceSquare.lean",
+          "declaration": "projectiveAffineMap_coords_injective",
+          "excerpt": "    exact (projectiveChartRingHom_constants c x i hx a).symm.trans\n      (he.trans (projectiveChartRingHom_constants d y i hy a))\n  · funext j\n    have he := DFunLike.congr_fun hr (projectiveChartRatio i j)\n    simpa only [CommRingCat.hom_ofHom,projectiveChartRingHom_ratio] using he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/MvPolynomial/Eval.lean",
+          "declaration": "MvPolynomial.eval₂Hom_C and MvPolynomial.eval₂Hom_X'",
+          "excerpt": "@[simp]\ntheorem eval₂Hom_C (f : R →+* S₁) (g : σ → S₁) (r : R) : eval₂Hom f g (C r) = f r :=\n  eval₂_C f g r\n\n@[simp]\ntheorem eval₂Hom_X' (f : R →+* S₁) (g : σ → S₁) (i : σ) : eval₂Hom f g (X i) = g i :=\n  eval₂_X f g i"
+        }
+      ]
+    }
+  ],
+  "backend": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "cost_usd": null,
+  "duration_ms": 120094,
+  "turns": 1,
+  "attempts": 1,
+  "usage": {
+    "input_tokens": 402904,
+    "cached_input_tokens": 342016,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 4268,
+    "reasoning_output_tokens": 1253
+  },
+  "prompt_sha256": "9217a14d9454cda7c037adfd55911c0e1be020dd8aa88e3e33d8b47e087b9092",
+  "judged": "2026-10-21T11:29:12+00:00",
+  "unit": "file",
+  "source_sha256": "bc944b38a7f78265930c550938f48cc2a0be622227f457149e460cfb09aa6713",
+  "rubric": "simp-interface"
+}

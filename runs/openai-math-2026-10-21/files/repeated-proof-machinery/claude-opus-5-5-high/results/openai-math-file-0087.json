@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0087",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of ShellMixtures.lean (lines 1–69), its dependency Shells.lean (dyadicShell, dyadicShell_compact, shell_energy_integrable, shellEnergy), and searched the repository for the lemmas and patterns it uses. Inside the target file, the only repetition is the integrability term `integrable_finsetSum s (fun i _ => (shell_energy_integrable (τ i) N).const_mul _)`, which appears twice in one proof. That is too small to report on its own. The real repetition is in FalconerCompletion/Measures/AssemblyPositiveEnergy.lean. Its lines 27–52 are verbatim copies of this file's norm_weighted_sum_sq_le and charFun_weighted_sum under new names. Its assemblyPositiveEnergy_weighted_sum (lines 54–74) repeats the whole mixture-energy argument of shellEnergy_weighted_sum_le / shellEnergy_weighted_sum_uniform; the only difference is the integration set, `Icc (R/2) (2*R)` instead of `dyadicShell N`. I checked that nothing under OAI/MeasureTheory/Falconer imports FalconerCompletion, so AssemblyPositiveEnergy can import ShellMixtures without creating a cycle. The Assembly file already opens `PlanarFalconer`. Remaining uncertainty: I could not compile anything. Whether `shellEnergy` unfolds by `exact` or needs an explicit `unfold shellEnergy` is unverified. The finite-measure instance for the mixture `∑ c i • τ i` is already used implicitly at line 50 of the target, so the shared lemma needs it in the same way.",
+  "findings": [
+    {
+      "declaration": "shellEnergy_weighted_sum_le (with norm_weighted_sum_sq_le, charFun_weighted_sum)",
+      "start_line": 37,
+      "end_line": 53,
+      "excerpt": "  calc\n    _ ≤ ∫ r in dyadicShell N, ∑ i ∈ s, (c i : ℝ)*‖charFun (τ i) r‖^2 :=\n      integral_mono (shell_energy_integrable _ N) hi hpoint",
+      "problem": "The mixture-energy argument is written out twice, once in this file and once in AssemblyPositiveEnergy.lean. It goes: rewrite the mixture's charFun as a weighted sum, apply the pointwise weighted Cauchy–Schwarz bound, use integral_mono, then integral_finsetSum and integral_const_mul. The two copies differ only in the integration set, `dyadicShell N` here and `Icc (R/2) (2*R)` there. The Assembly file also copies this file's two helper lemmas verbatim under new names (assembly_norm_weighted_sum_sq_le, assembly_charFun_weighted_sum). The result is three duplicated proofs that have to be maintained separately.",
+      "proposed_change": "Add a set-generic lemma to ShellMixtures.lean, stated for any compact set:\n\ntheorem setIntegral_charFun_weighted_sum_le {ι : Type*} (s : Finset ι) (c : ι → ℝ≥0)\n    (τ : ι → Measure ℝ) [∀ i, IsFiniteMeasure (τ i)] {S : Set ℝ} (hS : IsCompact S)\n    (hc : (∑ i ∈ s, (c i : ℝ)) ≤ 1) :\n    ∫ r in S, ‖charFun (∑ i ∈ s, c i • τ i) r‖^2 ≤\n      ∑ i ∈ s, (c i : ℝ) * ∫ r in S, ‖charFun (τ i) r‖^2\n\nProof sketch: use the current body of shellEnergy_weighted_sum_le, replacing `shell_energy_integrable μ N` with `(continuous_charFun.norm.pow 2).continuousOn.integrableOn_compact hS`. That is the same term Shells.lean and assemblyEnergy_integrable already use. Then:\n\n• Here: `theorem shellEnergy_weighted_sum_le ... := by unfold shellEnergy; exact setIntegral_charFun_weighted_sum_le s c τ (dyadicShell_compact N) hc`.\n\n• In AssemblyPositiveEnergy.lean, add `import OAI.MeasureTheory.Falconer.Shells.ShellMixtures` (no cycle, because nothing under Falconer imports FalconerCompletion). Delete assembly_norm_weighted_sum_sq_le and assembly_charFun_weighted_sum, and use charFun_weighted_sum in assemblyPositiveEnergy_sum. Start assemblyPositiveEnergy_weighted_sum with `(setIntegral_charFun_weighted_sum_le s c τ isCompact_Icc hc).trans` and keep only its last three calc steps (the `∑ c i * C ≤ C` bound). Alternatively, also generalise shellEnergy_weighted_sum_uniform to the set form and call it on both sides.",
+      "benefit": "There would be one statement of the convex-mixture energy bound for squared characteristic functions, parametrised by the integration set, instead of three copies. The Assembly proof drops about 45 lines of copied reasoning. A reader sees that both energies obey the same lemma. Any fix to the argument, such as an API rename of integral_finsetSum or integral_smul_nnreal_measure, is made in one place. The degenerate cases are unchanged: an empty `s` and zero weights are covered by the same proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/FalconerCompletion/Measures/AssemblyPositiveEnergy.lean",
+          "declaration": "assemblyPositiveEnergy_weighted_sum",
+          "excerpt": "  calc\n    _ ≤ ∫ r in Icc (R/2) (2*R), ∑ i∈s, (c i:ℝ)*‖charFun (τ i) r‖^2 :=\n      integral_mono (assemblyEnergy_integrable _ R) hi hpoint"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/FalconerCompletion/Measures/AssemblyPositiveEnergy.lean",
+          "declaration": "assembly_norm_weighted_sum_sq_le",
+          "excerpt": "  have hs := Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul s\n    (f := fun i => (c i : ℝ)) (g := fun i => (c i : ℝ)*‖z i‖^2)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/FalconerCompletion/Measures/AssemblyPositiveEnergy.lean",
+          "declaration": "assembly_charFun_weighted_sum",
+          "excerpt": "    exact integral_smul_nnreal_measure _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/FalconerCompletion/Measures/AssemblyPositiveEnergy.lean",
+          "declaration": "assemblyEnergy_integrable",
+          "excerpt": "  (continuous_charFun.norm.pow 2).continuousOn.integrableOn_compact isCompact_Icc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Shells/Shells.lean",
+          "declaration": "shell_energy_integrable",
+          "excerpt": "  exact ((continuous_charFun.norm.pow 2).continuousOn).integrableOn_compact\n    (dyadicShell_compact N)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 22576,
+    "cache_read_input_tokens": 142987,
+    "output_tokens": 6572,
+    "output_tokens_details": {
+      "thinking_tokens": 2431
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22576,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3608,
+        "cache_read_input_tokens": 26206,
+        "cache_creation_input_tokens": 299,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 299
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3407094,
+  "duration_ms": 56986,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T16:37:44",
+  "unit": "file",
+  "source_sha256": "058cb3e0948bfa719fe48593a5c15d4f8abafe93d0a553132fd6a478b4076745",
+  "rubric": "repeated-proof-machinery"
+}

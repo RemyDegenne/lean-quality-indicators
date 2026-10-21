@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0076",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–81). The file defines no simp lemmas and sets no attributes. Its proofs use `simpa only [...]` with explicit lemma lists (lines 33, 52, 54–55, 65) and two ad-hoc local facts in `same_direction_zero` (lines 71 and 73). I checked the definitions of `choiLam`, `wedgeCoordinates` and `operatorNorm` in Model.lean, the existing `choiLam_*` API in FormBasic.lean, and `operatorNorm_eq_norm` (a `rfl` lemma, not simp) in OperatorEntries.lean. I also checked the downstream users of `norm_identity` and `same_direction_zero` in TangentIdentity.lean and TangentExpansion.lean, plus a similar rewrite pattern in TangentRigidity.lean.\n\n**Finding.** The facts `wedgeCoordinates v v = 0` and `choiLam 0 y = 0` have no named lemmas anywhere in the HyperbolicCones sources. `same_direction_zero` proves both inline by unfolding the definitions. This is the one supported, actionable gap.\n\n**Considered and not reported:**\n- **`operatorNorm_eq_norm`.** Every use site rewrites this lemma by hand (lines 65 and 74 here, TangentIdentity lines 36/44, TangentRigidity line 44). Making it `@[simp]` is plausible. However, the lemma lives in OperatorEntries.lean, not the target. Also, `operatorNorm` seems to be a deliberate paper-facing name, and turning it into `‖·‖` automatically during simp would change the normal form for the main statements. That counts as a design choice without clear evidence of a practical improvement.\n- **The `simpa only` calls in `norm_identity`.** These are tightly scoped and use the existing lemmas `kernelProjection_one_sub_outer`, `outer_mul_mul_outer`, `phi_rank_one` and `norm_outer_unit`. I saw no competing rules, wrong orientation or loop risk.\n\n**Uncertainty.** I could not run Lean, so the shortened proof I suggest has not been compiled.",
+  "findings": [
+    {
+      "declaration": "OAI.Paper256.NormalizedPencil.same_direction_zero",
+      "start_line": 67,
+      "end_line": 76,
+      "excerpt": "have hz : wedgeCoordinates v v = 0 := by ext i; simp [wedgeCoordinates]\n  rw [hz] at h\n  have hc : choiLam (0 : Fin 3 → ℝ) y = 0 := by simp [choiLam]",
+      "problem": "Two simple degenerate-case normal forms are proved inline by unfolding definitions, then applied with `rw` one step at a time:\n- `wedgeCoordinates v v` has normal form `0`. Unfolded, each coordinate is `v 0 * v i.succ - v 0 * v i.succ`.\n- `choiLam 0 y` has normal form `0`. Every term in the definition contains a factor `z i`.\n\nNeither fact exists as a named lemma. FormBasic.lean has `choiLam_smul_left`/`choiLam_smul_right` but nothing for a zero argument, and Model.lean/TangentBasic.lean have no `wedgeCoordinates_self`. As a result, any simp call that meets `choiLam (wedgeCoordinates v v) y` can only simplify it by unfolding both definitions (`simp [wedgeCoordinates]`, `simp [choiLam]`). Unfolding `choiLam` exposes its whole polynomial, which is the kind of unwanted expansion the rubric warns about.",
+      "proposed_change": "Add unconditional, terminating simp lemmas next to the definitions (e.g. in FormBasic.lean / TangentBasic.lean, or at the top of this file):\n\n```lean\n@[simp] theorem wedgeCoordinates_self (v : Vec 4) : wedgeCoordinates v v = 0 := by\n  ext i; simp [wedgeCoordinates]\n\n@[simp] theorem choiLam_zero_left {R : Type*} [CommRing R] (y : Fin 3 → R) :\n    choiLam 0 y = 0 := by simp [choiLam]\n```\n\nA matching `choiLam_zero_right` is optional. Then replace lines 70–74 with a short simp step, e.g. `have h := P.norm_identity v v hv hv y; simp only [wedgeCoordinates_self, choiLam_zero_left, operatorNorm_eq_norm] at h`, and finish as now with `norm_eq_zero.mp (sq_eq_zero_iff.mp h.symm)`. Both right-hand sides are the literal `0`, which is the canonical normal form, so the lemmas cannot loop and need no hypotheses.",
+      "benefit": "The degenerate case `u = v` of the norm identity becomes one simp step instead of two hand-built local facts that unfold the definitions. Later simp calls that meet these expressions get a canonical result without having to unfold `choiLam`, and the `choiLam` lemma API gains its missing zero case alongside the existing scaling lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/Model.lean",
+          "declaration": "OAI.Paper256.wedgeCoordinates",
+          "excerpt": "fun i => v 0 * u i.succ - u 0 * v i.succ"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/Model.lean",
+          "declaration": "OAI.Paper256.choiLam",
+          "excerpt": "(∑ i, z i ^ 2 * y i ^ 2) -\n    2 * (z 0 * y 0 * z 1 * y 1 + z 0 * y 0 * z 2 * y 2 +"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/FormBasic.lean",
+          "declaration": "OAI.Paper256.choiLam_smul_left",
+          "excerpt": "choiLam (s • z) y = s ^ 2 * choiLam z y := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/NormIdentity.lean",
+          "declaration": "OAI.Paper256.NormalizedPencil.same_direction_zero",
+          "excerpt": "rw [hc, operatorNorm_eq_norm] at h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 33724,
+    "cache_read_input_tokens": 146677,
+    "output_tokens": 6049,
+    "output_tokens_details": {
+      "thinking_tokens": 2401
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33724,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3819,
+        "cache_read_input_tokens": 34888,
+        "cache_creation_input_tokens": 2849,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2849
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.42016339999999996,
+  "duration_ms": 71937,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T15:42:57",
+  "unit": "file",
+  "source_sha256": "532b880e9a6e272d9df3b1cbab5dda3e85c51bfac7f6f6f403be5f900d1ea62c",
+  "rubric": "simp-interface"
+}

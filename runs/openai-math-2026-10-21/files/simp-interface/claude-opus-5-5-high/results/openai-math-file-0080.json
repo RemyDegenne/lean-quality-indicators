@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0080",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all 85 lines of HemisphereChart.lean against the simp-interface rubric. I also read `unitRadial` and its lemmas (Simplicial/UnitRadial.lean), Mathlib's adjoint API for linear isometries in Analysis/InnerProductSpace/Adjoint.lean, and every downstream use of this file's declarations under lean/OAI.\n\nThere is one justified finding. `adjoint_isometry_apply` is an unconditional cancellation rule with no Mathlib counterpart at the pointwise level. Mathlib only has the operator-level `LinearIsometry.adjoint_comp_self` simp lemma. A ℂ-only copy of the lemma already exists in KadisonKastler and is used inside a simp set. Several Borsuk proofs pass this lemma to `simp only` or `rw` by name.\n\nI considered and rejected these other candidates:\n- `adjoint_normal`, `frame_decomposition`, `hemisphereChart_norm` and the two inverse lemmas. Each depends on hypotheses (`he`, `hes`, `hw`, `hu`, `hwu`) that simp cannot discharge in general, so they suit rewriting by name rather than global simp.\n- The definitions `hemisphereChart` and `hemisphereInverse`. They are used by unfolding, as explicit opaque definitions should be. I found no evidence that an equation lemma tagged simp would help.\n- Downstream, `hemisphereChart_zero` and `hemisphereInverse_self` sit in ChartRegular.lean, outside this file. Several callers (RaySet, SphereParity, SphereBlock) still write `rw [hemisphereInverse, adjoint_normal c e he, smul_zero]` by hand. This is mostly an API-placement issue, and the needed hypotheses make it a weak simp case, so I did not report it.\n\nI found no rewrite cycles or competing orientations. Without running Lean, I cannot confirm that plain `simp` with Mathlib's default set fails to close `e.toContinuousLinearMap.adjoint (e v) = v`. However, I found no pointwise Mathlib simp lemma that would do it.",
+  "findings": [
+    {
+      "declaration": "adjoint_isometry_apply",
+      "start_line": 17,
+      "end_line": 19,
+      "excerpt": "lemma adjoint_isometry_apply (v : W) : e.toContinuousLinearMap.adjoint (e v) = v := by",
+      "problem": "Simplifying `e.toContinuousLinearMap.adjoint (e v)` to `v` is the canonical, unconditional cancellation for a linear isometry. Mathlib only gives it in operator form, as the simp lemma `LinearIsometry.adjoint_comp_self` (`f.toContinuousLinearMap.adjoint ∘L f.toContinuousLinearMap = 1`). The default simp set therefore has no pointwise rule for the applied term `adjoint (e v)`. This file states the pointwise rule without `@[simp]`, specialised to ℝ, and in the `BorsukNine` namespace instead of the `LinearIsometry` namespace. As a result, every caller must name it: `hemisphereInverse_chart` lists it in a long `simp only` set, and `NegativeQuadratic` uses `rw [adjoint_isometry_apply, ...]`. A separate copy with the same name and statement over ℂ exists in `KadisonKastler`, and it is also passed to `simp only` by name.",
+      "proposed_change": "Mark the lemma `@[simp]`. Better still, state it once over a general `RCLike 𝕜` in the `LinearIsometry` namespace, for example `@[simp] theorem LinearIsometry.adjoint_toContinuousLinearMap_apply (f : E →ₗᵢ[𝕜] E') (x : E) : f.toContinuousLinearMap.adjoint (f x) = x := congr($(f.adjoint_comp_self) x)`, and replace both local copies with it. Keep the LHS with `⇑f x`, not `⇑f.toContinuousLinearMap x`, because `LinearIsometry.coe_toContinuousLinearMap` (a simp lemma) already rewrites the latter into the former, so the LHS is in simp normal form. The RHS `x` is strictly smaller than the LHS, so the rule cannot loop.",
+      "benefit": "Terms like `adjoint (e (adjoint u))`, which appear after unfolding `hemisphereInverse` and in `frame_decomposition`, and the term in `hemisphereInverse_chart`, would simplify with plain `simp` instead of an enumerated lemma list. The ℝ and ℂ duplicates would merge into one discoverable lemma, and downstream proofs such as `NegativeQuadratic` line 146 and `FiniteCoefficientFactorization` line 47 would no longer need to name a project-local lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/InnerProductSpace/Adjoint.lean",
+          "declaration": "LinearIsometry.adjoint_comp_self",
+          "excerpt": "f.toContinuousLinearMap.adjoint ∘L f.toContinuousLinearMap = 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/IsometryComplement.lean",
+          "declaration": "OAI.KadisonKastler.adjoint_isometry_apply",
+          "excerpt": "theorem adjoint_isometry_apply (V : E →ₗᵢ[ℂ] K) (x : E) :\n    V.toContinuousLinearMap.adjoint (V x) = x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/FiniteCoefficientFactorization.lean",
+          "declaration": "finiteOperatorCoefficient_lift",
+          "excerpt": "adjoint_isometry_apply, J.inner_map_map]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/Projectors/NegativeQuadratic.lean",
+          "declaration": "blockOff_eigen (lemma ending at line 147)",
+          "excerpt": "rw [adjoint_isometry_apply,← matrixCompress_action] at hb"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/SphereGeometry/HemisphereChart.lean",
+          "declaration": "hemisphereInverse_chart",
+          "excerpt": "adjoint_normal w e he,adjoint_isometry_apply,zero_add,smul_smul,mul_inv_cancel₀ hn,one_smul]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 25413,
+    "cache_read_input_tokens": 90266,
+    "output_tokens": 5155,
+    "output_tokens_details": {
+      "thinking_tokens": 1409
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25413,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2588,
+        "cache_read_input_tokens": 27505,
+        "cache_creation_input_tokens": 1921,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1921
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3244972,
+  "duration_ms": 44477,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T16:00:14",
+  "unit": "file",
+  "source_sha256": "0df4b120b3f4abb3cb225117d383cfc1d6b31727e4cee5b97a8d099e84ca9668",
+  "rubric": "simp-interface"
+}

@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0095",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 93 lines of the target file. I compared it with its direct and indirect imports: HistogramBoxEnergy.lean, HistogramOverlapEnergy.lean (imported through HistogramBoxEnergy), HistogramWindowOverlap.lean and HistogramScaleDecay.lean. I also looked at other files using the same pattern (GeometricWindowKernel.lean, HistogramWindowBounds.lean) and grepped the JointDickman tree for `hmesh`, `histogramWindow_overlap` and `sum_selected_cells_le_overlap`.\n\nThere are two problems, one inside the other.\n1. `sum_selected_cells_le_overlap` is a line-for-line copy of the private `local_mass_sum` in HistogramOverlapEnergy.lean. It sits next to a second copy of the code that sets up its hypotheses: deriving the per-cell overlap bound `hK` from `histogramWindow_overlap` together with `hmesh`.\n2. The `hmesh` bound `(B:ℝ)*channelMesh (channelFineCount m B) ≤ 1` is re-proved as a local `have` in about ten proofs.\n\nI did not count these as findings:\n- The local energy bound `hlocal` and the closing `calc` in `manuscript_geometric_residue_energy`. They follow the same pattern as `manuscript_geometric_box_energy`, but they bound different energy functionals (`manuscriptResidueEnergy` vs `manuscriptAmplitudeEnergy`) and amount to a few lines of monotonicity steps. They are too short and routine to justify a shared lemma.\n\nI could not compile anything, so the proposed proofs are sketches. One point needs checking: after the window-sum lemma is introduced, `hB0` in the target appears to be used only by `hK`, so it would become unused and could be deleted.",
+  "findings": [
+    {
+      "declaration": "sum_selected_cells_le_overlap (with the hmesh/hK/hsum block of manuscript_geometric_residue_energy, lines 56–65)",
+      "start_line": 12,
+      "end_line": 28,
+      "excerpt": "theorem sum_selected_cells_le_overlap {ι κ : Type*} [Fintype ι] [DecidableEq ι]\n    (S : Finset κ) (J : κ → Finset ι) (w : ι → ℝ) (hw : ∀ i, 0 ≤ w i)\n    (K : ℝ) (hK : ∀ i, ((S.filter (fun k => i ∈ J k)).card : ℝ) ≤ K) :\n    (∑ k ∈ S, ∑ i ∈ J k, w i) ≤ K*∑ i, w i := by",
+      "problem": "Two things are duplicated here.\n\nFirst, the double-counting lemma is a verbatim copy of `local_mass_sum`, which is private in HistogramOverlapEnergy.lean. Both have the same statement and the same 13-line proof: rewrite with `sum_filter`, swap with `sum_comm`, convert the filtered count with `sum_const`/`nsmul_eq_mul`, then apply `mul_le_mul_of_nonneg_right`.\n\nSecond, the code that specialises it to geometric windows is also copied. Lines 56–65 of the target build `hmesh`, derive `hK : … ≤ (1+U-L)/t+1` from `histogramWindow_overlap` with `div_le_div_of_nonneg_right`, then call the lemma. Lines 61–70 of `manuscript_histogram_overlap_energy` do the same steps under the same hypotheses (`hm`, `1 ≤ B`, `ht`, `hLU`, `S`, a nonnegative `w`). The only difference is the weight `w`.\n\nThe target can already see HistogramOverlapEnergy through its import of HistogramBoxEnergy. The copy exists only because the original was private.",
+      "proposed_change": "Put one public lemma in HistogramOverlapEnergy.lean. That file can host it, since it already imports HistogramWindowBounds, which imports HistogramWindowOverlap.\n\n```lean\ntheorem sum_histogramWindowCells_le_overlap {m B : ℕ} (hm : 0 < m) (hB : 1 ≤ B)\n    {t L U : ℝ} (ht : 0 < t) (hLU : L ≤ U) (S : Finset ℤ)\n    (w : Fin (channelFineCount m B) → ℝ) (hw : ∀ i, 0 ≤ w i) :\n    (∑ k ∈ S, ∑ i ∈ histogramWindowCells (channelFineCount m B)\n        (((k : ℝ)*t+L)/B) (((k : ℝ)*t+U)/B), w i) ≤ ((1+U-L)/t+1)*∑ i, w i\n```\n\nProof sketch: make `local_mass_sum` public, keeping its body (renaming it is optional). Then:\n- obtain `hBpos`/`hB0`;\n- prove `hmesh` as is done now;\n- prove `hK i` with `(histogramWindow_overlap hB0 ht hLU (channelFineCount_pos hm hBpos) S i).trans (add_le_add (div_le_div_of_nonneg_right (by linarith) ht.le) le_rfl)`;\n- finish with `local_mass_sum S _ w hw _ hK`.\n\nRewritten uses:\n- In the target, delete lines 12–28 and replace lines 57–65 with `have hsum := sum_histogramWindowCells_le_overlap hm hB ht hLU S w hw`. Here `J k` unfolds definitionally to the window expression, so `hsum` should still fit the `calc`.\n- In `manuscript_histogram_overlap_energy`, replace lines 61–70 with the same `have hsum := sum_histogramWindowCells_le_overlap hm hB ht hLU S w hw`. The final `exact hsum.trans (…)` stays unchanged.",
+      "benefit": "There would be one copy of the bounded-overlap double-counting argument instead of two identical copies plus two identical specialisations. Both energy theorems would then show only what they actually differ in: the weight `w` and the global bound `hglobal`. A future change to `histogramWindow_overlap`'s constant, or to the window shape, would be made in one place. It also removes a public declaration whose only reason to exist is that the original was private.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Counting/HistogramOverlapEnergy.lean",
+          "declaration": "local_mass_sum",
+          "excerpt": "private theorem local_mass_sum {ι κ : Type*} [Fintype ι] [DecidableEq ι]\n    (S : Finset κ) (J : κ → Finset ι) (w : ι → ℝ) (hw : ∀ i, 0 ≤ w i)\n    (K : ℝ) (hK : ∀ i, ((S.filter (fun k => i ∈ J k)).card : ℝ) ≤ K) :\n    (∑ k ∈ S, ∑ i ∈ J k, w i) ≤ K*∑ i, w i := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Counting/HistogramOverlapEnergy.lean",
+          "declaration": "manuscript_histogram_overlap_energy",
+          "excerpt": "  have hK : ∀ i, ((S.filter (fun k => i ∈ J k)).card : ℝ) ≤ (1+U-L)/t+1 := by\n    intro i\n    refine (histogramWindow_overlap hB0 ht hLU (channelFineCount_pos hm hBpos) S i).trans ?_\n    exact add_le_add (div_le_div_of_nonneg_right (by linarith) ht.le) (le_refl _)\n  have hsum := local_mass_sum S J w hw _ hK"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Counting/ResidueBoxEnergy.lean",
+          "declaration": "manuscript_geometric_residue_energy",
+          "excerpt": "  have hK : ∀ i, ((S.filter (fun k => i ∈ J k)).card : ℝ) ≤ (1+U-L)/t+1 := by\n    intro i\n    refine (histogramWindow_overlap hB0 ht hLU (channelFineCount_pos hm hBpos) S i).trans ?_\n    exact add_le_add (div_le_div_of_nonneg_right (by linarith) ht.le) le_rfl\n  have hsum := sum_selected_cells_le_overlap S J w hw _ hK"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Counting/HistogramWindowOverlap.lean",
+          "declaration": "histogramWindow_overlap",
+          "excerpt": "theorem histogramWindow_overlap {B t L U : ℝ} (hB : 0 < B) (ht : 0 < t)\n    (hLU : L ≤ U) {n : ℕ} (hn : 0 < n) (S : Finset ℤ) (i : Fin n) :"
+        }
+      ]
+    },
+    {
+      "declaration": "manuscript_geometric_residue_energy (hmesh block; same block in geometric_histogram_window_length and others)",
+      "start_line": 57,
+      "end_line": 60,
+      "excerpt": "  have hmesh : (B : ℝ)*channelMesh (channelFineCount m B) ≤ 1 := by\n    refine (channelMesh_scale_bound hm hBpos).trans ?_\n    simpa using Real.rpow_le_rpow_of_exponent_le\n      (show (1 : ℝ) ≤ B by exact_mod_cast hB) (by norm_num : (-(1/10 : ℝ)) ≤ 0)",
+      "problem": "The fact that one mesh cell has scaled width at most 1, `(B:ℝ)*channelMesh (channelFineCount m B) ≤ 1`, is re-derived as a local `have` in about ten proofs. Each one chains `channelMesh_scale_bound` with an `rpow` monotonicity argument for `B^(-1/10) ≤ 1` when `1 ≤ B`.\n\nIn the target it appears at lines 57–60. The same block appears in the imported `geometric_histogram_window_length` (HistogramBoxEnergy.lean, lines 21–24), in `manuscript_histogram_overlap_energy`, twice in HistogramWindowBounds.lean, twice in GeometricWindowKernel.lean, and in CoarseCoefficientVariation, LogMassBilinear and GeometricFeatureBounds. `channelMesh_scale_bound` states only the `B^(-1/10)` form, so every caller has to redo the `rpow` step.",
+      "proposed_change": "Add the following next to `channelMesh_scale_bound` in HistogramScaleDecay.lean:\n\n```lean\ntheorem channelMesh_mul_le_one {m B : ℕ} (hm : 0 < m) (hB : 1 ≤ B) :\n    (B : ℝ)*channelMesh (channelFineCount m B) ≤ 1 :=\n  (channelMesh_scale_bound hm (by omega)).trans (by\n    simpa using Real.rpow_le_rpow_of_exponent_le\n      (show (1 : ℝ) ≤ B by exact_mod_cast hB) (by norm_num : (-(1/10 : ℝ)) ≤ 0))\n```\n\nWith Finding 1 applied, the only use in the target moves into `sum_histogramWindowCells_le_overlap`, where it becomes `have hmesh := channelMesh_mul_le_one hm hB`. Without Finding 1, target lines 57–60 become that same one line. In `geometric_histogram_window_length`, lines 21–24 likewise become `have hmesh := channelMesh_mul_le_one hm hB`; its hypotheses `hm : 0 < m` and `hB : 1 ≤ B` match exactly. The `nlinarith` and `linarith` calls that use `hmesh` are left unchanged.",
+      "benefit": "This gives a named, searchable statement of the key geometric fact (cell width ≤ 1 at scale B) that window-length and window-overlap bounds depend on. It removes a four-line `rpow` detour from each caller. If the exponent in `channelMesh_scale_bound` ever changes, each `-(1/10)` copy would otherwise have to be edited by hand, and this lemma avoids that.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Counting/HistogramBoxEnergy.lean",
+          "declaration": "geometric_histogram_window_length",
+          "excerpt": "  have hmesh : (B : ℝ)*channelMesh (channelFineCount m B) ≤ 1 := by\n    refine (channelMesh_scale_bound hm hBpos).trans ?_\n    simpa using Real.rpow_le_rpow_of_exponent_le\n      (show (1 : ℝ) ≤ B by exact_mod_cast hB) (by norm_num : (-(1/10 : ℝ)) ≤ 0)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Counting/HistogramWindowBounds.lean",
+          "declaration": "endpoint_histogram_window_length",
+          "excerpt": "  have hp : (B : ℝ)^(-(1/10 : ℝ)) ≤ 1 := by\n    simpa using (Real.rpow_le_rpow_of_exponent_le hB1 (by norm_num : (-(1/10 : ℝ)) ≤ 0))\n  have hmesh : (B : ℝ)*channelMesh (channelFineCount m B) ≤ 1 :=\n    (channelMesh_scale_bound (B := B) hm hBpos).trans hp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Probability/HistogramScaleDecay.lean",
+          "declaration": "channelMesh_scale_bound",
+          "excerpt": "theorem channelMesh_scale_bound {m B : ℕ} (hm : 0 < m) (hB : 0 < B) :\n    (B : ℝ)*channelMesh (channelFineCount m B) ≤ (B : ℝ)^(-(1/10 : ℝ)) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 25016,
+    "cache_read_input_tokens": 134813,
+    "output_tokens": 9356,
+    "output_tokens_details": {
+      "thinking_tokens": 2665
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25016,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5906,
+        "cache_read_input_tokens": 26479,
+        "cache_creation_input_tokens": 2466,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2466
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4142746,
+  "duration_ms": 78391,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T17:16:16",
+  "unit": "file",
+  "source_sha256": "18b59b4b916e1ccacccdf7d7a1b16378cc0842baf223f8998d9e9d8f2cfbd25d",
+  "rubric": "repeated-proof-machinery"
+}

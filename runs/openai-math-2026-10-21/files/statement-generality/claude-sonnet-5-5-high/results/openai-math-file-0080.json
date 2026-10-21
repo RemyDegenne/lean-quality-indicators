@@ -1,0 +1,96 @@
+{
+  "id": "openai-math-file-0080",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, the UnitRadial definitions it relies on, the Mathlib lemmas about LinearIsometry.adjoint_comp_self and contDiffAt_norm/ContDiff.norm, and the downstream uses of these lemmas (ChartRegular, RegularBase, SphereBlock and others). I considered several other generalisations and rejected them: the ContDiff ⊤ statement is already as strong as Mathlib's ContDiff.norm allows here; dropping `‖u‖ = 1` from hemisphereChart_inverse would only add a normalising factor; the frame_decomposition hypotheses are genuinely needed in this form. The two reported findings are modest. I did not compile anything, so the proof sketches are untested.",
+  "findings": [
+    {
+      "declaration": "adjoint_isometry_apply",
+      "start_line": 17,
+      "end_line": 19,
+      "excerpt": "lemma adjoint_isometry_apply (v : W) : e.toContinuousLinearMap.adjoint (e v) = v := by",
+      "problem": "The statement is specialised to real inner product spaces, but its proof uses only `LinearIsometry.adjoint_comp_self`, which Mathlib states over any `RCLike 𝕜`. The repository already has the same lemma over ℂ in `OAI.KadisonKastler.adjoint_isometry_apply`, with a character-for-character identical proof. There are therefore two copies of one fact, one per scalar field.",
+      "proposed_change": "State it once over a general scalar field, for example `lemma adjoint_isometry_apply {𝕜 E W : Type*} [RCLike 𝕜] [NormedAddCommGroup E] [InnerProductSpace 𝕜 E] [CompleteSpace E] [NormedAddCommGroup W] [InnerProductSpace 𝕜 W] [CompleteSpace W] (e : W →ₗᵢ[𝕜] E) (v : W) : e.toContinuousLinearMap.adjoint (e v) = v`. Keep the same proof, `congrArg (fun T : W →L[𝕜] W => T v) e.adjoint_comp_self`. Place it in a shared file and use it both here and in the Kadison–Kastler files. The ℝ and ℂ call sites would both be instances. The `adjoint_normal` lemma at line 21 similarly depends on ℝ only through the notation `⟪ , ⟫` and could be stated over `𝕜`.",
+      "benefit": "This removes the duplicated lemma and the clash between two same-named lemmas in `OAI.BorsukNine` and `OAI.KadisonKastler`. Future real or complex isometry arguments can share one lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/IsometryComplement.lean",
+          "declaration": "OAI.KadisonKastler.adjoint_isometry_apply",
+          "excerpt": "exact congrArg (fun T : E →L[ℂ] E => T x) V.adjoint_comp_self"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/InnerProductSpace/Adjoint.lean",
+          "declaration": "LinearIsometry.adjoint_comp_self",
+          "excerpt": "f.toContinuousLinearMap.adjoint ∘L f.toContinuousLinearMap = 1"
+        }
+      ]
+    },
+    {
+      "declaration": "hemisphere_add_ne_zero (and hemisphereChart_contDiff, hemisphereChart_norm, hemisphereChart_inner_pos)",
+      "start_line": 36,
+      "end_line": 41,
+      "excerpt": "lemma hemisphere_add_ne_zero (hw : ‖w‖ = 1) (he : ∀ v, ⟪w,e v⟫ = 0) (v : W) :",
+      "problem": "These four lemmas assume the unit-norm hypothesis `‖w‖ = 1`. Their proofs use it only to conclude `⟪w,w⟫ ≠ 0`. In `hemisphere_add_ne_zero`, applying `⟪w,·⟫` to `w + e v = 0` gives `⟪w,w⟫ = 0`, so `w = 0`. For `hemisphereChart_inner_pos` the inner product equals `‖w + e v‖⁻¹ * ‖w‖^2`, which is positive whenever `w ≠ 0`. The conclusions `hemisphereChart_contDiff` and `hemisphereChart_norm` need only non-vanishing of `w + e v`. So the condition can be weakened to `w ≠ 0`. Unit norm is genuinely needed only for the inverse and frame lemmas, because `hemisphereInverse` normalises by `⟪w,u⟫⁻¹`.",
+      "proposed_change": "Change the hypothesis of these four lemmas from `(hw : ‖w‖ = 1)` to `(hw : w ≠ 0)`. For `hemisphere_add_ne_zero`, from `h : ⟪w,w + e v⟫ = ⟪w,0⟫`, rewrite with `inner_add_right`, `he`, `inner_zero_right` and `add_zero` to get `⟪w,w⟫ = 0`, then apply `inner_self_eq_zero` (or `real_inner_self_eq_zero`) to contradict `hw`. For `hemisphereChart_inner_pos`, the simp set would end at `0 < ‖w + e v‖⁻¹ * ‖w‖ ^ 2`. Close it with `mul_pos (inv_pos.mpr (norm_pos_iff.mpr (hemisphere_add_ne_zero ..))) (pow_pos (norm_pos_iff.mpr hw) 2)`. The existing call sites, which have `‖w‖ = 1`, could pass `norm_ne_zero_iff.mp (by rw [hw]; exact one_ne_zero)` or a small corollary.",
+      "benefit": "Callers can use the chart for any nonzero base point `w` with `w ⟂ range e`. Examples are centres that are not yet normalised, or the case where `‖w‖ = 1` has not been established. The lemma statements then record the actual hypothesis, which is non-vanishing of `w`, rather than a stronger normalisation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/SphereGeometry/HemisphereChart.lean",
+          "declaration": "hemisphere_add_ne_zero",
+          "excerpt": "simp [inner_add_right,he,hw] at h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/Simplicial/UnitRadial.lean",
+          "declaration": "unitRadial_norm",
+          "excerpt": "{x : E} (hx : x ≠ 0) : ‖unitRadial x‖ = 1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 25855,
+    "cache_read_input_tokens": 83138,
+    "output_tokens": 6390,
+    "output_tokens_details": {
+      "thinking_tokens": 2218
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25855,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3610,
+        "cache_read_input_tokens": 28889,
+        "cache_creation_input_tokens": 990,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 990
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1756538,
+  "duration_ms": 48185,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T13:33:23",
+  "unit": "file",
+  "source_sha256": "0df4b120b3f4abb3cb225117d383cfc1d6b31727e4cee5b97a8d099e84ca9668",
+  "rubric": "statement-generality"
+}

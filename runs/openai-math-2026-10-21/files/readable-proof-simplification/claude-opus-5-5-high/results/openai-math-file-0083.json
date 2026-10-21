@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0083",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all five declarations in the file (lines 1–127). I also read the definitions and lemmas they rely on: `directional`, `directional_mul` and `directional_gradient` (Sampling/Directional.lean); `adjointCoordinate`, `tensorAdjoint` and the parallel `adjointCoordinate_pairing` (JetEstimates/PolyC1.lean); `gibbs`, `gibbsDensity` and `partition` (Model.lean); `integral_gibbs_vector`; `probability_gibbs_of_partition`; `standard_density`; the Gaussian proposal lemmas; Mathlib's `integral_mul_fderiv_eq_neg_fderiv_mul_of_integrable`; and `HasFDerivAt.neg` with its `@[to_fun]` variant.\n\n**Proofs with no finding:**\n- `standardGaussian_eq_gibbs` is a short normalisation argument with no obvious simpler route.\n- `compact_gaussian_ibp` is already a two-line specialisation.\n- In `tensorAdjoint_compact_pairing`, the integrability facts and the two `integral_finsetSum` rewrites are forced by the statement's `∫ ∑` form. The only lemma that would shorten the continuity proof in `h1` is `adjointCoordinate_continuous`, but it needs `PolyC1`, which is stronger than the hypotheses here.\n\n**Remaining uncertainty:**\n- Neither replacement has been compiled.\n- Finding 1 assumes the `.exp` composite elaborates to the beta-reduced `fun x => Real.exp (-H x)`, which is what `rw` needs.\n- Finding 2 assumes `simp only` reaches the same normal form that `change` followed by `simp_rw` currently reaches. Both readability gains are modest.",
+  "findings": [
+    {
+      "declaration": "compact_gibbs_ibp",
+      "start_line": 22,
+      "end_line": 28,
+      "excerpt": "    change (fderiv ℝ (fun z => Real.exp ((-H) z)) z) v=_\n    rw [((hH.differentiable (by norm_num) z).hasFDerivAt.neg.exp).fderiv]",
+      "problem": "The auxiliary fact `hD` first uses `change` to restate the goal with the pointwise-negation form `(-H) z`. This is only needed because `HasFDerivAt.neg` produces a derivative statement about the function `-H` rather than `fun x => -H x`. Because of this detour, the proof also has to simplify away `Pi.neg_apply` afterwards. Mathlib's `@[to_fun]` attribute on `HasFDerivAt.neg` generates `HasFDerivAt.fun_neg`, which is stated for `fun x => -f x` and so matches the goal's lambda form directly.",
+      "proposed_change": "Untested replacement:\n```lean\n  have hD (z : Point d) : fderiv ℝ (fun z => Real.exp (-H z)) z v=\n      -(Real.exp (-H z)*inner ℝ (gradient H z) v) := by\n    rw [((hH.differentiable (by norm_num) z).hasFDerivAt.fun_neg.exp).fderiv]\n    simp only [smul_apply,neg_apply,smul_eq_mul,←toDual_gradient,\n      InnerProductSpace.toDual_apply_apply]\n    ring\n```\nThis drops the `change` line and the `Pi.neg_apply` simp lemma.",
+      "benefit": "The reader no longer has to decode a restated goal written with the unusual `(-H) z` form. They see the chain rule step for `exp ∘ (−H)` applied directly to the function in the statement, followed by the gradient/inner-product rewrite. The mathematical content is unchanged and there is one fewer bookkeeping step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/FDeriv/Add.lean",
+          "declaration": "HasFDerivAt.neg",
+          "excerpt": "@[to_fun (attr := fun_prop)]\ntheorem HasFDerivAt.neg (h : HasFDerivAt f f' x) : HasFDerivAt (-f) (-f') x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/SpecialFunctions/ExpDeriv.lean",
+          "declaration": "HasFDerivAt.exp",
+          "excerpt": "theorem HasFDerivAt.exp (hf : HasFDerivAt f f' x) :\n    HasFDerivAt (fun x => Real.exp (f x)) (Real.exp (f x) • f') x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/SpecialFunctions/Trigonometric/DerivHyp.lean",
+          "declaration": "Real.hasStrictDerivAt_sinh / Complex lemmas (usage of generated fun_neg)",
+          "excerpt": "(hasStrictDerivAt_id x).fun_neg.cexp"
+        }
+      ]
+    },
+    {
+      "declaration": "adjointCoordinate_compact_pairing",
+      "start_line": 59,
+      "end_line": 61,
+      "excerpt": "  simp only [←directional_gradient,mul_assoc] at h3 ⊢ hh\n  change (∫z,(-directional v f z+directional v H z*f z)*g z ∂gibbs H)=_\n  simp_rw [add_mul,neg_mul,mul_assoc]",
+      "problem": "The `⊢` location in the first `simp only` does nothing. At that point the goal is `∫ adjointCoordinate H v f z * g z = ∫ f z * directional v g z`: it has no `inner (gradient …) v` term and no triple product, so the rewrite only affects `h3` and `hh`. The next line then uses `change` to write out the whole unfolded goal by hand just to unfold `adjointCoordinate`, and `simp_rw` follows separately. The sibling lemma `tensorAdjoint_compact_pairing` in this same file unfolds its lambda-bodied definition by name (`simp only [tensorAdjoint,Finset.sum_mul]`), and the same approach works for `adjointCoordinate`.",
+      "proposed_change": "Untested replacement for lines 59–61:\n```lean\n  simp only [←directional_gradient,mul_assoc] at h3 hh\n  simp only [adjointCoordinate,add_mul,neg_mul,mul_assoc]\n```\nKeep the remaining lines unchanged: `rw [integral_add (f:=fun z => -(directional v f z*g z)) h1.neg h3,integral_neg]` and `linarith`.",
+      "benefit": "The proof no longer contains a long restated integrand that the reader has to check against the definition. The unfolding is now named explicitly as `adjointCoordinate`, and the step reads as a single 'unfold and distribute' normalisation. This matches how `tensorAdjoint` is handled a few lines later, so the two parallel proofs read the same way. Removing the no-op `⊢` also makes it clear that only the hypotheses are being rewritten.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/JetEstimates/PolyC1.lean",
+          "declaration": "adjointCoordinate",
+          "excerpt": "  fun x => -directional v f x+directional v H x*f x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/Analysis/CompactGibbsIbp.lean",
+          "declaration": "tensorAdjoint_compact_pairing",
+          "excerpt": "  simp only [tensorAdjoint,Finset.sum_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/Sampling/Directional.lean",
+          "declaration": "directional_gradient",
+          "excerpt": "    directional v H x=inner ℝ (gradient H x) v := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 32,
+    "cache_creation_input_tokens": 57623,
+    "cache_read_input_tokens": 564631,
+    "output_tokens": 13133,
+    "output_tokens_details": {
+      "thinking_tokens": 6907
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 57623,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3484,
+        "cache_read_input_tokens": 60410,
+        "cache_creation_input_tokens": 1256,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1256
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.8366981999999998,
+  "duration_ms": 145165,
+  "turns": 18,
+  "attempts": 1,
+  "judged": "2026-10-21T16:18:44",
+  "unit": "file",
+  "source_sha256": "85b92b27e9819d5a72cb485284384cebb502791efac30fc197c6e0d3d9c4b1d4",
+  "rubric": "readable-proof-simplification"
+}

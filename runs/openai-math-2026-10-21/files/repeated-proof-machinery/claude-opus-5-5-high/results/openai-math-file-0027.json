@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0027",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 384 lines of the target file and compared every pair of proofs. I also read the signatures of `hyperplaneFamilyAlgebra` and `hyperplane_specialization_equiv` (HyperplaneFamilies.lean) and `etale_hyperplane_geometricGeneric` (EtaleCoordinates.lean), and searched the OAI tree for uses of the four public theorems involved.\n\nI found two substantial duplications.\n1. `countable_etale_hyperplane_integral_equation` and `countable_hyperplane_integral_equation` share their whole specialization argument. Only one term differs: the geometric-genericity lemma used inside `hgeo`.\n2. `countable_polynomial_model` repeats the countable-subfield and ideal-descent argument that `countable_model_with_elements` contains in a more general form. It is the `k = 0` special case of that theorem, and nothing in the OAI tree uses it.\n\nOther pairs I looked at but did not report:\n- `field_embedding_over_countable` and `generic_field_embedding`: the second is already a short corollary of the first.\n- `hyperplane_injective_descent`: stands alone.\n- `polynomialQuotientBaseChange` and its `_tmul` lemma: already shared.\n\nRemaining uncertainty: I could not compile anything. The helper statement in finding 1 needs `let := hyperplaneFamilyAlgebra (K := R) v` in its hypothesis, as the existing lemmas already do. Whether `[IsDomain A]` is needed there depends on `integral_specialization_of_countable_model` and `hyperplane_specialization_equiv`, and neither of those requires it.",
+  "findings": [
+    {
+      "declaration": "countable_etale_hyperplane_integral_equation / countable_hyperplane_integral_equation",
+      "start_line": 93,
+      "end_line": 207,
+      "excerpt": "  obtain ⟨f, hfinj, hdom⟩ := integral_specialization_of_countable_model\n    (R := R) (F := F) (K := K) (P := P) (B := MvPolynomial σ A)\n    hcard (IsFractionRing.injective P F) hgeo",
+      "problem": "These two theorems have the same proof except for one line. Lines 93–122 and 178–207 match line for line. Each proof:\n- builds `P` and `F` and the `hyperplaneFamilyAlgebra` instance;\n- turns a `(F ⊗[P] B) ⊗[F] E` domain fact into `E ⊗[F] (F ⊗[P] B)` using `TensorProduct.comm`;\n- proves `Countable` for `MvPolynomial σ R`, `AddMonoidAlgebra`, and `P`;\n- derives `#F ≤ #K` from `Cardinal.mk_fractionRing`;\n- calls `integral_specialization_of_countable_model`;\n- builds the two `IsScalarTower` instances from `f₁ := f.comp Polynomial.CAlgHom`;\n- transports the domain property along `hyperplane_specialization_equiv`.\n\nThe only difference is the term on line 99 (`etale_hyperplane_geometricGeneric ...`) versus line 184 (`hyperplaneFamily_geometricGeneric_of_injective ...`). About 28 lines of non-trivial instance plumbing and cardinality reasoning therefore have to be kept in sync by hand.",
+      "proposed_change": "Add a shared lemma before both theorems (needs the same `open Polynomial` and local instance attributes):\n\n```lean\ntheorem countable_hyperplane_integral_equation_of_geometric {R K A σ : Type}\n    [Field R] [Countable R] [Field K] [Algebra R K] [IsAlgClosed K] [Uncountable K]\n    [CommRing A] [Algebra R A] [Fintype σ] (v : σ → A)\n    (hgeo : let := hyperplaneFamilyAlgebra (K := R) v\n      ∀ (E : Type) [Field E] [Algebra (FractionRing (MvPolynomial σ R)[X]) E],\n        IsDomain ((FractionRing (MvPolynomial σ R)[X] ⊗[(MvPolynomial σ R)[X]]\n          MvPolynomial σ A) ⊗[FractionRing (MvPolynomial σ R)[X]] E)) :\n    ∃ f : (MvPolynomial σ R)[X] →ₐ[R] K, Function.Injective f ∧\n      IsDomain ((K ⊗[R] A) ⧸ Ideal.span {f X ⊗ₜ[R] (1 : A) -\n        ∑ k, f (C (MvPolynomial.X k)) ⊗ₜ[R] v k})\n```\n\nIts proof is lines 93–122 with line 99 replaced by `hgeo E`.\n\nThe two theorems then become:\n- `countable_etale_hyperplane_integral_equation`: `countable_hyperplane_integral_equation_of_geometric v fun E _ _ => etale_hyperplane_geometricGeneric (E := E) v i j a b hab hvi hvj`\n- `countable_hyperplane_integral_equation`: `countable_hyperplane_integral_equation_of_geometric v fun E _ _ => hyperplaneFamily_geometricGeneric_of_injective (E := E) v hdom i j hji hi hij`\n\nBoth call sites already have every hypothesis the helper needs: `Countable R`, `IsAlgClosed K`, `Uncountable K`, `Fintype σ`.",
+      "benefit": "The reduction from geometric genericity to a countable specialization with a domain hyperplane section is stated once, under its real hypotheses. It needs no `CharZero`, `IsAlgClosed R`, or étale assumptions, which makes clear what that step depends on. Each theorem shrinks to a one-line application. Later changes to the Polynomial/MvPolynomial instance setup or to `hyperplane_specialization_equiv` only need to be made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_etale_hyperplane_integral_equation",
+          "excerpt": "    let : IsDomain ((F ⊗[P] MvPolynomial σ A) ⊗[F] E) :=\n      etale_hyperplane_geometricGeneric (E := E) v i j a b hab hvi hvj"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_hyperplane_integral_equation",
+          "excerpt": "    let : IsDomain ((F ⊗[P] MvPolynomial σ A) ⊗[F] E) :=\n      hyperplaneFamily_geometricGeneric_of_injective (E := E) v hdom i j hji hi hij"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_hyperplane_integral_equation",
+          "excerpt": "  let f₁ : MvPolynomial σ R →ₐ[R] K := f.comp Polynomial.CAlgHom\n  let : Algebra (MvPolynomial σ R) K := f₁.toRingHom.toAlgebra"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/HyperplaneFamilies.lean",
+          "declaration": "hyperplane_specialization_equiv",
+          "excerpt": "    [Algebra (MvPolynomial σ R) K] [IsScalarTower R (MvPolynomial σ R) K]"
+        }
+      ]
+    },
+    {
+      "declaration": "countable_polynomial_model / countable_model_with_elements",
+      "start_line": 288,
+      "end_line": 358,
+      "excerpt": "  let S := Subfield.closure (c ∪ (d : Set K))\n  have hcount : Countable S := Cardinal.mk_le_aleph0_iff.mp",
+      "problem": "Both proofs repeat the same descent to a countable field of definition:\n- get a finite presentation `⟨n, I, e, q, hq⟩` of `A`;\n- collect the coefficients of the generators into a finset `d`;\n- set `S := Subfield.closure (c ∪ d)`;\n- prove `Countable S` with `Subfield.cardinalMk_closure_le_max`;\n- prove `(I.comap (map S.subtype)).map (map S.subtype) = I` via `Ideal.span_le`, `mem_range_map_iff_coeffs_subset`, and `Ideal.mem_map_of_mem`;\n- compose `polynomialQuotientBaseChange` with `Ideal.quotientEquivAlgOfEq` and `e`.\n\nCompare lines 289–313 with lines 330–358 and 364–365. `countable_model_with_elements` proves a strictly stronger statement, since it also descends the elements `v`. `countable_polynomial_model` is exactly its `k = 0` case, and the OAI tree has no other uses of it.",
+      "proposed_change": "Move `countable_polynomial_model` below `countable_model_with_elements` and replace its 26-line proof with:\n\n```lean\n  obtain ⟨S, hS, hcS, n, I, e, -, -⟩ :=\n    countable_model_with_elements (Fin.elim0 : Fin 0 → A) c hc\n  exact ⟨S, hS, hcS, n, I, ⟨e⟩⟩\n```\n\nThe hypotheses are the same: `[Field K] [CommRing A] [Algebra K A] [Algebra.FiniteType K A]`, `c`, `hc`. Since nothing uses it, deleting `countable_polynomial_model` is another option.\n\nIf you would rather keep two independent proofs, the alternative is a helper `exists_countable_subfield_ideal_descent`. Given finite `d : Finset K` covering the coefficients of `q`, with `Ideal.span q = I`, it would return `Countable (Subfield.closure (c ∪ d))` together with the `hI` equality. Both theorems would then call it.",
+      "benefit": "The countable-field-of-definition argument, including the ideal-descent proof, would exist only once. That removes about 25 lines of parallel reasoning that can drift apart. It also makes the logical relationship explicit to readers: the plain model is the special case of the model with chosen elements in which no elements are chosen.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_polynomial_model",
+          "excerpt": "  have hI : (I.comap (MvPolynomial.map S.subtype)).map (MvPolynomial.map S.subtype) = I := by\n    apply le_antisymm Ideal.map_comap_le\n    rw [← hq]\n    apply Ideal.span_le.mpr"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_model_with_elements",
+          "excerpt": "  have hI : I₀.map (MvPolynomial.map S.subtype) = I := by\n    apply le_antisymm Ideal.map_comap_le\n    rw [← hq]\n    apply Ideal.span_le.mpr"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_model_with_elements",
+          "excerpt": "        (e : (K ⊗[S] (MvPolynomial (Fin n) S ⧸ I)) ≃ₐ[K] A)\n        (v₀ : Fin k → MvPolynomial (Fin n) S ⧸ I),"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 29957,
+    "cache_read_input_tokens": 51067,
+    "output_tokens": 6353,
+    "output_tokens_details": {
+      "thinking_tokens": 1265
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29957,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5222,
+        "cache_read_input_tokens": 27054,
+        "cache_creation_input_tokens": 6832,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6832
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3769534,
+  "duration_ms": 51968,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T11:43:03",
+  "unit": "file",
+  "source_sha256": "a385fec0279b02bb275f224192cc0e8ba7a096c4bc1e082be18e433746a5ff7e",
+  "rubric": "repeated-proof-machinery"
+}

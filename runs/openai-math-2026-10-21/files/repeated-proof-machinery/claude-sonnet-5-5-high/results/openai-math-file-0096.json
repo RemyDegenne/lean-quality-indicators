@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0096",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and then searched the PartitionPilot tree for repeats of its proofs. The strongest repeat is the separation-based `GroundDefinableFunction` construction in `definable_structuralAssignmentActionGraph`. The same skeleton appears in `definable_relationProduct` (GroundDefinableRelationProducts.lean), `definable_rowAssignmentOrder` (GroundDefinableRowAssignmentOrders.lean) and `definable_rowAssignmentActionGraph` (GroundRawRowAssignmentActions.lean). Grep also shows `definable_separation` used with `GroundSetTerm.app` in about nine files. I confirmed the supporting definitions: `GroundDefinableFunction`, `GroundSetTerm`, `definable_separation`, `mem_structuralAssignmentActionGraph`, `mem_rowAssignmentOrder` and `mem_relationProduct`. There is no existing helper for this pattern. `GroundDefinableFunction.congr` is close but needs an unconditional equality, while the proofs here only have the equality under `members`. I did not find a good second candidate for this rubric in the target. The `Fin.cases` membership chains and the `structuralForcingCarrierFormula` proof are routine, or have no matching proof elsewhere that I checked. The proposed helper and rewrites are my own sketch and have not been compiled. In particular, the defeq between `bound.eval env` and the `ZFSet.prod` form, and between `fun j => (v j).eval env` and `env`, would need checking. The wording of the finding reflects this.",
+  "findings": [
+    {
+      "declaration": "definable_structuralAssignmentActionGraph",
+      "start_line": 103,
+      "end_line": 140,
+      "excerpt": "    change ZFSet.sep (fun z => Realize M.sets\n      (M.structuralAssignmentEntryFormula pairing unions powers separation collection) (extend z _)) (bound.eval env) = _\n    rw [args]\n    apply ZFSet.ext",
+      "problem": "This is a hand-written copy of the standard construction of a definable function by separation, and the same skeleton is spelled out again in sibling proofs. Each copy builds `GroundSetTerm.app (definable_separation ..)`, proves an `args` lemma by a `funext` plus a long `Fin.cases` chain, `change`s to `ZFSet.sep`, runs `ZFSet.ext`/`mem_sep` against the target set, and finally repackages the result into a `GroundDefinableFunction`. Here the repackaging is lines 137–140, which re-implements `closed`/`correct` transport from `equal`. The only mathematical content is the pointwise statement that, for `w` in the bound, the entry formula holds iff `w` lies in the target set, plus the fact that the target set is contained in the bound. The ext/mem_sep bookkeeping around it is repeated in definable_relationProduct, definable_rowAssignmentOrder and definable_rowAssignmentActionGraph, and each copy has its own `args` proof.",
+      "proposed_change": "Add one helper next to `GroundSetTerm.app`, in GroundDefinableRelationProducts.lean before `definable_relationProduct`. It would sit in the `TransitiveGround` section, where `separation` is a variable. Statement (not compiled):\n\n```lean\nnoncomputable def definable_separatedFunction (separation : SeparationSchema M.sets)\n    {n m : Nat} {f : (Fin n → ZFSet.{u}) → ZFSet.{u}}\n    (bound : GroundSetTerm M n) (params : Fin m → GroundSetTerm M n) (φ : SetFormula (m + 1))\n    (spec : ∀ env, (∀ i, env i ∈ M.sets) → ∀ w, w ∈ M.sets →\n      (w ∈ f env ↔ w ∈ bound.eval env ∧\n        Realize M.sets φ (extend w (fun j => (params j).eval env)))) :\n    GroundDefinableFunction M f\n```\n\nProof sketch:\n1. Set `term := GroundSetTerm.app (M.definable_separation separation φ) (Fin.cons bound params)`.\n2. Rewrite with `Fin.cons_succ` to reduce `(Fin.cons bound params j.succ).eval env` to `(params j).eval env`.\n3. Prove `term.eval env = f env` once, by `ZFSet.ext`, `ZFSet.mem_sep`, and `spec` applied at `w` with `w ∈ M.sets` obtained from `M.transitive (bound.ground env members) hw`. For `w ∈ f env` one first needs `w ∈ M.sets`. Use `M.transitive (hf : f env ∈ M.sets)`, where `hf` comes from `spec`/`term.ground` or from an extra `closed` hypothesis if needed.\n4. Return `{ formula := term.definition.formula, closed := ..., correct := ... }` exactly as lines 137–140 do now.\n\nRewritten target use:\n```lean\nM.definable_separatedFunction separation bound v\n  (M.structuralAssignmentEntryFormula pairing unions powers separation collection)\n  (fun env members w hwM =>\n    (M.mem_structuralAssignmentActionGraph _ _ _ _ _ _ _ _ _ w).trans ... )\n```\nHere `params := v` is `GroundSetTerm.var M`, so `fun j => (v j).eval env` is defeq to `env` and the 9-level `args` chain disappears. The `(Fin.cases (M.transitive ..) members)` argument is then the only remaining use of `realize_structuralAssignmentEntryFormula`. Lines 114–140 are replaced by that call.\n\nRewritten second use, `definable_rowAssignmentOrder`:\n```lean\nM.definable_separatedFunction separation bound ![v 1, v 2, v 3]\n  (BoundedFormula.rowAssignmentOrderFormula 0 1 2 3).toFormula\n  (fun env members w hwM => by\n    rw [mem_rowAssignmentOrder]\n    exact and_congr_right fun hw => by\n      rw [BoundedFormula.realize_toFormula M _ _ (Fin.cases hwM ..),\n        BoundedFormula.truth_rowAssignmentOrderFormula]; rfl)\n```\nThe other callers, `definable_relationProduct` and `definable_rowAssignmentActionGraph`, are rewritten the same way. They keep only their formula-specific `truth_*` rewrite.",
+      "benefit": "The pointwise correctness argument is stated once. Each definable-function construction then shrinks to the bound term, the parameter terms, and the one entry-specific equivalence. The separate `args` lemmas and manual `closed`/`correct` repackaging disappear. A reader sees the actual mathematics (membership in the bound plus the entry formula) instead of about 25 lines of ext/`Fin.cases` plumbing. Future fixes to the separation-term evaluation lemma are made in one place instead of in at least four proofs, and probably the roughly nine files that use `definable_separation` with `GroundSetTerm.app`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Definability/GroundDefinableRelationProducts.lean",
+          "declaration": "PartitionPilot.Forcing.TransitiveGround.definable_relationProduct",
+          "excerpt": "    change ZFSet.sep (fun w => Realize M.sets formula (extend w _)) _ = _\n    rw [args]\n    apply ZFSet.ext\n    intro w\n    rw [ZFSet.mem_sep, relationProduct, ZFSet.mem_sep]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Geometry/GroundDefinableRowAssignmentOrders.lean",
+          "declaration": "PartitionPilot.Forcing.TransitiveGround.definable_rowAssignmentOrder",
+          "excerpt": "    change ZFSet.sep (fun w => Realize M.sets formula (extend w _)) (bound.eval env) = _\n    rw [args]\n    apply ZFSet.ext\n    intro w\n    rw [ZFSet.mem_sep, mem_rowAssignmentOrder]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Forcing/GroundRawRowAssignmentActions.lean",
+          "declaration": "PartitionPilot.Forcing.TransitiveGround.definable_rowAssignmentActionGraph",
+          "excerpt": "    change ZFSet.sep (fun w => Realize M.sets formula (extend w _)) (bound.eval env) = _\n    rw [args]\n    apply ZFSet.ext\n    intro w\n    rw [ZFSet.mem_sep, rowAssignmentActionGraph, ZFSet.mem_sep]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Geometry/GroundDefinableSelections.lean",
+          "declaration": "PartitionPilot.Forcing.TransitiveGround.definable_separation",
+          "excerpt": "      ZFSet.sep (fun z => Realize M.sets φ (extend z (fun j => env j.succ))) (env 0)) where"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 26,
+    "cache_creation_input_tokens": 56511,
+    "cache_read_input_tokens": 391425,
+    "output_tokens": 15149,
+    "output_tokens_details": {
+      "thinking_tokens": 6922
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 56511,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3530,
+        "cache_read_input_tokens": 57882,
+        "cache_creation_input_tokens": 2558,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2558
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4167285,
+  "duration_ms": 142397,
+  "turns": 26,
+  "attempts": 1,
+  "judged": "2026-10-21T14:41:17",
+  "unit": "file",
+  "source_sha256": "6852b848e1bc70f3d9441c4a22bdc2ce52084b989667a3bbc95aa55057d25a96",
+  "rubric": "repeated-proof-machinery"
+}

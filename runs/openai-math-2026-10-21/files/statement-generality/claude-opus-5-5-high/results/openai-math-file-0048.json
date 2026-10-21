@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0048",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 120 lines of the file, plus the definitions and lemmas it depends on: `lowJet` (LowJetChainRule.lean), `variationLowJet`, `lowJet_affine` and `weighted_variationLowJet` (JetVariations.lean), `WeightedBound`, `.deriv_le` and `.congr` (WeightedBounds.lean), `weightedBound_comp_isometry` and `planeCoordinateIsometry` (SupportedCoordinateChange.lean), and `weightedBound_comp_isometry_on` (LocalIsometryBounds.lean). A grep found no uses of these declarations outside this file. The two `rpow` ratio lemmas are already general. `weighted_increment_unscaled` already works for any set `U`. The `ContDiff ℝ ∞` hypotheses in `lowJet_increment_eq_variation` come from what `lowJet_affine` requires, so weakening them would need new API work. I considered stating the `Set.univ` lemmas for open sets, using `weightedBound_comp_isometry_on`, and stating them for arbitrary isometries. I did not report either, because neither has a demonstrated use and both would add abstraction without a clear benefit. I also considered weakening the family hypothesis `hWb` in `primitive_slow_increment_bounds`. I did not report it: the theorem's second conjunct is quantified over every order, so bounds at every order are a natural input there. I could not compile any of the proposed replacements; the proof sketches below follow the existing proof steps.",
+  "findings": [
+    {
+      "declaration": "lowJet_increment_position",
+      "start_line": 23,
+      "end_line": 26,
+      "excerpt": "(lowJet (fun y => G y + H y) x - lowJet G x) (.inl i) = 0 := by\n  change x i - x i = 0",
+      "problem": "The statement only covers the additive update `fun y => G y + H y`, but the additive structure plays no part in the proof. By definition, `lowJet F p (Sum.inl i) = p i` for every map `F`, so the position coordinates of `lowJet F x - lowJet G x` are zero for any two maps `F` and `G`. The proof (`change x i - x i = 0; exact sub_self _`) never looks at `H`.",
+      "proposed_change": "State it for arbitrary maps: `lemma lowJet_sub_lowJet_position (F G : JetPolynomial.Base → JetPolynomial.Space) (x : JetPolynomial.Base) (i : Fin 2) : (lowJet F x - lowJet G x) (.inl i) = 0 := by change x i - x i = 0; exact sub_self _`. The current version is the special case `F := fun y => G y + H y`. There are no other call sites to update.",
+      "benefit": "The lemma then applies to any two maps being compared, for example non-additive coordinate changes or rescaled updates, not just additive increments. It also shows the reader that position cancellation is a property of `lowJet` itself, not of the update.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Geometry/LowJetChainRule.lean",
+          "declaration": "lowJet",
+          "excerpt": "def lowJet (G : Base → Space) (p : Base) : LowJet\n  | Sum.inl i => p i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/PrimitiveSlowIncrement.lean",
+          "declaration": "lowJet_increment_position",
+          "excerpt": "change x i - x i = 0\n  exact sub_self _"
+        }
+      ]
+    },
+    {
+      "declaration": "primitive_slow_increment_derivative",
+      "start_line": 104,
+      "end_line": 114,
+      "excerpt": "(hWb : ∀ m, WeightedBound Set.univ (z ^ b) m\n      (S m * z ^ d * z ^ b) W) {j : ℕ} (hj : j ≤ 3) (x : JetPolynomial.Base) :",
+      "problem": "The conclusion is a bound on derivatives of order at most 3 with constant `S 3`. Even so, the lemma asks for a weighted bound on `W` at every order `m`, plus a whole sequence `S : ℕ → ℝ` that is nonnegative everywhere. It goes through `primitive_slow_increment_bounds`, whose first conjunct uses only `hWb 3` and `hS 3` (via `slow_increment_C3`). A caller who only has a C³ bound on `W` cannot use the lemma.",
+      "proposed_change": "Replace the family with one order-3 bound: `lemma primitive_slow_increment_derivative {G : JetPolynomial.Base → JetPolynomial.Space} {W : RealModes.RField 4} (hW : ContDiff ℝ ∞ W) {z d b S : ℝ} (hz : 0 < z) (hz1 : z ≤ 1) (hb : 0 ≤ b) (hS : 0 ≤ S) (hWb : WeightedBound Set.univ (z ^ b) 3 (S * z ^ d * z ^ b) W) {j : ℕ} (hj : j ≤ 3) (x : JetPolynomial.Base) : ‖iteratedFDeriv ℝ j ((fun y => G y + W (planeCoordinateIsometry y)) - G) x‖ ≤ S * z ^ (d - 2 * b)`. Proof: derive `hτ`, `hτ1` and `hδ` as on lines 91–93. Then take `hh := slow_increment_C3 hW hτ hτ1 hδ hS hWb`, `rw [slow_increment_C3_ratio hz] at hh`, transfer it to the increment with `hh.congr` and `add_sub_cancel_left`, and finish with `hh j hj x (Set.mem_univ x)` and `simpa only [one_pow, one_mul, iteratedFDerivWithin_univ]`. If `G` is ever not smooth, `hG` is no longer needed, because `slow_increment_C3` does not use it. The degenerate case `j = 0` (sup norm) is still covered by `hj : j ≤ 3`.",
+      "benefit": "Callers that only control `W` up to order 3 can use the lemma. Callers with a family of bounds can still apply it with `hWb 3` and `hS 3`. The statement also shows that the C³ estimate depends only on third-order control.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/PrimitiveSlowIncrement.lean",
+          "declaration": "primitive_slow_increment_bounds",
+          "excerpt": "· have hh := slow_increment_C3 hW hτ hτ1 hδ (hS 3) (hWb 3)\n    rw [slow_increment_C3_ratio hz] at hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/PrimitiveSlowIncrement.lean",
+          "declaration": "slow_increment_C3",
+          "excerpt": "(hb : WeightedBound Set.univ τ 3 (S * δ * τ) W) :\n    WeightedBound Set.univ 1 3 (S * δ / τ ^ 2) (W ∘ planeCoordinateIsometry) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Immersion/ClosedSurface/WeightedBounds.lean",
+          "declaration": "WeightedBound.congr",
+          "excerpt": "(hf : WeightedBound U s m C f) (he : EqOn g f U) : WeightedBound U s m C g := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 38929,
+    "cache_read_input_tokens": 162578,
+    "output_tokens": 7268,
+    "output_tokens_details": {
+      "thinking_tokens": 3169
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 38929,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2971,
+        "cache_read_input_tokens": 37674,
+        "cache_creation_input_tokens": 5279,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5279
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4893636,
+  "duration_ms": 84568,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T13:23:05",
+  "unit": "file",
+  "source_sha256": "b8c68bcfdf8885aabe698549824d821d127c3ef1cc34254368d22ca9e71d1bf9",
+  "rubric": "statement-generality"
+}

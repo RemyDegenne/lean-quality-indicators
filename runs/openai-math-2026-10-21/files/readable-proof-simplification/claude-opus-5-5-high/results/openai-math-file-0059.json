@@ -1,0 +1,122 @@
+{
+  "id": "openai-math-file-0059",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 85 lines of the file. I also read `diskDiameter_image` and `diskUpperArc_image` in DiskSemicircleGeometry.lean to work out the goal shape after the `simp only` in `openUpperDisk_frontier`: (‖z‖ ≤ 1 ∧ 0 ≤ z.im) ∧ ¬(‖z‖ < 1 ∧ 0 < z.im) ↔ (‖z‖ ≤ 1 ∧ z.im = 0) ∨ (‖z‖ = 1 ∧ 0 < z.im). I confirmed in Mathlib that the proposed lemmas exist: `LE.le.eq_or_lt` (an alias of `eq_or_lt_of_le` in Order/Basic.lean), `LT.lt.ne'`, and `mem_ball_zero_iff`, which is the additive version of `mem_ball_one_iff` in Analysis/Normed/Group/Basic.lean.\n\nI left the other proofs alone because they are already short and direct. These are `closedUpperDisk_eq`, `_isClosed`, `_convex`, `_interior`, `openUpperDisk_isOpen`, `_convex` and `_closure`. `openUpperDisk_nonempty` could be written as a one-line anonymous constructor, but that only saves characters, so I did not report it. In `openUpperDisk_closure`, rewriting the side condition with `▸` would make it harder to read, so I did not suggest that either.\n\nI could not compile anything, so none of the replacements has been checked by Lean. The main elaboration risk is in finding 3: I kept the explicit `(x := (0:ℂ)) (r := 1)` arguments so that `mem_ball_zero_iff` gets the right center and radius.",
+  "findings": [
+    {
+      "declaration": "openUpperDisk_frontier",
+      "start_line": 61,
+      "end_line": 65,
+      "excerpt": "    by_cases hz : z.im=0\n    · exact Or.inl ⟨hn,hz⟩\n    · exact Or.inr ⟨le_antisymm hn (le_of_not_gt (fun h => he ⟨h,lt_of_le_of_ne hi\n        (Ne.symm hz)⟩)),hi⟩",
+      "problem": "The forward direction splits on `z.im = 0` with `by_cases`. In the `z.im ≠ 0` branch it then has to rebuild `0 < z.im` from `hi : 0 ≤ z.im` and the negated equality, using `lt_of_le_of_ne hi (Ne.symm hz)`. This `≤`/`≠` bookkeeping hides the natural case split, which is that the imaginary part is either zero or positive.",
+      "proposed_change": "Split directly on the hypothesis `0 ≤ z.im`:\n```lean\n  · rintro ⟨⟨hn,hi⟩,he⟩\n    rcases hi.eq_or_lt with hi | hi\n    · exact Or.inl ⟨hn, hi.symm⟩\n    · exact Or.inr ⟨le_antisymm hn (le_of_not_gt fun h => he ⟨h, hi⟩), hi.le⟩\n```",
+      "benefit": "The case split now reads \"the point is on the real axis, or strictly above it\", which is the geometric content of the step. The `Ne.symm`/`lt_of_le_of_ne` reconstruction goes away, and in the second branch the strict inequality needed for `he` is available directly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Basic.lean",
+          "declaration": "LE.le.eq_or_lt",
+          "excerpt": "@[to_dual eq_or_lt'] alias LE.le.eq_or_lt := eq_or_lt_of_le"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Basic.lean",
+          "declaration": "eq_or_lt_of_le",
+          "excerpt": "theorem eq_or_lt_of_le (h : a ≤ b) : a = b ∨ a < b := (lt_or_eq_of_le h).symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Geometry/DiskSemicircleGeometry.lean",
+          "declaration": "diskUpperArc_image",
+          "excerpt": "diskUpperArc '' Icc 0 1 = {z : ℂ | ‖z‖=1 ∧ 0 ≤ z.im}"
+        }
+      ]
+    },
+    {
+      "declaration": "openUpperDisk_frontier",
+      "start_line": 66,
+      "end_line": 68,
+      "excerpt": "    · exact ⟨⟨hn,hi.ge⟩,fun h => by simpa only [hi,lt_self_iff_false] using h.2⟩\n    · exact ⟨⟨hn.le,hi⟩,fun h => (not_lt_of_ge hn.ge) h.1⟩",
+      "problem": "The two contradictions in the reverse direction take a detour. The first rewrites `0 < z.im` with `hi : z.im = 0` via `simpa only [hi, lt_self_iff_false]`. The second turns the equality `hn : ‖z‖ = 1` into `1 ≤ ‖z‖` with `hn.ge` and then applies `not_lt_of_ge`. In both cases the point is just that a strict inequality contradicts an equality.",
+      "proposed_change": "```lean\n  · rintro (⟨hn,hi⟩|⟨hn,hi⟩)\n    · exact ⟨⟨hn, hi.ge⟩, fun h => h.2.ne' hi⟩\n    · exact ⟨⟨hn.le, hi⟩, fun h => h.1.ne hn⟩\n```",
+      "benefit": "Each contradiction now reads as \"`0 < z.im` is incompatible with `z.im = 0`\" and \"`‖z‖ < 1` is incompatible with `‖z‖ = 1`\". This removes a `simpa` call and a `≤`/`¬<` conversion, so it is easier to see why boundary points are not in the open half disk.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/RelClasses.lean",
+          "declaration": "HasSSubset.SSubset.ne'",
+          "excerpt": "@[deprecated (since := \"2026-05-24\")] alias HasSSubset.SSubset.ne' := LT.lt.ne'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Geometry/DiskSemicircleGeometry.lean",
+          "declaration": "diskDiameter_image",
+          "excerpt": "diskDiameter '' Icc 0 1 = {z : ℂ | ‖z‖ ≤ 1 ∧ z.im=0}"
+        }
+      ]
+    },
+    {
+      "declaration": "complexInside_upperDisk",
+      "start_line": 77,
+      "end_line": 79,
+      "excerpt": "    ?_ openUpperDisk_frontier\n  exact (isBounded_ball (x := (0:ℂ)) (r := 1)).subset (fun z hz => by\n    simpa only [mem_ball,dist_zero_right] using hz.1)",
+      "problem": "The boundedness argument is left as `?_` and proved in a separate `exact`. Inside it, an inner `simpa only [mem_ball, dist_zero_right]` turns `‖z‖ < 1` into `z ∈ ball 0 1`. Mathlib has `mem_ball_zero_iff`, which states exactly this equivalence.",
+      "proposed_change": "Put the term directly where `?_` is:\n```lean\n    openUpperDisk_isOpen openUpperDisk_convex.isPreconnected openUpperDisk_nonempty\n    ((isBounded_ball (x := (0:ℂ)) (r := 1)).subset fun z hz => mem_ball_zero_iff.mpr hz.1)\n    openUpperDisk_frontier\n```\nIf you prefer to keep the `?_`/`exact` layout, at least replace the inner `simpa` with `mem_ball_zero_iff.mpr hz.1`.",
+      "benefit": "The argument becomes \"the open half disk lies in the unit ball, which is bounded\". It is stated with a well-named lemma rather than a `simpa` call, and it sits next to the other hypotheses of `complexInside_eq_open`, so the reader sees the full list of side conditions in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Group/Basic.lean",
+          "declaration": "mem_ball_one_iff",
+          "excerpt": "theorem mem_ball_one_iff : a ∈ ball (1 : E) r ↔ ‖a‖ < r := by rw [mem_ball, dist_one_right]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/PeakFunction.lean",
+          "declaration": "mem_ball_zero_iff (usage)",
+          "excerpt": "exact (mem_ball_zero_iff.1 (hu x hx)).le"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 16618,
+    "cache_read_input_tokens": 122608,
+    "output_tokens": 7824,
+    "output_tokens_details": {
+      "thinking_tokens": 2564
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16618,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4018,
+        "cache_read_input_tokens": 20299,
+        "cache_creation_input_tokens": 362,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 362
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3140096,
+  "duration_ms": 63396,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T14:21:56",
+  "unit": "file",
+  "source_sha256": "624a4ebc234d97983224dee0d924019be51b5c247f9086a70f6d76f14ba0cb28",
+  "rubric": "readable-proof-simplification"
+}

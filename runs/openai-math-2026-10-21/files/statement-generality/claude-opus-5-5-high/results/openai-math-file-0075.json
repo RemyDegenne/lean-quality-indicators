@@ -1,0 +1,143 @@
+{
+  "id": "openai-math-file-0075",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 512 lines of the target file. I looked up the call sites of `nonconstant_inv`, `eval₂_homogeneous_scaling` and `homogeneousFieldEval_awayMap'` in other OAI files. I also checked the Mathlib sources these proofs depend on: `MvPolynomial.eval₂_eq` and `eval₂_eq'` in Algebra/MvPolynomial/Eval.lean, and `Finsupp.degree`, `degree_eq_sum` and `degree_eq_weight_one` in Data/Finsupp/Weight.lean. I found no scaling lemma for homogeneous polynomials in Mathlib's RingTheory/MvPolynomial/Homogeneous.lean, so `eval₂_homogeneous_scaling` does not duplicate one.\n\nSeveral things are deliberately left alone. The declarations about ℂ, `Type`, and `complexProjectiveSpace` (`projectiveAffineMap`, `projectiveFieldMap`, `projectiveVariable_mem`, and the `PolynomialCurveChart` API) are tied to the concrete target scheme and the chart structure from PolynomialCharts. That is an intentional design choice, not a defect. `homogeneousFieldPoint_independent` really does need `A` and `K` in the same universe, because it composes `Spec (.of K)` with `Proj 𝒜`. `homogeneousFieldEval` could be stated for any commutative ring where `h f` is a unit, but that would make the statement harder to read and I don't think it would help much. A few `CommRing` assumptions could be relaxed to `CommSemiring`, for example in `polynomial_eval_surjective_of_contains`, but I judged that too small to report.\n\nAll proposed proofs below are sketches based on lemma statements I read. I did not compile any of them.",
+  "findings": [
+    {
+      "declaration": "OAI.NumericalDimensionOne.nonconstant_inv",
+      "start_line": 80,
+      "end_line": 85,
+      "excerpt": "lemma nonconstant_inv {K : Type*} [Field K] (c : ℂ →+* K) {a : K}\n    (ha : a ∉ Set.range c) : a⁻¹ ∉ Set.range c := by",
+      "problem": "The lemma fixes the source of the ring hom to ℂ, but nothing in it depends on ℂ. The proof only uses `map_inv₀`, `hb` and `inv_inv`, and these work for any ring hom between division rings. As written, the lemma cannot be used for a curve over another base field such as `k` or a number field.",
+      "proposed_change": "lemma nonconstant_inv {k K : Type*} [DivisionRing k] [DivisionRing K] (c : k →+* K) {a : K}\n    (ha : a ∉ Set.range c) : a⁻¹ ∉ Set.range c\nThe proof stays the same: `rintro ⟨b,hb⟩; exact ha ⟨b⁻¹, by rw [map_inv₀, hb, inv_inv]⟩`. `map_inv₀` only needs a `MonoidWithZeroHomClass` between two `GroupWithZero`s, which `→+*` between division rings provides. The one call site, `nonconstant_inv (curveFieldScalar sC) ha` in RelativeAmpleness.lean, still elaborates because `k := ℂ` is inferred from `c`. Degenerate case: `a = 0` gives `a⁻¹ = 0 = c 0`, which is excluded by `ha` both before and after the change.",
+      "benefit": "The lemma becomes a general fact about field extensions, reusable for curves over any base field, and it no longer looks like a ℂ-specific fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/RelativeAmpleness.lean",
+          "declaration": "(use site)",
+          "excerpt": "exists_polynomialCurveChart sC a⁻¹ (nonconstant_inv (curveFieldScalar sC) ha)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.nonconstant_inv",
+          "excerpt": "rw [map_inv₀, hb, inv_inv]"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.NumericalDimensionOne.eval₂_homogeneous_scaling",
+      "start_line": 334,
+      "end_line": 347,
+      "excerpt": "lemma eval₂_homogeneous_scaling {σ k R : Type*} [Fintype σ]",
+      "problem": "The `[Fintype σ]` assumption is only there because the proof uses `MvPolynomial.eval₂_eq'` and `Finsupp.degree_eq_sum`, which take a product and sum over all of σ. The statement itself, that evaluating a degree-n homogeneous polynomial at `u • x` gives `u^n` times the value at `x`, is true for any index type. Each monomial only involves the finite set `d.support`.",
+      "proposed_change": "Remove `[Fintype σ]`:\nlemma eval₂_homogeneous_scaling {σ k R : Type*} [CommSemiring k] [CommSemiring R] (c : k →+* R) (x : σ → R) (u : R) {p : MvPolynomial σ k} {n : ℕ} (hp : p.IsHomogeneous n) :\n    MvPolynomial.eval₂Hom c (fun j => u * x j) p = u ^ n * MvPolynomial.eval₂Hom c x p\nProof: rewrite with `MvPolynomial.eval₂_eq` instead of `eval₂_eq'`, which gives `∑ d ∈ p.support, c (p.coeff d) * ∏ i ∈ d.support, X i ^ d i`. Then show `∑ i ∈ d.support, d i = n`. This holds by definition, since `Finsupp.degree d` is defined as `∑ i ∈ d.support, d i`, together with `degree_eq_weight_one` and `hp`. Finish with the same `mul_pow` / `Finset.prod_mul_distrib` / `Finset.prod_pow_eq_pow_sum` / `ring` steps on `d.support`. The two existing uses, in SurfaceSquare.lean and ProjectiveCoordinates.lean, have finite σ and are unaffected.",
+      "benefit": "The scaling lemma then covers polynomial rings with an infinite set of variables, and callers no longer need a `Fintype` instance just to scale coordinates.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/MvPolynomial/Eval.lean",
+          "declaration": "MvPolynomial.eval₂_eq",
+          "excerpt": "f.eval₂ g X = ∑ d ∈ f.support, g (f.coeff d) * ∏ i ∈ d.support, X i ^ d i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Finsupp/Weight.lean",
+          "declaration": "Finsupp.degree",
+          "excerpt": "toFun := fun d => ∑ i ∈ d.support, d i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.eval₂_homogeneous_scaling",
+          "excerpt": "rw [← Finsupp.degree_eq_sum, Finsupp.degree_eq_weight_one]"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.NumericalDimensionOne.homogeneousFieldEval_awayMap'",
+      "start_line": 394,
+      "end_line": 403,
+      "excerpt": "variable {A K : Type u} {σ : Type v} [CommRing A] [Field K] [SetLike σ A] [AddSubgroupClass σ A]",
+      "problem": "`homogeneousFieldEval_awayMap'` is a statement about ring homs only, with no schemes involved. It inherits the section variables `{A K : Type u}`, which force the graded ring and the target field into the same universe. That restriction is only needed by the next lemma, `homogeneousFieldPoint_independent`, which composes `Spec (.of K)` with `Proj 𝒜`. The unprimed lemma it wraps, `homogeneousFieldEval_awayMap`, and `homogeneousFieldEval` itself are declared with independent `Type*` variables.",
+      "proposed_change": "Move `homogeneousFieldEval_awayMap'` into the previous section, which has `variable {A K σ : Type*} ...`. Alternatively, state it with `{A K : Type*}`:\nlemma homogeneousFieldEval_awayMap' {A K σ : Type*} [CommRing A] [Field K] [SetLike σ A] [AddSubgroupClass σ A] (𝒜 : ℕ → σ) [GradedRing 𝒜] (h : A →+* K) {f g z : A} (hf : h f ≠ 0) (hg : h g ≠ 0) (hz : z = f*g) {d e : ℕ} (hfd : f ∈ 𝒜 d) (hge : g ∈ 𝒜 e) : ... \nThe proof (`subst z; exact homogeneousFieldEval_awayMap 𝒜 h hf hg hfd hge`) does not change, because the unprimed lemma is already universe-polymorphic in `A` and `K` separately. Only `homogeneousFieldPoint_independent` should keep `Type u`.",
+      "benefit": "The lemma becomes as general as the API it wraps (`homogeneousFieldEval`, `homogeneousFieldEval_awayMap`). Users who evaluate a graded ring into a field in a different universe can then use it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.homogeneousFieldEval",
+          "excerpt": "variable {A K σ : Type*} [CommRing A] [Field K] [SetLike σ A] [AddSubgroupClass σ A]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.homogeneousFieldEval_awayMap'",
+          "excerpt": "exact homogeneousFieldEval_awayMap 𝒜 h hf hg hfd hge"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.NumericalDimensionOne.exists_uniform_pow_mul_integer_of_integral_inverse (and PolynomialCurveChart.clear / clear_reciprocal)",
+      "start_line": 15,
+      "end_line": 30,
+      "excerpt": "[Field K] [Algebra B K] [IsFractionRing B K] [Fintype ι]",
+      "problem": "The conclusion is an existence statement (a Prop), but the lemma asks for the data-carrying instance `[Fintype ι]`. It is only used inside the proof to form the sum `∑ i, n i`. The downstream statements `PolynomialCurveChart.clear` and `clear_reciprocal` (lines 86 and 137) carry the same `[Fintype ι]` binder. For Prop-valued statements, the weaker `Finite` class is enough.",
+      "proposed_change": "Replace `[Fintype ι]` with `[Finite ι]` in `exists_uniform_pow_mul_integer_of_integral_inverse`, `PolynomialCurveChart.clear` and `PolynomialCurveChart.clear_reciprocal`. In the first proof, add `cases nonempty_fintype ι` after `classical`, before `refine ⟨∑ i, n i, ...⟩`. The rest of the proof stays the same. The other two proofs just pass the instance along. The existing callers use `Fin m` and still elaborate, because `Fintype` gives `Finite`. Degenerate case: empty `ι` gives `n = 0`, and the statement holds trivially either way.",
+      "benefit": "Callers that only know `Finite ι`, for example an index set obtained from a finiteness proof, can use these clearing-denominators lemmas without building a `Fintype` instance. This also matches the usual Mathlib convention for Prop-valued results.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.exists_uniform_pow_mul_integer_of_integral_inverse",
+          "excerpt": "refine ⟨∑ i, n i, fun d hd => ?_⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.PolynomialCurveChart.clear",
+          "excerpt": "(B : PolynomialCurveChart sC a⁻¹) {ι : Type*} [Fintype ι] (x : ι → Γ(C,A.U)) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 31761,
+    "cache_read_input_tokens": 178889,
+    "output_tokens": 9953,
+    "output_tokens_details": {
+      "thinking_tokens": 3411
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31761,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4835,
+        "cache_read_input_tokens": 34616,
+        "cache_creation_input_tokens": 1169,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1169
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4889818,
+  "duration_ms": 102397,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T15:35:52",
+  "unit": "file",
+  "source_sha256": "bc944b38a7f78265930c550938f48cc2a0be622227f457149e460cfb09aa6713",
+  "rubric": "statement-generality"
+}

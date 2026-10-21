@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0034",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (one theorem, lines 37–102) and the file it imports, LocalAutomorphismODEGroup.lean, which defines `ambientAut_uniform_at_zero` and `local_automorphism_ODE_group_law`. I also searched for uses of both theorems. They are used in OneParameterGeneratorAdd.lean (the analytic version) and in OneParameterLocalODE.lean (the ContDiffAt version, which imports the target file). The target proof copies the body of `local_automorphism_ODE_group_law` almost line for line. That body covers the Lipschitz neighbourhood, the two uniform-at-zero radii, the choice of ε, the shift lemma `hsum`, the `ODE_solution_unique_of_mem_Ioo` application, and the final `mul_apply` rewrite. The only real difference is one line: the analytic version derives `hf : ContDiffAt ℝ 1 X p.val` from `hX` (line 62 of the imported file), while the target takes this as hypothesis `hX`. No degenerate cases come up, because both theorems have identical hypotheses apart from `hX`. One limitation is the import direction: the target imports the analytic file, so the fix means moving the general proof into the earlier file or reversing the dependency. I could not compile the proposed rewrite. The long run of redundant `open` lines falls outside this rubric.",
+  "findings": [
+    {
+      "declaration": "local_automorphism_ODE_group_law_of_contDiffAt",
+      "start_line": 37,
+      "end_line": 102,
+      "excerpt": "  have heq := ODE_solution_unique_of_mem_Ioo\n    (v := fun (_ : ℝ) y => X y) (s := fun _ => K) (a := -ε) (b := ε) (t₀ := 0)",
+      "problem": "The whole local group-law argument is duplicated between this theorem and `local_automorphism_ODE_group_law` in the imported file. Both proofs take a Lipschitz neighbourhood from `exists_lipschitzOnWith`, call `ambientAut_uniform_at_zero` twice, choose ε = min (δ/3) (min (ε₀/3) ε₁), derive the bounds `hsum`, apply Grönwall/Picard uniqueness through `ODE_solution_unique_of_mem_Ioo` to `u ↦ g(u+t) x` and `u ↦ g u (g t x)`, and finish with `eq_of_ambientAut_eventuallyEq`. The analytic theorem uses its hypothesis `hX : AnalyticOnNhd ℂ X U` in only one place, line 62, to produce `ContDiffAt ℝ 1 X p.val`, which is exactly the hypothesis of the target theorem. Its other ~50 lines are verbatim the same as the target's. Any fix to the ODE argument, such as a change to the ε bookkeeping or an API change in `ODE_solution_unique_of_mem_Ioo`, has to be made twice.",
+      "proposed_change": "Keep a single proof of the ContDiffAt statement. Move `local_automorphism_ODE_group_law_of_contDiffAt` with its current proof into LocalAutomorphismODEGroup.lean, placed after `ambientAut_uniform_at_zero`. Its hypotheses already cover the analytic case, and its proof sketch is unchanged. Then replace the body of the analytic theorem with a one-line corollary:\n\ntheorem local_automorphism_ODE_group_law (hU : IsOpen U) [LocallyCompactSpace U] (hc : IsPreconnected U) (p : U) (X : Affine n → Affine n) (hX : AnalyticOnNhd ℂ X U) ... :\n    ∃ ε > (0:ℝ), ε<δ ∧ ∀ s t : ℝ, |s|<ε → |t|<ε → g (s+t)=g s*g t :=\n  local_automorphism_ODE_group_law_of_contDiffAt hU hc p X\n    ((hX p.val p.property).contDiffAt.restrict_scalars ℝ) g hg0 hr hδ hball hgc hd\n\nThe current call sites keep working unchanged: OneParameterGeneratorAdd.lean line 48 calls `local_automorphism_ODE_group_law hU hc p X hX g hg0 hr hδ hball hgc hd`, and OneParameterLocalODE.lean line 86 calls `local_automorphism_ODE_group_law_of_contDiffAt ...` with the same arguments. LocalAutomorphismODEGroup2.lean then becomes empty and can be dropped, or reduced to a re-export.",
+      "benefit": "About 50 lines of delicate ε/radius bookkeeping and ODE-uniqueness plumbing would then live in one place. It also becomes explicit that analyticity matters only because it implies C¹ regularity at p, so readers no longer have to diff two near-identical proofs to find the one-line difference. Future maintenance (Mathlib API drift in `ODE_solution_unique_of_mem_Ioo`, `exists_lipschitzOnWith`, `ambientAut_apply`) would touch one proof instead of two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/SymmetricDomains/LocalAutomorphismODEGroup.lean",
+          "declaration": "local_automorphism_ODE_group_law",
+          "excerpt": "  have hf : ContDiffAt ℝ 1 X p.val := (hX p.val p.property).contDiffAt.restrict_scalars ℝ\n  obtain ⟨L,K,hK,hL⟩ := hf.exists_lipschitzOnWith"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/SymmetricDomains/LocalAutomorphismODEGroup.lean",
+          "declaration": "local_automorphism_ODE_group_law",
+          "excerpt": "  have heq := ODE_solution_unique_of_mem_Ioo\n    (v := fun (_ : ℝ) y => X y) (s := fun _ => K) (a := -ε) (b := ε) (t₀ := 0)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/SymmetricDomains/LocalAutomorphismODEGroup.lean",
+          "declaration": "local_automorphism_ODE_group_law",
+          "excerpt": "  let ε : ℝ := min (δ/3) (min (ε₀/3) ε₁)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/SymmetricDomains/OneParameterGeneratorAdd.lean",
+          "declaration": "(use site)",
+          "excerpt": "obtain ⟨ε,hε,_,hm⟩ := local_automorphism_ODE_group_law hU hc p X hX g hg0 hr hδ hball hgc hd"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/SymmetricDomains/OneParameterLocalODE.lean",
+          "declaration": "(use site)",
+          "excerpt": "obtain ⟨ε,hε,_,hm⟩ := local_automorphism_ODE_group_law_of_contDiffAt hU hc p X hX g hg0 hr hδ hball hgc hd"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 13298,
+    "cache_read_input_tokens": 44464,
+    "output_tokens": 3620,
+    "output_tokens_details": {
+      "thinking_tokens": 483
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13298,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2745,
+        "cache_read_input_tokens": 16086,
+        "cache_creation_input_tokens": 1141,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1141
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1877088,
+  "duration_ms": 37670,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T12:19:31",
+  "unit": "file",
+  "source_sha256": "fa2a03a9d0a8debc456ec6e1e4b0cf63579a6ac8a3f49beb90942cf7459f4468",
+  "rubric": "repeated-proof-machinery"
+}

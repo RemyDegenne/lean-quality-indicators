@@ -1,0 +1,112 @@
+{
+  "id": "openai-math-file-0077",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read both proofs in the file (lines 1–77). I also read the lemmas they use: FinitePointBlowup.point_support, mem_centre_support, mem_pointOpen and point_mem_own_open in FiniteCenters.lean; IsAffineOpen.fromSpec_preimage_basicOpen in Mathlib; and Surface.etale_line_frame_inside, along with its other call sites. I found three simplifications that make the proofs easier to read:\n1. The same trivial line bundle is built inline twice.\n2. The same \"support of the kernel of a point section is that point\" argument appears twice.\n3. One `change` step is redundant.\n\nThe rest of the proof is direct. The case split on whether x lies in the centre is needed mathematically, and the final term-mode `exact` in the second branch is already short. One point is uncertain: I could not run Lean, so none of the replacements below has been compiled. Two of them only hoist existing code into a local `let` or `have`, which carries little risk. The single-`change` suggestion relies on the two `change` targets being definitionally equal, which the original proof already establishes.",
+  "findings": [
+    {
+      "declaration": "OAI.MaximalSeshadri.Geometry.Surface.hartogs_chart",
+      "start_line": 43,
+      "end_line": 67,
+      "excerpt": "obtain ⟨U,hxU,hUW,e,t,het⟩ := S.etale_line_frame_inside (⟨O S.scheme, fun _ => ⟨⊤, trivial, ⟨Scheme.Modules.restrictUnitIso _⟩⟩⟩)",
+      "problem": "Both branches of the `by_cases` pass the same anonymous-constructor trivial line bundle `⟨O S.scheme, fun _ => ⟨⊤, trivial, ⟨Scheme.Modules.restrictUnitIso _⟩⟩⟩` to `etale_line_frame_inside`. Lines 43 and 66 repeat it word for word. The unnamed term also makes both lines very long, and it hides the fact that the bundle is only an auxiliary input: the frame `e` it produces is never used.",
+      "proposed_change": "Bind the bundle once, before `by_cases`, the same way BlowupLineDescent.lean does:\n```\n  -- the trivial line bundle; only its étale coordinates are used\n  let OX : LineBundle S.scheme := ⟨O S.scheme, fun _ => ⟨⊤, trivial, ⟨Scheme.Modules.restrictUnitIso _⟩⟩⟩\n  by_cases hc : x ∈ (centreIdeal S r p).support\n  · ...\n    obtain ⟨U,hxU,hUW,-,t,het⟩ := S.etale_line_frame_inside OX\n      (W ⊓ FinitePointBlowup.pointOpen q j) x ⟨hx, ...⟩\n  · obtain ⟨U,hxU,hUW,-,t,het⟩ := S.etale_line_frame_inside OX\n      (W ⊓ centreComplement (centreIdeal S r p)) x ⟨hx,hc⟩\n```",
+      "benefit": "The bundle is written once and has a name. Both calls then fit on a normal line and visibly differ only in the open set, which is the real difference between the two cases. Using `-` for the unused frame also tells the reader that only the étale coordinates `t` matter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Blowup/BlowupLineDescent.lean",
+          "declaration": "(proof in BlowupLineDescent.lean, line 19)",
+          "excerpt": "let OY : LineBundle Y := ⟨O Y,fun _ => ⟨⊤,trivial,⟨Scheme.Modules.restrictUnitIso _⟩⟩⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Sheaves/EtaleLineFrame.lean",
+          "declaration": "OAI.MaximalSeshadri.Geometry.Surface.etale_line_frame_inside",
+          "excerpt": "lemma Surface.etale_line_frame_inside (S : Surface) (J : LineBundle S.scheme)"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.MaximalSeshadri.Geometry.Surface.hartogs_chart",
+      "start_line": 40,
+      "end_line": 62,
+      "excerpt": "have hyj : y = q j (fieldPoint ℂ) := by\n      change y ∈ ((q j).ker.support : Set S.scheme) at hk\n      rwa [FinitePointBlowup.point_support q S.structureMap hq j] at hk",
+      "problem": "The same two-line argument appears twice: once for `x` (`hxj`, lines 40–42) and once for `y` (`hyj`, lines 60–62). It turns membership in the support of `(q j).ker` into equality with the point `q j (fieldPoint ℂ)` by casting with `change` and rewriting with `point_support`. Repeating the cast and rewrite hides that this is a single geometric fact used twice.",
+      "proposed_change": "State the fact once, right after `hd`, and use it in both places:\n```\n  have hpt : ∀ j y, y ∈ (q j).ker.support → y = q j (fieldPoint ℂ) := by\n    intro j y h\n    change y ∈ ((q j).ker.support : Set S.scheme) at h\n    rwa [FinitePointBlowup.point_support q S.structureMap hq j] at h\n```\nThen write `have hxj := hpt j x hj` and, after `subst k`, `have hyj := hpt j y hk`. Alternatively, inline `hpt j y hk` in `exact hn (hpt j y hk ▸ hy)`.",
+      "benefit": "The reader sees one named fact, \"the support of the kernel of the j-th point section is just that point\", applied to `x` and to `y`. The proof gets shorter, and the coercion detail appears only once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Blowup/FiniteCenters.lean",
+          "declaration": "OAI.FinitePointBlowup.point_support",
+          "excerpt": "lemma point_support (i : α) : ((p i).ker.support : Set X) =\n    {p i (⟨⊥, Ideal.isPrime_bot⟩ : Spec (.of K))} := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Blowup/BlowupHartogsCharts.lean",
+          "declaration": "OAI.MaximalSeshadri.Geometry.Surface.hartogs_chart",
+          "excerpt": "have hxj : x = q j (fieldPoint ℂ) := by\n      change x ∈ ((q j).ker.support : Set S.scheme) at hj\n      rwa [FinitePointBlowup.point_support q S.structureMap hq j] at hj"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.MaximalSeshadri.Geometry.affineComplexPoint_not_mem_basicOpen",
+      "start_line": 23,
+      "end_line": 26,
+      "excerpt": "change ¬ U.2.fromSpec z ∈ S.scheme.basicOpen t\n  change ¬ z ∈ U.2.fromSpec ⁻¹ᵁ S.scheme.basicOpen t",
+      "problem": "There are two consecutive `change` steps. The second states the goal that is actually needed: `z` is not in the preimage of the basic open. That is the form `IsAffineOpen.fromSpec_preimage_basicOpen` rewrites. The first `change` is an intermediate restatement that is never used by any tactic.",
+      "proposed_change": "Keep only the second step:\n```\n  let z : PrimeSpectrum Γ(S.scheme,U.1) := ⟨RingHom.ker ρ,RingHom.ker_isPrime _⟩\n  change z ∉ U.2.fromSpec ⁻¹ᵁ S.scheme.basicOpen t\n  rw [U.2.fromSpec_preimage_basicOpen]\n  exact fun h => h ht\n```",
+      "benefit": "The proof becomes a clear three-step argument: the point is the prime `ker ρ` of Spec Γ(U), the preimage of `basicOpen t` under `fromSpec` is `PrimeSpectrum.basicOpen t`, and `t ∈ ker ρ`. The reader no longer has to parse a restatement that is immediately replaced.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/AlgebraicGeometry/AffineScheme.lean",
+          "declaration": "AlgebraicGeometry.IsAffineOpen.fromSpec_preimage_basicOpen",
+          "excerpt": "theorem fromSpec_preimage_basicOpen :\n    hU.fromSpec ⁻¹ᵁ X.basicOpen f = PrimeSpectrum.basicOpen f := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 30937,
+    "cache_read_input_tokens": 76528,
+    "output_tokens": 5872,
+    "output_tokens_details": {
+      "thinking_tokens": 1571
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30937,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3545,
+        "cache_read_input_tokens": 26513,
+        "cache_creation_input_tokens": 8467,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 8467
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3802816,
+  "duration_ms": 51963,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T15:49:10",
+  "unit": "file",
+  "source_sha256": "8dcdf087f5dd8ee2e6e5bb5072e1e0e02d02018f313070a7c4e9be1703fe5006",
+  "rubric": "readable-proof-simplification"
+}

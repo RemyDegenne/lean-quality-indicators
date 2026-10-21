@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0059",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–85), every downstream use of `closedUpperDisk`/`openUpperDisk` in the repository (DiskBoundaryRegion.lean, DiskSideRegionImages.lean, DiskTwoSideGlue.lean, DiskCrosscutHomeomorph.lean), the `diskDiameter_image`/`diskUpperArc_image` normal forms in DiskSemicircleGeometry.lean, and Mathlib's `Metric.mem_ball`, which is used for comparison.\n\nThe only simp-interface problem I found is that the two set definitions have no membership lemmas. Every proof that needs membership unfolds the definition by name and then calls `mem_ofPred`. The other lemmas in the file are topological facts (`_isClosed`, `_isOpen`, `_closure`, `_interior`, `_frontier`), and it is right that they are not simp lemmas.\n\nI did not recommend `@[simp]` on `closedUpperDisk_eq`. It rewrites a named set into `closedBall ∩ imCLM ⁻¹' Ici 0`, which is a worse form for `simp` than the membership predicate. I also did not recommend `@[simp]` on `openUpperDisk_closure` or `closedUpperDisk_interior`. Downstream code uses them with `rw` on purpose, and they are not general normalisation rules.\n\nI have not compiled anything. The claim that the proposed lemmas would close the listed goals with less unfolding rests on reading the goals, not on running Lean.",
+  "findings": [
+    {
+      "declaration": "closedUpperDisk / openUpperDisk",
+      "start_line": 13,
+      "end_line": 14,
+      "excerpt": "def closedUpperDisk : Set ℂ := {z | ‖z‖ ≤ 1 ∧ 0 ≤ z.im}\ndef openUpperDisk : Set ℂ := {z | ‖z‖ < 1 ∧ 0 < z.im}",
+      "problem": "There are no membership lemmas for these two sets. Every proof that reasons about `z ∈ closedUpperDisk` or `z ∈ openUpperDisk` has to put the definition name into the simp set and then remove the set-builder with `mem_ofPred`. This happens in the target at line 19 (`simp [closedUpperDisk,mem_closedBall,dist_zero_right]`), line 33 (`simp [openUpperDisk,mem_ball,dist_zero_right]`) and line 59 (`simp only [mem_sdiff,closedUpperDisk,openUpperDisk,mem_ofPred,mem_union]`). The same pattern appears four more times in DiskBoundaryRegion.lean. As a result, the only way to simplify membership is to unfold the definition. That ties every caller to the literal `{z | ...}` form. Also, `simp [closedUpperDisk]` unfolds every occurrence of the constant in the goal, including occurrences that are not membership goals.",
+      "proposed_change": "Add membership lemmas tagged `@[simp]` directly after the definitions, with the predicate in the same form the downstream proofs already reach:\n\n@[simp] lemma mem_closedUpperDisk {z : ℂ} : z ∈ closedUpperDisk ↔ ‖z‖ ≤ 1 ∧ 0 ≤ z.im := Iff.rfl\n@[simp] lemma mem_openUpperDisk {z : ℂ} : z ∈ openUpperDisk ↔ ‖z‖ < 1 ∧ 0 < z.im := Iff.rfl\n\nThen replace `closedUpperDisk,…,mem_ofPred` and `openUpperDisk,…,mem_ofPred` in the `simp only` calls with these lemmas. In plain `simp` calls, drop the definition names from the simp set. Do the same for `openLowerDisk` and `closedLowerDisk` in DiskBoundaryRegion.lean.",
+      "benefit": "Each lemma's right side is a plain predicate on `‖z‖` and `z.im`, so the rule terminates and does not compete with any other rule. It matches the Mathlib convention for named sets, where `Metric.mem_ball` is a simp lemma and `ball` is not unfolded. Callers such as `conj_image_openUpperDisk`, `closed_halfDisks_union` and `closed_halfDisks_inter` could then be proved with `simp` or `simp only [mem_closedUpperDisk, …]` without depending on how the set is implemented. The definitions also stop being unfolded in places where only membership needs rewriting.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Geometry/HalfDiskGeometry.lean",
+          "declaration": "openUpperDisk_frontier",
+          "excerpt": "simp only [mem_sdiff,closedUpperDisk,openUpperDisk,mem_ofPred,mem_union]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Geometry/DiskBoundaryRegion.lean",
+          "declaration": "conj_image_openUpperDisk",
+          "excerpt": "simpa [openUpperDisk,openLowerDisk] using hw"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Geometry/DiskBoundaryRegion.lean",
+          "declaration": "closed_halfDisks_union",
+          "excerpt": "simp only [mem_union,closedUpperDisk,closedLowerDisk,mem_ofPred,mem_closedBall,dist_zero_right]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Geometry/DiskBoundaryRegion.lean",
+          "declaration": "closed_halfDisks_inter",
+          "excerpt": "simp only [closedUpperDisk,closedLowerDisk,mem_inter_iff,mem_ofPred]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/MetricSpace/Pseudo/Defs.lean",
+          "declaration": "Metric.mem_ball",
+          "excerpt": "theorem mem_ball : y ∈ ball x ε ↔ dist y x < ε :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 17692,
+    "cache_read_input_tokens": 72098,
+    "output_tokens": 3700,
+    "output_tokens_details": {
+      "thinking_tokens": 563
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17692,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2334,
+        "cache_read_input_tokens": 21264,
+        "cache_creation_input_tokens": 441,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 441
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22999560000000002,
+  "duration_ms": 32419,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T14:20:23",
+  "unit": "file",
+  "source_sha256": "624a4ebc234d97983224dee0d924019be51b5c247f9086a70f6d76f14ba0cb28",
+  "rubric": "simp-interface"
+}

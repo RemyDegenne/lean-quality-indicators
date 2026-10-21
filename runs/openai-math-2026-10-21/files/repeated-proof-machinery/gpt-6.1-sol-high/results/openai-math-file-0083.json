@@ -1,0 +1,54 @@
+{
+  "id": "openai-math-file-0083",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Reviewed all 127 lines, the imported directional and adjoint definitions, polynomial Gibbs integration by parts, Gaussian normalization, and relevant Mathlib integration APIs. Routine continuity, compact-support integrability, and finite-sum manipulations were not treated as findings. The proposed refactoring was not compiled.",
+  "findings": [
+    {
+      "declaration": "compact_gibbs_ibp",
+      "excerpt": "  have hD (z : Point d) : fderiv ℝ (fun z => Real.exp (-H z)) z v=\n      -(Real.exp (-H z)*inner ℝ (gradient H z) v) := by",
+      "problem": "Lines 22–39 repeat the mathematical core of polynomial_gibbs_ibp: computing the exponential density's derivative, applying volume integration by parts, resolving its signs, and transferring the resulting identity to the normalized Gibbs measure. The compact-support and polynomial-growth arguments establish different integrability conditions, but then independently implement this same multi-stage argument.",
+      "proposed_change": "Introduce a shared lemma before polynomial_gibbs_ibp in GrowthInnerGradient.lean, where integral_gibbs_vector is already available:\n\nlemma gibbs_ibp_of_integrable {d : ℕ} {H g : Point d → ℝ}\n    (hH : ContDiff ℝ 1 H)\n    (hi : Integrable (fun z => Real.exp (-H z)))\n    (hg : ContDiff ℝ 1 g) (v : Point d)\n    (hSg : Integrable (fun z => Real.exp (-H z) *\n      (inner ℝ (gradient H z) v * g z)))\n    (hdg : Integrable (fun z => Real.exp (-H z) * fderiv ℝ g z v))\n    (hgg : Integrable (fun z => Real.exp (-H z) * g z)) :\n    (∫ z, fderiv ℝ g z v ∂gibbs H) =\n      ∫ z, inner ℝ (gradient H z) v * g z ∂gibbs H\n\nProof sketch: retain the existing hD calculation once; use hSg.neg and hD to establish integrability of the differentiated-density product; apply integral_mul_fderiv_eq_neg_fderiv_mul_of_integrable with hdg and hgg; simplify signs; finally apply integral_gibbs_vector on both sides.\n\nIn polynomial_gibbs_ibp, retain its continuity/growth estimates, hf'g, hfg', hfg, and hi, then replace the duplicated core with:\n  exact gibbs_ibp_of_integrable hH hi hg v hf'g hfg' hfg\n\nIn compact_gibbs_ibp, retain he, hdg, and hdgc, then use:\n  have hS : Continuous (fun z => inner ℝ (gradient H z) v) := by\n    simpa only [directional_gradient] using\n      (show Continuous (fun z => directional v H z) from\n        (hH.continuous_fderiv (by norm_num)).clm_apply continuous_const)\n  have hSgc : HasCompactSupport\n      (fun z => inner ℝ (gradient H z) v * g z) := hgc.mul_left\n  simpa only [directional] using\n    gibbs_ibp_of_integrable hH hi hg v\n      ((he.continuous.mul (hS.mul hg.continuous)).integrable_of_hasCompactSupport hSgc.mul_left)\n      ((he.continuous.mul hdg).integrable_of_hasCompactSupport hdgc.mul_left)\n      ((he.continuous.mul hg.continuous).integrable_of_hasCompactSupport hgc.mul_left)\n\nThese are proposed, untested rewrites. The helper needs no directional import, and the target already imports GrowthInnerGradient transitively through PolyC1.",
+      "benefit": "Centralizes the density-derivative, sign, and normalization argument while leaving each theorem's genuinely different integrability reasoning visible. Neither theorem acquires stronger assumptions: dimension zero, a zero direction, and an identically zero test function remain covered.",
+      "start_line": 22,
+      "end_line": 39,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/Analysis/GrowthInnerGradient.lean",
+          "declaration": "polynomial_gibbs_ibp",
+          "excerpt": "  have hD (z : Point d) : fderiv ℝ (fun z => Real.exp (-H z)) z v=\n      -(Real.exp (-H z)*inner ℝ (gradient H z) v) := by\n    change (fderiv ℝ (fun z => Real.exp ((-H) z)) z) v=_\n    rw [((hH.differentiable (by norm_num) z).hasFDerivAt.neg.exp).fderiv]\n    simp only [smul_apply,neg_apply,smul_eq_mul,←toDual_gradient,\n      InnerProductSpace.toDual_apply_apply,Pi.neg_apply]\n    ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/Analysis/GrowthInnerGradient.lean",
+          "declaration": "polynomial_gibbs_ibp",
+          "excerpt": "  simp only [hD,neg_mul,mul_assoc,integral_neg,neg_neg] at hh\n  have hi : Integrable (fun z => Real.exp (-H z)) := by\n    simpa using integrable_tilted H hH.continuous continuous_const ht (growth_const (1:ℝ)) 0\n  rw [integral_gibbs_vector hH.continuous hi,integral_gibbs_vector hH.continuous hi]\n  simp only [smul_eq_mul,hh]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/Analysis/CompactGibbsIbp.lean",
+          "declaration": "compact_gibbs_ibp",
+          "excerpt": "  simp only [hD,neg_mul,mul_assoc,integral_neg,neg_neg] at hh\n  rw [integral_gibbs_vector hH.continuous hi,integral_gibbs_vector hH.continuous hi]\n  simpa only [smul_eq_mul,directional] using congrArg (fun a => (∫z,Real.exp (-H z))⁻¹*a) hh"
+        }
+      ]
+    }
+  ],
+  "backend": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "cost_usd": null,
+  "duration_ms": 128096,
+  "turns": 1,
+  "attempts": 1,
+  "usage": {
+    "input_tokens": 129801,
+    "cached_input_tokens": 93824,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 4828,
+    "reasoning_output_tokens": 2391
+  },
+  "prompt_sha256": "cf99def8a55561be27db8448e2cb724eae959d5f6c22eb72acdf2f5d8d58919d",
+  "judged": "2026-10-21T11:57:28+00:00",
+  "unit": "file",
+  "source_sha256": "85b92b27e9819d5a72cb485284384cebb502791efac30fc197c6e0d3d9c4b1d4",
+  "rubric": "repeated-proof-machinery"
+}

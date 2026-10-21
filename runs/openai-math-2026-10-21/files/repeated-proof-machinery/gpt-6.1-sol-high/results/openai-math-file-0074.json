@@ -1,0 +1,59 @@
+{
+  "id": "openai-math-file-0074",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Reviewed all 177 lines, the underlying transport definitions, TimeHalf lemmas, and the independently repeated short-plan proof. Routine endpoint symmetry and map/unfolding steps were excluded. The proposed refactoring has not been checked with Lean.",
+  "findings": [
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan",
+      "excerpt": "  have hcanc : q • θ' = θ := by\n    change q • (q⁻¹ • θ) = θ\n    rw [smul_smul,ENNReal.mul_inv_cancel hq hqt,one_smul]",
+      "problem": "The normalization, CD-plan construction, and rescaling argument in lines 79–121 and 137–170 is repeated in CurvatureDimension.reroute_finite_subplan_short, lines 68–110 and 112–144. Both proofs normalize the finite plan, establish endpoint density bounds and second moments, apply CD, and rescale while transporting optimal-cost and midpoint-support estimates. The substantive difference is how they establish the selected probability plan's length bound: endpoint geometry here, versus hshort there.",
+      "proposed_change": "Extract a generalized theorem before this declaration, using only its existing imports. In the existing variable context, a proposed statement is:\n\nlemma CurvatureDimension.reroute_finite_subplan_of_length\n    {m : Measure X} [SigmaFinite m] {K N : ℝ}\n    (hN : 1 < N) (hcd : CurvatureDimension m K N)\n    (θ : Measure (Curve X)) [IsFiniteMeasure θ] (hq : θ univ ≠ 0)\n    (o : X) {R : ℝ}\n    (hb : ∀ᵐ γ ∂θ, dist (γ timeZero) o ≤ R ∧ dist (γ timeOne) o ≤ R)\n    {C : ℝ≥0∞} (hd₀ : interpolation θ timeZero ≤ C • m)\n    (hd₁ : interpolation θ timeOne ≤ C • m) (D : ℝ≥0)\n    (hshort : ∀ π : Measure (Curve X), IsProbabilityMeasure π →\n      (∀ᵐ γ ∂π, IsGeodesic γ) →\n      IsOptimalCoupling (endpointCoupling π)\n        (interpolation ((θ univ)⁻¹ • θ) timeZero)\n        (interpolation ((θ univ)⁻¹ • θ) timeOne) →\n      ∀ᵐ γ ∂π, dist (γ timeZero) (γ timeOne) ≤ (D : ℝ)) :\n    ∃ ξ : Measure (Curve X), IsFiniteMeasure ξ ∧ ξ univ = θ univ ∧\n      (∀ᵐ γ ∂ξ, IsGeodesic γ) ∧\n      interpolation ξ timeZero = interpolation θ timeZero ∧\n      interpolation ξ timeOne = interpolation θ timeOne ∧\n      QuadraticTransportCost (endpointCoupling ξ) ≤\n        QuadraticTransportCost (endpointCoupling θ) ∧\n      ∀ B : Set X, MeasurableSet B → interpolation ξ timeHalf Bᶜ = 0 →\n        ((2 : ℝ≥0∞) * midpointTauLower K N D)^N /\n          ((θ univ)⁻¹ * C) ≤ m B\n\nProof sketch: retain the current normalization, density, absolute-continuity, and second-moment arguments; after obtaining π, use `hshort π hπ hgeo hopt` for hlen. Retain the rescaling/cost/support argument, applying cd_midpoint_support_lower with D.property instead of the bound on 2*R.\n\nThe original theorem can then use the helper as follows, retaining only its geometric length argument:\n\n  refine hcd.reroute_finite_subplan_of_length hN θ hq o hb hd₀ hd₁\n    ⟨2*R, by linarith⟩ ?_\n  intro π _ _ hopt\n  have hb' : ∀ᵐ γ ∂((θ univ)⁻¹ • θ),\n      dist (γ timeZero) o ≤ R ∧ dist (γ timeOne) o ≤ R :=\n    (Measure.AbsolutelyContinuous.rfl.smul_left _).ae_le hb\n  have h0 : ∀ᵐ γ ∂π, dist (γ timeZero) o ≤ R := by\n    apply ae_of_ae_map (f := fun γ : Curve X => γ timeZero)\n      (continuous_eval_const timeZero).measurable.aemeasurable\n    change ∀ᵐ x ∂interpolation π timeZero, dist x o ≤ R\n    rw [hopt.1.interpolation_endpoints.1]\n    exact (ae_map_iff (continuous_eval_const timeZero).measurable.aemeasurable\n      (measurableSet_le (continuous_id.dist continuous_const).measurable\n        measurable_const)).mpr (hb'.mono fun _ h => h.1)\n  have h1 : ∀ᵐ γ ∂π, dist (γ timeOne) o ≤ R := by\n    apply ae_of_ae_map (f := fun γ : Curve X => γ timeOne)\n      (continuous_eval_const timeOne).measurable.aemeasurable\n    change ∀ᵐ x ∂interpolation π timeOne, dist x o ≤ R\n    rw [hopt.1.interpolation_endpoints.2]\n    exact (ae_map_iff (continuous_eval_const timeOne).measurable.aemeasurable\n      (measurableSet_le (continuous_id.dist continuous_const).measurable\n        measurable_const)).mpr (hb'.mono fun _ h => h.2)\n  filter_upwards [h0, h1] with γ h0 h1\n  have H := dist_triangle (γ timeZero) o (γ timeOne)\n  rw [dist_comm o (γ timeOne)] at H\n  linarith\n\nUnder its existing imports and hypotheses, reroute_finite_subplan_short becomes:\n\n  exact hcd.reroute_finite_subplan_of_length hN θ hq o hb hd₀ hd₁ D hshort\n\nHere hshort matches the callback by unfolding the existing OptimalPlansShort definition. This introduces no backward import of the later theorem. Preserve the nonzero finite-mass hypotheses; allow D = 0 and retain ENNReal arithmetic without adding assumptions that C is positive or finite.",
+      "benefit": "Maintains one substantial normalization–CD–rescaling proof rather than two near-identical implementations. Each public theorem exposes only its distinct length-bound argument, so changes to density scaling, optimality, or support estimates need to be made once.",
+      "start_line": 79,
+      "end_line": 170,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Calculus/RnDerivSmul.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan",
+          "excerpt": "  obtain ⟨π,hπ,hgeo,hopt,hent⟩ := hcd μ₀ μ₁ inferInstance inferInstance\n    (hasSecondMoment_of_ae_dist_le o R hb0) (hasSecondMoment_of_ae_dist_le o R hb1) hac0 hac1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/RerouteFiniteSubplanShort.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan_short",
+          "excerpt": "  obtain ⟨π,hπ,hgeo,hopt,hent⟩ := hcd μ₀ μ₁ inferInstance inferInstance\n    (hasSecondMoment_of_ae_dist_le o R hb0) (hasSecondMoment_of_ae_dist_le o R hb1) hac0 hac1\n  let := hπ\n  obtain ⟨he0,he1⟩ := hopt.1.interpolation_endpoints\n  have hlen : ∀ᵐ γ ∂π, dist (γ timeZero) (γ timeOne) ≤ D := hshort π hπ hgeo hopt"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/RerouteFiniteSubplanShort.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan_short",
+          "excerpt": "    have hs' : interpolation π timeHalf Bᶜ = 0 := by\n      change (q • π).map _ Bᶜ = 0 at hs\n      rw [Measure.map_smul _ (continuous_eval_const timeHalf).measurable.aemeasurable,\n        Measure.smul_apply,smul_eq_mul] at hs\n      exact (mul_eq_zero.mp hs).resolve_left hq\n    apply cd_midpoint_support_lower hN D.property hopt.1\n      (hac0.ae_le (rnDeriv_le_of_le_smul hd0))\n      (hac1.ae_le (rnDeriv_le_of_le_smul hd1)) hlen ?_ hB hs'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/OptimalPlansShort.lean",
+          "declaration": "OptimalPlansShort",
+          "excerpt": "def OptimalPlansShort (μ₀ μ₁ : Measure X) (D : ℝ) : Prop :=\n  ∀ π : Measure (Curve X), IsProbabilityMeasure π →\n    (∀ᵐ γ ∂π, IsGeodesic γ) → IsOptimalCoupling (endpointCoupling π) μ₀ μ₁ →\n      ∀ᵐ γ ∂π, dist (γ timeZero) (γ timeOne) ≤ D"
+        }
+      ]
+    }
+  ],
+  "backend": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "cost_usd": null,
+  "duration_ms": 166117,
+  "turns": 1,
+  "attempts": 1,
+  "usage": {
+    "input_tokens": 255620,
+    "cached_input_tokens": 215680,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 6548,
+    "reasoning_output_tokens": 2968
+  },
+  "prompt_sha256": "cf99def8a55561be27db8448e2cb724eae959d5f6c22eb72acdf2f5d8d58919d",
+  "judged": "2026-10-21T11:28:02+00:00",
+  "unit": "file",
+  "source_sha256": "659acbb3a82e0e7548787ca860f4814b3dd1940c61d717d0b3b39fece39b5163",
+  "rubric": "repeated-proof-machinery"
+}

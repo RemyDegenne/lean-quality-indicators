@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0053",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 199 lines of the target file. I also checked `sum_reference_frozen` in SourceReferenceMainRestriction.lean, and the definitions of `physicalMainScale` (SourceLabeledPositiveSplit.lean), `physicalCenteredMaskedBand` (SourceLabeledMaskedSlots.lean) and `physicalFrozenCenteredCoefficient` (SourceLabeledCoefficientSplit.lean).\n\nBoth definitions have the form `∑ l, ∑ u, Φ l u (frozen coefficient)`, and their two restriction proofs repeat the same argument. Each proof applies `sum_reference_frozen` to an ad hoc `f`, proves `hvanish` through `physicalFrozenCenteredCoefficient_eq_zero`, and then runs a nested `Finset.sum_congr` calc that rewrites with `referenceSelf_frozenCenteredCoefficient` and one more transport lemma.\n\nThe other proofs do not repeat this argument:\n- `physicalMainSquare_eq_narrow_reference` and `physicalCenteredMaskedVariation_eq_narrow_reference` just reuse the band and scale lemmas.\n- `referenceSelf_*` are short transports.\n- `physicalFrozenCenteredCoefficient_eq_zero` is a single `simp` call.\n\nRemaining uncertainty: I could not compile the proposed helper. The calc steps already in the file rely on `(Q).labels j` and `P.referenceLabels t t R cone w j` being definitionally equal, so the helper's statement is phrased in terms of `(Q).labels j`. Elaboration details may still need small adjustments, for example `show` or `dsimp only` to beta-reduce `Φ`/`Ψ` applications.",
+  "findings": [
+    {
+      "declaration": "physicalMainScale_eq_narrow_reference / physicalCenteredMaskedBand_eq_narrow_reference",
+      "start_line": 82,
+      "end_line": 174,
+      "excerpt": "  have hsum := P.sum_reference_frozen (E := ℝ) t t R cone w j\n    (fun l _u k => b j l k t) f\n    (fun l _u k hk => hshort j l k hk)\n    (fun l _u k hk => hsupport j l k hk)",
+      "problem": "Both restriction theorems repeat the same roughly 20-line argument: restricting a sum of the form `∑ l, ∑ u, Φ l u (P.physicalFrozenCenteredCoefficient t a b v g j l u)` to the narrow reference labels.\n\nIn each proof:\n1. A local `f` wraps the frozen coefficient (lines 90–91 and 150–153).\n2. `sum_reference_frozen` gets the same `fun l _u k => b j l k t`, `hshort` and `hsupport` adapters (lines 92–95 and 154–157).\n3. `hvanish` is proved by rewriting with `physicalFrozenCenteredCoefficient_eq_zero` and showing that `Φ` kills `0` (lines 96–98 and 158–163).\n4. After `symm`, a calc does a nested `Finset.sum_congr` and rewrites with `referenceSelf_frozenCenteredCoefficient` plus one per-term transport lemma, then closes with `hsum` (lines 101–109 and 166–174).\n\nThe only differences are the summand around the coefficient (`‖c‖ * positiveEnvelope` versus `c k * mask * alt packet`) and which transport lemma is used for that summand.",
+      "proposed_change": "Add one helper in this section, after `referenceSelf_frozenCenteredCoefficient`:\n\n```lean\ntheorem sum_frozenCoefficient_eq_narrow_reference {E : Type*} [AddCommMonoid E] (a : ℝ)\n    (b : ∀ j, P.labels j → κ → ℝ → ℂ) (v : ℝ×ℝ → ℝ) (g : ℝ×ℝ → EuclideanSpace ℂ κ)\n    (hshort : ∀ j l k, b j l k t ≠ 0 → P.length j ≤ R)\n    (hsupport : ∀ j l k, b j l k t ≠ 0 → |t+P.rowSlope j l-t| ≤ cone*w/P.length j)\n    (j : Fin N) (Φ : ∀ l : P.labels j, Item j l → EuclideanSpace ℂ κ → E)\n    (hΦ : ∀ l u, Φ l u 0 = 0)\n    (Ψ : ∀ l : (Q).labels j, Item j l → EuclideanSpace ℂ κ → E)\n    (hΨ : ∀ l u c, Ψ l u c = Φ (orig j l) u c) :\n    ∑ l : (Q).labels j, ∑ u : Item j l, Ψ l u ((Q).physicalFrozenCenteredCoefficient t a\n        (fun j l k s => b j (orig j l) k s) v g j l u) =\n      ∑ l : P.labels j, ∑ u : Item j l, Φ l u (P.physicalFrozenCenteredCoefficient t a b v g j l u)\n```\n\nProof sketch: rewrite each term with `hΨ` and `P.referenceSelf_frozenCenteredCoefficient t R cone w F hw hcone hF hwide hfrequency` using the nested `Finset.sum_congr`. Then finish with:\n\n```lean\nP.sum_reference_frozen t t R cone w j (fun l _ k => b j l k t)\n  (fun l u => Φ l u (P.physicalFrozenCenteredCoefficient t a b v g j l u))\n  (fun l _ k hk => hshort j l k hk) (fun l _ k hk => hsupport j l k hk)\n  (fun l u hz => by rw [P.physicalFrozenCenteredCoefficient_eq_zero t a b v g j l u hz, hΦ])\n```\n\nRewritten uses:\n\n- **Main scale:**\n  ```lean\n  unfold physicalMainScale\n  exact (P.sum_frozenCoefficient_eq_narrow_reference t R cone w F hw hcone hF hwide hfrequency a b v g hshort hsupport j\n    (fun l u c => ‖c‖ * P.positiveEnvelope j l u y x) (fun _ _ => by simp)\n    (fun l u c => ‖c‖ * (Q).positiveEnvelope j l u y x)\n    (fun l u c => by rw [P.referenceSelf_positiveEnvelope t R cone w F hw hcone hF hwide hfrequency])).symm\n  ```\n\n- **Masked band:**\n  ```lean\n  ext k; simp only [physicalCenteredMaskedBand, WithLp.ofLp_toLp]\n  exact (P.sum_frozenCoefficient_eq_narrow_reference … a b v g hshort hsupport j\n    (fun l u c => c k * ((T j l u).mask L A (x,y+t*x):ℂ) * (P.withProfile alt hAlt).physicalPacket t j l u k (x,y+t*x))\n    (fun _ _ => by simp)\n    (fun l u c => c k * ((T j (orig j l) u).mask L A (x,y+t*x):ℂ) * ((Q).withProfile _ _).physicalPacket t j l u k (x,y+t*x))\n    (fun l u c => by rw [P.referenceSelf_alt_physicalPacket t R cone w F hw hcone hF hwide hfrequency])).symm\n  ```\n\nThe helper needs no new imports beyond the file's existing ones. It uses only `sum_reference_frozen`, `physicalFrozenCenteredCoefficient_eq_zero` and `referenceSelf_frozenCenteredCoefficient`, which are already available here.",
+      "benefit": "The key mathematical step is that only nonzero frozen selectors survive, so the sum over all labels equals the sum over the narrow reference labels. With the helper, that step is stated and proved once, as a named lemma, instead of being re-derived through a local `f`, a `hvanish` side proof and a nested `sum_congr` calc in each proof.\n\nEach caller then reduces to a few lines that only supply its summand, the fact that it vanishes at `0`, and its transport lemma. That makes clear what differs between the main-scale and masked-band cases.\n\nAny future change to the hypotheses (`hshort`/`hsupport`), to `sum_reference_frozen`, or to the frozen-coefficient transport needs to be made in only one place. A new quantity built from the frozen coefficient, such as another envelope or masked synthesis, would get the restriction by instantiating `Φ`/`Ψ` instead of copying the block again.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledMainRestriction.lean",
+          "declaration": "physicalCenteredMaskedBand_eq_narrow_reference",
+          "excerpt": "  have hsum := P.sum_reference_frozen (E := ℂ) t t R cone w j\n    (fun l _u k => b j l k t) f\n    (fun l _u k hk => hshort j l k hk)\n    (fun l _u k hk => hsupport j l k hk)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledMainRestriction.lean",
+          "declaration": "physicalCenteredMaskedBand_eq_narrow_reference",
+          "excerpt": "      rw [P.referenceSelf_frozenCenteredCoefficient t R cone w F hw hcone hF hwide hfrequency,\n        P.referenceSelf_alt_physicalPacket t R cone w F hw hcone hF hwide hfrequency]\n    _ = _ := hsum"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceReferenceMainRestriction.lean",
+          "declaration": "sum_reference_frozen",
+          "excerpt": "    (hvanish : ∀ l u, (∀ k, c l u k = 0) → f l u = 0) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledPositiveSplit.lean",
+          "declaration": "physicalMainScale",
+          "excerpt": "  ∑ l : P.labels j, ∑ u : Item j l,\n    ‖P.physicalFrozenCenteredCoefficient t a b v g j l u‖*P.positiveEnvelope j l u y x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Trees/SourceLabeledMaskedSlots.lean",
+          "declaration": "physicalCenteredMaskedBand",
+          "excerpt": "  WithLp.toLp 2 (fun k => ∑ l : P.labels j, ∑ u : Item j l,\n    P.physicalFrozenCenteredCoefficient t a b v g j l u k*"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 22826,
+    "cache_read_input_tokens": 58583,
+    "output_tokens": 6989,
+    "output_tokens_details": {
+      "thinking_tokens": 2361
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22826,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4189,
+        "cache_read_input_tokens": 23442,
+        "cache_creation_input_tokens": 3313,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3313
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3341366,
+  "duration_ms": 57007,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T13:54:53",
+  "unit": "file",
+  "source_sha256": "d011bdb2db8bf771fea5df508d45696bc8c8a177484d16d21f9a098a910bb359",
+  "rubric": "repeated-proof-machinery"
+}

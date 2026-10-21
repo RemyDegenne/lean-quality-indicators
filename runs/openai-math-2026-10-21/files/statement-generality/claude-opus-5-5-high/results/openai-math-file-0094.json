@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0094",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all five theorems in the file (lines 1–73) and checked their only external caller, `exists_anchored_integer_intervals_power` in Lattices/AnchoredIntegerIntervalsPower.lean. That caller passes `hp : 2 ≤ p` to both budget lemmas.\n\n`anchor_power_lower`, `anchor_halved_power_lower` and `anchor_branch_lower` are already stated at the right level for how they are used. Making them more general (for example, any base in place of 4, or any exponent n with n ≤ 2p) would add abstraction without a clear benefit, so I did not flag them.\n\n`anchor_power_lower` and `anchor_halved_power_lower` assume `0 ≤ p`, which already follows from `hm`. Removing that assumption would only delete a binder, which belongs to the separate unnecessary-hypotheses experiment, so I left it out.\n\nThe one finding is that the two budget lemmas require `2 ≤ p`, although their arithmetic only needs `0 ≤ p`. I checked this by hand: after expanding (p+2)^3, both inequalities are linear in p^3, p^2 and p, with nonnegative coefficients. I could not compile, so it is unconfirmed that the existing `nlinarith` calls still close the goals after the change. The needed hints (`pow_nonneg hp0 3`, `sq_nonneg p` and `hp0`) are already there.",
+  "findings": [
+    {
+      "declaration": "anchored_interval_budget, anchored_density_budget",
+      "start_line": 36,
+      "end_line": 67,
+      "excerpt": "theorem anchored_interval_budget {p delta : ℝ} {m : ℕ} (hp : 2 ≤ p)",
+      "problem": "Both budget lemmas assume `hp : 2 ≤ p`, but the proofs only use it to get `hp0 : 0 ≤ p` (`have hp0 : 0 ≤ p := by linarith`). The final arithmetic works for every p ≥ 0. In the interval lemma, -(p+2)^3 ≤ -(2p^2) - 6 is equivalent to p^3 + 4p^2 + 12p + 2 ≥ 0. In the density lemma, after `← Real.exp_add`, the goal -(p+2)^3 ≤ -(4p) + (-(2p^2) - 1) + (-p) is equivalent to p^3 + 4p^2 + 7p + 7 ≥ 0. Both are immediate from p ≥ 0. The constant 6 in the interval proof comes from `h40 : 40 ≤ Real.exp 6` and does not depend on p. So the threshold 2 is a needless restriction that is then copied into the downstream wrapper `exists_anchored_integer_intervals_power`.",
+      "proposed_change": "Change the hypothesis in both lemmas to the weaker form used by `anchor_power_lower`:\n\n`theorem anchored_interval_budget {p delta : ℝ} {m : ℕ} (hp : 0 ≤ p) (hm : (m : ℝ) ≤ p) (hdelta : Real.exp (-p) ≤ delta) : Real.exp (-((p + 2) ^ 3)) ≤ delta ^ (2 * m) / 40`\n\n`theorem anchored_density_budget {p delta sigma : ℝ} {m : ℕ} (hp : 0 ≤ p) (hm : (m : ℝ) ≤ p) (hdelta : Real.exp (-p) ≤ delta) (hsigma : Real.exp (-p) ≤ sigma) : Real.exp (-((p + 2) ^ 3)) ≤ Real.exp (-Real.log 4 * m) * (delta ^ (2 * m) / 2) * sigma`\n\nIn each proof, set `hp0 := hp` (or replace `hp0` with `hp`). The remaining steps (`div_le_div₀ ... (anchor_power_lower hp0 hm hdelta) ... h40`, `mul_le_mul`, and the `nlinarith [pow_nonneg hp0 3, sq_nonneg p]` closures) only use nonnegativity of p. Since `0 ≤ p` also follows from `(Nat.cast_nonneg m).trans hm`, the wrapper `exists_anchored_integer_intervals_power` can relax its own `2 ≤ p` in the same way. Degenerate case m = 0, p = 0: the interval statement becomes exp(-8) ≤ 1/40, which is true. The density statement needs exp(-8) ≤ sigma/2 with sigma ≥ 1, which is also true.",
+      "benefit": "The budget lemmas and the public Erdős-3 interval theorem would then cover the small-loss range 0 ≤ p < 2, for example when card K is 0 or 1 and delta is close to 1. Callers would no longer need to inflate p artificially. The hypotheses would also match the helper lemmas `anchor_power_lower` and `anchor_halved_power_lower`, so a reader is not misled into thinking that p ≥ 2 matters to the estimate.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Dynamics/AnchorLossBudget.lean",
+          "declaration": "anchor_power_lower",
+          "excerpt": "theorem anchor_power_lower {p delta : ℝ} {m : ℕ} (hp : 0 ≤ p)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Dynamics/AnchorLossBudget.lean",
+          "declaration": "anchored_density_budget",
+          "excerpt": "  have hp0 : 0 ≤ p := by linarith\n  have hd0 : 0 ≤ delta := (Real.exp_nonneg _).trans hdelta\n  have hmul := mul_le_mul (anchor_branch_lower hm) (anchor_halved_power_lower hp0 hm hdelta)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Dynamics/AnchorLossBudget.lean",
+          "declaration": "anchored_interval_budget",
+          "excerpt": "      nlinarith [pow_nonneg hp0 3, sq_nonneg p]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Lattices/AnchoredIntegerIntervalsPower.lean",
+          "declaration": "exists_anchored_integer_intervals_power",
+          "excerpt": "{p delta : ℝ} (hp : 2 ≤ p) (hm : (Fintype.card K : ℝ) ≤ p)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 11518,
+    "cache_read_input_tokens": 28360,
+    "output_tokens": 4674,
+    "output_tokens_details": {
+      "thinking_tokens": 1874
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 11518,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3821,
+        "cache_read_input_tokens": 13011,
+        "cache_creation_input_tokens": 2531,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2531
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19132,
+  "duration_ms": 39843,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-21T17:10:27",
+  "unit": "file",
+  "source_sha256": "3ae7b7e1e1f6d4bc6a5481209e14d54f7131cb4e286514bdaec55eb41fe3a7dd",
+  "rubric": "statement-generality"
+}

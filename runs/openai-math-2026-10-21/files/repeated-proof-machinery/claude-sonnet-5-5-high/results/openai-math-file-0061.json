@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0061",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the `polynomial_fold`, `weight_prefix`, `weight_append` and `weight_cons` APIs in the MatchingCount Complexity files. I also grepped for other uses of `(2*X+1)` and of `pair reverse (constant [])`. The only repeated nontrivial machinery in this file is the polynomial-time argument for \"reverse the input and fold a step that grows the weight additively\". It appears in `polynomial_dedup` and `polynomial_insertionSort`. The same proof shape also appears in other files (`TreePolynomialCollections.lean` lines 42–49 and 126–135, and `TreeFiniteCollections.lean`), and the `pair reverse (constant [])` realizer wrapper appears in `Parse.lean` and `MedianFractionProgram.lean`. I did not examine those enough to claim they can use the same lemma. The `dedup_fold` and `insert_fold` inductions share an opening `rw` line, but their step lemmas differ, so I did not report them. I could not compile the proposed lemma. The exact unification of `polynomial_composition` against the `composition (pair reverse (constant [])) (fold F)` term is the main uncertainty. The polynomial `2*X+1` and the `omega` closing step are copied directly from the two existing proofs.",
+  "findings": [
+    {
+      "declaration": "polynomial_dedup / polynomial_insertionSort",
+      "start_line": 53,
+      "end_line": 63,
+      "excerpt": "apply polynomial_fold (polynomial_congr _ (polynomial_choose (polynomial_contains hE) polynomial_second polynomial_listCons)) (2*X+1)",
+      "problem": "`polynomial_dedup` (lines 53–63) and `polynomial_insertionSort` (lines 172–182) repeat the same polynomial-time argument for the shape \"reverse the list, then fold a list-valued step starting from []\". Each proof does `unfold`, `apply polynomial_congr`, applies `polynomial_composition (polynomial_pair polynomial_reverse (polynomial_constant []))`, calls `polynomial_fold … (2*X+1)`, and introduces `as bs pre post he`. Each then takes `hh` (the foldl weight bound), `hp := weight_prefix he`, runs the same `simp only [Polynomial.eval_add,Polynomial.eval_mul,Polynomial.eval_ofNat,Polynomial.eval_X,weight_prod]`, and closes with `omega`. The mathematics is the same each time. An additive weight bound `weight (foldl) ≤ weight pre + weight bs` plus `weight pre ≤ weight as` gives the bound `2*weight(as,bs)+1`. The matching realizer definitions `dedup` (line 38) and `insertionSort` (line 157) both spell out `composition (pair reverse (constant [])) (fold …)`. The same boilerplate also appears in `TreePolynomialCollections.lean` for other folds with `(2*X+1)`.",
+      "proposed_change": "Add one lemma next to `polynomial_fold`, or in this file before `dedup`:\n\n```lean\nlemma polynomial_foldReverse {f : A×List A → List A} {F : Realizer f}\n    (hF : PolynomialTime F)\n    (hw : ∀ (as bs : List A),\n      weight (as.foldl (fun z a=>f (a,z)) bs) ≤ weight as + weight bs) :\n    PolynomialTime (composition (pair reverse (constant ([] : List A))) (fold F)) := by\n  apply polynomial_composition (polynomial_pair polynomial_reverse (polynomial_constant []))\n  apply polynomial_fold hF (2*X+1)\n  intro as bs pre post he\n  have hh := hw pre bs\n  have hp := weight_prefix he\n  simp only [Polynomial.eval_add,Polynomial.eval_mul,Polynomial.eval_ofNat,Polynomial.eval_X,weight_prod]\n  omega\n```\n\nThe proof sketch is the shared `omega` argument from the two existing proofs.\n\nThen rewrite the two uses. For `polynomial_dedup`:\n```lean\n  unfold dedup\n  exact polynomial_congr _ (polynomial_foldReverse\n    (polynomial_congr _ (polynomial_choose (polynomial_contains hE) polynomial_second polynomial_listCons))\n    weight_dedupFold)\n```\nFor `polynomial_insertionSort`:\n```lean\n  unfold insertionSort\n  exact polynomial_congr _ (polynomial_foldReverse (polynomial_orderedInsert r hR)\n    (fun as bs => by have := weight_insertFold r as bs; omega))\n```\nHere `weight_insertFold` gives `weight (foldl …) + 1 = weight as + weight bs`, which implies the `≤` form. If the step realizer or `fold` unification is awkward, `dedup` and `insertionSort` can also be defined through a `foldReverse` realizer so the statement matches syntactically. This is untested.",
+      "benefit": "The reverse-and-fold complexity argument, including the choice of the polynomial `2*X+1` and the `weight_prefix`/`omega` bookkeeping, is stated and proved once. Each remaining caller proves only its step-specific weight lemma, `weight_dedupFold` or `weight_insertFold`. A future list-fold algorithm with additive weight growth can reuse the lemma. A change to the `polynomial_fold` hypothesis shape then needs one edit instead of copies in several files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Machines/TreeCanonical.lean",
+          "declaration": "polynomial_insertionSort",
+          "excerpt": "apply polynomial_fold (polynomial_orderedInsert r hR) (2*X+1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Machines/TreeCanonical.lean",
+          "declaration": "insertionSort",
+          "excerpt": "(composition (pair reverse (constant [])) (fold (orderedInsert r R))).congr (by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolynomial.lean",
+          "declaration": "polynomial_fold",
+          "excerpt": "weight (pre.foldl (fun z a=>f (a,z)) b)≤p.eval (weight (as,b))) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolynomialCollections.lean",
+          "declaration": "polynomial_reverse (same 2*X+1 fold bookkeeping)",
+          "excerpt": "apply polynomial_fold polynomial_listCons (2*X+1)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 26385,
+    "cache_read_input_tokens": 126378,
+    "output_tokens": 5993,
+    "output_tokens_details": {
+      "thinking_tokens": 1497
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26385,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3261,
+        "cache_read_input_tokens": 27597,
+        "cache_creation_input_tokens": 2717,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2717
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17813579999999998,
+  "duration_ms": 55459,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-21T12:27:17",
+  "unit": "file",
+  "source_sha256": "5f540834d45a416f4899c4c95e97a28efdcd27afc8fe157fb1c441c84b4612a5",
+  "rubric": "repeated-proof-machinery"
+}

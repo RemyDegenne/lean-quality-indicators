@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0082",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 83 lines. I also checked the instance setup of `T.CauchyQuotient hadd`: it is an `abbrev` for a ring-congruence quotient (QuasitraceNullIdeal.lean). It has a `CStarAlgebra` instance (QuasitraceQuotientCStar.lean), the spectral `PartialOrder`/`StarOrderedRing` (QuasitraceQuotientOrder.lean) and `Algebra ℝ` via `restrictScalars`. I read Mathlib's `Commute.mul_nonneg`, which is stated for a generic C⋆-algebra-like type, and the repo lemma `quotientValue_weighted_partition` used by the last lemma.\n\nThe first three lemmas depend on `T`, `hadd` and the `D` instances only to name the carrier type. None of their proof steps uses anything about the quasitrace. The last lemma, `quotientValue_commuting_partitions_add`, really does depend on `T.quotientValue` and `quotientValue_weighted_partition`, which are stated for the quotient, so it is correctly specialised.\n\nThe generalisations proposed below have not been compiled. The main elaboration risk is at the use site, lines 67–78. The `ℝ`-module instance found for the generic `[Module ℝ A]` should be the same `Algebra.toModule` of `cauchyQuotientRealAlgebra` that this file already elaborates, so `rw [hl,hr] at h` should still match. Degenerate cases: if `s` or `t` is empty, the hypothesis `∑ … = 1` forces `1 = 0`, which happens only in the trivial ring. The general statements need no extra assumption for this case.",
+  "findings": [
+    {
+      "declaration": "quotient_partition_refinement",
+      "start_line": 13,
+      "end_line": 42,
+      "excerpt": "(e : ι → T.CauchyQuotient hadd) (f : κ → T.CauchyQuotient hadd)\n    (he : ∀ i ∈ s, 0 ≤ e i) (hf : ∀ j ∈ t, 0 ≤ f j)",
+      "problem": "This lemma says that the pairwise products of two commuting orthogonal partitions of unity form another orthogonal positive partition of unity. That is a fact about any C⋆-algebra with its star order. Here it is tied to the specific quotient `T.CauchyQuotient hadd`, so every use must supply `T : PositiveQuasitrace D`, the subadditivity hypothesis `hadd`, and the ambient instances on `D`. None of these is used in the proof. Positivity comes from Mathlib's `Commute.mul_nonneg`, which is stated for a generic algebra. Orthogonality uses only `noncomm_ring` and the commutation hypothesis, and the sum uses only `Finset.sum_product`/`Finset.mul_sum`.",
+      "proposed_change": "Move this lemma outside the `PositiveQuasitrace` section and state it for a general C⋆-algebra:\n```lean\nlemma Commute.partition_refinement {A ι κ : Type*} [CStarAlgebra A] [PartialOrder A] [StarOrderedRing A]\n    (s : Finset ι) (t : Finset κ) (e : ι → A) (f : κ → A)\n    (he : ∀ i ∈ s, 0 ≤ e i) (hf : ∀ j ∈ t, 0 ≤ f j)\n    (heo : ∀ i ∈ s, ∀ j ∈ s, i ≠ j → e i*e j=0)\n    (hfo : ∀ i ∈ t, ∀ j ∈ t, i ≠ j → f i*f j=0)\n    (hes : ∑ i ∈ s, e i=1) (hfs : ∑ j ∈ t, f j=1)\n    (hc : ∀ i ∈ s, ∀ j ∈ t, Commute (e i) (f j)) :\n    (∀ k ∈ s.product t, 0 ≤ e k.1*f k.2) ∧ … ∧ (∑ k ∈ s.product t, e k.1*f k.2)=1\n```\nThe existing proof can be kept word for word. `Commute.mul_nonneg` is already being applied to the quotient through its `CStarAlgebra` and `StarOrderedRing` instances, so it applies to any such `A`. The other two parts are pure ring algebra. At line 67, call it as `Commute.partition_refinement s t e f he hf heo hfo hes hfs hc`. A further option is to split the orthogonality and sum parts into a `[Ring A]` lemma.",
+      "benefit": "The refinement fact can then be reused for `D` itself or for any other C⋆-algebra, such as other quotient or AW⋆ constructions in this development, without building a quasitrace. Callers also no longer pass the irrelevant arguments `T` and `hadd`, and the statement shows that the result is pure algebra.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/CStarAlgebra/ContinuousFunctionalCalculus/Instances.lean",
+          "declaration": "Commute.mul_nonneg",
+          "excerpt": "lemma Commute.mul_nonneg {a b : A} (ha : 0 ≤ a) (hb : 0 ≤ b) (h : Commute a b) :\n    0 ≤ a * b := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Quasitrace/QuasitraceQuotientCStar.lean",
+          "declaration": "cauchyQuotientCStarAlgebra",
+          "excerpt": "instance cauchyQuotientCStarAlgebra : CStarAlgebra (T.CauchyQuotient hadd) where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Quasitrace/QuasitraceQuotientOrder.lean",
+          "declaration": "cauchyQuotientStarOrderedRing",
+          "excerpt": "instance cauchyQuotientStarOrderedRing : StarOrderedRing (T.CauchyQuotient hadd) := CStarAlgebra.spectralOrderedRing _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Projections/QuotientPartitionRefinement.lean",
+          "declaration": "quotient_partition_refinement",
+          "excerpt": "exact Commute.mul_nonneg (he _ hk.1) (hf _ hk.2) (hc _ hk.1 _ hk.2)"
+        }
+      ]
+    },
+    {
+      "declaration": "quotient_partition_refinement_left, quotient_partition_refinement_right",
+      "start_line": 44,
+      "end_line": 56,
+      "excerpt": "(hfs : ∑ j ∈ t, f j=1) (r : ι → ℝ) :\n    (∑ k ∈ s.product t, r k.1 • (e k.1*f k.2))=∑ i ∈ s, r i • e i := by",
+      "problem": "These two lemmas are identities about finite sums: if the `f j` sum to `1`, then `∑_{(i,j)} r i • (e i * f j) = ∑ i, r i • e i`, and the right-hand lemma is the mirror image. They hold in any semiring that is a module over the scalars. They need no order, star, norm or commutativity, and no orthogonality or positivity of `e`. Still, they are stated only for `T.CauchyQuotient hadd` with real scalars, and they make callers pass `T` and `hadd`. The proofs use only `Finset.sum_product`, `Finset.sum_comm`, `Finset.smul_sum`, `Finset.mul_sum`/`Finset.sum_mul`, `mul_one` and `one_mul`.",
+      "proposed_change": "State both lemmas generically, outside the quasitrace section:\n```lean\nlemma Finset.sum_product_smul_mul_of_sum_eq_one_right {R A ι κ : Type*} [Semiring R] [Semiring A] [Module R A]\n    (s : Finset ι) (t : Finset κ) (e : ι → A) (f : κ → A)\n    (hfs : ∑ j ∈ t, f j = 1) (r : ι → R) :\n    (∑ k ∈ s.product t, r k.1 • (e k.1 * f k.2)) = ∑ i ∈ s, r i • e i\n```\nThe `_right` lemma gets the analogous form, with `(hes : ∑ i ∈ s, e i = 1) (r : κ → R)`. The existing proof scripts (`rw [Finset.product_eq_sprod, Finset.sum_product]; simp only [←Finset.smul_sum, ←Finset.mul_sum, hfs, mul_one]`, and the `sum_comm`/`sum_mul` version) only need `Module R A` for `smul_sum` and a semiring for `mul_sum`/`sum_mul`. At lines 70–71, drop `T`/`hadd` from the calls. With `R := ℝ`, instance search should find the `ℝ`-module that `cauchyQuotientRealAlgebra` already provides.",
+      "benefit": "These general sum-rearrangement identities become reusable in any algebra (for example, in `D` itself or with complex weights), and they no longer depend on an unrelated quasitrace and subadditivity proof. The statement also makes clear that no positivity, orthogonality or C⋆ structure is needed, which the current quotient-specific form hides.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Projections/QuotientPartitionRefinement.lean",
+          "declaration": "quotient_partition_refinement_right",
+          "excerpt": "rw [Finset.product_eq_sprod,Finset.sum_product,Finset.sum_comm]\n  simp only [←Finset.smul_sum,←Finset.sum_mul,hes,one_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Quasitrace/QuasitraceQuotientCStar.lean",
+          "declaration": "cauchyQuotientRealAlgebra",
+          "excerpt": "instance cauchyQuotientRealAlgebra : Algebra ℝ (T.CauchyQuotient hadd) :=\n  Algebra.restrictScalars ℝ ℂ (T.CauchyQuotient hadd)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Quasitrace/QuasitraceNullIdeal.lean",
+          "declaration": "CauchyQuotient",
+          "excerpt": "abbrev CauchyQuotient := (T.nullSequenceIdeal hadd).ringCon.Quotient"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 24820,
+    "cache_read_input_tokens": 77424,
+    "output_tokens": 7550,
+    "output_tokens_details": {
+      "thinking_tokens": 2270
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24820,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4259,
+        "cache_read_input_tokens": 26276,
+        "cache_creation_input_tokens": 2568,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2568
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3650848,
+  "duration_ms": 63080,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T16:10:49",
+  "unit": "file",
+  "source_sha256": "813b4e312c0914313cdef031ab0713e7bfbbcdffa439886983498cd41152dbfc",
+  "rubric": "statement-generality"
+}

@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0040",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed the whole 41-line target file. It has two declarations: the private `latticePowerHom_isEmbedding` and `integralSemidirectPowerMap_isClosedEmbedding`. Inside the file, the two proofs share no reasoning. I then searched the PolycyclicRecognition sources for the same proof machinery and read IntegralSemidirectEmbedding.lean, FactorSystemPullback.lean, DiscreteUnipotentAbelian.lean and IntegralLatticePowerIndex.lean.\n\nFinding: the body of the private `latticePowerHom_isEmbedding` is repeated almost word for word in `factorPowerMap_isClosedEmbedding` in Algebra/FactorSystemPullback.lean, lines 61–67. Both build the same homeomorphism onto `(latticePowerHom n m).range` from `MonoidHom.ofInjective`. `integerVectorHom_isEmbedding` in IntegralSemidirectEmbedding.lean uses the same pattern, but for a different hom whose range carries a uniform-lattice discrete-topology `let`, so I did not count it as part of this duplication.\n\nI also compared the main theorem with `factorPullbackMap_isClosedEmbedding`. The skeleton is similar (a homeomorphism to the product, then range equals the preimage of a closed set), but one works with `SemidirectProduct` and the other with `FactorExtension`, through different homeomorphisms and range lemmas. Sharing that would need a new abstraction, so I am not reporting it.\n\nI found no ready-made Mathlib lemma saying that an injective map between discrete spaces is a (closed) embedding.\n\nRemaining uncertainty:\n- I could not confirm that IntegralLatticePowerIndex.lean already imports the discrete-topology instance on `Multiplicative (Fin n → ℤ)`. If it does not, the shared lemma could go in a small topology file imported by both users, or a topology import could be added.\n- I have not compiled the proposed rewrites.",
+  "findings": [
+    {
+      "declaration": "latticePowerHom_isEmbedding",
+      "start_line": 13,
+      "end_line": 20,
+      "excerpt": "  let e := MonoidHom.ofInjective (latticePowerHom_injective n hm)\n  let h : IntegralLatticeGroup n ≃ₜ (latticePowerHom n m).range :=\n    { e.toEquiv with\n      continuous_toFun := continuous_of_discreteTopology\n      continuous_invFun := continuous_of_discreteTopology }\n  exact Topology.IsEmbedding.subtypeVal.comp h.isEmbedding",
+      "problem": "This private lemma proves that `latticePowerHom n m` is an embedding. It does so by building a homeomorphism from `MonoidHom.ofInjective (latticePowerHom_injective n hm)` onto the range, using discrete topology on both sides, and then composing with `subtypeVal`. `factorPowerMap_isClosedEmbedding` in FactorSystemPullback.lean repeats the same five-line construction inline (lines 61–65). It then adds `isClosed_discrete _` to obtain a closed embedding of the same hom. Because the target version is `private`, the other file cannot reuse it, so the fact that the power map on ℤⁿ is a closed embedding is proved twice.",
+      "proposed_change": "Add one public lemma next to `latticePowerHom_injective` in Lattices/IntegralLatticePowerIndex.lean, which both files already import. If that file lacks the topology instance, put it in a small topology companion file imported by both.\n\n```lean\ntheorem latticePowerHom_isClosedEmbedding (n : ℕ) {m : ℕ} (hm : 0 < m) :\n    Topology.IsClosedEmbedding (latticePowerHom n m) := by\n  let e := MonoidHom.ofInjective (latticePowerHom_injective n hm)\n  let h : IntegralLatticeGroup n ≃ₜ (latticePowerHom n m).range :=\n    { e.toEquiv with\n      continuous_toFun := continuous_of_discreteTopology\n      continuous_invFun := continuous_of_discreteTopology }\n  exact ⟨Topology.IsEmbedding.subtypeVal.comp h.isEmbedding, isClosed_discrete _⟩\n```\n\nProof idea: the hom is injective (`latticePowerHom_injective`), so it gives a bijection onto its range. Both sides are discrete, so this bijection is a homeomorphism and the map is an embedding. Its range is closed because every subset of a discrete space is closed.\n\nThen delete the private `latticePowerHom_isEmbedding` (lines 13–20). In `integralSemidirectPowerMap_isClosedEmbedding`, change line 27 to `Topology.IsEmbedding.id.prodMap (latticePowerHom_isClosedEmbedding n hm).isEmbedding` and leave the rest of the proof unchanged. The hypotheses `hm : 0 < m` and `n` are already in scope there.\n\nIn FactorSystemPullback.lean, the body of `factorPowerMap_isClosedEmbedding` becomes `factorPullbackMap_isClosedEmbedding R _ (latticePowerHom_isClosedEmbedding n hm)`, using the same `R` and `hm`.",
+      "benefit": "The topological fact about `latticePowerHom` gets one named, public statement next to its algebraic companions (`_injective`, `_range`, `_finiteIndex`). Two duplicated homeomorphism constructions disappear. Both closed-embedding proofs then read as \"closed embedding of the power map, lifted through the extension\". A later change to `latticePowerHom` or to the topology on `IntegralLatticeGroup` only needs to be fixed in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Algebra/FactorSystemPullback.lean",
+          "declaration": "factorPowerMap_isClosedEmbedding",
+          "excerpt": "  let e := MonoidHom.ofInjective (latticePowerHom_injective n hm)\n  let h : IntegralLatticeGroup n ≃ₜ (latticePowerHom n m).range :=\n    { e.toEquiv with\n      continuous_toFun := continuous_of_discreteTopology\n      continuous_invFun := continuous_of_discreteTopology }\n  apply factorPullbackMap_isClosedEmbedding\n  exact ⟨Topology.IsEmbedding.subtypeVal.comp h.isEmbedding, isClosed_discrete _⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Algebra/FactorSystemPullback.lean",
+          "declaration": "factorPullbackMap_isClosedEmbedding",
+          "excerpt": "theorem factorPullbackMap_isClosedEmbedding (hf : Topology.IsClosedEmbedding f) :\n    Topology.IsClosedEmbedding (factorPullbackMap R f) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Lattices/IntegralLatticePowerIndex.lean",
+          "declaration": "latticePowerHom_injective",
+          "excerpt": "theorem latticePowerHom_injective (n : ℕ) {m : ℕ} (hm : 0 < m) :\n    Function.Injective (latticePowerHom n m) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Geometry/IntegralSemidirectPowerTopology.lean",
+          "declaration": "integralSemidirectPowerMap_isClosedEmbedding",
+          "excerpt": "    Topology.IsEmbedding.id.prodMap (latticePowerHom_isEmbedding n hm)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 33703,
+    "cache_read_input_tokens": 201335,
+    "output_tokens": 7622,
+    "output_tokens_details": {
+      "thinking_tokens": 2499
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33703,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3746,
+        "cache_read_input_tokens": 34957,
+        "cache_creation_input_tokens": 2675,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2675
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.46241099999999996,
+  "duration_ms": 67091,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-21T12:45:48",
+  "unit": "file",
+  "source_sha256": "36e75b1b25048c3053afb3575401b02e29f0bd7a6bfef0b0985725be9f342b9a",
+  "rubric": "repeated-proof-machinery"
+}

@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0097",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 42 lines of PinnedSigns.lean. I also read the definitions it depends on: signFieldEquiv, its simp lemmas and compatibleSigns in BondSigns.lean, bondSubspace in BondSubspace.lean, and pinnedBondSubspace in BondPin.lean. I checked how the file's declarations are used later, in SignedSigns.lean (prescribedCompatibleSignsEquiv, prescribedCompatibleSigns_card_of_nonempty) and in PinnedBonds.lean. There are two findings. First, the new set `positiveCompatibleSigns` has no membership lemma, so the proof in this file and the one later use both unfold it with `change`. Second, the simp proof gets from `signFieldEquiv (s v) = 0` to `s v = true` by applying the existing simp lemma `signFieldEquiv_true` backwards. That only works around a missing canonical lemma, and the call also lists `Equiv.apply_eq_iff_eq` twice. Some uncertainty remains. The `change` at SignedSigns.lean:61 also unfolds `prescribedCompatibleSigns` and `signTranslate`, so the membership lemma would remove only part of that work. The proposed lemmas are untested; both should hold by `Iff.rfl` or a case split on Bool. The `signFieldEquiv` lemma belongs in BondSigns.lean, so it is anchored at the line in this file where the workaround appears. I did not count the theorems `positiveCompatibleSigns_card` and `positiveCompatibleSigns_sum` as missing simp lemmas: they are cardinality and counting identities used by explicit `exact`/`rw`, and are not normal-form rewrites.",
+  "findings": [
+    {
+      "declaration": "positiveCompatibleSigns",
+      "start_line": 13,
+      "end_line": 14,
+      "excerpt": "def positiveCompatibleSigns (left right : E → V) (B : Set V) (η : E → Bool) : Set (V → Bool) :=\n  {s | s∈compatibleSigns left right η ∧ ∀ v∈B,s v=true}",
+      "problem": "This new set-valued definition has no membership lemma. `simp` cannot see through `s ∈ positiveCompatibleSigns left right B η`, so every consumer has to unfold the definition by hand with `change`. That happens in this file, in positiveCompatibleSignsEquiv (lines 20–22: `change ((∀ e,η e=true → s (left e)=s (right e)) ∧ ∀ v∈B,s v=true) ↔ ...`). It happens again in SignedSigns.lean, prescribedCompatibleSignsEquiv (`change (s∈compatibleSigns left right η ∧ ∀ v∈B,s v=true) ↔ ...`). Each of these restates the definition's body verbatim, which is brittle if the definition changes.",
+      "proposed_change": "Add the standard membership lemma right after the definition:\n\n@[simp] theorem mem_positiveCompatibleSigns {left right : E → V} {B : Set V} {η : E → Bool} {s : V → Bool} :\n    s ∈ positiveCompatibleSigns left right B η ↔ s ∈ compatibleSigns left right η ∧ ∀ v ∈ B, s v = true := Iff.rfl\n\nThen use `simp only [mem_positiveCompatibleSigns, ...]` or `rw [mem_positiveCompatibleSigns]` in place of restating the body with `change`, both here and in prescribedCompatibleSignsEquiv. A similar `mem_compatibleSigns` lemma would let simp go one step further when needed.",
+      "benefit": "Users get one canonical simp-normal form for membership. Proofs no longer copy the definition's body into `change` goals, and `simp` can work with hypotheses such as `hs : s ∈ positiveCompatibleSigns ...` without manual unfolding. The definition can also change without silently breaking every `change` that restates it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/SignedSigns.lean",
+          "declaration": "prescribedCompatibleSignsEquiv",
+          "excerpt": "change (s∈compatibleSigns left right η ∧ ∀ v∈B,s v=true) ↔"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/PinnedSigns.lean",
+          "declaration": "positiveCompatibleSignsEquiv",
+          "excerpt": "change ((∀ e,η e=true → s (left e)=s (right e)) ∧ ∀ v∈B,s v=true) ↔"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/BondSigns.lean",
+          "declaration": "compatibleSigns",
+          "excerpt": "{s | ∀ e,η e=true → s (left e)=s (right e)}"
+        }
+      ]
+    },
+    {
+      "declaration": "positiveCompatibleSignsEquiv",
+      "start_line": 23,
+      "end_line": 24,
+      "excerpt": "simp only [Equiv.apply_eq_iff_eq,funext_iff,Pi.zero_apply,Subtype.forall,\n      ← signFieldEquiv_true,Equiv.apply_eq_iff_eq])",
+      "problem": "The pinned condition reaches the form `signFieldEquiv (s v) = 0`, and the goal wants `s v = true`. The existing simp set has no rule for this: `signFieldEquiv_true` only rewrites the closed term `signFieldEquiv true` to `0`. The proof therefore uses the simp lemma backwards (`← signFieldEquiv_true`). Inside this call, that rewrites every `(0 : SignField)` into `signFieldEquiv true` so that `Equiv.apply_eq_iff_eq` can fire, and `Equiv.apply_eq_iff_eq` is listed twice to make the ordering work. Using a simp lemma against its orientation is a workaround for a missing canonical lemma. It also cannot be reused: a plain `simp` here would rewrite `signFieldEquiv true` straight back to `0`, so the two lemmas fight, and the trick only works inside a hand-picked `simp only` list.",
+      "proposed_change": "Next to `signFieldEquiv_true`/`signFieldEquiv_false` in BondSigns.lean, add the iff forms that are the right normal form for equations with a variable argument, for example:\n\n@[simp] theorem signFieldEquiv_eq_zero_iff {b : Bool} : signFieldEquiv b = 0 ↔ b = true := by cases b <;> decide\n@[simp] theorem signFieldEquiv_eq_one_iff {b : Bool} : signFieldEquiv b = 1 ↔ b = false := by cases b <;> decide\n\n(adjust the proof tactic as needed). Then change the call here to `simp only [Equiv.apply_eq_iff_eq, funext_iff, Pi.zero_apply, Subtype.forall, signFieldEquiv_eq_zero_iff]`, which drops both the `←` and the duplicated entry.",
+      "benefit": "`signFieldEquiv b = 0` gets a forward-oriented normal form that agrees with the existing simp lemmas instead of competing with them. The proof becomes a plain forward simp call that does not depend on rewriting every `0` in the goal. Later developments that pin signs to `true` (or to `false`, via the `= 1` form) can use the same lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/BondSigns.lean",
+          "declaration": "signFieldEquiv_true",
+          "excerpt": "@[simp] theorem signFieldEquiv_true : signFieldEquiv true=0 := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/BondSigns.lean",
+          "declaration": "signFieldEquiv",
+          "excerpt": "toFun b := if b then 0 else 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/PinnedSigns.lean",
+          "declaration": "positiveCompatibleSignsEquiv",
+          "excerpt": "(fun v : B => signFieldEquiv (s v))=0)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 17009,
+    "cache_read_input_tokens": 62989,
+    "output_tokens": 5373,
+    "output_tokens_details": {
+      "thinking_tokens": 1629
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17009,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3102,
+        "cache_read_input_tokens": 19210,
+        "cache_creation_input_tokens": 1812,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1812
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2561698,
+  "duration_ms": 47310,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T17:26:58",
+  "unit": "file",
+  "source_sha256": "8034d0e7ce916b81d0159e69ec27a495cbb673bdb83fef537f50348defaec533",
+  "rubric": "simp-interface"
+}

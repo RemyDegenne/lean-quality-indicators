@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0071",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 242 lines of ContactGeometry.lean. I also checked the helper lemmas it uses in Axis.lean (axisHeight_add, axisHeight_nn_le, integer_first_crossing, reachAxis, reachAxis_antitone, reachRecord_eq_reachAxis, axis_slabWidth_eq_records) and HittingWords.lean (hitBefore), plus the downstream uses in ExperimentContact.lean and ReversedContacts.lean.\n\nI found two repeats that are more than routine unfolding.\n\n1. **First crossing for nearest-neighbour paths.** The step \"a nearest-neighbour path from 0 that reaches axis height ≥ H while staying ≥ 0 hits height exactly H while staying ≥ 0\" is proved twice by the same three steps: call integer_first_crossing, then restrict the stay-nonnegative condition. The copies are in hitBefore_axis_eq_reach (target file) and reachAxis_antitone (Axis.lean). A related third use, in reachRecord_eq_reachAxis, also needs the strict-minimality output, so it would not use the shared lemma directly.\n\n2. **Sign flip for the placed axis.** The end height of a word that regenerates along `placedAxis e b` is computed twice by the same opposite-step argument: in opposedAnchor_height (`hm`, target file) and in axisHeight_listTotal (ExperimentContact.lean).\n\nWhat I left out:\n- opposed_departure_band and axis_word_last_step each use axisHeight_wordEnd/axisHeight_word_interior once, followed by short omega steps.\n- annealed_axis_exit, annealed_axis_return_probability and annealed_axis_visitAfter_bound each appear only once.\n- The repeated `change axisHeight e (wordPath a a.1) = _` is routine unfolding.\n\nUncertainty: I could not compile anything, so the proposed rewrites are untested. The second finding is fairly small (a three-line proof repeated twice). I kept it because the fact has a real mathematical meaning, but a reviewer could reasonably call it borderline.",
+  "findings": [
+    {
+      "declaration": "hitBefore_axis_eq_reach",
+      "start_line": 172,
+      "end_line": 175,
+      "excerpt": "obtain ⟨j,hjn,hj,_⟩ := integer_first_crossing (fun i => axisHeight e (X i)) n H\n      (fun i _ => axisHeight_nn_le e X hX i) (by simp [h0,axisHeight_zero]) hn\n    exact ⟨j,hj,fun i hi => le_of_not_gt (hb i (hi.trans hjn))⟩",
+      "problem": "The forward direction repeats a discrete intermediate-value argument already written out in `reachAxis_antitone` (Axis.lean): apply `integer_first_crossing` to `fun i => axisHeight e (X i)`, using `axisHeight_nn_le` for the at-most-one-step bound and `h0`/`axisHeight_zero` for the start. Then restrict the 'stays nonnegative up to n' hypothesis to the first crossing time `j ≤ n`. The only difference is how the inputs `H ≤ axisHeight e (X n)` and `∀ i ≤ n, 0 ≤ axisHeight e (X i)` are produced. The fact itself is not stated anywhere: a nearest-neighbour path that reaches height ≥ H without going below 0 belongs to `reachAxis e H`.",
+      "proposed_change": "Add this lemma to Axis.lean next to `reachAxis`:\n\nlemma mem_reachAxis_of_le {d : ℕ} (e : Step d) (X : Path d) (h0 : X 0 = 0) (hX : nearestNeighbour X) {H : ℕ} (n : ℕ) (hn : (H : ℤ) ≤ axisHeight e (X n)) (hb : ∀ i ≤ n, 0 ≤ axisHeight e (X i)) : X ∈ reachAxis e H := by\n  obtain ⟨j,hjn,hj,_⟩ := integer_first_crossing (fun i => axisHeight e (X i)) n H\n    (fun i _ => axisHeight_nn_le e X hX i) (by simp [h0,axisHeight_zero]) hn\n  exact ⟨j,hj,fun i hi => hb i (hi.trans hjn)⟩\n\nRewritten uses:\n- In `hitBefore_axis_eq_reach`: `· rintro ⟨n,hn,hb⟩; exact mem_reachAxis_of_le e X h0 hX n hn (fun i hi => le_of_not_gt (hb i hi))`.\n- In `reachAxis_antitone`: `rintro ⟨k,hk,hbelow⟩; exact mem_reachAxis_of_le e X h0 hX k (by rw [hk]; exact_mod_cast hmn) hbelow`.\n\nBoth uses have exactly the hypotheses `h0 : X 0 = 0` and `hX : nearestNeighbour X`. ContactGeometry imports Axis.lean through HittingWords, so the lemma is available in both places.",
+      "benefit": "The first-crossing argument is written once, under a name that says what it proves. Both callers shrink to a one-line application that shows only how their hypotheses map onto 'reached ≥ H while staying ≥ 0'. If `reachAxis` or `integer_first_crossing` changes later, only one proof needs updating.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/Axis.lean",
+          "declaration": "reachAxis_antitone",
+          "excerpt": "obtain ⟨j,hjk,hj,_⟩ := integer_first_crossing (fun i => axisHeight e (X i)) k m\n    (fun i _ => axisHeight_nn_le e X hX i) (by simp [h0,axisHeight_zero])\n    (by rw [hk];exact_mod_cast hmn)\n  exact ⟨j,hj,fun i hi => hbelow i (hi.trans hjk)⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/Axis.lean",
+          "declaration": "reachAxis",
+          "excerpt": "{X | ∃ n, axisHeight e (X n) = H ∧ ∀ i ≤ n, 0 ≤ axisHeight e (X i)}"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/Axis.lean",
+          "declaration": "integer_first_crossing",
+          "excerpt": "(hf : ∀ i < n, f (i+1) ≤ f i+1) (h0 : f 0 ≤ a) (hn : a ≤ f n) :\n    ∃ j ≤ n, f j = a ∧ ∀ i < j, f i < a"
+        }
+      ]
+    },
+    {
+      "declaration": "opposedAnchor_height",
+      "start_line": 86,
+      "end_line": 91,
+      "excerpt": "have hm (j : ℕ) : axisHeight e (wordEnd (Z (true,j))) = -(placedWidth e true (Z (true,j)) : ℤ) := by\n    have hh := axisHeight_wordEnd (oppositeStep e) _ (hZ true j)\n    rw [axisHeight_opposite] at hh\n    exact neg_eq_iff_eq_neg.mp hh",
+      "problem": "The local facts `hp`/`hm` compute the end height, measured along `e`, of a word that regenerates along `placedAxis e b`. For `b = false` this is `axisHeight_wordEnd`. For `b = true` it applies `axisHeight_wordEnd (oppositeStep e)`, rewrites with `axisHeight_opposite`, and solves with `neg_eq_iff_eq_neg`. `axisHeight_listTotal` in ExperimentContact.lean repeats the same case split with the same three-step sign flip. Nothing in ContactGeometry, where `placedAxis`/`placedWidth` are defined, states this placed-word height fact.",
+      "proposed_change": "Add this lemma to ContactGeometry.lean right after `placedWidth`:\n\nlemma axisHeight_wordEnd_placed {d : ℕ} (e : Step d) (b : Bool) (a : Word d) (ha : RegenerationWord (axisDirection (placedAxis e b)) a) : axisHeight e (wordEnd a) = if b then -(placedWidth e b a : ℤ) else (placedWidth e b a : ℤ) := by\n  cases b\n  · exact axisHeight_wordEnd e a ha\n  · have h := axisHeight_wordEnd (oppositeStep e) a ha\n    rw [axisHeight_opposite] at h\n    exact neg_eq_iff_eq_neg.mp h\n\nRewritten uses:\n- In `opposedAnchor_height`, replace `hp`/`hm` with `have hp (j : ℕ) := axisHeight_wordEnd_placed e false _ (hZ false j)` and `have hm (j : ℕ) := axisHeight_wordEnd_placed e true _ (hZ true j)`. The `if` reduces in the final `simp` call, or add `Bool.false_eq_true, ↓reduceIte` to the simp set.\n- In `axisHeight_listTotal`, the two `Finset.sum_congr` branches become `exact axisHeight_wordEnd_placed e false _ (ha i)` and `simpa using axisHeight_wordEnd_placed e true _ (ha i)`. These run under that lemma's hypothesis `ha : ∀ i, RegenerationWord (axisDirection (placedAxis e b)) (a.2 i)` after `cases b`.",
+      "benefit": "The rule 'a word placed on the opposite tape contributes minus its width' gets a single statement next to the definitions of `placedAxis` and `placedWidth`. Readers of the anchor and list-total computations then see the sign convention used, not re-derived. Any later change to the `oppositeStep` sign handling only touches one proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ExperimentContact.lean",
+          "declaration": "axisHeight_listTotal",
+          "excerpt": "have h := axisHeight_wordEnd (oppositeStep e) _ (ha i)\n    rw [axisHeight_opposite] at h\n    exact neg_eq_iff_eq_neg.mp h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ExperimentContact.lean",
+          "declaration": "axisHeight_listTotal",
+          "excerpt": "axisHeight e (listTotal wordEnd a) = if b then -(listHeight (placedWidth e b) a : ℤ)\n      else (listHeight (placedWidth e b) a : ℤ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ContactGeometry.lean",
+          "declaration": "placedAxis",
+          "excerpt": "def placedAxis {d : ℕ} (e : Step d) (b : Bool) : Step d := if b then oppositeStep e else e"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 30500,
+    "cache_read_input_tokens": 124553,
+    "output_tokens": 7372,
+    "output_tokens_details": {
+      "thinking_tokens": 2116
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30500,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4606,
+        "cache_read_input_tokens": 30757,
+        "cache_creation_input_tokens": 3672,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3672
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.41639859999999995,
+  "duration_ms": 69709,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T15:17:24",
+  "unit": "file",
+  "source_sha256": "da3aefb78fa1adc7f32dd727f3e28cf41241b7607f06d20345271c4be7e8482b",
+  "rubric": "repeated-proof-machinery"
+}

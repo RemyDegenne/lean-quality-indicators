@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0025",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole 30-line file and both of its declarations. I checked the Mathlib lemmas the proofs rely on or could use: `IsCompact.elim_directed_cover`, which takes any `ι : Type v` with `[Nonempty ι]` and a `Directed (· ⊆ ·)` family; `Monotone.directed_le`, which needs only `[Preorder α] [IsDirectedOrder α]`; `IsDirectedOrder`; `lt_iSup_iff`, which works for any index type in a `CompleteLinearOrder`; and `exists_lt_of_lt_ciSup`. I also read every call site in the repository: `UniformTraceBounds.lean`, `CompletedUniformComparison.lean`, `JiangSu/Comparison/Ranks.lean` and `FamilyRanks.lean`, plus the near-duplicate `JiangSu/Comparison/CompactComparison.lean`. All current callers use ℕ-indexed families, so they would still elaborate after the generalisation: ι would be inferred from `U`/`g`, and ℕ's `Preorder`, `IsDirectedOrder` and `Nonempty` instances are found automatically.\n\nI considered and rejected three other changes:\n- Weakening `CompleteLinearOrder R` to a `Preorder` with the hypothesis `∀ τ, ∃ k, F τ < g k τ` would change the iSup-based shape that callers rely on, and that hypothesis is already the conclusion of `uniform_index_of_increasing_open_cover`.\n- Replacing `CompactSpace T` with an `IsCompact s` hypothesis is possible, but no caller needs it, so I judged it not clearly useful.\n- A conditionally-complete version would need extra `BddAbove` side conditions.\n\nRemaining uncertainty: I could not compile the proposed statements. The proof sketch uses only lemmas I read, and the same `hmono.directed_le` step already appears in the sibling file.",
+  "findings": [
+    {
+      "declaration": "uniform_index_of_increasing_open_cover and uniform_strict_index",
+      "start_line": 8,
+      "end_line": 22,
+      "excerpt": "theorem uniform_index_of_increasing_open_cover (U : ℕ → Set T)\n    (hopen : ∀ k, IsOpen (U k)) (hmono : Monotone U)",
+      "problem": "Both lemmas fix the index type to ℕ, but the compactness argument never uses anything specific to ℕ. The proof only needs the family to be directed, which it gets from `max` and `le_max_left`/`le_max_right`, and needs the index type to be nonempty, which `IsCompact.elim_directed_cover` requires. `uniform_strict_index` only adds `lt_iSup_iff`, and that lemma holds for an arbitrary index type. Because of the ℕ restriction, a caller with a naturally continuous or directed parameter has to discretise it first. `uniform_direct_positive_cut` in Ranks.lean does exactly that: it rewrites its threshold η as `1/((n : ℝ)+1)` just to fit the ℕ-indexed lemma.",
+      "proposed_change": "Generalise the index to any nonempty directed preorder:\n\ntheorem uniform_index_of_increasing_open_cover {ι : Type*} [Preorder ι] [IsDirectedOrder ι]\n    [Nonempty ι] (U : ι → Set T)\n    (hopen : ∀ k, IsOpen (U k)) (hmono : Monotone U)\n    (hcover : ∀ τ, ∃ k, τ ∈ U k) : ∃ k, ∀ τ, τ ∈ U k := by\n  obtain ⟨k, hk⟩ := isCompact_univ.elim_directed_cover U hopen\n    (fun τ _ => Set.mem_iUnion.mpr (hcover τ)) hmono.directed_le\n  exact ⟨k, fun τ => hk (Set.mem_univ τ)⟩\n\ntheorem uniform_strict_index {ι : Type*} [Preorder ι] [IsDirectedOrder ι] [Nonempty ι]\n    {R : Type*} [CompleteLinearOrder R] (F : T → R) (g : ι → T → R) ... (same hypotheses)\n\nThe body of `uniform_strict_index` stays the same: `lt_of_lt_of_le hτ (hmono τ hij)` works in any preorder, and `lt_iSup_iff` is stated for an arbitrary index type. `[Nonempty ι]` is a real requirement, not an unused binder. When T is empty, `hcover` holds vacuously but the conclusion `∃ k` still needs an index, and it is exactly the hypothesis `elim_directed_cover` asks for. For ι = ℕ all three instances are inferred, so existing call sites do not change.",
+      "benefit": "The lemma becomes the general statement 'a monotone open cover of a compact space indexed by a directed set has a single member covering everything'. Users can apply it directly to real thresholds (for example `{η : ℝ // 0 < η}` with the reversed order), to finsets or to other directed index sets, without the ad hoc `1/(n+1)` reparametrisation. The proof also gets shorter, because `Monotone.directed_le` replaces the hand-written `max` argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/Compactness/Compact.lean",
+          "declaration": "IsCompact.elim_directed_cover",
+          "excerpt": "theorem IsCompact.elim_directed_cover {ι : Type v} [hι : Nonempty ι] (hs : IsCompact s)\n    (U : ι → Set X) (hUo : ∀ i, IsOpen (U i)) (hsU : s ⊆ ⋃ i, U i) (hdU : Directed (· ⊆ ·) U) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Directed.lean",
+          "declaration": "Monotone.directed_le",
+          "excerpt": "theorem Monotone.directed_le [Preorder α] [IsDirectedOrder α] [Preorder β] {f : α → β} :\n    Monotone f → Directed (· ≤ ·) f :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/CompleteLattice/Defs.lean",
+          "declaration": "lt_iSup_iff",
+          "excerpt": "theorem lt_iSup_iff : a < iSup f ↔ ∃ i, a < f i :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/Comparison/CompactComparison.lean",
+          "declaration": "Pureness.uniform_index_of_increasing_open_cover",
+          "excerpt": "(fun τ _ => Set.mem_iUnion.mpr (hcover τ)) hmono.directed_le"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/Comparison/Ranks.lean",
+          "declaration": "uniform_direct_positive_cut",
+          "excerpt": "let U : ℕ → Set (TracialState A) := fun n =>\n    {τ | F τ < (normalizedRootRank τ (directPositiveCut (1/((n : ℝ)+1)) a)).toReal}"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 19287,
+    "cache_read_input_tokens": 73080,
+    "output_tokens": 5532,
+    "output_tokens_details": {
+      "thinking_tokens": 1864
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19287,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3294,
+        "cache_read_input_tokens": 21449,
+        "cache_creation_input_tokens": 1862,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1862
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.27959199999999995,
+  "duration_ms": 53161,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T11:30:08",
+  "unit": "file",
+  "source_sha256": "f5896c89cd61de6dea22df1115274ed50a0e89288c16fc326330da3bfa4d0602",
+  "rubric": "statement-generality"
+}

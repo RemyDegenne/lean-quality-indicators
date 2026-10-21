@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0052",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 112 lines of the target file. I also checked the signatures of `cutoffHeatGram` (ActualHeatGrams.lean), `dyadic_heat_increment_lower_mass` (UniformHeatMassIncrement.lean) and `gaussian_dyadic_heat_increment_envelope` (ActualHeatEnvelope.lean), and searched for every use of `cutoffHeatGram_time_congr`, `dyadicHeatGram_coe` and `dyadic_radius_square_succ`.\n\nThe short proofs are already clear and I am not flagging them: `dyadic_radius_square_succ` (`rw; field_simp; ring`), `cutoffHeatGram_time_congr` (`subst; rfl`), `dyadicHeatGram_coe` (`rfl`) and `dyadicHeatGram_isPositive`.\n\nThe one justified simplification is the duplicated \"next dyadic Gram equals the Gram at time (R/2^i)^2/4\" step. The same three-line `hnext` block is copied verbatim into both `dyadicHeatGram_lower` and `dyadicHeatGram_upper`, and again in SupportedHeatEnvelope.lean.\n\nThe replacement lemma has not been compiled, so some uncertainty remains. It relies on proof irrelevance for the positivity argument when `rw` matches the target, and it must be placed before line 53, where `U` becomes implicit.",
+  "findings": [
+    {
+      "declaration": "dyadicHeatGram_lower / dyadicHeatGram_upper (repeated `hnext` block)",
+      "start_line": 72,
+      "end_line": 105,
+      "excerpt": "  have hnext := cutoffHeatGram_time_congr μ hQ hk U χ (lambda := lambda)\n    (sq_pos_of_pos (show 0 < R / (2 : ℝ) ^ (i + 1) from div_pos hR (by positivity)))\n    (div_pos (sq_pos_of_pos hs) (by norm_num : (0 : ℝ) < 4)) (dyadic_radius_square_succ R i)",
+      "problem": "Both decrement proofs need the same fact: the (i+1)-st dyadic Gram is the cutoff heat Gram at time `(R/2^i)^2/4`. Neither proof states this. Each one rebuilds an anonymous `hnext` from `cutoffHeatGram_time_congr` and two positivity proofs, unfolds with `dyadicHeatGram_coe` inside `simp only`, and then runs `rw [hnext]`. The same block is pasted in two places in this file (lines 72–74 and 101–103) and a third time in SupportedHeatEnvelope.lean. A reader has to work out from the proof terms that this is the 'quarter of the squared radius' step.",
+      "proposed_change": "Add a named lemma next to `dyadicHeatGram_coe`, before `variable {U}` on line 53:\n\n```lean\n/-- The next dyadic Gram is the cutoff Gram at a quarter of the current squared radius. -/\ntheorem dyadicHeatGram_succ_coe {R lambda : ℝ} (hR : 0 < R) (hlambda : 0 < lambda) (i : ℕ)\n    (h : 0 < (R / (2 : ℝ) ^ i) ^ 2 / 4) :\n    (dyadicHeatGram μ hQ hk U χ hR hlambda (i + 1) : Euclidean n →L[ℝ] Euclidean n) =\n      cutoffHeatGram μ hQ hk χ.weight.continuous (χ.hasCompactSupport μ hQ) U h p lambda :=\n  (dyadicHeatGram_coe μ hQ hk U χ hR hlambda (i + 1)).trans\n    (cutoffHeatGram_time_congr μ hQ hk U χ _ h (dyadic_radius_square_succ R i))\n```\n\nThen replace each `have hnext := …` / `rw [hnext]` pair with a single rewrite placed before the `simp only`, e.g. in `dyadicHeatGram_upper`:\n\n```lean\n  rw [dyadicHeatGram_succ_coe μ hQ hk U χ hR hlambda i\n    (div_pos (sq_pos_of_pos hs) (by norm_num))]\n  simp only [sub_apply, inner_sub_right, dyadicHeatGram_coe]\n  simpa only [← hn] using hb\n```\n\nIn `dyadicHeatGram_lower`, make the same change and keep the existing `simp only [dyadicBochnerMass_inner, …]`, `convert hb using 1` and `ring` steps.",
+      "benefit": "Each decrement proof loses a three-line block of positivity bookkeeping. What remains reads as: rewrite the next Gram as the quarter-time Gram, unfold, and apply the heat-increment bound. That is the mathematical idea. The dyadic halving step gets a name and a docstring and is proved once instead of being pasted three times. No automation is added: the new lemma is a plain `.trans` of two existing named lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/DyadicHeatFamily.lean",
+          "declaration": "dyadicHeatGram_upper",
+          "excerpt": "  have hnext := cutoffHeatGram_time_congr μ hQ hk U χ (lambda := lambda)\n    (sq_pos_of_pos (show 0 < R / (2 : ℝ) ^ (i + 1) from div_pos hR (by positivity)))\n    (div_pos (sq_pos_of_pos hs) (by norm_num : (0 : ℝ) < 4)) (dyadic_radius_square_succ R i)\n  simp only [sub_apply, inner_sub_right, dyadicHeatGram_coe]\n  rw [hnext]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/DyadicHeatFamily.lean",
+          "declaration": "cutoffHeatGram_time_congr",
+          "excerpt": "theorem cutoffHeatGram_time_congr {s t lambda : ℝ} (hs : 0 < s) (ht : 0 < t)\n    (hst : s = t) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/UniformHeatMassIncrement.lean",
+          "declaration": "dyadic_heat_increment_lower_mass",
+          "excerpt": "U (div_pos (sq_pos_of_pos hs) (by norm_num : (0 : ℝ) < 4)) p lambda v⟫_ℝ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/SupportedHeatEnvelope.lean",
+          "declaration": "(third copy of the hnext block)",
+          "excerpt": "  have hnext := cutoffHeatGram_time_congr μ hQ hk U χ (lambda := lambda)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 18880,
+    "cache_read_input_tokens": 35963,
+    "output_tokens": 5050,
+    "output_tokens_details": {
+      "thinking_tokens": 1967
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18880,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3635,
+        "cache_read_input_tokens": 18919,
+        "cache_creation_input_tokens": 4004,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4004
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2592566,
+  "duration_ms": 42752,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T13:48:51",
+  "unit": "file",
+  "source_sha256": "244dc7dac15af9863647543f1a73ac138f4cd2a4bf3c80a16f868574338cc308",
+  "rubric": "readable-proof-simplification"
+}

@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0074",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it relies on (`interpolation`, `endpointCoupling`, `QuadraticTransportCost` in Model.lean). I also read the neighbouring files AeEvalAe.lean and TimeHalf.lean, and grepped the WeakHessian directory for existing smul and pushforward lemmas. I found no existing `interpolation_smul` or `endpointCoupling_smul` lemma. Most of the file's other repetition is paired `…0`/`…1` bookkeeping such as hd0/hd1 and hac0/hac1. That is short, so I did not report it. The two findings below rest on pushforward-along-evaluation facts that are re-proved several times. I have not compiled any proposed lemma. The `Measure.map_smul` and `ae_map_iff` terms in the proposed proofs are copied from the existing proof (`he`, `hb0`). One uncertainty: `ae_of_ae_map` needs no measurability of the predicate, while the `ae_map_iff` direction does. TimeHalf.lean's `rnDeriv ≤ C` predicate should be measurable via `Measure.measurable_rnDeriv`, but I did not check that.",
+  "findings": [
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan (scaling of interpolation/endpoint pushforwards by q)",
+      "start_line": 140,
+      "end_line": 166,
+      "excerpt": "rw [Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable]",
+      "problem": "The fact that pushing a scaled plan forward along evaluation equals the scaled pushforward is re-derived three times. These are `he` (lines 94–95), `hξend` (lines 142–147, used in both directions with `change` and `← map_smul`), and `hs'` (lines 163–165, again with `change … at hs` and `Measure.map_smul`). The same fact for the endpoint map is proved a fourth time in the local `hs` (lines 152–158). Each use repeats the measurability argument `(continuous_eval_const _).measurable.aemeasurable`, and the `change` steps depend on `interpolation` unfolding to `Measure.map`. The reasoning is hidden inside one 90-line proof, so it cannot be reused or read independently.",
+      "proposed_change": "Add two lemmas next to `endpointCoupling_couples`.\n\n`lemma interpolation_smul (c : ℝ≥0∞) (π : Measure (Curve X)) (t : Time) : interpolation (c • π) t = c • interpolation π t := Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable`.\n\n`lemma QuadraticTransportCost_endpointCoupling_smul (c : ℝ≥0∞) (η : Measure (Curve X)) : QuadraticTransportCost (endpointCoupling (c • η)) = c * QuadraticTransportCost (endpointCoupling η)`. Its proof is the existing `hs` body: the `hmeas` measurability fact followed by `simp only [QuadraticTransportCost, endpointCoupling, Measure.map_smul _ hmeas.aemeasurable, lintegral_smul_measure, smul_eq_mul]`.\n\nThe uses then become:\n- `he := interpolation_smul q⁻¹ θ`.\n- `hξend t ht : interpolation ξ t = interpolation θ t := by show interpolation (q • π) t = _; rw [interpolation_smul, ht, ← interpolation_smul, hcanc]`. Here `ht` is rewritten at `interpolation π t`, and `← interpolation_smul` folds `q • interpolation θ' t` back to `interpolation (q • θ') t`, which `hcanc` then rewrites to `interpolation θ t`.\n- `hs'` is obtained from `rw [interpolation_smul, Measure.smul_apply, smul_eq_mul] at hs` followed by `(mul_eq_zero.mp hs).resolve_left hq`. Its `change … at hs` goes away.\n- In the cost branch, `rw [← QuadraticTransportCost_endpointCoupling_smul q π, ← QuadraticTransportCost_endpointCoupling_smul q θ', hcanc] at H`, and the local `hs` is deleted.\n\nThe hypotheses are unchanged: no measurability or finiteness is needed beyond `continuous_eval_const`.",
+      "benefit": "The scaling compatibility is stated once, with a name. The main proof no longer needs `change` steps that depend on unfolding `interpolation`, so it is robust to changes in that definition. Any other file working with scaled plans can reuse the lemmas. The remaining proof of `reroute_finite_subplan` shrinks and shows its strategy: normalise, apply CD, rescale.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Model.lean",
+          "declaration": "interpolation",
+          "excerpt": "Measure.map (fun γ : Curve X => γ t) π"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Calculus/RnDerivSmul.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan (he)",
+          "excerpt": "Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable"
+        }
+      ]
+    },
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan (ae transfer along evaluation: hb0, hb1, hπ0, hπ1)",
+      "start_line": 110,
+      "end_line": 131,
+      "excerpt": "(ae_map_iff (continuous_eval_const timeOne).measurable.aemeasurable",
+      "problem": "Four near-identical blocks move an almost-everywhere statement between a plan and its time-t marginal. `hb0` and `hb1` (lines 110–117) go from plan to marginal via `ae_map_iff` and the same measurable set `{x | dist x o ≤ R}`. `hπ0` and `hπ1` (lines 122–131) go from marginal to plan via `ae_of_ae_map` with long explicit `(f := …) (p := …)` arguments, a `change` to `interpolation`, and a `rw` with the endpoint equality. The same pattern appears twice more, for the `rnDeriv ≤ C` predicate, in `he₀` and `he₁` in LocalBounds/TimeHalf.lean (lines 65–74). The unfolding of `interpolation` and the measurability of evaluation are re-argued every time.",
+      "proposed_change": "Add a lemma to the WeakHessian namespace (in this file, or in Model.lean or AeEvalAe.lean so TimeHalf can use it too).\n\n`lemma ae_interpolation_iff (π : Measure (Curve X)) (t : Time) {p : X → Prop} (hp : MeasurableSet {x | p x}) : (∀ᵐ x ∂interpolation π t, p x) ↔ ∀ᵐ γ ∂π, p (γ t) := ae_map_iff (continuous_eval_const t).measurable.aemeasurable hp`.\n\nIn the proof, set `hball : MeasurableSet {x : X | dist x o ≤ R} := measurableSet_le (continuous_id.dist continuous_const).measurable measurable_const` once. Then:\n- `hb0 := (ae_interpolation_iff θ' timeZero hball).mpr (hb'.mono fun _ h => h.1)`.\n- `hb1 := (ae_interpolation_iff θ' timeOne hball).mpr (hb'.mono fun _ h => h.2)`.\n- `hπ0 := (ae_interpolation_iff π timeZero hball).mp (by rw [he0]; exact hb0)`.\n- `hπ1 := (ae_interpolation_iff π timeOne hball).mp (by rw [he1]; exact hb1)`.\n\nThe hypotheses are the same as before. Here `μ₀ = interpolation θ' timeZero` and `he0 : interpolation π timeZero = μ₀` by `dsimp`/defeq. The same lemma, with `Measure.measurable_rnDeriv` for measurability of `{x | μ₀.rnDeriv m x ≤ C}`, should replace the two blocks in TimeHalf.lean, which I did not verify.",
+      "benefit": "Four 4–6 line blocks, two of which have very long argument lists, become one-line uses of a named lemma. The measurable-set proof is written once. Readers see the intent (transfer the bound between a plan and its marginal) instead of the `ae_map_iff`/`ae_of_ae_map` mechanics. The same lemma serves TimeHalf.lean, so later changes to `interpolation` need to be handled in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/LocalBounds/TimeHalf.lean",
+          "declaration": "he₀ (in the proof it belongs to)",
+          "excerpt": "apply ae_of_ae_map (p := fun x => μ₀.rnDeriv m x ≤ C) (continuous_eval_const timeZero).measurable.aemeasurable"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/LocalBounds/TimeHalf.lean",
+          "declaration": "he₁ (in the proof it belongs to)",
+          "excerpt": "apply ae_of_ae_map (p := fun x => μ₁.rnDeriv m x ≤ C) (continuous_eval_const timeOne).measurable.aemeasurable"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Calculus/RnDerivSmul.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan (hπ0)",
+          "excerpt": "apply ae_of_ae_map (f := fun γ : Curve X => γ timeZero) (p := fun x => dist x o ≤ R)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 33059,
+    "cache_read_input_tokens": 140912,
+    "output_tokens": 7276,
+    "output_tokens_details": {
+      "thinking_tokens": 2254
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33059,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4447,
+        "cache_read_input_tokens": 34133,
+        "cache_creation_input_tokens": 2855,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2855
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.21911119999999998,
+  "duration_ms": 58763,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T13:11:03",
+  "unit": "file",
+  "source_sha256": "659acbb3a82e0e7548787ca860f4814b3dd1940c61d717d0b3b39fece39b5163",
+  "rubric": "repeated-proof-machinery"
+}

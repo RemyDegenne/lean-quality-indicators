@@ -1,0 +1,144 @@
+{
+  "id": "openai-math-file-0068",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 792 lines of the target file. I looked up the Mathlib lemmas proposed below: `ContinuousAt.eventually_lt` (Topology/Order/OrderClosed.lean), `max_lt_iff` (Order/Defs/LinearOrder.lean) and `Continuous.tendsto'` (Topology/Continuous.lean). I also checked how `filter_upwards` is implemented (Order/Filter/Defs.lean). It runs `dsimp -zeta only [Set.mem_ofPred_eq]`, which beta-reduces the hypotheses it introduces. That is why the `change` in finding 1 becomes unnecessary once the `.sub`/`eventually_lt_const` form is gone.\n\nOther parts I checked and did not flag:\n- The `exists_smooth_local_log` bump-function proof is already clear.\n- The pullback lemmas and the jet-neighbourhood proof are straightforward.\n- The nlinarith-based `productWaveFrequency_scaled_bounds` and the envelope gap lemmas are already compact. Rewriting them would mostly change style, not clarity.\n- The `threeProfilePoint` membership proof could perhaps be shortened with `EuclideanSpace.norm_eq`, but I could not be confident that `Euclidean 3` unfolds to `EuclideanSpace ℝ (Fin 3)` well enough for `rw`, so I left it out.\n\nNone of the replacements below have been compiled. Each one only uses lemmas whose statements I read, and the two places where elaboration details matter are flagged inside the findings.",
+  "findings": [
+    {
+      "declaration": "threeGlobalLog_local",
+      "start_line": 286,
+      "end_line": 294,
+      "excerpt": "  filter_upwards [(hB.continuousAt.sub hA.continuousAt).eventually_lt_const\n    (show threeCouplingRadius*‖productB ((chartAt ThreeModel threeProfileCenter).symm 0).1‖-\n      ‖productA ((chartAt ThreeModel threeProfileCenter).symm 0).1‖<0 by linarith)] with y hy",
+      "problem": "The step actually needed is \"the B-term stays below the A-term near 0\". The proof gets there indirectly. It first turns the comparison `h0` into `B - A < 0`, retyping the long chart expression inside a `show`. Next it uses `change` to restate `hy` in the same subtraction form. Finally it recovers `B ≤ A` with `linarith` and a third full type ascription. As a result the chart expression `‖productB ((chartAt ThreeModel threeProfileCenter).symm _).1‖` is written out five times.",
+      "proposed_change": "Compare the two continuous functions directly with `ContinuousAt.eventually_lt`:\n```lean\n  filter_upwards [hB.continuousAt.eventually_lt hA.continuousAt h0] with y hy\n  rw [threeLogEnvelope_eq]\n  dsimp [threeGlobalLog,threeGlobalRadius,Function.comp_apply]\n  rw [max_eq_left hy.le]\n```\n`filter_upwards` beta-reduces `hy` to the plain inequality between the B-term and the A-term at `y`. If `rw [max_eq_left hy.le]` does not match syntactically, keeping the original `(by linarith : … ≤ …)` ascription still removes the `show` and the `change`.",
+      "benefit": "The proof now says what it means: `h0` is the strict inequality at 0, and continuity keeps it true nearby, so the `max` is the A-term. The subtraction, the `show`/`change` pair and two copies of the long chart expression are gone, so the reader no longer has to check that three spelled-out terms agree.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/Order/OrderClosed.lean",
+          "declaration": "ContinuousAt.eventually_lt",
+          "excerpt": "nonrec theorem ContinuousAt.eventually_lt {x₀ : β} (hf : ContinuousAt f x₀) (hg : ContinuousAt g x₀)\n    (hfg : f x₀ < g x₀) : ∀ᶠ x in 𝓝 x₀, f x < g x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Filter/Defs.lean",
+          "declaration": "filterUpwards",
+          "excerpt": "evalTactic <|← `(tactic| try dsimp -zeta only [Set.mem_ofPred_eq])"
+        }
+      ]
+    },
+    {
+      "declaration": "threeGlobalRadius_lower",
+      "start_line": 219,
+      "end_line": 222,
+      "excerpt": "  by_contra hn\n  have hn : threeGlobalRadius p < 1/200 := lt_of_not_ge hn\n  have hA := (le_max_left ‖productA p.1‖ (threeCouplingRadius*‖productB p.1‖)).trans_lt hn\n  have hB := (le_max_right ‖productA p.1‖ (threeCouplingRadius*‖productB p.1‖)).trans_lt hn",
+      "problem": "Four lines just negate the goal and split \"max < c\" into its two components. The proof converts by hand with `lt_of_not_ge`, then repeats both `max` arguments in full for `le_max_left` and for `le_max_right`.",
+      "proposed_change": "```lean\n  by_contra! hn\n  obtain ⟨hA, hB⟩ := max_lt_iff.mp hn\n```\nThe remaining lines (`dsimp [threeCouplingRadius] at hB`, the derivation of `hB'`/`hA'`, and `nlinarith`) stay as they are. Unfolding `threeGlobalRadius` here relies on the same definitional unfolding the original `.trans_lt hn` already uses.",
+      "benefit": "`max_lt_iff` states exactly the fact being used: both components are below the bound. `by_contra!` gives the strict inequality directly. The argument (assume the radius is below 1/200, so both norms are small, contradicting the sphere equation) becomes easier to see, and the repeated `max` arguments disappear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Defs/LinearOrder.lean",
+          "declaration": "max_lt_iff",
+          "excerpt": "theorem max_lt_iff : max a b < c ↔ a < c ∧ b < c :="
+        }
+      ]
+    },
+    {
+      "declaration": "threeNormalInv_clean_eventually",
+      "start_line": 632,
+      "end_line": 636,
+      "excerpt": "    have he : productA threeProfileCenter.1=(3/5:ℂ) := by\n      apply Complex.ext <;> simp [productA_re,productA_im,threeProfileCenter,threeProfilePoint_zero,threeProfilePoint_one]",
+      "problem": "The calculation that `productA` at the profile centre equals `3/5` is done twice, word for word: once inside `threeGlobalLog_local` (lines 276-279) and again here. Both times it is a nested `have` buried in a larger proof, and both times it is followed by a norm computation giving `3/5`.",
+      "proposed_change": "Add one lemma right after `threeProfilePoint_two`, then use it in both places:\n```lean\nlemma productA_threeProfileCenter : productA threeProfileCenter.1 = (3/5:ℂ) := by\n  apply Complex.ext <;> simp [productA_re,productA_im,threeProfileCenter,threeProfilePoint_zero,threeProfilePoint_one]\n```\nIn `threeGlobalLog_local`, `hA0` becomes `by rw [productA_threeProfileCenter]; norm_num`. Here, `h0` becomes `by simp only [threeNormalInv,Function.comp_apply,map_zero,three_chart_symm_zero,productA_threeProfileCenter]; norm_num`.",
+      "benefit": "A named lemma records once a basic fact about the chosen centre (its A-coordinate is 3/5). Both continuity arguments lose an inner `have`, and their main idea (the A-norm is 3/5 at the centre, so it stays in the target range nearby) is easier to see.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "threeGlobalLog_local",
+          "excerpt": "  have hA0 : ‖productA threeProfileCenter.1‖=3/5 := by\n    have he : productA threeProfileCenter.1=(3/5:ℂ) := by\n      apply Complex.ext <;> simp [productA_re,productA_im,threeProfileCenter,threeProfilePoint_zero,threeProfilePoint_one]"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_three_robust_global_profile_family",
+      "start_line": 735,
+      "end_line": 787,
+      "excerpt": "  obtain ⟨ψ,hψ,hψc,hψs,hclose,hinside,hmass⟩ := exists_box_amplified_profile\n    (threeNormalMetricOf g) I hφ (fun y hy => (hstrict y (hIK hy)).1)\n    (fun y hy => (hstrict y (hIK hy)).2) T (half_pos hδ)",
+      "problem": "Lines 735-787 repeat lines 410-462 of `exists_three_global_profile_family` almost line for line. The steps are the same in both: choose a box `I` in a small ball, amplify, prove compact support and the support bound, the off-box germ equality `heoff`, `hψstrict` and `hψout`, then glue with `threeNormalGlue` and discharge the five goals. Only three things differ: the metric (`threeNormalMetric` versus `threeNormalMetricOf g`), the radii (`R/8, R/3` versus `a, b`), and where the envelope data come from. A reader has to compare about 50 lines to confirm that the two constructions really are the same.",
+      "proposed_change": "Factor the shared construction into one lemma, parameterised by a metric `G : SmoothMetric NormalWaveSpace NormalWaveSpace`, radii `0 < a`, `a ≤ b`, `a ≤ 3*R/4`, and an envelope `φ`. The hypotheses on `φ` are the ones obtained at lines 408/734: `ContDiff`, `HasCompactSupport (fun y => φ y-C)`, the `tsupport` bound, strictness on `closedBall 0 b`, `threeGlobalLog (threeNormalInv y)+δ ≤ φ y` on `closedBall 0 a`, the exterior bound, and `hmin`. Its conclusion is the `∃ I, … ∀ T, ∃ Φ, …` block. The body would be the current lines 735-787 with `threeNormalMetricOf g` replaced by `G`. Each theorem then reduces to obtaining its envelope and applying the lemma. `exists_three_global_profile_family` needs `hin y (hIs hy)` instead of `hin y hy`, which can be handled by stating the lemma's conclusion over `closedBall 0 a` and weakening.",
+      "benefit": "The construction (amplify inside a box, keep the envelope outside it, push to the manifold) is written and checked once. Each theorem then shows only what is specific to it: which envelope and which metric it uses. This makes it much easier to see that the robust version differs only in its metric and its radii.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "exists_three_global_profile_family",
+          "excerpt": "  obtain ⟨ψ,hψ,hψc,hψs,hclose,hinside,hmass⟩ := exists_box_amplified_profile\n    threeNormalMetric I hφ (fun y hy => (hstrict y (hIK hy)).1)\n    (fun y hy => (hstrict y (hIK hy)).2) T (half_pos hδ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "exists_three_global_profile_family",
+          "excerpt": "  let Φ := threeNormalGlue C ψ\n  have hchart : Φ ∘ threeNormalInv=ψ := threeNormalGlue_chart C ψ"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_three_robust_seed",
+      "start_line": 663,
+      "end_line": 664,
+      "excerpt": "  have ht : Tendsto threeNormalEquiv (𝓝 (0:NormalWaveSpace)) (𝓝 (0:ThreeModel)) :=\n    by simpa using (threeNormalEquiv.continuous.continuousAt (x:=0)).tendsto",
+      "problem": "The fact \"a continuous map sending 0 to 0 tends to 0 at 0\" is proved by calling `simpa` on `ContinuousAt.tendsto`. The reader cannot tell what `simpa` rewrites, which is `threeNormalEquiv 0 = 0`. The same two lines also appear at lines 369-370 in `exists_three_normal_envelope`.",
+      "proposed_change": "```lean\n  have ht : Tendsto threeNormalEquiv (𝓝 (0:NormalWaveSpace)) (𝓝 (0:ThreeModel)) :=\n    threeNormalEquiv.continuous.tendsto' 0 0 (map_zero _)\n```\nMake the same change at lines 369-370.",
+      "benefit": "`Continuous.tendsto'` is the standard Mathlib lemma for exactly this situation, and it shows the one fact needed, `map_zero`, instead of hiding it in `simpa`. The term is short and needs no automation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/Continuous.lean",
+          "declaration": "Continuous.tendsto'",
+          "excerpt": "theorem Continuous.tendsto' (hf : Continuous f) (x : X) (y : Y) (h : f x = y) :\n    Tendsto f (𝓝 x) (𝓝 y) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 56879,
+    "cache_read_input_tokens": 400911,
+    "output_tokens": 11362,
+    "output_tokens_details": {
+      "thinking_tokens": 4426
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 56879,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5443,
+        "cache_read_input_tokens": 58676,
+        "cache_creation_input_tokens": 2246,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2246
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.7625262,
+  "duration_ms": 111276,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T15:02:48",
+  "unit": "file",
+  "source_sha256": "c98829553c1f2682a6edfe8cfabaf39534886cebd85890d1132dccb21960c16c",
+  "rubric": "readable-proof-simplification"
+}

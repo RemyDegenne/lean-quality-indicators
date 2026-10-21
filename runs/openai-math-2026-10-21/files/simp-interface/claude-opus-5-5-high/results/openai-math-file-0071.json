@@ -1,0 +1,132 @@
+{
+  "id": "openai-math-file-0071",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 242 lines of ContactGeometry.lean. I also read the upstream definitions in Axis.lean (axisDirection, axisHeight, axisHeight_zero, axisHeight_add) and checked how this file's declarations are used in ShiftedBlocks, ReversedContacts, LateContacts, Main, ContactBins and ExperimentContact. A grep found no `@[simp]` attribute anywhere in the DirectionalWalk directory. As a result, every Bool-indexed definition here (placedAxis, placedWidth, opposedAnchor) has to be unfolded by hand with `Bool.false_eq_true`/`↓reduceIte` each time it is used. The additive lemmas about axisHeight (neg, sum, opposite, step_self) are also passed to simp by name every time. That repeated boilerplate is the basis for all three findings.\n\nI could not run Lean, so I have not checked that the proposed lemmas compile or that existing `simp only` calls still close afterwards. The `rfl` proofs should work because the definitions are plain `if b then … else …` on a Bool literal, but this is untested. The proposed simp set rewrites in one direction only: it pushes axisHeight inward and removes oppositeStep/placedAxis. None of the proposed lemmas rewrites back, so I see no cycle risk. The one interaction to watch is between a simp `axisHeight_opposite` and the bare `placedAxis` unfolding. Once `placedAxis_true` fires first, the two compose cleanly. The later wrappers axisHeight_step_opposite (ContactBins) and the ExperimentContact total lemmas depend on this file, so I did not treat them as independent replacements. The measure-theoretic lemmas (lines 160–240) use no custom simp interface beyond `Set.mem_Icc` etc., and I found nothing to report there.",
+  "findings": [
+    {
+      "declaration": "placedAxis / placedWidth",
+      "start_line": 59,
+      "end_line": 62,
+      "excerpt": "def placedAxis {d : ℕ} (e : Step d) (b : Bool) : Step d := if b then oppositeStep e else e",
+      "problem": "`placedAxis e b` is only ever used at the literals `false` and `true`, but there are no evaluation lemmas for those cases. Every use has to unfold the definition and then reduce the `if` by hand. In this file that happens four times (lines 108, 110, 112, 113: `simp only [placedAxis,Bool.false_eq_true,↓reduceIte]`, and `simp only [placedWidth,placedAxis,↓reduceIte] at *`). The same thing happens downstream in Main.lean:137 and LateContacts.lean:190. In Main.lean:139 a manual `change` is needed to turn `placedAxis (i,true) true` into `oppositeStep (i,true)`. Unfolding at `at *` also exposes `if` terms in every hypothesis, which is the kind of unwanted expansion a canonical simp lemma would prevent.",
+      "proposed_change": "Add canonical Bool-case simp lemmas right after the definitions:\n```lean\n@[simp] lemma placedAxis_false {d : ℕ} (e : Step d) : placedAxis e false = e := rfl\n@[simp] lemma placedAxis_true {d : ℕ} (e : Step d) : placedAxis e true = oppositeStep e := rfl\n@[simp] lemma placedWidth_false {d : ℕ} (e : Step d) :\n    placedWidth e false = slabRecords (axisDirection e) := rfl\n@[simp] lemma placedWidth_true {d : ℕ} (e : Step d) :\n    placedWidth e true = slabRecords (axisDirection (oppositeStep e)) := rfl\n```\nThen replace `simp only [placedAxis,Bool.false_eq_true,↓reduceIte]` with `simp only [placedAxis_false]` (or plain `simp`), and drop the `change` in Main.lean.",
+      "benefit": "The normal form `placedAxis e true ↦ oppositeStep e` and `placedAxis e false ↦ e` is reached directly. The definition never has to be unfolded, so no `if` appears in other hypotheses. Downstream proofs stop repeating the `Bool.false_eq_true`/`↓reduceIte` sequence. Together with axisDirection_opposite / axisHeight_opposite, simp can then reduce `axisDirection (placedAxis e true)` all the way to `-axisDirection e`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/Main.lean",
+          "declaration": "(proof using not_both_axis_nonBacktracking)",
+          "excerpt": "· change 0 < annealed μ 0 (nonBacktracking (axisDirection (oppositeStep (i,true))))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/LateContacts.lean",
+          "declaration": "(case b = true in slab-radius integrability proof)",
+          "excerpt": "simpa only [placedAxis,↓reduceIte,axisDirection_opposite] using hh.2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ContactGeometry.lean",
+          "declaration": "opposed_departure_band",
+          "excerpt": "simp only [placedWidth,placedAxis,Bool.false_eq_true,↓reduceIte] at *"
+        }
+      ]
+    },
+    {
+      "declaration": "opposedAnchor / opposedSite",
+      "start_line": 64,
+      "end_line": 69,
+      "excerpt": "if b then -stepVector e + ∑ j ∈ Finset.range i, wordEnd (Z (true,j))",
+      "problem": "`opposedAnchor` is also an `if` on a Bool that is always a literal at use sites, and it has no case lemmas. Every consumer writes `simp only [opposedSite,opposedAnchor,Bool.false_eq_true,↓reduceIte]` or a variant. This happens here at lines 92, 149 and 153, and downstream in ShiftedBlocks.lean:164 and ReversedContacts.lean:18, 111 and 122. The same unfolding pattern repeated in seven places means the definition has no usable simp interface.",
+      "proposed_change": "Add\n```lean\n@[simp] lemma opposedAnchor_false {d : ℕ} (e : Step d) (Z : TwoTape (Word d)) (i : ℕ) :\n    opposedAnchor e Z false i = -(∑ j ∈ Finset.range (i+1), wordEnd (Z (false,j))) := rfl\n@[simp] lemma opposedAnchor_true {d : ℕ} (e : Step d) (Z : TwoTape (Word d)) (i : ℕ) :\n    opposedAnchor e Z true i = -stepVector e + ∑ j ∈ Finset.range i, wordEnd (Z (true,j)) := rfl\n```\nand have the call sites use `simp only [opposedSite, opposedAnchor_false]` / `opposedAnchor_true` instead of unfolding plus `↓reduceIte`. `opposedSite` can stay unfolded explicitly. It is a non-recursive sum, and leaving it out of the default simp set avoids unwanted expansion.",
+      "benefit": "Each Bool case gets a stated, stable normal form. Call sites become shorter and no longer depend on how the `if` is elaborated (`Bool.false_eq_true` is only there because `if false = true` needs that rewrite). The meaning of each branch is also documented at the definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ReversedContacts.lean",
+          "declaration": "reversePrefix_opposedSite",
+          "excerpt": "simp only [opposedSite,opposedAnchor,Bool.false_eq_true,↓reduceIte]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ShiftedBlocks.lean",
+          "declaration": "(contact uniqueness proof)",
+          "excerpt": "simp only [opposedSite,opposedAnchor,Bool.false_eq_true,↓reduceIte] at hyi hyj"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ContactGeometry.lean",
+          "declaration": "opposed_forced_contact",
+          "excerpt": "simp only [opposedSite,opposedAnchor,↓reduceIte,Finset.sum_range_zero,add_zero,"
+        }
+      ]
+    },
+    {
+      "declaration": "axisHeight_opposite / axisHeight_neg / axisHeight_sum / axisHeight_step_self",
+      "start_line": 20,
+      "end_line": 39,
+      "excerpt": "lemma axisHeight_neg {d : ℕ} (e : Step d) (x : Site d) :\n    axisHeight e (-x) = -axisHeight e x := by",
+      "problem": "`axisHeight e` is an additive map `Site d → ℤ`. This file proves the structural rules for it (neg, sum, opposite step, value on its own step vector), and Axis.lean proves zero and add. None of them is tagged `@[simp]` and the map is not bundled as an `AddMonoidHom`. So whenever an `axisHeight` of a compound site has to be computed, the whole rule set is listed by hand. Line 92 passes `axisHeight_neg,axisHeight_add,axisHeight_sum,axisHeight_step_self`, and line 35 passes `axisHeight_add`. Downstream, ExperimentContact.lean:343 passes `axisHeight_add,…,axisHeight_opposite` and AxisBridges.lean:49 passes `axisHeight_add`. Each rule pushes `axisHeight` inward through `+`, `-`, `∑` or `oppositeStep`, or evaluates a closed term. None rewrites back toward a compound argument, so the set terminates and has no competing orientation.",
+      "proposed_change": "Tag `axisHeight_opposite`, `axisHeight_neg`, `axisHeight_sum` and `axisHeight_step_self` with `@[simp]`, together with the upstream `axisHeight_zero` and `axisHeight_add` in Axis.lean (and `axisDirection_opposite` for the analogous direction rule). A stronger option is to provide `def axisHeightHom (e : Step d) : Site d →+ ℤ` with a `@[simp]` coe lemma, so that Mathlib's `map_add`, `map_neg`, `map_sum` and `map_zero` simp lemmas apply automatically and the hand-written `axisHeight_sum` induction is no longer needed.",
+      "benefit": "`simp [opposedAnchor_true, hp, hm, tapeHeight]` would then compute `-axisHeight e (opposedAnchor e Z b i)` without the caller remembering which homomorphism rules to include. Combined with the placedAxis lemmas, `axisHeight (placedAxis e true) x` would also reduce automatically to `-axisHeight e x`. That removes the `rw [axisHeight_opposite] at hh` steps here and in ContactBins.axisHeight_step_opposite.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/Axis.lean",
+          "declaration": "axisHeight_add",
+          "excerpt": "lemma axisHeight_add {d : ℕ} (e : Step d) (x y : Site d) :\n    axisHeight e (x+y) = axisHeight e x + axisHeight e y := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ContactGeometry.lean",
+          "declaration": "opposedAnchor_height",
+          "excerpt": "cases b <;> simp [opposedAnchor,axisHeight_neg,axisHeight_add,axisHeight_sum,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ExperimentContact.lean",
+          "declaration": "(proof at line 343)",
+          "excerpt": "simp only [axisHeight_add,hz,height_axisDirection,axisHeight_opposite]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 25479,
+    "cache_read_input_tokens": 128034,
+    "output_tokens": 7538,
+    "output_tokens_details": {
+      "thinking_tokens": 1485
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25479,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4624,
+        "cache_read_input_tokens": 25640,
+        "cache_creation_input_tokens": 3852,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3852
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3802548,
+  "duration_ms": 77480,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T15:16:08",
+  "unit": "file",
+  "source_sha256": "da3aefb78fa1adc7f32dd727f3e28cf41241b7607f06d20345271c4be7e8482b",
+  "rubric": "simp-interface"
+}

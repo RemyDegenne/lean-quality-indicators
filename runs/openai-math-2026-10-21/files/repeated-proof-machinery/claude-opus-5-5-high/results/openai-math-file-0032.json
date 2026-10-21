@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0032",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–61): `residueTestMean_abs_le_one`, `weighted_bias_threshold`, `biasedPrimeBand` and `biasedPrimeBand_weight`. The three proofs in the file do not repeat each other. `biasedPrimeBand_weight` already reuses the other two lemmas.\n\nI then looked for the same reasoning in other files. I read `residueTestMean` (OppositeBiasTransfer.lean, where it is defined for any index type `ι` as `(∑ x ∈ S, f x) / S.card`). I also read FiniteBiasPopulation.lean, CollisionTestTransfer.lean, DensityDefectSelection.lean (`weighted_cost_exception_bound`), MaximalQuadraticBias.lean, BiasSelectionQuadratic.lean and part of MovingDiagonalOuterWeight.lean.\n\n- **Strong case:** `finite_bias_population` repeats the pointwise-threshold-and-sum argument of `weighted_bias_threshold`, with every weight equal to 1.\n- **Weaker case:** `orientedPrimeMean_le_one` repeats the \"a mean of values bounded by 1 is at most 1\" argument of `residueTestMean_abs_le_one`. This proof is shorter, so it is closer to the rubric's \"short calculation\" exclusion.\n\nI rejected two other candidates:\n- `weighted_cost_exception_bound` is a different Markov-type argument (it restricts the sum to a subset), not a copy.\n- The `div_le_one` use in MovingDiagonalOuterWeight is a routine one-off step.\n\nRemaining uncertainty:\n- I did not trace the full import graph. FiniteBiasPopulation.lean does not import the target, and the target is imported only by BiasedPrimeBlock.lean. So both proposals move the shared lemma into a low-level file instead of making FiniteBiasPopulation import the target. I chose OppositeBiasTransfer.lean, which imports only Mathlib and TestFunctions, or a new Mathlib-only file. I did not confirm that FiniteBiasPopulation.lean already reaches OppositeBiasTransfer.lean through its imports; it may need an explicit import.\n- I could not compile the proposed rewrites.",
+  "findings": [
+    {
+      "declaration": "weighted_bias_threshold",
+      "start_line": 25,
+      "end_line": 38,
+      "excerpt": "  have hp (p : ℕ) (hp : p ∈ P) :\n      w p * b p ≤ δ * w p + if δ ≤ b p then w p else 0 := by\n    split_ifs with h",
+      "problem": "Another file, Construction/FiniteBiasPopulation.lean, reproves the same thresholding argument in `finite_bias_population`. It proves the pointwise bound `f i ≤ c / 2 + if c / 2 ≤ f i then 1 else 0` by `split_ifs`, sums it with `Finset.sum_le_sum`, turns the `if` sum into a filtered sum with `← Finset.sum_filter`, and finishes with `linarith`. That is exactly `weighted_bias_threshold` with weights `w ≡ 1` and threshold `δ = c / 2`. The weighted lemma is stated only for `Finset ℕ`, and the target file is not imported by FiniteBiasPopulation.lean, so that proof could not reuse it.",
+      "proposed_change": "Make the lemma polymorphic in the index type: `theorem weighted_bias_threshold {ι : Type*} (P : Finset ι) (w b : ι → ℝ) (δ : ℝ) (hδ : 0 ≤ δ) (hw : ∀ p ∈ P, 0 ≤ w p) (hb : ∀ p ∈ P, b p ≤ 1) : (∑ p ∈ P, w p * b p) - δ * (∑ p ∈ P, w p) ≤ ∑ p ∈ P.filter (fun p => δ ≤ b p), w p`. Keep the current proof, changing only the binder `(p : ℕ)` to `(p : ι)`. Move it to a low-level file that both users can import, such as Construction/OppositeBiasTransfer.lean (imports only Mathlib and TestFunctions) or a new Mathlib-only file.\n\nUse in this file: unchanged. `biasedPrimeBand_weight` still calls `weighted_bias_threshold (logPrimeBand T) (fun p => Real.log (p : ℝ) / p) (fun p => |residueTestMean …|) (δ / 4) (by positivity) hw …`, and `ι` is inferred as `ℕ`.\n\nUse in FiniteBiasPopulation.lean, under its hypotheses `hc : 0 ≤ c`, `hf : ∀ i ∈ S, f i ≤ 1` and `hsum`:\n```\n  have hh := weighted_bias_threshold S (fun _ => (1 : ℝ)) f (c / 2) (by linarith)\n    (fun _ _ => zero_le_one) hf\n  simp only [one_mul, Finset.sum_const, nsmul_eq_mul, mul_one] at hh\n  linarith\n```\nThis replaces the `hpoint`/`split_ifs`/`sum_filter` block. Degenerate cases (`S = ∅`, `c = 0`) are covered because the lemma has no nonemptiness hypothesis.",
+      "benefit": "The averaging-to-threshold (Markov-type) step is proved once, with the general weighted form as the single source of truth. The counting version then becomes a three-line specialisation instead of a parallel `split_ifs`/`sum_filter` proof. A change to the thresholding argument (strict vs. non-strict threshold, a different constant) only needs to be made in one place, and readers see that the two bias-selection steps use the same principle.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/FiniteBiasPopulation.lean",
+          "declaration": "finite_bias_population",
+          "excerpt": "  have hpoint (i : ι) (hi : i ∈ S) : f i ≤ c / 2 + if c / 2 ≤ f i then 1 else 0 := by\n    split_ifs with h\n    · linarith [hf i hi]\n    · linarith\n  have hh := Finset.sum_le_sum hpoint\n  simp only [Finset.sum_add_distrib, Finset.sum_const, nsmul_eq_mul,\n    ← Finset.sum_filter, mul_one] at hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Quadratic/QuadraticBiasSelection.lean",
+          "declaration": "weighted_bias_threshold",
+          "excerpt": "  have hh := Finset.sum_le_sum hp\n  simp only [Finset.sum_add_distrib, ← Finset.mul_sum, ← Finset.sum_filter] at hh\n  linarith only [hh]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/OppositeBiasTransfer.lean",
+          "declaration": "residueTestMean",
+          "excerpt": "noncomputable def residueTestMean {ι : Type*} (S : Finset ι) (f : ι → ℝ) : ℝ :=\n  (∑ x ∈ S, f x) / S.card"
+        }
+      ]
+    },
+    {
+      "declaration": "residueTestMean_abs_le_one",
+      "start_line": 13,
+      "end_line": 23,
+      "excerpt": "  by_cases hs : S.Nonempty\n  · have hc : (0 : ℝ) < S.card := by exact_mod_cast hs.card_pos",
+      "problem": "`orientedPrimeMean_le_one` in FiniteBiasPopulation.lean repeats the same averaging argument. It splits on `P.Nonempty`, gets a positive cast of `card`, applies `(div_le_one hcard).mpr`, bounds the sum by `∑ _p ∈ P, (1 : ℝ)` with `Finset.sum_le_sum`, and handles the empty case by `simp` with `Finset.not_nonempty_iff_eq_empty`. Its quantity `orientedPrimeMean P ε t x = (∑ p ∈ P, orientedQuadraticValue ε t x p) / P.card` is by definition `residueTestMean P (fun p => orientedQuadraticValue ε t x p)`. The target lemma is stated only for `Finset ℕ` and lives in a file that FiniteBiasPopulation.lean does not import, so the argument was rewritten.",
+      "proposed_change": "Generalise and move the lemma next to `residueTestMean` in Construction/OppositeBiasTransfer.lean: `theorem residueTestMean_abs_le_one {ι : Type*} (S : Finset ι) (f : ι → ℝ) (hf : ∀ r ∈ S, |f r| ≤ 1) : |residueTestMean S f| ≤ 1`. Keep the current proof. Callers in this file (`biasedPrimeBand_weight`) and in MaximalQuadraticBias.lean (`maximalQuadraticBias_le_one`) stay unchanged.\n\nIn FiniteBiasPopulation.lean, under the existing hypothesis `hε : ∀ p ∈ P, ε p = 1 ∨ ε p = -1`, the proof becomes:\n```\n  refine (le_abs_self _).trans (residueTestMean_abs_le_one P\n    (fun p => orientedQuadraticValue ε t x p) fun p hp => ?_)\n  rcases orientedQuadraticValue_ternary ε t x p (hε p hp) with h | h | h <;> rw [h] <;> norm_num\n```\nThe `le_abs_self` step relies on `orientedPrimeMean P ε t x` unfolding to `residueTestMean P …`; if it does not, add a `change` or `show` first. The empty case `P = ∅` is handled inside the shared lemma.",
+      "benefit": "The cardinality-normalised mean bound, including its empty-set case, is proved once, next to the definition it concerns. The oriented-mean lemma then shows only its real content (each oriented value lies in {0, ±1}) instead of repeating the nonempty/empty split and `div_le_one` bookkeeping.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/FiniteBiasPopulation.lean",
+          "declaration": "orientedPrimeMean_le_one",
+          "excerpt": "  by_cases hP : P.Nonempty\n  · have hcard : (0 : ℝ) < P.card := by exact_mod_cast Finset.card_pos.mpr hP\n    apply (div_le_one hcard).mpr\n    have hh : (∑ p ∈ P, orientedQuadraticValue ε t x p) ≤ ∑ _p ∈ P, (1 : ℝ) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/FiniteBiasPopulation.lean",
+          "declaration": "orientedPrimeMean",
+          "excerpt": "noncomputable def orientedPrimeMean (P : Finset ℕ) (ε : ℕ → ℝ) (t : ℕ → ℤ) (x : ℤ) : ℝ :=\n  (∑ p ∈ P, orientedQuadraticValue ε t x p) / P.card"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/PhysicalAmplification.lean",
+          "declaration": "orientedQuadraticValue_ternary",
+          "excerpt": "    orientedQuadraticValue ε t n p = 0 ∨ orientedQuadraticValue ε t n p = 1 ∨"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/QuadraticCenter/MaximalQuadraticBias.lean",
+          "declaration": "maximalQuadraticBias_le_one",
+          "excerpt": "  residueTestMean_abs_le_one S _ (fun r _ => quadraticResidueTest_abs_le p _ r)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 28110,
+    "cache_read_input_tokens": 167349,
+    "output_tokens": 9282,
+    "output_tokens_details": {
+      "thinking_tokens": 2364
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28110,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4614,
+        "cache_read_input_tokens": 29357,
+        "cache_creation_input_tokens": 2682,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2682
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4440618,
+  "duration_ms": 92424,
+  "turns": 17,
+  "attempts": 1,
+  "judged": "2026-10-21T12:09:17",
+  "unit": "file",
+  "source_sha256": "6e9f334a6c5502b37aac22d7b014779bb222846fc720f09203ccd65a407404b6",
+  "rubric": "repeated-proof-machinery"
+}

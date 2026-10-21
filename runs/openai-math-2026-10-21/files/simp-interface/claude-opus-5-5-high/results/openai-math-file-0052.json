@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0052",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 112 lines of the target file. I also checked the definitions of `cutoffHeatGram`, `cutoffHeatGramEquiv` and `cutoffHeatGramAt` (ActualHeatGrams.lean, HeatGramEvolution.lean) and every use of `dyadicHeatGram_coe`, `cutoffHeatGram_time_congr` and `dyadic_radius_square_succ`. The uses are in this file, SupportedHeatEnvelope.lean and DyadicHeatAt.lean, where `cutoffHeatGram_time_congr_at` copies the same pattern.\n\nThe main simp-interface gap is a missing rewrite lemma for the next dyadic Gram, the one at index `i + 1`. Every decrement proof needs that Gram written at the time `(R / 2 ^ i) ^ 2 / 4` of the current scale, and each proof rebuilds that equation by hand.\n\nI did not flag `dyadicHeatGram_coe` for lacking `@[simp]`. It is an `rfl` unfolding of a definition, and every caller already uses it explicitly through `simp only` or `rw`, so adding `@[simp]` would not clearly help.\n\n`dyadic_radius_square_succ` should stay out of the default simp set. Its left-hand side, `(R / 2 ^ (i+1)) ^ 2`, is not a canonical form, and the default simp set may already rewrite it through `pow_succ` or `div_pow`.\n\nI found no rewrite cycles and no competing simp rules. I could not run Lean, so the proposed lemma's proof and the rewrite order in the shortened proofs (`rw` of the `i + 1` lemma before `dyadicHeatGram_coe`) have not been compiled.",
+  "findings": [
+    {
+      "declaration": "dyadicHeatGram_coe / cutoffHeatGram_time_congr (pattern used by dyadicHeatGram_lower and dyadicHeatGram_upper)",
+      "start_line": 35,
+      "end_line": 105,
+      "excerpt": "theorem cutoffHeatGram_time_congr {s t lambda : ℝ} (hs : 0 < s) (ht : 0 < t)\n    (hst : s = t) :",
+      "problem": "There is one coercion lemma, `dyadicHeatGram_coe`, and it writes the index-`i` Gram at time `(R / 2 ^ i) ^ 2`. The decrement statements compare index `i` with index `i + 1`, so a proof needs the `i + 1` term at time `(R / 2 ^ i) ^ 2 / 4`. The file gives no lemma with that normal form. `cutoffHeatGram_time_congr` only applies when the user supplies the time equation and both positivity proofs; its hypothesis `hst : s = t` cannot be found by simp, so it is useless as a simp lemma. As a result, `dyadicHeatGram_lower` (lines 72–77) and `dyadicHeatGram_upper` (lines 101–105) each repeat the same three-line `have hnext := cutoffHeatGram_time_congr … (dyadic_radius_square_succ R i)` and then `simp only [..., dyadicHeatGram_coe]; rw [hnext]`. The same block appears again in SupportedHeatEnvelope.lean. In DyadicHeatAt.lean it appears twice, after a word-for-word copy of the congruence lemma named `cutoffHeatGram_time_congr_at`. That copy exists only because the pole here is fixed as the section variable `p`.",
+      "proposed_change": "Add a lemma whose output is the normal form the callers actually need, for example:\n\ntheorem dyadicHeatGram_succ_coe {R lambda : ℝ} (hR : 0 < R) (hlambda : 0 < lambda) (i : ℕ) :\n    (dyadicHeatGram μ hQ hk U χ hR hlambda (i + 1) : Euclidean n →L[ℝ] Euclidean n) =\n      cutoffHeatGram μ hQ hk χ.weight.continuous (χ.hasCompactSupport μ hQ) U\n        (div_pos (sq_pos_of_pos (div_pos hR (show 0 < (2 : ℝ) ^ i by positivity))) (by norm_num : (0 : ℝ) < 4)) p lambda := by\n  rw [dyadicHeatGram_coe]\n  exact cutoffHeatGram_time_congr μ hQ hk U χ _ _ (dyadic_radius_square_succ R i)\n\nIn both decrement proofs, delete the `hnext` block and use `rw [dyadicHeatGram_succ_coe, dyadicHeatGram_coe]` before `simp only [sub_apply, inner_sub_right]`. The `i + 1` lemma goes first so the general coercion lemma does not catch that term. Separately, generalise `cutoffHeatGram_time_congr` over the pole (an explicit `x : X` instead of the section variable `p`). Then DyadicHeatAt.lean can reuse it instead of keeping `cutoffHeatGram_time_congr_at`.",
+      "benefit": "With this lemma, a single rewrite puts the decrement `G_i - G_{i+1}` into the form that `dyadic_heat_increment_lower_mass`, `gaussian_dyadic_heat_increment_envelope` and `dyadic_heat_increment_upper_bound` expect, namely heat Grams at times `s^2` and `s^2/4`. Callers would no longer need to restate positivity side proofs and the radius identity. That removes four copies of the same block across three files, and a later change to the time parametrisation would only need updating in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/DyadicHeatFamily.lean",
+          "declaration": "dyadicHeatGram_lower",
+          "excerpt": "  have hnext := cutoffHeatGram_time_congr μ hQ hk U χ (lambda := lambda)\n    (sq_pos_of_pos (show 0 < R / (2 : ℝ) ^ (i + 1) from div_pos hR (by positivity)))\n    (div_pos (sq_pos_of_pos hs) (by norm_num : (0 : ℝ) < 4)) (dyadic_radius_square_succ R i)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/DyadicHeatFamily.lean",
+          "declaration": "dyadicHeatGram_upper",
+          "excerpt": "  simp only [sub_apply, inner_sub_right, dyadicHeatGram_coe]\n  rw [hnext]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/SupportedHeatEnvelope.lean",
+          "declaration": "(upper envelope proof using dyadicHeatGram)",
+          "excerpt": "  simp only [sub_apply, inner_sub_right, dyadicHeatGram_coe]\n  rw [hnext, dyadicBochnerEnvelope_inner]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/DyadicHeatAt.lean",
+          "declaration": "cutoffHeatGram_time_congr_at",
+          "excerpt": "theorem cutoffHeatGram_time_congr_at (x : X) {s t lambda : ℝ} (hs : 0 < s) (ht : 0 < t)\n    (hst : s = t) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/ActualHeatGrams.lean",
+          "declaration": "cutoffHeatGram",
+          "excerpt": "def cutoffHeatGram {t : ℝ} (ht : 0 < t) (x : X) (lambda : ℝ) : E →L[ℝ] E :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19918,
+    "cache_read_input_tokens": 53076,
+    "output_tokens": 4792,
+    "output_tokens_details": {
+      "thinking_tokens": 1250
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19918,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3474,
+        "cache_read_input_tokens": 21358,
+        "cache_creation_input_tokens": 2573,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2573
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.26583120000000005,
+  "duration_ms": 44727,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T13:47:01",
+  "unit": "file",
+  "source_sha256": "244dc7dac15af9863647543f1a73ac138f4cd2a4bf3c80a16f868574338cc308",
+  "rubric": "simp-interface"
+}

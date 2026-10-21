@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0038",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all 70 lines of NormPartitionVariation.lean. I also read the sibling files PrimeCutoffDerivative.lean and PrimeSmoothTransition.lean, and checked the support lemmas in SmoothNormPartition.lean and PrimeDetectorCutoff.lean. I searched the CubicMoment tree for the `.deriv isOpen_I…` and `exists_bound_of_continuousOn` patterns.\n\n**Repeated within the file:** the two branches of `normPartitionWeight_deriv_zero` are short and alike. The rubric says moving duplicated branches into a helper is not enough, so I did not report them on that basis alone.\n\n**Repeated across files:** the real repetition is between files.\n- The \"derivative vanishes off `Icc a b` because the function is constant on each side\" argument appears almost line for line three times: `normPartitionWeight_deriv_zero`, `primeDetectorCutoff_deriv_zero` and `primeSmoothStep_deriv_zero`.\n- The \"continuous derivative with support in a compact interval gives a bound on ‖f'(x)‖·x\" argument appears twice: `normPartitionWeight_radial_deriv_bound` and `primeDetectorCutoff_radial_deriv_bound`.\n\n**Not repeated:** the scaling part of the file (`scaledNormPartitionWeight` and its lemmas) has no repeated machinery.\n\n**Uncertainty:** I could not compile anything, so the helper statements and rewritten call sites below are untested sketches. In particular, the `simpa [Real.norm_eq_abs]` step needed for the real-valued `|·|` variant still has to be checked. The helpers need a new file importing only Mathlib (for example `Mathlib.Analysis.Calculus.Deriv.Basic` and `Mathlib.Topology.Algebra.Order.Compact`). Both `SmoothNormPartition` and `PrimeDetectorCutoff`, or their dependents, would import that file. Neither of those two files currently imports the other.",
+  "findings": [
+    {
+      "declaration": "normPartitionWeight_deriv_zero",
+      "start_line": 13,
+      "end_line": 25,
+      "excerpt": "  by_cases hlo : x < 1\n  · have he : EqOn normPartitionWeight (fun _ : ℝ => (0:ℂ)) (Iio 1) :=\n      fun _ hy => normPartitionWeight_low hy\n    simpa only [deriv_const] using he.deriv isOpen_Iio hlo",
+      "problem": "The proof shows that a function which is constant on `Iio a` and on `Ioi b` has zero derivative off `Icc a b`. It splits into cases, turns `x ∉ Icc a b` into `b < x` with `not_and_or`, and applies `EqOn.deriv` on an open half-line twice. The same proof appears almost verbatim in `primeDetectorCutoff_deriv_zero` (PrimeCutoffDerivative.lean) and `primeSmoothStep_deriv_zero` (PrimeSmoothTransition.lean). Only the function, the endpoints and the two constants change.",
+      "proposed_change": "Add one generic lemma in a small shared file that imports only Mathlib:\n```lean\nlemma deriv_eq_zero_of_const_off_Icc {E : Type*} [NormedAddCommGroup E] [NormedSpace ℝ E]\n    {f : ℝ → E} {a b : ℝ} {cₗ cᵣ : E}\n    (hl : ∀ y, y < a → f y = cₗ) (hr : ∀ y, b < y → f y = cᵣ)\n    {x : ℝ} (hx : x ∉ Icc a b) : deriv f x = 0\n```\nProof sketch:\n- If `x < a`, apply `EqOn.deriv` to `hl` on `Iio a` with `isOpen_Iio`, then `deriv_const`.\n- Otherwise, get `b < x` from `hx` and `le_of_not_gt`, apply `EqOn.deriv` to `hr` on `Ioi b`, then `deriv_const`.\n\nThe call sites become one line each:\n- `normPartitionWeight_deriv_zero hx := deriv_eq_zero_of_const_off_Icc (fun _ hy => normPartitionWeight_low hy) (fun _ hy => normPartitionWeight_high hy) hx`\n- `primeDetectorCutoff_deriv_zero hx := deriv_eq_zero_of_const_off_Icc (fun _ hy => primeDetectorCutoff_one hy.le) (fun _ hy => primeDetectorCutoff_zero hy.le) hx`\n- `primeSmoothStep_deriv_zero` works the same way, using `Real.smoothTransition.zero_of_nonpos` and `Real.smoothTransition.one_of_one_le`.",
+      "benefit": "Three 12-line case analyses become one tested lemma plus one-line uses. Each remaining call site shows only what is specific to it: which support lemma gives the constant on each side. Any later cutoff with a transition window can reuse the lemma, and a change to the `EqOn.deriv` API would need fixing in one place instead of three.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/PrimeCutoffDerivative.lean",
+          "declaration": "primeDetectorCutoff_deriv_zero",
+          "excerpt": "  · have he : EqOn primeDetectorCutoff (fun _ : ℝ => (1:ℝ)) (Iio 1) :=\n      fun y hy => primeDetectorCutoff_one hy.le\n    simpa only [deriv_const] using he.deriv isOpen_Iio hlo"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/PrimeSmoothTransition.lean",
+          "declaration": "primeSmoothStep_deriv_zero",
+          "excerpt": "    have he : EqOn primeSmoothStep (fun _ : ℝ => (1:ℂ)) (Ioi 1) := by\n      intro y hy\n      simp only [primeSmoothStep,Real.smoothTransition.one_of_one_le hy.le,Complex.ofReal_one]\n    simpa only [deriv_const] using he.deriv isOpen_Ioi hhi"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/SmoothNormPartition.lean",
+          "declaration": "normPartitionWeight_low",
+          "excerpt": "lemma normPartitionWeight_low {x : ℝ} (hx : x < 1) : normPartitionWeight x = 0 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "normPartitionWeight_radial_deriv_bound",
+      "start_line": 27,
+      "end_line": 41,
+      "excerpt": "  obtain ⟨D,hD⟩ := (isCompact_Icc (a := (1:ℝ)) (b := 2)).exists_bound_of_continuousOn\n    ((hd.norm.mul continuous_id).continuousOn)\n  refine ⟨max D 0,le_max_right _ _,?_⟩",
+      "problem": "The proof uses continuity of `deriv f` to bound `‖deriv f x‖ * x` on the compact set `Icc 1 2`, takes `max D 0`, and uses the zero derivative off the interval elsewhere. `primeDetectorCutoff_radial_deriv_bound` in PrimeCutoffDerivative.lean repeats the same steps: the same `exists_bound_of_continuousOn` call, the same `max D 0`, the same `change ‖‖deriv … x‖*x‖ ≤ D` and the same case split. The only difference is that its statement uses `|·|` for a real-valued function instead of `‖·‖`.",
+      "proposed_change": "Add one generic lemma in the same shared file:\n```lean\nlemma exists_radial_deriv_bound_of_deriv_zero_off_Icc {E : Type*} [NormedAddCommGroup E]\n    [NormedSpace ℝ E] {f : ℝ → E} {a b : ℝ} (hd : Continuous (deriv f))\n    (hz : ∀ x, x ∉ Icc a b → deriv f x = 0) :\n    ∃ D : ℝ, 0 ≤ D ∧ ∀ x : ℝ, 0 < x → ‖deriv f x‖ * x ≤ D\n```\nThe proof is the current body of lines 29–41, with `normPartitionWeight` replaced by `f` and `normPartitionWeight_deriv_zero` replaced by `hz`.\n\nThe call sites then become:\n- `normPartitionWeight_radial_deriv_bound := exists_radial_deriv_bound_of_deriv_zero_off_Icc (normPartitionWeight_smooth.continuous_deriv (by norm_num)) (fun _ hx => normPartitionWeight_deriv_zero hx)`\n- In PrimeCutoffDerivative.lean: `obtain ⟨D,hD,h⟩ := exists_radial_deriv_bound_of_deriv_zero_off_Icc (primeDetectorCutoff_smooth.continuous_deriv (by norm_num)) (fun _ hx => primeDetectorCutoff_deriv_zero hx)`, followed by `exact ⟨D,hD,fun x hx => by simpa only [Real.norm_eq_abs] using h x hx⟩`.",
+      "benefit": "The compactness and continuity argument behind the \"no growing variation cost\" bound is then stated once, in general, with hypotheses that say what it needs: a continuous derivative supported in a compact interval. The two specific theorems shrink to one or two lines. The norm and absolute-value bookkeeping (`change`, `Real.norm_of_nonneg`, `abs_of_nonneg`) now happens in one place instead of being redone slightly differently in each file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/PrimeCutoffDerivative.lean",
+          "declaration": "primeDetectorCutoff_radial_deriv_bound",
+          "excerpt": "  obtain ⟨D,hD⟩ := (isCompact_Icc (a := (1:ℝ)) (b := 2)).exists_bound_of_continuousOn\n    ((hd.norm.mul continuous_id).continuousOn)\n  refine ⟨max D 0,le_max_right _ _,?_⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/PrimeCutoffDerivative.lean",
+          "declaration": "primeDetectorCutoff_radial_deriv_bound",
+          "excerpt": "  · rw [primeDetectorCutoff_deriv_zero hmem,abs_zero,zero_mul]\n    exact le_max_right _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/PrimeDetectorCutoff.lean",
+          "declaration": "primeDetectorCutoff_smooth",
+          "excerpt": "lemma primeDetectorCutoff_smooth : ContDiff ℝ ∞ primeDetectorCutoff :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18470,
+    "cache_read_input_tokens": 47852,
+    "output_tokens": 6809,
+    "output_tokens_details": {
+      "thinking_tokens": 1651
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18470,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4272,
+        "cache_read_input_tokens": 18682,
+        "cache_creation_input_tokens": 3717,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3717
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2935424,
+  "duration_ms": 54356,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T12:35:24",
+  "unit": "file",
+  "source_sha256": "ccc6c7fb60624dd03c7da0082eabfd0113752db6c6d9ee5af4c43dea7b84ae7d",
+  "rubric": "repeated-proof-machinery"
+}

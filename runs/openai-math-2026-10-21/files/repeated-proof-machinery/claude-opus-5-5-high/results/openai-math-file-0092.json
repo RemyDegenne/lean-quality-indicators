@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0092",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. It contains one theorem, `exists_two_normalized_annular_equal_leaf_returns`. I also read its direct dependency `LeafReturnCovariance.lean`, which defines `exists_annular_simultaneous_root_return_ae` and `exists_annular_return_with_equal_leaves`. A search for the radius pattern `if b = 0 then 1 else C` and for every use of the two-annulus theorems led me to `TwoAnnularReturns.lean`. Its theorem `exists_two_normalized_annular_returns` has the same proof as the target, almost line for line. The two proofs differ only in which one-radius lemma they apply and in how many components they destructure.\n\n`exists_two_normalized_annular_returns` has no users in the source tree; only the root import file `DukePrimeDegree.lean` imports it. `SynchronizedReturns.lean` uses the target theorem. The proposed import change is safe: `LeafReturnCovariance` imports only `ShearingAnnulus`, so making `TwoAnnularReturns` import the new shared lemma's file cannot create a cycle. Remaining uncertainty: I cannot run Lean, so the replacement proofs are sketches. They reuse tactic lines that already compile, but they have not been checked.",
+  "findings": [
+    {
+      "declaration": "exists_two_normalized_annular_equal_leaf_returns",
+      "start_line": 51,
+      "end_line": 89,
+      "excerpt": "  have hκr (b : Fin 2) : κ * r b = if b = 0 then 1 else C := by\n    dsimp only [r]\n    field_simp [hκ.ne']",
+      "problem": "The 39-line proof is copied from `exists_two_normalized_annular_returns` in TwoAnnularReturns.lean (lines 43–81). The copied steps are: define the two radii `r b = (if b = 0 then 1 else C) / κ`, prove them positive, show the ball mass is nonzero (from the strict `hsmall`) and finite (from local finiteness), apply a one-radius annular-return lemma for each `b`, use `choose`, rescale by `κ` with `nlinarith`/`linarith`, and specialise to `b = 0` and `b = 1`. Only the one-radius lemma (`exists_annular_return_with_equal_leaves` vs. `exists_annular_simultaneous_root_return`) and the number of conjuncts differ. Any change to the normalisation (radii, constants 16/ρ, the rescaling inequalities) must currently be made twice.",
+      "proposed_change": "Add one shared lemma, for example in this file or a new file that imports LeafReturnCovariance and ShearingTwoAnnuli:\n\n```lean\ntheorem exists_two_normalized_annular_returns_ae\n    {n : ℕ} {i j : Fin n} (hij : i ≠ j) (μ : Measure (X n)) [IsFiniteMeasure μ]\n    (K G : Set (X n)) (c a : ℝ≥0∞) (hgood : …same…) (x y : X n) (hx : x ∈ G) (hy : y ∈ G)\n    (heq : intrinsicRootLeaf hij μ x = intrinsicRootLeaf hij μ y)\n    (hloc : IsLocallyFiniteMeasure (intrinsicRootLeaf hij μ x))\n    (κ ρ C : ℝ) (hκ : 0 < κ) (hC : 1 ≤ C) (hsecond : 16 / ρ ≤ ρ * C)\n    (hsmall : …same…) (hcoeff : c + c + a < 1)\n    (P : ℝ → Prop) (hP : ∀ᵐ t ∂intrinsicRootLeaf hij μ x, P t) :\n    ∃ t : Fin 2 → ℝ,\n      (∀ b, P (t b) ∧ rightAction x (transvection hij (t b)) ∈ K ∧\n        rightAction y (transvection hij (t b)) ∈ K) ∧\n      ρ ≤ |κ * t 0| ∧ |κ * t 0| ≤ 1 ∧ 16 / ρ ≤ |κ * t 1| ∧ |κ * t 1| ≤ C\n```\n\nProof sketch: use the current lines 51–89 unchanged, except call `exists_annular_simultaneous_root_return_ae hij μ K G c a hgood x y hx hy heq (r b) ρ (hr b) (hmass b) (hfin b) (hsmall b).le hcoeff P hP` and `choose t hlo hhi hP hxK hyK`.\n\nThe target then becomes:\n```lean\n  rw [← heq] at hrebasey\n  obtain ⟨t, ht, h0, h1, h2, h3⟩ := exists_two_normalized_annular_returns_ae hij μ K G c a\n    hgood x y hx hy heq hloc κ ρ C hκ hC hsecond hsmall hcoeff\n    (fun t => intrinsicRootLeaf hij μ (rightAction x (transvection hij t)) =\n      intrinsicRootLeaf hij μ (rightAction y (transvection hij t)))\n    (by filter_upwards [hrebasex, hrebasey] with t hx hy; exact hx.trans hy.symm)\n  exact ⟨t, fun b => ⟨(ht b).2.1, (ht b).2.2, (ht b).1⟩, h0, h1, h2, h3⟩\n```\n\n`exists_two_normalized_annular_returns` (whose hypotheses are a subset of the target's) becomes the same call with `P := fun _ => True` and `hP := ae_of_all _ fun _ => trivial`, ending with `⟨t, fun b => (ht b).2, h0, h1, h2, h3⟩`.",
+      "benefit": "The two-radius normalisation (radius choice, positive and finite mass, rescaling by κ, the 16/ρ threshold) would be written and checked once. Both theorems become short corollaries, so the only remaining difference, the extra a.e. leaf-equality property, is visible at a glance, and later changes to the annuli constants touch one proof. The generic `P` version mirrors the existing one-radius design of `exists_annular_simultaneous_root_return_ae`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/TwoAnnularReturns.lean",
+          "declaration": "exists_two_normalized_annular_returns",
+          "excerpt": "  have hex (b : Fin 2) := exists_annular_simultaneous_root_return hij μ K G c a hgood\n    x y hx hy heq (r b) ρ (hr b) (hmass b) (hfin b) (hsmall b).le hcoeff\n  choose t hlo hhi hxK hyK using hex\n  have hκr (b : Fin 2) : κ * r b = if b = 0 then 1 else C := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/TwoAnnularReturns.lean",
+          "declaration": "exists_two_normalized_annular_returns",
+          "excerpt": "    · have hp := congrArg (fun u : ℝ => ρ * u) (hκr b)\n      nlinarith\n    · linarith [hκr b]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/LeafReturnCovariance.lean",
+          "declaration": "exists_annular_simultaneous_root_return_ae",
+          "excerpt": "    (P : ℝ → Prop) (hP : ∀ᵐ t ∂intrinsicRootLeaf hij μ x, P t) :\n    ∃ t : ℝ, ρ * r < |t| ∧ |t| ≤ r ∧ P t ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/LeafReturnCovariance.lean",
+          "declaration": "exists_annular_return_with_equal_leaves",
+          "excerpt": "      filter_upwards [hrebasex, hrebasey] with t hx hy\n      exact hx.trans hy.symm)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 19616,
+    "cache_read_input_tokens": 70646,
+    "output_tokens": 5764,
+    "output_tokens_details": {
+      "thinking_tokens": 1963
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19616,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3044,
+        "cache_read_input_tokens": 21412,
+        "cache_creation_input_tokens": 2133,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2133
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2863772,
+  "duration_ms": 50644,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T17:01:11",
+  "unit": "file",
+  "source_sha256": "b5eab71d81ca85e08cf78c3b5c8526b2885286b8969d91dc14d4a5bac9b11cb3",
+  "rubric": "repeated-proof-machinery"
+}

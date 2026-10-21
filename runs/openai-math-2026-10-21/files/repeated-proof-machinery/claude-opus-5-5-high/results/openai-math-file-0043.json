@@ -1,0 +1,95 @@
+{
+  "id": "openai-math-file-0043",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file: one definition and one theorem, `normalized_disk_logDeriv`. The file has only one proof, so the repetition I found is between files. I searched the `lean/` tree for uses of `lem_analytic_zero_factor` and `final_ineq1`. I read `AnalyticDiskZeroMass.lean`, which imports the target, and two other files that use the same pattern with different radii: `Jacobsthal/Analysis/LocalZeroLogDerivative.lean` and `Ostmann/Dirichlet/WideLocalZero.lean`. I also checked the signatures of `lem_analytic_zero_factor`, `lem_sum_m_rho_bound` and `final_ineq1` in StrongPNT `PNT2_LogDerivative.lean`.\n\n`normalized_disk_zero_mass` repeats lines 25–44 of the target almost word for word: the finiteness proof, the existence statement `hex`, the `choose` step, and the `zerosetKfR` membership `simp`. Because that file already imports the target, a shared helper can go in the target file without changing any imports.\n\nUncertainty: this is close to the rubric's \"thin wrapper around existing API\" exclusion. The mathematical content (finitely many zeros, plus factoring `f` at each zero) comes from StrongPNT. What is copied here is the work of discharging the fixed-radius hypotheses and doing the dependent choice. I report it because the block is about 20 lines and repeated almost word for word. I cannot run Lean, so the proposed proofs, including the `choose!` step, have not been compiled. If `choose!` fails, the existing `by_cases` / `choose` code can be moved into the helper's proof unchanged.",
+  "findings": [
+    {
+      "declaration": "normalized_disk_logDeriv (shared with CubicFirstMoment.normalized_disk_zero_mass)",
+      "start_line": 25,
+      "end_line": 44,
+      "excerpt": "  have hex : ∀ ρ : ℂ, ∃ g : ℂ → ℂ,\n      ρ ∈ zerosetKfR (3/4:ℝ) (by norm_num) f →\n      AnalyticAt ℂ g ρ ∧ g ρ ≠ 0 ∧\n        ∀ᶠ z in 𝓝 ρ, f z=(z-ρ)^(analyticOrderAt f ρ).toNat*g z := by",
+      "problem": "`normalized_disk_logDeriv` and `normalized_disk_zero_mass` (in `AnalyticDiskZeroMass.lean`, which imports this file) build the same zero data at radii 7/8 and 3/4 in both proofs. Each one: (1) derives analyticity on the closed unit ball from `Differentiable`; (2) proves that `zerosetKfR (3/4) _ f` is finite using `lem_Contra_finiteKR`; (3) states `hex`, which uses `by_cases` on membership in the zero set and `lem_analytic_zero_factor (7/8) (3/4)` to pick a local factor `g ρ` with `f z = (z-ρ)^m * g ρ z`, defaulting to `fun _ => 1`; (4) applies `choose`; and (5) proves that `hfin.toFinset` is exactly `{ρ | ‖ρ‖ ≤ 3/4 ∧ f ρ = 0}` with the same `simp only` call. The two copies differ only in `refine` versus `ext`/`rw`. The radius side conditions (`by norm_num` five times) and the `hf0 ▸ one_ne_zero` argument therefore appear twice.",
+      "proposed_change": "Add a helper to this file, placed before `normalized_disk_logDeriv`:\n\n```lean\ntheorem normalized_disk_zero_data (f : ℂ → ℂ) (hf : Differentiable ℂ f) (hf0 : f 0 = 1) :\n    ∃ hfin : (zerosetKfR (3/4:ℝ) (by norm_num) f).Finite,\n      (∀ ρ : ℂ, ρ ∈ hfin.toFinset ↔ ‖ρ‖ ≤ (3/4:ℝ) ∧ f ρ = 0) ∧\n      ∃ g : ℂ → ℂ → ℂ, ∀ ρ ∈ zerosetKfR (3/4:ℝ) (by norm_num) f,\n        AnalyticAt ℂ (g ρ) ρ ∧ g ρ ρ ≠ 0 ∧\n          ∀ᶠ z in 𝓝 ρ, f z = (z-ρ)^(analyticOrderAt f ρ).toNat * g ρ z\n```\n\nProof sketch:\n- Set `ha := fun z _ => hf.analyticAt z`.\n- Take `hfin := lem_Contra_finiteKR (3/4) _ _ f ha ⟨0, by simp, hf0 ▸ one_ne_zero⟩`.\n- Prove the membership iff with the existing `simp only [Set.Finite.mem_toFinset, zerosetKfR, Set.mem_ofPred_eq, Metric.mem_closedBall, dist_zero_right]`.\n- Obtain `g` with `choose! g hg using lem_analytic_zero_factor (7/8) (3/4) (by norm_num) (by norm_num) (by norm_num) f ha (hf0 ▸ one_ne_zero)`. If `choose!` does not work here, move the current `by_cases`/`choose` lines into the helper unchanged.\n\nRewritten target proof:\n\n```lean\n  obtain ⟨hfin, hmem, g, hg⟩ := normalized_disk_zero_data f hf hf0\n  refine ⟨hfin.toFinset, hmem, fun z hz hzero => ?_⟩\n  exact final_ineq1 B hB (1/2:ℝ) (2/3:ℝ) (7/8:ℝ) (3/4:ℝ)\n    (by norm_num) (by norm_num) (by norm_num) (by norm_num) (by norm_num)\n    f (fun w _ => hf.analyticAt w) hf0 hfin (h_σ := g) hg\n    (fun w hw => hb w (by simpa using hw)) z ⟨by simpa using hz, fun h => hzero h.2⟩\n```\n\nRewritten `normalized_disk_zero_mass` proof:\n\n```lean\n  obtain ⟨hfin, hmem, g, hg⟩ := normalized_disk_zero_data f hf hf0\n  have he : Z = hfin.toFinset := by ext ρ; rw [hZ, hmem]\n  rw [he]\n  exact lem_sum_m_rho_bound B (7/8:ℝ) (3/4:ℝ) hB (by norm_num) (by norm_num) (by norm_num)\n    f (fun w _ => hf.analyticAt w) (hf0 ▸ one_ne_zero) hf0 hfin g hb hg\n```\n\nThe other two files below use the same pattern with other radii. A version of the helper that takes the radii as parameters, with hypotheses `0 < R1`, `R1 < R` and `R < 1`, could also serve them.",
+      "benefit": "The fixed-radius zero data (finite zero set, local factors and the matching Finset) is built once. Both proofs then read as one call to the helper followed by one call to the matching StrongPNT inequality (`final_ineq1` or `lem_sum_m_rho_bound`). This makes the shared structure of the Jensen bound and the log-derivative bound visible. If the radii or the StrongPNT signatures change, only one proof needs updating instead of two copies that could drift apart. The default-factor trick (`fun _ => 1` off the zero set) is written once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/AnalyticDiskZeroMass.lean",
+          "declaration": "OAI.CubicFirstMoment.normalized_disk_zero_mass",
+          "excerpt": "    · obtain ⟨g,hg⟩ := lem_analytic_zero_factor (7/8:ℝ) (3/4:ℝ)\n        (by norm_num) (by norm_num) (by norm_num) f ha (hf0 ▸ one_ne_zero) ρ hρ\n      exact ⟨g,fun _ => hg⟩\n    · exact ⟨fun _ => 1,fun h => (hρ h).elim⟩\n  choose g hg using hex"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/AnalyticDiskZeroMass.lean",
+          "declaration": "OAI.CubicFirstMoment.normalized_disk_zero_mass",
+          "excerpt": "    simp only [hZ,Set.Finite.mem_toFinset,zerosetKfR,Set.mem_ofPred_eq,\n      Metric.mem_closedBall,dist_zero_right]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/StrongPNT-2f5835c32231/StrongPNT/PNT2_LogDerivative.lean",
+          "declaration": "lem_analytic_zero_factor",
+          "excerpt": "    (σ : ℂ) (hσ : σ ∈ zerosetKfR R1 (by linarith) f) :\n    ∃ h_σ : ℂ → ℂ, AnalyticAt ℂ h_σ σ ∧ h_σ σ ≠ 0 ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/StrongPNT-2f5835c32231/StrongPNT/PNT2_LogDerivative.lean",
+          "declaration": "final_ineq1",
+          "excerpt": "    (h_σ_spec : ∀ σ ∈ zerosetKfR R1 (by linarith) f,\n      AnalyticAt ℂ (h_σ σ) σ ∧ h_σ σ σ ≠ 0 ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Dirichlet/WideLocalZero.lean",
+          "declaration": "(anonymous local zero log-derivative constant theorem)",
+          "excerpt": "    · obtain ⟨g, hg⟩ := lem_analytic_zero_factor (99/100) (49/50)\n        (by norm_num) (by norm_num) (by norm_num) f hf hfne rho hr\n      exact ⟨g, fun _ => hg⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Analysis/LocalZeroLogDerivative.lean",
+          "declaration": "OAI.Erdos970.Erdos970Dependency.SiegelWalfisz.exists_local_zero_log_derivative_constant",
+          "excerpt": "    · obtain ⟨g, hg⟩ := _root_.Erdos970.lem_analytic_zero_factor (39/40) (19/20)\n        (by norm_num) (by norm_num) (by norm_num) f hf hfne rho hr\n      exact ⟨g, fun _ => hg⟩"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 24226,
+    "cache_read_input_tokens": 70082,
+    "output_tokens": 8108,
+    "output_tokens_details": {
+      "thinking_tokens": 3298
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24226,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4723,
+        "cache_read_input_tokens": 24909,
+        "cache_creation_input_tokens": 3246,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3246
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3700244,
+  "duration_ms": 69243,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T13:01:22",
+  "unit": "file",
+  "source_sha256": "3511dd26c5a0c142fc981286673bc8cac918566f8d485c7ec2136c411bf5ac08",
+  "rubric": "repeated-proof-machinery"
+}

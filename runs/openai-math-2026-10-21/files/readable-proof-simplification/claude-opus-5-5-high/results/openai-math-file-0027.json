@@ -1,0 +1,122 @@
+{
+  "id": "openai-math-file-0027",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 384 lines of the file. I checked these definitions in the related sources: `hyperplaneFamilyAlgebra` and `hyperplane_specialization_equiv` in OAI's HyperplaneFamilies.lean, and `Function.Injective.of_comp`, `RingHom.coe_comp` and `MvPolynomial.cardinalMk_le_max` in Mathlib. I also searched Mathlib for `Countable` instances on `MvPolynomial` and `Polynomial` and found none, so the three local `Countable` lets are justified.\n\nThere are three findings:\n1. The bodies of the two `countable_*_integral_equation` theorems repeat about 20 lines after `hgeo`.\n2. `countable_polynomial_model` reproves the case k = 0 of `countable_model_with_elements`. That theorem does not depend on it.\n3. The end of `hyperplane_injective_descent` chases elements where it could reason about composed maps.\n\nI left out smaller changes to `generic_field_embedding`, `polynomialQuotientBaseChange` and the final `change`/`rw` chain in `countable_model_with_elements`, because they would only shorten the text or might not be easier to read. None of the replacements has been compiled. There are two risks: Lean may elaborate the `let := hyperplaneFamilyAlgebra` hypothesis in a factored lemma differently, and a `change` or `show` may be needed for the coercion of `f₀.toRingHom` in finding 3.",
+  "findings": [
+    {
+      "declaration": "countable_etale_hyperplane_integral_equation / countable_hyperplane_integral_equation",
+      "start_line": 102,
+      "end_line": 207,
+      "excerpt": "  let : Countable (MvPolynomial σ R) := AddMonoidAlgebra.coeff_injective.countable\n  let : Countable (AddMonoidAlgebra (MvPolynomial σ R) ℕ) :=\n    AddMonoidAlgebra.coeff_injective.countable\n  let : Countable P := Polynomial.toFinsupp_injective.countable",
+      "problem": "After `hgeo`, the two theorems repeat the same 21 lines word for word: lines 102–122 and 187–207. These lines set up three `Countable` instances, prove the bound `hcard`, call `integral_specialization_of_countable_model`, build the algebra and scalar-tower instances on K, and transport the result through `hyperplane_specialization_equiv`. The two theorems differ only in the lemma used to prove `hgeo`: `etale_hyperplane_geometricGeneric` in one and `hyperplaneFamily_geometricGeneric_of_injective` in the other. Because of the copy, a reader has to compare two long blocks to see that they are the same argument.",
+      "proposed_change": "Move the shared part into one lemma that takes the generic geometric-integrality statement as a hypothesis:\n```lean\ntheorem countable_hyperplane_integral_equation_of_geometric {R K A σ : Type}\n    [Field R] [Countable R] [Field K] [Algebra R K] [IsAlgClosed K] [Uncountable K]\n    [CommRing A] [Algebra R A] [Fintype σ] (v : σ → A)\n    (hgeo : let := hyperplaneFamilyAlgebra (K := R) v\n      ∀ (E : Type) [Field E] [Algebra (FractionRing (MvPolynomial σ R)[X]) E],\n        IsDomain (E ⊗[FractionRing (MvPolynomial σ R)[X]]\n          (FractionRing (MvPolynomial σ R)[X] ⊗[(MvPolynomial σ R)[X]] MvPolynomial σ A))) :\n    ∃ f : (MvPolynomial σ R)[X] →ₐ[R] K, Function.Injective f ∧\n      IsDomain ((K ⊗[R] A) ⧸ Ideal.span {f X ⊗ₜ[R] (1 : A) -\n        ∑ k, f (C (MvPolynomial.X k)) ⊗ₜ[R] v k}) := by\n  -- the current lines 93–95 and 102–122, unchanged\n```\nEach of the two theorems then becomes `exact countable_hyperplane_integral_equation_of_geometric v hgeo`, preceded by its own short proof of `hgeo` (lines 96–101 or 181–186).",
+      "benefit": "The countable-model specialization argument appears once and has its own name. Each public theorem then shows only what is specific to it: the reason the generic fibre is geometrically integral. This removes about 20 duplicated lines, and a future fix to the specialization step only has to be made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_hyperplane_integral_equation",
+          "excerpt": "  obtain ⟨f, hfinj, hdom⟩ := integral_specialization_of_countable_model\n    (R := R) (F := F) (K := K) (P := P) (B := MvPolynomial σ A)\n    hcard (IsFractionRing.injective P F) hgeo"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/HyperplaneFamilies.lean",
+          "declaration": "hyperplane_specialization_equiv",
+          "excerpt": "    [IsScalarTower (MvPolynomial σ R) (MvPolynomial σ R)[X] K] (v : σ → A) :\n    let := hyperplaneFamilyAlgebra (K := R) v"
+        }
+      ]
+    },
+    {
+      "declaration": "countable_polynomial_model",
+      "start_line": 283,
+      "end_line": 313,
+      "excerpt": "  let d : Finset K := q.biUnion MvPolynomial.coeffs\n  let S := Subfield.closure (c ∪ (d : Set K))",
+      "problem": "`countable_polynomial_model` is exactly the case k = 0 of `countable_model_with_elements` (lines 321–375), with the equivalence wrapped in `Nonempty`. `countable_model_with_elements` does not use `countable_polynomial_model`. Even so, the file proves the weaker statement separately, repeating the finite presentation, the countable subfield `S`, the bound `hcount`, the ideal-descent proof `hI` and the composed equivalence.",
+      "proposed_change": "Move `countable_polynomial_model` below `countable_model_with_elements` and derive it from that theorem:\n```lean\ntheorem countable_polynomial_model {K A : Type} [Field K] [CommRing A]\n    [Algebra K A] [Algebra.FiniteType K A] (c : Set K) (hc : c.Countable) :\n    ∃ (S : Subfield K), Countable S ∧ c ⊆ S ∧\n      ∃ (n : ℕ) (I : Ideal (MvPolynomial (Fin n) S)),\n        Nonempty ((K ⊗[S] (MvPolynomial (Fin n) S ⧸ I)) ≃ₐ[K] A) := by\n  obtain ⟨S, hS, hcS, n, I, e, -, -⟩ :=\n    countable_model_with_elements (Fin.elim0 : Fin 0 → A) c hc\n  exact ⟨S, hS, hcS, n, I, ⟨e⟩⟩\n```",
+      "benefit": "The proof shrinks from about 25 lines to 3. It also tells the reader directly that this is the stronger theorem with no marked elements, so there is no need to compare two nearly identical descent arguments.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_model_with_elements",
+          "excerpt": "    ∃ (S : Subfield K), Countable S ∧ c ⊆ S ∧\n      ∃ (n : ℕ) (I : Ideal (MvPolynomial (Fin n) S))\n        (e : (K ⊗[S] (MvPolynomial (Fin n) S ⧸ I)) ≃ₐ[K] A)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "countable_model_with_elements",
+          "excerpt": "  have hI : I₀.map (MvPolynomial.map S.subtype) = I := by\n    apply le_antisymm Ideal.map_comap_le"
+        }
+      ]
+    },
+    {
+      "declaration": "hyperplane_injective_descent",
+      "start_line": 251,
+      "end_line": 258,
+      "excerpt": "  intro p q hpq\n  apply hU\n  apply hdom\n  have hp := DFunLike.congr_fun hcomp p\n  have hq := DFunLike.congr_fun hcomp q\n  change G (f₀ p) = f (U p) at hp\n  change G (f₀ q) = f (U q) at hq\n  exact hp.symm.trans ((congrArg G hpq).trans hq)",
+      "problem": "The proof has already established the commuting square `hcomp : G.comp f₀.toRingHom = f.toRingHom.comp U` and the injectivity of `U` and `f`. The last step should just be: f ∘ U is injective, so G ∘ f₀ is injective, so f₀ is injective. Instead it introduces two elements, applies `hcomp` to each with `DFunLike.congr_fun`, needs two `change` steps to unfold coercions, and finishes with a chain of `trans` steps. This hides that simple argument.",
+      "proposed_change": "```lean\n  have hinj : Function.Injective (G.comp f₀.toRingHom) := by\n    rw [hcomp, RingHom.coe_comp]\n    exact hdom.comp hU\n  rw [RingHom.coe_comp] at hinj\n  exact hinj.of_comp\n```\nThis uses `RingHom.coe_comp` (`⇑(hnp.comp hmn) = hnp ∘ hmn`, proved by `rfl`) and `Function.Injective.of_comp` (`Injective (f ∘ g) → Injective g`).",
+      "benefit": "The argument now reads directly from the diagram: rewrite along the commuting square, compose two injective maps, then cancel the outer map. Both named lemmas say exactly what they do, and the two `change` steps and the hand-built equality chain go away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Logic/Function/Basic.lean",
+          "declaration": "Function.Injective.of_comp",
+          "excerpt": "theorem Injective.of_comp {g : γ → α} (I : Injective (f ∘ g)) : Injective g :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Ring/Hom/Defs.lean",
+          "declaration": "RingHom.coe_comp",
+          "excerpt": "theorem coe_comp (hnp : β →+* γ) (hmn : α →+* β) : (hnp.comp hmn : α → γ) = hnp ∘ hmn :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "hyperplane_injective_descent",
+          "excerpt": "  have hcomp : G.comp f₀.toRingHom = f.toRingHom.comp U := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 36770,
+    "cache_read_input_tokens": 153300,
+    "output_tokens": 8980,
+    "output_tokens_details": {
+      "thinking_tokens": 3722
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36770,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4293,
+        "cache_read_input_tokens": 40368,
+        "cache_creation_input_tokens": 445,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 445
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.504468,
+  "duration_ms": 76092,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T11:44:24",
+  "unit": "file",
+  "source_sha256": "a385fec0279b02bb275f224192cc0e8ba7a096c4bc1e082be18e433746a5ff7e",
+  "rubric": "readable-proof-simplification"
+}

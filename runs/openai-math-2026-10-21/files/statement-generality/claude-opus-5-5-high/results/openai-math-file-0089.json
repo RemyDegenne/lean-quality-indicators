@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0089",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 118 lines of the target file. I also read the upstream declarations it depends on: `coefficientGermAt`, `zeroPoint_ne_generic` and `euler_difference_eq_sum_zero_orders` in CurveSectionDegree.lean, `finite_subscheme_of_curve` in FiniteCurveZeros.lean (namespace PiExponentSeshadri.Geometry, which the target opens), and `baseScalars`/`eulerCharacteristic` in CurveEuler.lean. I checked the downstream uses in CurvePlaceSectionDivisor.lean and CurvePlaceSectionOrder.lean; all of them pass a ℂ-valued structure map, so they keep working after the change.\n\nThere is one finding. The finiteness-of-support lemma and the divisor construction fix the base field to ℂ, but the only lemma they rely on that mentions the base works over any field.\n\nOther declarations considered and not flagged:\n- `divisor_degree_eq_euler_difference` really needs ℂ, because `baseScalars`, `eulerCharacteristic` and `euler_difference_eq_sum_zero_orders` are all stated over ℂ.\n- `mem_zero_support_iff_not_isUnit` already omits `IsIntegral`.\n- `orderAt` and `orderAt_eq_zero_of_not_mem` take a DVR hypothesis for every non-generic point. That is a consistent API choice, and changing it would affect callers without a clear gain.\n\nI have not compiled the proposed change. I believe it elaborates because `K` is fixed by the type of `p`, and every ℂ call site produces `K := ℂ` with the instance `Field ℂ`.",
+  "findings": [
+    {
+      "declaration": "orderAt_finite_support / divisor / divisor_apply",
+      "start_line": 49,
+      "end_line": 76,
+      "excerpt": "(p : X ⟶ Spec (CommRingCat.of ℂ)) [IsProper p] (hd : topologicalKrullDim X ≤ 1)",
+      "problem": "These three declarations take a structure map to Spec ℂ. In them, `p` is used only through `finite_subscheme_of_curve p hd _ (SectionZeroIdeal.zeroIdeal_ne_bot L s hs)`, which needs nothing more than a proper map to Spec K for some field K. Nothing in the definition of `orderAt`, `zeroPointEmbedding` or the support argument depends on ℂ. As a result, the effective divisor of a nonzero section on a proper curve is only available over ℂ, even though the proof works over any field.",
+      "proposed_change": "Add `variable {K : Type} [Field K]` and change the binder in all three declarations to `(p : X ⟶ Spec (CommRingCat.of K)) [IsProper p]`. For example:\n`theorem orderAt_finite_support (p : X ⟶ Spec (CommRingCat.of K)) [IsProper p] (hd : topologicalKrullDim X ≤ 1) (hDVR : ∀ x : X, x ≠ genericPoint X → IsDiscreteValuationRing (X.presheaf.stalk x)) (L : LineBundle X) (s : GlobalSections X L.sheaf) (hs : s ≠ 0) : (Function.support (orderAt hDVR L s)).Finite`\nThe proof stays the same: `finite_subscheme_of_curve` is already stated for `{K : Type} [Field K]`. Do the same for `divisor` (body `Finsupp.ofSupportFinite (orderAt hDVR L s) (orderAt_finite_support p hd hDVR L s hs)`) and for `divisor_apply` (still `rfl`). Keep `divisor_degree_eq_euler_difference` over ℂ, since its Euler-characteristic API is ℂ-specific. There, `divisor p hd hDVR L s hs` elaborates with `K := ℂ`, and the downstream ℂ call sites work as before.",
+      "benefit": "The divisor of a section and its finite-support lemma become usable for proper curves over any field, for example finite fields or number fields, rather than only over ℂ. The statements then show that only the Riemann–Roch-style degree identity depends on ℂ. Existing ℂ users need no changes, and no new mathematics is needed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/FiniteCurveZeros.lean",
+          "declaration": "OAI.PiExponentSeshadri.Geometry.finite_subscheme_of_curve",
+          "excerpt": "(f : X ⟶ Spec (CommRingCat.of K)) [IsProper f]\n    (hd : topologicalKrullDim X ≤ 1) (I : X.IdealSheafData) (hI : I ≠ ⊥) :\n    Finite I.subscheme := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/FiniteCurveZeros.lean",
+          "declaration": "section variables for finite_subscheme_of_curve",
+          "excerpt": "variable {K : Type} [Field K] {X : Scheme}"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/SectionOrderDivisor.lean",
+          "declaration": "OAI.PiExponent.SectionOrderDivisor.orderAt_finite_support",
+          "excerpt": "finite_subscheme_of_curve p hd _ (SectionZeroIdeal.zeroIdeal_ne_bot L s hs)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/CurveSectionDegree.lean",
+          "declaration": "OAI.PiExponent.CurveSectionDegree.zeroPoint_ne_generic",
+          "excerpt": "theorem zeroPoint_ne_generic [IsIntegral X]\n    (L : LineBundle X) (s : GlobalSections X L.sheaf) (hs : s ≠ 0)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 23493,
+    "cache_read_input_tokens": 88729,
+    "output_tokens": 5201,
+    "output_tokens_details": {
+      "thinking_tokens": 1831
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23493,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3218,
+        "cache_read_input_tokens": 26636,
+        "cache_creation_input_tokens": 881,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 881
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3097498,
+  "duration_ms": 47290,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T16:46:40",
+  "unit": "file",
+  "source_sha256": "9f1fc9587fa75c722b5e239c365748e1f23f8fe71072be77ee5e11dd2f715191",
+  "rubric": "statement-generality"
+}

@@ -1,0 +1,54 @@
+{
+  "id": "openai-math-file-0090",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Reviewed all 64 lines, the imported boundary-count and weight estimates, related scale proofs, the downstream use, and Mathlib's logarithm-versus-power asymptotic lemma. One substantial cross-file repetition was identified. The suggested refactoring is a source-based sketch, not a compilation-tested replacement.",
+  "findings": [
+    {
+      "declaration": "OAI.Ostmann.Supply.eventually_boundary_weighted_scale",
+      "excerpt": "  have hs := mul_le_mul_of_nonneg_left hsmall\n    (show 0≤2*C^2*(X:ℝ)^(24/25:ℝ) by positivity)\n  rw [hfinal] at hs\n  apply (le_div_iff₀ hl).mpr",
+      "problem": "Lines 17–25 and 36–57 repeat the logarithmic absorption argument in eventually_initial_window_scale: bound log^5 by a positive power using little-o, transfer to natural arguments, remove norms using eventual positivity, multiply by the lower power, cancel constants, combine exponents, and clear a positive logarithmic denominator. The two proofs independently implement the same exponent-gap argument, with gaps 3/100 and 1/20.",
+      "proposed_change": "Introduce a shared lemma in Ostmann.Preliminaries, before eventually_initial_window_scale in UpperWindow.lean:\n\n theorem eventually_rpow_log_absorb {A B a b : ℝ} (m n : ℕ)\n     (hA : 0 < A) (hB : 0 < B) (hab : a < b) :\n     ∀ᶠ X : ℕ in atTop,\n       A*(X:ℝ)^a*Real.log (X:ℝ)^m ≤\n         B*(X:ℝ)^b/Real.log (X:ℝ)^n\n\nProof sketch: apply isLittleO_log_rpow_rpow_atTop with logarithmic exponent m+n, power b-a, and bound B/A; transfer along tendsto_natCast_atTop_atTop and restrict to X≥2. Remove norms, multiply by A*(X:ℝ)^a, combine powers with Real.rpow_add, cancel A, and split log^(m+n) to clear the positive denominator.\n\nRewrite eventually_initial_window_scale entirely as:\n\n  simpa only [Real.sqrt_eq_rpow] using\n    (eventually_rpow_log_absorb\n      (A := C) (B := c/2) (a := 9/20) (b := 1/2)\n      2 3 hC (by positivity) (by norm_num))\n\nFor the target, explicitly import UpperWindow if desired and obtain:\n\n  have hscale := OAI.Ostmann.Preliminaries.eventually_rpow_log_absorb\n    (A := 2*C^2) (B := η) (a := 24/25) (b := 99/100)\n    4 1 (by positivity) hη (by norm_num)\n\nInclude hscale instead of hsmall in filter_upwards. Keep the existing derivation of hb from hcount, hM and hMpow. Replace the remaining absorption machinery by the identity hpow : (X:ℝ)^(99/100:ℝ) = (X:ℝ)^(-(1/100:ℝ))*(X:ℝ), proved using Real.rpow_add and Real.rpow_one, followed by:\n\n  calc\n    _ ≤ 2*C^2*(X:ℝ)^(24/25:ℝ)*Real.log (X:ℝ)^4 := hb\n    _ ≤ η*(X:ℝ)^(99/100:ℝ)/Real.log (X:ℝ) :=\n      by simpa only [pow_one] using hscale\n    _ = η*(X:ℝ)^(-(1/100:ℝ))*(X:ℝ)/Real.log (X:ℝ) :=\n      by rw [hpow]; ring\n    _ ≤ η*U*(X:ℝ)/Real.log (X:ℝ) := by gcongr\n\nRetain hl for the final comparison. Both applications have strictly positive coefficients and strict exponent gaps; the eventual X≥2 restriction avoids zero bases and zero logarithms. The target's M=0 case remains covered without cancelling M.",
+      "benefit": "Centralizes the complete logarithmic absorption argument rather than merely wrapping its little-o invocation. Both callers expose their actual exponent budget, while positivity, coefficient cancellation, and logarithmic denominator handling are maintained once.",
+      "start_line": 17,
+      "end_line": 57,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Preliminaries/UpperWindow.lean",
+          "declaration": "OAI.Ostmann.Preliminaries.eventually_initial_window_scale",
+          "excerpt": "  have hsmall := (isLittleO_log_rpow_rpow_atTop (5 : ℝ)\n    (show (0 : ℝ) < 1 / 20 by norm_num)).bound he\n  have hnat : Tendsto (fun X : ℕ => (X : ℝ)) atTop atTop := tendsto_natCast_atTop_atTop\n  filter_upwards [hnat.eventually hsmall, eventually_ge_atTop 2] with X hsmall hX"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Preliminaries/UpperWindow.lean",
+          "declaration": "OAI.Ostmann.Preliminaries.eventually_initial_window_scale",
+          "excerpt": "  have hmul := mul_le_mul_of_nonneg_left hsmall\n    (show 0 ≤ C * (X : ℝ) ^ (9 / 20 : ℝ) by positivity)\n  have hid : (X : ℝ) ^ (9 / 20 : ℝ) * (X : ℝ) ^ (1 / 20 : ℝ) = Real.sqrt X := by\n    rw [← Real.rpow_add hxr, Real.sqrt_eq_rpow]\n    norm_num\n  have hright : (C * (X : ℝ) ^ (9 / 20 : ℝ)) *\n      ((c / (2 * C)) * (X : ℝ) ^ (1 / 20 : ℝ)) = (c / 2) * Real.sqrt X := by\n    rw [← hid]\n    field_simp\n  apply (le_div_iff₀ (pow_pos hl 3)).mpr\n  rw [hright] at hmul\n  nlinarith"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "isLittleO_log_rpow_rpow_atTop",
+          "excerpt": "theorem isLittleO_log_rpow_rpow_atTop {s : ℝ} (r : ℝ) (hs : 0 < s) :\n    (fun x => log x ^ r) =o[atTop] fun x => x ^ s :="
+        }
+      ]
+    }
+  ],
+  "backend": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "cost_usd": null,
+  "duration_ms": 129080,
+  "turns": 1,
+  "attempts": 1,
+  "usage": {
+    "input_tokens": 134067,
+    "cached_input_tokens": 100864,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 4320,
+    "reasoning_output_tokens": 2123
+  },
+  "prompt_sha256": "cf99def8a55561be27db8448e2cb724eae959d5f6c22eb72acdf2f5d8d58919d",
+  "judged": "2026-10-21T12:26:57+00:00",
+  "unit": "file",
+  "source_sha256": "d236332d15e7d03f6e26df3b395acb38ee0761a75e879b81971ec39515716d4a",
+  "rubric": "repeated-proof-machinery"
+}

@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0088",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 54 lines of the file and the `matrixOperator` interface it depends on in MatrixAction.lean. That file has `@[simp] matrixOperator_apply`, which is `rfl`. I also looked at every downstream use of `OAI.TwoPointCorrelations.coordinateProjection` under lean/OAI/NumberTheory/TwoPoint, and checked how Mathlib treats similar if-then-else \"apply\" lemmas (`Finsupp.indicator_apply`, `Set.indicator_apply`/`mulIndicator_apply`, `Matrix.diagonal_apply`).\n\nThe file has no simp attributes. Its only rewriting lemma is `coordinateProjection_apply`, and callers pass it to `simp` or `rw` by hand every time. In the two places where `keep i` is false, they also add `ite_eq_right` by hand. That is the one finding.\n\nOther checks:\n- Stating `coordinateProjection_idempotent` as `P * P = P` is a reasonable choice, because downstream code (GraphSpectralTransfer) passes it directly as a projection hypothesis. I found no use that needs an applied form `P (P v) = P v`, so I did not report it.\n- The `change` to a sum on line 21 could become `rw [coordinateProjection, matrixOperator_apply]`. This is a small proof-style point, not a problem with the simp interface.\n- Making `coordinateProjection_apply` simp should not cause a loop: the RHS does not contain `coordinateProjection`, and the existing simp lemma `matrixOperator_apply` cannot fire, because `coordinateProjection` is a plain (non-reducible) definition.\n- The `ite` in the RHS uses a classical instance because of `open scoped Classical`. `if_pos` and `if_neg` work with any instance, so this should not hurt users. I could not run Lean to confirm the proposed simp sets close every downstream goal.",
+  "findings": [
+    {
+      "declaration": "OAI.TwoPointCorrelations.coordinateProjection_apply",
+      "start_line": 19,
+      "end_line": 22,
+      "excerpt": "lemma coordinateProjection_apply (keep : V → Prop) (v : EuclideanSpace ℂ V) (i : V) :\n    coordinateProjection keep v i = if keep i then v i else 0 := by",
+      "problem": "`coordinateProjection` is an opaque `def` built from `matrixOperator (Matrix.diagonal …)`, and the file provides no simp lemma for its coordinates. Plain `simp` therefore cannot reduce `coordinateProjection keep v i` to its natural normal form, `if keep i then v i else 0` (or to `v i` / `0` once `keep i` is decided).\n\nEvery caller has to supply the lemma by hand:\n- ProjectedGraphTesting, line 34: `simp [coordinateProjection_apply, paddingTestVector, hq]`.\n- ProjectedLiouvilleVector, line 20: `simp [coordinateProjection_apply, …]`.\n- PrimeComplexMatrix, line 78: the same.\n- This file, line 37: `simp only [coordinateProjection_apply]`.\n\nWhen `¬ keep i` is known, callers also have to add `ite_eq_right` by hand: line 44 here (`rw [coordinateProjection_apply, ite_eq_right hkeep]`) and ProjectedGraphTesting line 31 (`simp only [coordinateProjection_apply, ite_eq_right hk]`). The file gives no canonical rule for the decided cases.",
+      "proposed_change": "Mark the coordinate formula as a simp lemma: `@[simp] lemma coordinateProjection_apply …`. The RHS no longer mentions `coordinateProjection`, so it cannot loop. This matches Mathlib's `@[simp] Finsupp.indicator_apply`, which also has an `if` on the right.\n\nAlso add (or use instead, if the `if` form is not wanted in the global simp set) the decided-case simp lemmas, following the `Set.indicator_of_mem` / `indicator_of_notMem` pattern:\n```lean\n@[simp] lemma coordinateProjection_apply_of_keep {keep : V → Prop} (v : EuclideanSpace ℂ V) {i : V} (h : keep i) :\n    coordinateProjection keep v i = v i := by simp [coordinateProjection_apply, h]\n@[simp] lemma coordinateProjection_apply_of_not_keep {keep : V → Prop} (v : EuclideanSpace ℂ V) {i : V} (h : ¬ keep i) :\n    coordinateProjection keep v i = 0 := by simp [coordinateProjection_apply, h]\n```\nLine 44 could then be `rw [coordinateProjection_apply_of_not_keep _ hkeep] at he`, and ProjectedGraphTesting line 31 could be `simp [hk]`.",
+      "benefit": "`simp [hp, hq, …]` would reduce projected coordinates without users having to remember to pass `coordinateProjection_apply`. The `ite_eq_right` boilerplate in the `¬ keep i` case would go away. The projection would then have the same coordinate-level simp normal form that `matrixOperator_apply` already gives the underlying operator, and the four-plus downstream call sites would get shorter and less fragile.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TwoPoint/Bounds/ProjectedGraphTesting.lean",
+          "declaration": "OAI.TwoPointCorrelations.projected_paddingTestVector_support",
+          "excerpt": "simp only [coordinateProjection_apply, ite_eq_right hk]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TwoPoint/Bounds/ProjectedLiouvilleVector.lean",
+          "declaration": "OAI.TwoPointCorrelations.projectedLiouvilleVector_eq",
+          "excerpt": "simp [coordinateProjection_apply, paddingTestVector, retainedLiouvilleScalar, hp, hq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TwoPoint/Bounds/CoordinateProjection.lean",
+          "declaration": "OAI.TwoPointCorrelations.coordinateProjection_support",
+          "excerpt": "rw [coordinateProjection_apply, ite_eq_right hkeep] at he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TwoPoint/Bounds/MatrixAction.lean",
+          "declaration": "OAI.TwoPointCorrelations.matrixOperator_apply",
+          "excerpt": "@[simp] lemma matrixOperator_apply (A : ι → ι → ℂ) (v : EuclideanSpace ℂ ι) (i : ι) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Finsupp/Indicator.lean",
+          "declaration": "Finsupp.indicator_apply",
+          "excerpt": "theorem indicator_apply [DecidableEq ι] : indicator s f i = if hi : i ∈ s then f i hi else 0 := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 24410,
+    "cache_read_input_tokens": 177646,
+    "output_tokens": 6026,
+    "output_tokens_details": {
+      "thinking_tokens": 1506
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24410,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2821,
+        "cache_read_input_tokens": 27334,
+        "cache_creation_input_tokens": 1089,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1089
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.35140920000000003,
+  "duration_ms": 63751,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-21T16:42:28",
+  "unit": "file",
+  "source_sha256": "485292f0ab862e1e10858f28a51f7b9f363a014aa056e67a817c3f55647be09c",
+  "rubric": "simp-interface"
+}

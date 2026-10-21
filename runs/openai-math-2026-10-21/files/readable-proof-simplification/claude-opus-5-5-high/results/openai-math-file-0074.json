@@ -1,0 +1,128 @@
+{
+  "id": "openai-math-file-0074",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all three declarations in the file: `rnDeriv_le_of_le_smul`, `endpointCoupling_couples` and `CurvatureDimension.reroute_finite_subplan`. I also checked the definitions of `interpolation`, `endpointCoupling`, `QuadraticTransportCost`, `IsCoupling` and `IsOptimalCoupling` in Model.lean, and `interpolation_probability`. In Mathlib I read `dist_triangle_right`, `isProbabilityMeasureSMul` and the rnDeriv/setLIntegral lemmas.\n\n`rnDeriv_le_of_le_smul` is already a clean, readable calc. Mathlib has no direct `μ ≤ C • ν → rnDeriv ≤ᵐ C` lemma; the closest is `rnDeriv_le_one_of_le`, which only covers C = 1. So I did not flag it.\n\nThe pairs of near-duplicate blocks (hd0/hd1, hb0/hb1, hπ0/hπ1) could be turned into single helpers taking a parameter `t`. That would be a mild gain, but some of them use the conjunction projections `h.1`/`h.2`, so I left them out as closer to a matter of taste.\n\nNone of the replacements below has been compiled. The cost-bullet rewrite (finding 4) depends on `gcongr` handling ENNReal multiplication and on `rw [← hcanc]` matching only the visible θ (θ appears inside `q` only through a let-binding, which `rw` should not look into). I am somewhat less sure of it than of the other three.",
+  "findings": [
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan",
+      "start_line": 132,
+      "end_line": 136,
+      "excerpt": "    have H := dist_triangle (γ timeZero) o (γ timeOne)\n    rw [dist_comm o (γ timeOne)] at H\n    linarith",
+      "problem": "The proof uses `dist_triangle` and then calls `rw [dist_comm ...] at H` to flip one distance into the form of `h1`. Mathlib already has `dist_triangle_right`, which states the triangle inequality in exactly that form.",
+      "proposed_change": "  have hlen : ∀ᵐ γ ∂π, dist (γ timeZero) (γ timeOne) ≤ 2*R := by\n    filter_upwards [hπ0,hπ1] with γ h0 h1\n    linarith [dist_triangle_right (γ timeZero) (γ timeOne) o]",
+      "benefit": "It removes an auxiliary hypothesis and a rewrite. The key step, the triangle inequality through the centre `o` combined with both radius bounds, now sits on one line, and the lemma name says which form is used.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/MetricSpace/Pseudo/Defs.lean",
+          "declaration": "dist_triangle_right",
+          "excerpt": "theorem dist_triangle_right (x y z : α) : dist x y ≤ dist x z + dist y z := by"
+        }
+      ]
+    },
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan",
+      "start_line": 82,
+      "end_line": 86,
+      "excerpt": "  have hp : IsProbabilityMeasure θ' := by\n    constructor\n    change q⁻¹*θ univ = 1\n    exact ENNReal.inv_mul_cancel hq hqt\n  let := hp",
+      "problem": "Three tactic steps (`constructor`, `change`, `exact`) prove what is a single anonymous-constructor term. Mathlib proves the same fact for `(μ univ)⁻¹ • μ` that way in `isProbabilityMeasureSMul`. Separately, `let := hp` re-binds a hypothesis that is already in the local context. In Lean 4 any local hypothesis whose type is a class is used as an instance automatically, so the re-binding should not be needed. The same applies to `let := hπ` on line 120.",
+      "proposed_change": "  have hp : IsProbabilityMeasure θ' := ⟨ENNReal.inv_mul_cancel hq hqt⟩\n\n(and drop `let := hp`, and likewise `let := hπ`)",
+      "benefit": "This is the same one-line normalisation proof Mathlib uses. Its single ingredient, q⁻¹ · q = 1, is visible at a glance, and dropping the redundant re-bindings removes noise a reader might otherwise think is important.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Typeclasses/Probability.lean",
+          "declaration": "isProbabilityMeasureSMul",
+          "excerpt": "  ⟨ENNReal.inv_mul_cancel (NeZero.ne (μ univ)) (measure_ne_top _ _)⟩"
+        }
+      ]
+    },
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan",
+      "start_line": 144,
+      "end_line": 147,
+      "excerpt": "    rw [ht]\n    change q • θ'.map (fun γ => γ t) = θ.map (fun γ => γ t)\n    rw [← Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable,hcanc]",
+      "problem": "After `rw [ht]` the goal is `q • interpolation θ' t = interpolation θ t`. The proof then unfolds both sides to raw `Measure.map` with a `change`, undoes `map_smul`, and applies `hcanc`. But the local fact `he` (line 94) already says `interpolation θ' t = q⁻¹ • interpolation θ t`. After rewriting with it, the goal is just q • q⁻¹ • μ = μ, which the file already proves by `smul_smul`/`mul_inv_cancel`/`one_smul` in `hcanc` (line 89).",
+      "proposed_change": "    change (q • π).map _ = _\n    rw [Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable]\n    change q • interpolation π t = _\n    rw [ht, he, smul_smul, ENNReal.mul_inv_cancel hq hqt, one_smul]",
+      "benefit": "It drops a `change` that exposes `Measure.map` internals and a reverse `map_smul` rewrite. The argument stays in terms of `interpolation` and reads directly as: rescale back by q⁻¹, then cancel q · q⁻¹. That reuses `he` and repeats the cancellation pattern from `hcanc`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Calculus/RnDerivSmul.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan",
+          "excerpt": "  have he (t : Time) : interpolation θ' t = q⁻¹ • interpolation θ t :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Calculus/RnDerivSmul.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan",
+          "excerpt": "    rw [smul_smul,ENNReal.mul_inv_cancel hq hqt,one_smul]"
+        }
+      ]
+    },
+    {
+      "declaration": "endpointCoupling_couples / CurvatureDimension.reroute_finite_subplan",
+      "start_line": 154,
+      "end_line": 156,
+      "excerpt": "      have hmeas : Measurable (fun γ : Curve X => (γ timeZero,γ timeOne)) :=\n        (continuous_eval_const timeZero).measurable.prodMk\n          (continuous_eval_const timeOne).measurable",
+      "problem": "The measurability proof for the endpoint map `γ ↦ (γ 0, γ 1)` appears twice, verbatim: as `hm` in `endpointCoupling_couples` (line 58) and as `hmeas` inside the cost bullet. Around it, the cost bullet builds `H` forward with `mul_le_mul' (le_refl q) …` and then needs a long `change … at H` (line 151) just to restate H in the form it already has up to defeq.",
+      "proposed_change": "Make the endpoint-map measurability a small private lemma (e.g. `measurable_endpoints`) and use it in both places. Then write the bullet goal-directed:\n  · have hs (η : Measure (Curve X)) : QuadraticTransportCost (endpointCoupling (q • η)) =\n        q*QuadraticTransportCost (endpointCoupling η) := by\n      simp only [QuadraticTransportCost,endpointCoupling,\n        Measure.map_smul _ measurable_endpoints.aemeasurable,lintegral_smul_measure,smul_eq_mul]\n    show QuadraticTransportCost (endpointCoupling (q • π)) ≤ QuadraticTransportCost (endpointCoupling θ)\n    rw [hs π, ← hcanc, hs θ']\n    gcongr\n    exact hopt.2 _ (endpointCoupling_couples θ')",
+      "benefit": "The bullet then states its goal up front, scales both costs by q, and finishes with the optimality of π. This removes the `le_refl` padding and the restating `change`, and one named fact about the endpoint map replaces two copies of the same proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Calculus/RnDerivSmul.lean",
+          "declaration": "endpointCoupling_couples",
+          "excerpt": "have hm : Measurable (fun γ : Curve X => (γ timeZero,γ timeOne)) := (continuous_eval_const timeZero).measurable.prodMk (continuous_eval_const timeOne).measurable"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Model.lean",
+          "declaration": "IsOptimalCoupling",
+          "excerpt": "    QuadraticTransportCost q ≤ QuadraticTransportCost q'"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 27389,
+    "cache_read_input_tokens": 151649,
+    "output_tokens": 10293,
+    "output_tokens_details": {
+      "thinking_tokens": 5219
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27389,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3708,
+        "cache_read_input_tokens": 29004,
+        "cache_creation_input_tokens": 2428,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2428
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4553658,
+  "duration_ms": 102389,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T15:31:54",
+  "unit": "file",
+  "source_sha256": "659acbb3a82e0e7548787ca860f4814b3dd1940c61d717d0b3b39fece39b5163",
+  "rubric": "readable-proof-simplification"
+}

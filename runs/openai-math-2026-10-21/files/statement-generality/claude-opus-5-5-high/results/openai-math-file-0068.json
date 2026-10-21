@@ -1,0 +1,132 @@
+{
+  "id": "openai-math-file-0068",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 792 lines of the target file and checked the helper declarations its statements depend on:\n- the sphere-chart twins in ContinuousCompactSmoothJets.lean: `sphere_metricCoefficients_smooth`, `sphere_metric_first_jet_neighborhood` and `metricMatrixForm_first_jet_bound`;\n- `contDiffOn_metricCoefficient` and the variable context it is stated in;\n- the definitions of `CoordinateTest` and `IsSmoothNeighborhood`;\n- `threeChartMetric` and `threeChartMetric_selfFlat`;\n- Mathlib's `ContDiffBump` API and its two `HasContDiffBump` instances (inner-product and finite-dimensional).\n\nSeveral statements are already stated in general form: `linearPullbackMetric_trace`, `linearPullbackMetric_strict`, `actual_strict_region_open` and `exists_local_strict_ball`. Most of the rest of the file builds one specific counterexample (`threeProfileCenter`, `threeGlobalLog`, `threeNormalGlue`, the robust profile families). Fixing it to ThreeModel/ThreeManifold there is deliberate, and I am not reporting it.\n\nThere are three findings. The main one is that `three_metric_first_jet_neighborhood` and `three_metricCoefficients_smooth` repeat the Sphere n versions line for line; only the manifold and the chart-target lemma differ. The smaller two are a localisation lemma whose name and statement are tied to logarithms, and a power/exp identity stated only for `threeGlobalRadius`.\n\nRemaining uncertainty: I could not compile the proposed statements. The general first-jet lemma would need the matrix-to-form operator-norm instance supplied locally, as both existing versions already do (`let : NormedAddCommGroup (Matrix … →L[ℝ] …)` here, `spnMatrixMapNorm` in the sphere file).",
+  "findings": [
+    {
+      "declaration": "three_metric_first_jet_neighborhood (with three_metricCoefficients_smooth)",
+      "start_line": 554,
+      "end_line": 610,
+      "excerpt": "theorem three_metric_first_jet_neighborhood (g₀ : SmoothMetric (ThreeModel) (ThreeManifold))\n    (p : ThreeManifold) {K : Set (ThreeModel)} (hK : IsCompact K) {δ : ℝ} (hδ : 0 < δ) :",
+      "problem": "These two declarations only work for ThreeModel/ThreeManifold. They use the specific space in exactly two places: `three_chart_target`, which supplies `K ⊆ (chartAt E p).target` (`inTarget := by rw [three_chart_target]; exact subset_univ K`), and global smoothness of `metricCoefficients g p`, used only to get differentiability at points of K. Everything else is generic, and the proof repeats `sphere_metric_first_jet_neighborhood` for `Sphere n` token for token. So the same argument already appears twice with nothing shared between the copies.",
+      "proposed_change": "Prove one chart-level lemma in the context of `contDiffOn_metricCoefficient` (`{E} [NormedAddCommGroup E] [NormedSpace ℝ E] [FiniteDimensional ℝ E] {M} [TopologicalSpace M] [ChartedSpace E M] [IsManifold 𝓘(ℝ, E) ∞ M]`):\n\ntheorem metric_first_jet_neighborhood (g₀ : SmoothMetric E M) (p : M) {K : Set E} (hK : IsCompact K) (hKt : K ⊆ (chartAt E p).target) {δ : ℝ} (hδ : 0 < δ) :\n    IsSmoothNeighborhood g₀ {g | ∀ x ∈ K,\n      ‖metricMatrixForm (metricCoefficients g p x) - metricMatrixForm (metricCoefficients g₀ p x)‖ < δ ∧\n      ‖fderiv ℝ (fun y => metricMatrixForm (metricCoefficients g p y)) x -\n        fderiv ℝ (fun y => metricMatrixForm (metricCoefficients g₀ p y)) x‖ < δ}\n\nThe proof is the existing one with three changes:\n- `inTarget := hKt`;\n- differentiability at x ∈ K comes from `(contDiffOn_metricCoefficient g p i j).contDiffAt ((chartAt E p).open_target.mem_nhds (hKt hx))` for each entry, assembled with `differentiableAt_pi`, instead of `three_metricCoefficients_smooth … .differentiable`;\n- the final `rw [he g, he g₀]` is dropped.\n\nThe three version (and the sphere version) then follows by taking `hKt := by rw [three_chart_target]; exact subset_univ K` and rewriting with the `he` identity already in the proof (`selfMetricFlat (threeChartMetric g p) = fun y => metricMatrixForm (metricCoefficients g p y)`, from `threeChartMetric_selfFlat`). `three_metricCoefficients_smooth` is then no longer needed.",
+      "benefit": "One lemma would replace two near-identical proofs (Three and Sphere n). It would also apply to any manifold and any compact K inside a chart target, not only to charts whose target is all of the model space. Users who need first-jet C∞-neighbourhood control for other manifolds in this development could use it directly instead of copying the 40-line proof a third time.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/Smoothness/ContinuousCompactSmoothJets.lean",
+          "declaration": "sphere_metric_first_jet_neighborhood",
+          "excerpt": "inTarget := by rw [sphere_chart_target]; exact subset_univ K,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/Smoothness/SphericalBaseProfileRadius.lean",
+          "declaration": "contDiffOn_metricCoefficient",
+          "excerpt": "ContDiffOn ℝ ∞ (fun y => metricCoefficients g p y i j) (chartAt E p).target := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/Model.lean",
+          "declaration": "CoordinateTest",
+          "excerpt": "inTarget : compactSet ⊆ (chartAt E center).target"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/Smoothness/ContinuousCompactSmoothJets.lean",
+          "declaration": "metricMatrixForm_first_jet_bound",
+          "excerpt": "(hA : DifferentiableAt ℝ A x) (hB : DifferentiableAt ℝ B x)"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_smooth_local_log",
+      "start_line": 17,
+      "end_line": 37,
+      "excerpt": "lemma exists_smooth_local_log {q : E → ℝ} (hq : ContDiff ℝ ∞ q) {x : E} (hx : q x ≠ 0) (c : ℝ) :",
+      "problem": "The proof is a general localisation argument: take a ContDiffBump χ supported inside a neighbourhood U of x on which the target function is smooth, multiply by χ, and note that the product equals the function near x. The logarithm enters only through one `ContDiffAt` fact (`contDiffAt_const.mul (hq.contDiffAt.log (hχ hy))`) on U = {q ≠ 0}. The statement also inherits `[InnerProductSpace ℝ E]` from the section, but the proof needs only `HasContDiffBump E` and `FiniteDimensional ℝ E`. Mathlib provides a `HasContDiffBump` instance for every finite-dimensional real normed space, and `ContDiffBump.hasCompactSupport` needs only `[FiniteDimensional ℝ E]`.",
+      "proposed_change": "State the general lemma:\n\nlemma exists_contDiff_hasCompactSupport_eventuallyEq {E : Type*} [NormedAddCommGroup E] [NormedSpace ℝ E] [FiniteDimensional ℝ E] {h : E → ℝ} {x : E} {U : Set E} (hU : U ∈ 𝓝 x) (hh : ∀ y ∈ U, ContDiffAt ℝ ∞ h y) :\n    ∃ f : E → ℝ, ContDiff ℝ ∞ f ∧ HasCompactSupport f ∧ f =ᶠ[𝓝 x] h\n\nThe proof is the current one with `{y | q y ≠ 0}` replaced by U and the log `ContDiffAt` replaced by `hh y (hχ hy)`. The ball comes from `Metric.mem_nhds_iff.mp hU`, χ := ⟨r/4, r/2, …⟩, and the closing `filter_upwards [χ.eventuallyEq_one]` is unchanged. The log lemma, or its single caller in `exists_three_local_strict_profile`, then becomes an instance with `U := {y | q y ≠ 0}` and `hh := fun y hy => contDiffAt_const.mul (hq.contDiffAt.log hy)`. There is no degenerate case: `x ∈ U` comes from `hU`, and the result is trivially true for a constant h.",
+      "benefit": "The lemma becomes a reusable statement that any function smooth near a point agrees there with a compactly supported global smooth function. Callers can use it for functions other than c·log q, and on finite-dimensional normed spaces that are not presented as inner product spaces. The statement also makes clear that nothing specific to logarithms is used.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/BumpFunction/FiniteDimension.lean",
+          "declaration": "(anonymous HasContDiffBump instance)",
+          "excerpt": "[FiniteDimensional ℝ E] : HasContDiffBump E := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/BumpFunction/Basic.lean",
+          "declaration": "ContDiffBump.hasCompactSupport",
+          "excerpt": "protected theorem hasCompactSupport [FiniteDimensional ℝ E] : HasCompactSupport f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "exists_smooth_local_log",
+          "excerpt": "· exact χ.contDiffAt.mul (contDiffAt_const.mul (hq.contDiffAt.log (hχ hy)))"
+        }
+      ]
+    },
+    {
+      "declaration": "three_radius_pow_eq_exp",
+      "start_line": 498,
+      "end_line": 500,
+      "excerpt": "lemma three_radius_pow_eq_exp (p : ThreeManifold) (k : ℕ) :\n    threeGlobalRadius p^k=Real.exp ((k:ℝ)*Real.log (threeGlobalRadius p)) := by",
+      "problem": "This is the real-number identity x^k = exp(k·log x) for x > 0, stated only for x = threeGlobalRadius p. The proof uses nothing about threeGlobalRadius except its positivity (`Real.exp_log (threeGlobalRadius_pos p)`).",
+      "proposed_change": "Replace it with\n\nlemma pow_eq_exp_natCast_mul_log {x : ℝ} (hx : 0 < x) (k : ℕ) : x ^ k = Real.exp ((k:ℝ) * Real.log x) := by\n  rw [Real.exp_nat_mul, Real.exp_log hx]\n\nAt the two uses, in `three_positive_envelope_gap` and `three_negative_envelope_gap`, call it as `pow_eq_exp_natCast_mul_log (threeGlobalRadius_pos p) k` (or rewrite with it backwards). The proof is the existing one with `threeGlobalRadius_pos p` replaced by `hx`.",
+      "benefit": "This is a small gain. The lemma becomes reusable for any positive real, and its statement no longer suggests that something specific to the radius function is involved. The two call sites need only an extra positivity argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "three_radius_pow_eq_exp",
+          "excerpt": "rw [Real.exp_nat_mul,Real.exp_log (threeGlobalRadius_pos p)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "three_negative_envelope_gap",
+          "excerpt": "Real.exp_add,Real.exp_add,Real.exp_log (by norm_num : (0:ℝ)<200),←three_radius_pow_eq_exp]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 60021,
+    "cache_read_input_tokens": 389626,
+    "output_tokens": 10740,
+    "output_tokens_details": {
+      "thinking_tokens": 3983
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 60021,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4948,
+        "cache_read_input_tokens": 60070,
+        "cache_creation_input_tokens": 3975,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3975
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.7729652,
+  "duration_ms": 98387,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T14:57:56",
+  "unit": "file",
+  "source_sha256": "c98829553c1f2682a6edfe8cfabaf39534886cebd85890d1132dccb21960c16c",
+  "rubric": "statement-generality"
+}

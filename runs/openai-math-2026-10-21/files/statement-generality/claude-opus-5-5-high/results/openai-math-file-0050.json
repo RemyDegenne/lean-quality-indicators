@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0050",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file (lines 1–1336). That covers the LoewnerLocalized source/stop lemmas, the FiniteTilt `Cutoff` structure and its lemmas, `sine_positive_minimum`, the dominated-convergence theorem `finiteStoppedCenteredLaw`, the BoundaryFunctional ODE wrappers and the Swallowing radial calculus. For context I read `IsLoewnerTraceUsing`, `loewnerAngleSine` and the trace lemmas `continuous_eval`, `im_pos` and `centered_ne_zero` in TraceModel.lean. I also grepped for callers of `sine_positive_minimum`. It is called in five other files: MeshExponents, ConditionalAngles, LoewnerExit, PhysicalPast and AngularClock.\n\nI considered other candidates and did not report them:\n- **`angle_exit_bound` and `value_bound`:** `angle_exit_bound` uses only `κ ≤ 8` from `hκ`, and `value_bound` would also hold with `κ ≤ 8` (keeping `0 < κ`). Allowing the κ = 8 endpoint gives no clear benefit to users.\n- **Swallowing derivative lemmas:** these would hold with the condition `x^2+y^2 ≠ 0` in place of `0 < y`. Their callers all work in the half-plane, so this is not useful.\n- **`logDerivative_eq_source` and the `Cutoff` lemmas:** `hcont` in `logDerivative_eq_source` looks recoverable from `hU`. Likewise, `hz : z ∈ halfPlane` in the `Cutoff` lemmas follows from `angle_pos` and `angle_initial`. Both are redundant hypotheses rather than specialisations, so they belong to the unnecessary-hypotheses experiment.\n- **`solution_dist_le`:** its proof produces a sharper bound for each time `t`. That would strengthen the conclusion rather than generalise the statement.\n\nRemaining uncertainty: I could not compile anything, so the proposed proof sketch is unverified.",
+  "findings": [
+    {
+      "declaration": "SLEExactGauge.IsLoewnerTraceUsing.sine_positive_minimum",
+      "start_line": 668,
+      "end_line": 688,
+      "excerpt": "lemma sine_positive_minimum (h : IsLoewnerTraceUsing (fun t => Real.sqrt κ * B t.toNNReal) γ g f)\n    (hc : Continuous B) {T : ℝ} (hT : 0 ≤ T) {z : ℂ} (hz : z ∈ localizationDomain γ T) :",
+      "problem": "The lemma is limited to the Brownian-shaped driver `fun t => √κ * B t.toNNReal` and assumes that `B` is continuous on all of `ℝ≥0`. Its proof uses nothing specific to that driver. It needs only these facts:\n- the driver is continuous on `Icc 0 T`, which gives continuity of the denominator `‖g t z - driver t‖`;\n- `h.continuous_eval`, `h.im_pos` and `h.centered_ne_zero`, which TraceModel states for an arbitrary `driver`.\n\nAs a result, the compactness argument cannot be reused for a general Loewner driver. This file already handles the general-driver ratio `(g t z).im / ‖g t z - driver t‖` in `clock_bounds_stop` and `sine_eq_source`.",
+      "proposed_change": "Add a general-driver version and derive the current lemma from it:\n\n```lean\nlemma exists_pos_le_im_div_centered {driver : ℝ → ℝ} (h : IsLoewnerTraceUsing driver γ g f)\n    {T : ℝ} (hT : 0 ≤ T) (hd : ContinuousOn driver (Icc 0 T))\n    {z : ℂ} (hz : z ∈ localizationDomain γ T) :\n    ∃ η : ℝ, 0 < η ∧ ∀ t ∈ Icc 0 T, η ≤ (g t z).im / ‖g t z - (driver t : ℂ)‖\n```\n\nProof outline, reusing the existing steps:\n1. `hgc := h.continuous_eval hT hz`.\n2. The numerator is continuous by `Complex.continuous_im.comp_continuousOn hgc`.\n3. The denominator is continuous by `(hgc.sub (Complex.continuous_ofReal.comp_continuousOn hd)).norm`.\n4. The denominator is nonzero by `norm_ne_zero_iff.2 (h.centered_ne_zero ht.1 (survivingDomain_mono ht.2 hz))`.\n5. Take the minimum with `isCompact_Icc.exists_isMinOn (nonempty_Icc.2 hT)`; it is positive by `div_pos (h.im_pos …) (norm_pos_iff.2 (h.centered_ne_zero …))`.\n\n`sine_positive_minimum` then follows by applying this with `hd := (continuous_const.mul (hc.comp continuous_real_toNNReal)).continuousOn`. That is the same expression the file already passes to `radius_eq_source` and `terminal_cases`. The conclusion is then rewritten with `simp only [loewnerAngleSine, Complex.ofReal_mul]`, as the current proof does on line 688. The base case `T = 0` still works, because `Icc 0 0` is nonempty.",
+      "benefit": "The positive lower bound on the angle sine is a deterministic fact about any Loewner chain with a continuous driver. It has nothing to do with Brownian motion. With the general statement, deterministic or localized drivers can use it directly, including the general `driver` in LoewnerLocalized. Callers would also only need continuity on `[0, T]`, not global continuity of `B`. The five existing callers keep working through the Brownian wrapper, so the statement no longer suggests a dependence on the SLE driver form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/TraceModel.lean",
+          "declaration": "SLEExactGauge.IsLoewnerTraceUsing.centered_ne_zero",
+          "excerpt": "lemma centered_ne_zero (h : IsLoewnerTraceUsing driver γ g f)\n    {t : ℝ} (ht : 0 ≤ t) {z : ℂ} (hz : z ∈ localizationDomain γ t) :\n    g t z - (driver t : ℂ) ≠ 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/TraceModel.lean",
+          "declaration": "SLEExactGauge.IsLoewnerTraceUsing.continuous_eval",
+          "excerpt": "lemma continuous_eval (h : IsLoewnerTraceUsing driver γ g f)\n    {T : ℝ} (_hT : 0 ≤ T) {z : ℂ} (hz : z ∈ localizationDomain γ T) :\n    ContinuousOn (fun t => g t z) (Icc 0 T) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/TraceModel.lean",
+          "declaration": "SLEExactGauge.loewnerAngleSine",
+          "excerpt": "(g t z).im / ‖g t z - (Real.sqrt κ * B t.toNNReal : ℂ)‖"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/GreenTilts.lean",
+          "declaration": "SLEExactGauge.LoewnerLocalized.clock_bounds_stop",
+          "excerpt": "have ha (t : ℝ) (ht : t ∈ Icc 0 τ) : δ ≤ (g t z).im / ‖g t z - (driver t : ℂ)‖ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/GreenTilts.lean",
+          "declaration": "SLEExactGauge.LoewnerLocalized.clock_bounds_stop",
+          "excerpt": "(h : IsLoewnerTraceUsing driver γ g f)\n    (hcont : ContinuousOn driver (Icc 0 T))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 65423,
+    "cache_read_input_tokens": 165298,
+    "output_tokens": 8653,
+    "output_tokens_details": {
+      "thinking_tokens": 4931
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 65423,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3194,
+        "cache_read_input_tokens": 66360,
+        "cache_creation_input_tokens": 3087,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3087
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.7295356,
+  "duration_ms": 74714,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T13:32:52",
+  "unit": "file",
+  "source_sha256": "f114303badbc5e031a5cce0ccbc3a2417f85fb8343ee138b4e092834b896b8f7",
+  "rubric": "statement-generality"
+}

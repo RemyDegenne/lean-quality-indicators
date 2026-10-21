@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0068",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file (lines 1–792) and checked the statement of `exists_box_amplified_profile` in NodalMeasure/CompactRegularLevelIntrinsicFinite.lean. I also checked where the two profile-family theorems are used: only `exists_three_robust_global_profile_family` has callers outside this file, in ThreeExceptional.lean.\n\nThe main repetition is in `exists_three_global_profile_family` (lines 393–462) and `exists_three_robust_global_profile_family` (lines 713–787). After each theorem obtains its signed envelope, the two proofs are the same step for step: choose the box, amplify, track supports, compare germs off the box, glue through the chart and close the five goals. They differ only in the metric (`threeNormalMetric` vs `threeNormalMetricOf g`) and the radii ((R/8, R/3) vs (a, b)).\n\nSmaller repetitions were considered and not reported because the rubric excludes them as short calculations or routine steps:\n- the `productA threeProfileCenter.1 = 3/5` computation (lines 276–279 and 632–636);\n- the `Tendsto`/`comp_tendsto` germ transfer (lines 368–371 and 663–666);\n- the `HasCompactSupport` add-decomposition trick in `exists_three_amplified_profile`.\n\nThe proposed helper has not been compiled. Its body is the existing robust proof with the metric made a parameter. The only new side goals are the radius inequalities a ≤ b and a ≤ 3R/4, and `linarith` should close these from the hypotheses that are in scope.",
+  "findings": [
+    {
+      "declaration": "exists_three_global_profile_family / exists_three_robust_global_profile_family",
+      "start_line": 410,
+      "end_line": 462,
+      "excerpt": "  obtain ⟨ψ,hψ,hψc,hψs,hclose,hinside,hmass⟩ := exists_box_amplified_profile\n    threeNormalMetric I hφ (fun y hy => (hstrict y (hIK hy)).1)\n    (fun y hy => (hstrict y (hIK hy)).2) T (half_pos hδ)",
+      "problem": "Two proofs repeat the same ~53-line argument. Lines 410–462 of `exists_three_global_profile_family` and lines 735–787 of `exists_three_robust_global_profile_family` match token for token after renaming. The shared steps are:\n- build `hne` and pick a box with `exists_box_Icc_subset_open`;\n- derive `hIs` and `hIK`;\n- call `exists_box_amplified_profile` with η = δ/2;\n- decompose ψ−C as (ψ−φ)+(φ−C) to get compact support and `hsupport`;\n- prove the germ equality `heoff` off the box via `profile_eq_germ_of_not_tsupport`;\n- transfer strictness (`hψstrict`) via `actualJet_eventuallyEq`;\n- prove the exterior bound `hψout`;\n- glue with `threeNormalGlue` and close the five goals.\nThe only differences are the metric (`threeNormalMetric` vs `threeNormalMetricOf g`) and the radii ((R/8, R/3) vs (a, b)). Any change to the gluing or amplification API must therefore be made twice, and the robust theorem hides the fact that it is the same construction applied to a different metric.",
+      "proposed_change": "Add one helper in the section at line 387, before `exists_three_global_profile_family`:\n\nlemma three_normal_amplified_glue (G : SmoothMetric NormalWaveSpace NormalWaveSpace) {C R δ a b : ℝ} (ha : 0<a) (hab : a≤b) (haR : a≤3*R/4) (hδ : 0<δ) {φ : NormalWaveSpace → ℝ} (hφ : ContDiff ℝ ∞ φ) (hφc : HasCompactSupport (fun y => φ y-C)) (hφs : tsupport (fun y => φ y-C) ⊆ closedBall 0 (3*R/4)) (hstrict : ∀ y ∈ closedBall 0 b, coordinateMetricGradient G φ y ≠ 0 ∧ actualProfileStrict G φ y) (hin : ∀ y ∈ closedBall 0 a, φ y=threeGlobalLog (threeNormalInv y)+δ) (hout : ∀ y ∉ closedBall 0 b, φ y≤threeGlobalLog (threeNormalInv y)-δ) (hmin : ∀ p, C≤threeGlobalLog p-δ) :\n  ∃ I : Box (Fin 3), normalWaveEquiv '' Box.Icc I ⊆ closedBall 0 a ∧ ∀ T : ℝ, ∃ Φ : ThreeManifold → ℝ, ContMDiff 𝓘(ℝ,ThreeModel) 𝓘(ℝ,ℝ) ∞ Φ ∧ ContDiff ℝ ∞ (Φ ∘ threeNormalInv) ∧ tsupport (fun p => Φ p-C) ⊆ threeNormalInv '' closedBall 0 (3*R/4) ∧ (∀ y ∈ closedBall 0 b, coordinateMetricGradient G (Φ ∘ threeNormalInv) y ≠ 0 ∧ actualProfileStrict G (Φ ∘ threeNormalInv) y) ∧ (∀ y ∈ closedBall 0 a, threeGlobalLog (threeNormalInv y)+δ/2 < Φ (threeNormalInv y)) ∧ (∀ p ∉ threeNormalInv '' closedBall 0 b, Φ p≤threeGlobalLog p-δ) ∧ T < ∫ x in Box.Icc I, profileFrequencyScale G (Φ ∘ threeNormalInv) (normalWaveEquiv x)\n\nProof sketch: reuse the current body at lines 735–787 with `(threeNormalMetricOf g)` replaced by `G`. The two `closedBall_subset_closedBall (by linarith)` side goals become `hab` and `haR`.\n\nRewritten uses:\n\n(1) In `exists_three_global_profile_family`:\nobtain ⟨C,R,δ,hR,hδ,hδ1,φ,hφ,hφc,hφs,hstrict,hin,hout,hmin⟩ := exists_three_normal_envelope\nobtain ⟨I,hIs,hT⟩ := three_normal_amplified_glue threeNormalMetric (a:=R/8) (b:=R/3) (by positivity) (by linarith) (by linarith) hδ hφ hφc hφs hstrict hin hout hmin\nrefine ⟨C,R,δ,hR,hδ,I,hIs,fun T => ?_⟩\nobtain ⟨Φ,h1,h2,h3,h4,h5,h6,h7⟩ := hT T\nexact ⟨Φ,h1,h2,h3,h4,fun y hy => h5 y (hIs hy),h6,h7⟩\n\n(2) In `exists_three_robust_global_profile_family`, after `obtain ⟨δ,hδ,hδ1,φ,...,hmin⟩ := hprod g hg a b ha hab hbR`:\nobtain ⟨I,hIs,hT⟩ := three_normal_amplified_glue (threeNormalMetricOf g) ha hab.le (by linarith) hδ hφ hφc hφs hstrict hin hout hmin\nexact ⟨δ,hδ,I,hIs,hT⟩\n\nFor `a ≤ 3*R/4`, `linarith` can use a<b, b<R/2 and 0<R.",
+      "benefit": "The analytic core is written once: amplify on a box, keep the support inside the ball, keep strictness off the box by germ equality, then glue onto the manifold. Each theorem shrinks to the step that is actually its own (where the envelope comes from and which radii are used). This removes about 50 duplicated lines. API changes to `exists_box_amplified_profile`, `threeNormalGlue_*` or `profile_eq_germ_of_not_tsupport` then need only one repair. The helper also states the hypotheses explicitly (a ≤ b, a ≤ 3R/4, δ > 0), so a reader can see both theorems are instances of the same construction for different metrics. The degenerate case is covered: 0 < a is required for the nonempty preimage-ball step, which both callers satisfy.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "exists_three_robust_global_profile_family",
+          "excerpt": "  obtain ⟨ψ,hψ,hψc,hψs,hclose,hinside,hmass⟩ := exists_box_amplified_profile\n    (threeNormalMetricOf g) I hφ (fun y hy => (hstrict y (hIK hy)).1)\n    (fun y hy => (hstrict y (hIK hy)).2) T (half_pos hδ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "exists_three_global_profile_family",
+          "excerpt": "    · have hj := actualJet_eventuallyEq threeNormalMetric (heoff y hz)\n      rw [hj.1,hj.2.2.1]\n      exact hstrict y hy"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "exists_three_robust_global_profile_family",
+          "excerpt": "    · have hj := actualJet_eventuallyEq (threeNormalMetricOf g) (heoff y hz)\n      rw [hj.1,hj.2.2.1]\n      exact hstrict y hy"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/NodalMeasure/CompactRegularLevelIntrinsicFinite.lean",
+          "declaration": "exists_box_amplified_profile",
+          "excerpt": "theorem exists_box_amplified_profile (g : SmoothMetric NormalWaveSpace NormalWaveSpace)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 46978,
+    "cache_read_input_tokens": 121035,
+    "output_tokens": 7333,
+    "output_tokens_details": {
+      "thinking_tokens": 2529
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 46978,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5508,
+        "cache_read_input_tokens": 42778,
+        "cache_creation_input_tokens": 8129,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 8129
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.546723,
+  "duration_ms": 63752,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T15:00:51",
+  "unit": "file",
+  "source_sha256": "c98829553c1f2682a6edfe8cfabaf39534886cebd85890d1132dccb21960c16c",
+  "rubric": "repeated-proof-machinery"
+}

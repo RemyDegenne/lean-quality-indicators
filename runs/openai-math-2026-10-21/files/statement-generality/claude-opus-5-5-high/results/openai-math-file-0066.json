@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0066",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all of GraphBorel.lean (lines 1–119), the definitions it uses in Definitions.lean (GraphCode, Adj, GraphConnected, GraphLocallyFinite, IsFiniteConnectedSubgraph, IsConnectedExhaustion), the downstream uses in NoCollisionExtension.lean and RuleExtension.lean (RuleBorel.gated), and the relevant Mathlib API (Measurable.eq, MeasurableEq and its instances).\n\nMost of the file is already stated at the right level of generality:\n- FiniteReach, finiteReach_reflTransGen and reflTransGen_iff_exists_finiteReach work for an arbitrary relation.\n- measurable_finiteReach, measurable_reflTransGen and measurable_finite_setOf work for any measurable space `α` and any countable index type `ι`.\n- measurable_adj, measurable_graphConnected, measurable_graphLocallyFinite, measurable_isFiniteConnectedSubgraph and measurable_isConnectedExhaustion are about the specific project types GraphCode and FiniteSubgraphCode. That is a legitimate concrete application, not a defect.\n\nThe one specialised statement is measurable_injective_labels and its set-version measurableSet_injective_labels, which are fixed to `ℕ → ℝ` even though the proof only uses countability of the domain and `MeasurableEq` of the codomain.\n\nRemaining uncertainty: I could not run Lean. With implicit `ι β`, the two downstream uses (`.comp measurable_snd` and `.comp (Measurable.of_eval ...)`) must get the types from the expected type that `RuleBorel.gated` supplies. That type is fully concrete (`GraphCode × (ℕ → ℝ)`), so unification should work. If it does not, a one-line specialisation (`measurable_injective_labels (ι := ℕ) (β := ℝ)`) or a type ascription would fix it.\n\nSeparately, GraphDomain.lean has its own `measurable_reflTransGen (u v : ℕ)`. That is a duplication or specialisation issue in a different file and is outside this target.",
+  "findings": [
+    {
+      "declaration": "measurable_injective_labels / measurableSet_injective_labels",
+      "start_line": 106,
+      "end_line": 113,
+      "excerpt": "theorem measurable_injective_labels :\n    Measurable (fun U : ℕ → ℝ => Function.Injective U) := by\n  exact Measurable.forall (fun u => Measurable.forall (fun v =>\n    ((measurable_pi_apply u).eq (measurable_pi_apply v)).imp measurable_const))",
+      "problem": "The statement is fixed to the space `ℕ → ℝ`. The proof uses only two facts. First, `Measurable.forall` needs the index type to be countable. Second, `Measurable.eq` needs the codomain to have a measurable diagonal, i.e. `[MeasurableEq β]`. Nothing about `ℕ` or `ℝ` is used beyond these instances. So the lemma cannot be reused for other label spaces: random keys `ℕ → ℕ`, labels in `ℝ≥0∞` or a Polish space, or vertex sets other than `ℕ`. This happens even though the file already treats general countable index types in measurable_reflTransGen and measurable_finite_setOf.",
+      "proposed_change": "Generalise both statements:\n\ntheorem measurable_injective {ι β : Type*} [Countable ι] [MeasurableSpace β] [MeasurableEq β] :\n    Measurable (fun U : ι → β => Function.Injective U) := by\n  exact Measurable.forall (fun u => Measurable.forall (fun v =>\n    ((measurable_pi_apply u).eq (measurable_pi_apply v)).imp measurable_const))\n\ntheorem measurableSet_injective {ι β : Type*} [Countable ι] [MeasurableSpace β] [MeasurableEq β] :\n    MeasurableSet {U : ι → β | Function.Injective U} :=\n  measurable_injective.setOf\n\nThe proof body stays the same. `Measurable.eq` requires `[MeasurableEq β]`, and `Measurable.forall` requires countable index types. ℝ has `MeasurableEq` through the Borel instance `[SecondCountableTopology α] [T2Space α] : MeasurableEq α`. So the existing uses in NoCollisionExtension.lean, where the expected type from `RuleBorel.gated` is `GraphCode × (ℕ → ℝ)`, become special cases. Degenerate cases cause no trouble: if `ι` is empty or a subsingleton, every `U` is injective and the set is `univ`, which is measurable. If the existing name must be kept, it can be a specialisation of the general lemma.",
+      "benefit": "The lemma says that injectivity of a function with a countable domain is a measurable condition, and the generalised form states exactly that. It then fits with the file's other general helpers (measurable_reflTransGen and measurable_finite_setOf, both for any `[Countable ι]`). It can also be reused for collision checks on derived keys, such as the `fun i => κ (U i)` pattern in RuleBorel.keyCollision, or for label spaces other than ℝ, without restating and reproving it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/MeasurableSpace/Constructions.lean",
+          "declaration": "Measurable.eq",
+          "excerpt": "theorem Measurable.eq {m : MeasurableSpace α} [MeasurableSpace β] [MeasurableEq β]\n    {f g : α → β} (hf : Measurable f) (hg : Measurable g) : Measurable fun x => f x = g x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Constructions/BorelSpace/Basic.lean",
+          "declaration": "instance (MeasurableEq of second-countable T2)",
+          "excerpt": "instance [SecondCountableTopology α] [T2Space α] : MeasurableEq α :=\n  ⟨isClosed_diagonal.measurableSet⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SpanningForest/GraphBorel.lean",
+          "declaration": "measurable_finite_setOf",
+          "excerpt": "theorem measurable_finite_setOf {α ι : Type*} [MeasurableSpace α] [Countable ι]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SpanningForest/NoCollisionExtension.lean",
+          "declaration": "RuleBorel.keyCollision",
+          "excerpt": "exact GraphBorel.measurable_injective_labels.comp\n    (Measurable.of_eval (fun i => hκ.comp ((measurable_pi_apply i).comp measurable_snd)))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SpanningForest/RuleExtension.lean",
+          "declaration": "RuleBorel.gated",
+          "excerpt": "(hp : Measurable (fun q : GraphCode × (ℕ → ℝ) => p q.1 q.2)) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 24158,
+    "cache_read_input_tokens": 126009,
+    "output_tokens": 4897,
+    "output_tokens_details": {
+      "thinking_tokens": 1031
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24158,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2700,
+        "cache_read_input_tokens": 26737,
+        "cache_creation_input_tokens": 1445,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1445
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3164618,
+  "duration_ms": 42373,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T14:48:58",
+  "unit": "file",
+  "source_sha256": "ddfc35650ab7e6c2e32d081767d39cd3ce789e0eeddbf008bf199eadb39e0e5c",
+  "rubric": "statement-generality"
+}

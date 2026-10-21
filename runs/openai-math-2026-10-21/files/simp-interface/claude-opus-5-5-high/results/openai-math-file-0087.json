@@ -1,0 +1,80 @@
+{
+  "id": "openai-math-file-0087",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all four declarations in the file. I checked Mathlib's CharacteristicFunction/Basic.lean for existing `charFun` rules about sums or scalar multiples of measures and found none: there is `charFun_zero_measure` but no add, smul or finset-sum lemma. I also looked at every use of this file's lemmas (FilteredClassShell.lean and TwoRootShellDecay.lean) and at the copy of the same lemma in AssemblyPositiveEnergy.lean.\n\n`norm_weighted_sum_sq_le`, `shellEnergy_weighted_sum_le` and `shellEnergy_weighted_sum_uniform` are inequalities, so they are not simp candidates and I make no simp finding about them. The one simp-interface issue is that the measure-linearity rule for `charFun` is stated only in a combined weighted form and has no simp attribute. Users who need the plain sum case have to specialise it to `c := fun _ => 1` and clean up with `simpa`.\n\nRemaining uncertainty: I could not run Lean, so I have not checked that the proposed lemmas elaborate, which scalar-coercion form simp would settle on (`c • z` versus `(c : ℝ) • z`), or that downstream `simpa` calls would close unchanged.",
+  "findings": [
+    {
+      "declaration": "OAI.PlanarFalconer.charFun_weighted_sum",
+      "start_line": 26,
+      "end_line": 35,
+      "excerpt": "charFun (∑ i ∈ s, c i • τ i) r = ∑ i ∈ s, (c i : ℝ) • charFun (τ i) r := by\n  simp only [charFun_eq_integral_innerProbChar]\n  rw [integral_finsetSum_measure]",
+      "problem": "The fact that `charFun` is linear in the measure is given only as one bundled pattern, `charFun (∑ i ∈ s, c i • τ i) r`, and it is not tagged `@[simp]`. Neither this file nor Mathlib (pinned version) has atomic rules for `charFun (μ + ν)`, `charFun (c • μ)` or `charFun (∑ i ∈ s, μ i)`. So `simp` cannot push `charFun` through a plain sum of measures. Users with an unweighted sum `charFun (∑ i ∈ F, τ i) r` must instantiate the weighted lemma at `fun _ => 1` and then run `simpa` to remove `one_smul` and `NNReal.coe_one` (FilteredClassShell.lean, line 19). The same lemma was copied as `assembly_charFun_weighted_sum` (AssemblyPositiveEnergy.lean, lines 43–52), and its plain sum case is again recovered through `simpa only [one_smul,NNReal.coe_one]`. The proof here also has to unfold to integrals because no such rules exist.",
+      "proposed_change": "Replace the bundled lemma with atomic, simp-oriented lemmas that rewrite left to right (the measure-level operation becomes a pointwise operation on ℂ). Each would carry `[IsFiniteMeasure _]` hypotheses for integrability:\n`@[simp] lemma charFun_add_measure [IsFiniteMeasure μ] [IsFiniteMeasure ν] : charFun (μ + ν) t = charFun μ t + charFun ν t`\n`@[simp] lemma charFun_smul_measure (c : ℝ≥0) : charFun (c • μ) t = (c : ℝ) • charFun μ t` (proof via `integral_smul_nnreal_measure`)\n`@[simp] lemma charFun_finsetSum_measure [∀ i, IsFiniteMeasure (τ i)] : charFun (∑ i ∈ s, τ i) t = ∑ i ∈ s, charFun (τ i) t` (proof via `integral_finsetSum_measure` and `(BoundedContinuousFunction.innerProbChar t).integrable`, as in the current proof).\n`charFun_weighted_sum` then becomes `by simp`, or can be dropped. The `he` steps in `positive_shell_finite_sum` and `assemblyPositiveEnergy_sum` become direct `simp` or `rw [charFun_finsetSum_measure]` calls.",
+      "benefit": "`charFun` applied to any finite mixture of finite measures, weighted or not, gets one simp normal form: a sum of scalar multiples of the component `charFun`s. Users no longer need the `fun _ => 1` specialisation followed by `simpa only [one_smul, NNReal.coe_one]`. Each lemma's left-hand side is a single measure constructor and its right-hand side has strictly smaller `charFun` arguments, so the rewrites terminate and do not compete. The bundled lemma's pattern also only matches a sum whose summands are literally scalar multiples (`c i • τ i`), whereas atomic rules apply to sums, single scalings and binary additions alike.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Shells/FilteredClassShell.lean",
+          "declaration": "OAI.Falconer.positive_shell_finite_sum",
+          "excerpt": "have he (r : ℝ) : charFun (∑ i ∈ F, τ i) r = ∑ i ∈ F, charFun (τ i) r := by\n    simpa using PlanarFalconer.charFun_weighted_sum F (fun _ => (1:ℝ≥0)) τ r"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/FalconerCompletion/Measures/AssemblyPositiveEnergy.lean",
+          "declaration": "OAI.assemblyPositiveEnergy_sum",
+          "excerpt": "have he (r : ℝ) : charFun (∑ i,τ i) r = ∑ i,charFun (τ i) r := by\n    simpa only [one_smul,NNReal.coe_one] using\n      assembly_charFun_weighted_sum Finset.univ (fun _ => 1) τ r"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/CharacteristicFunction/Basic.lean",
+          "declaration": "MeasureTheory.charFun_zero_measure",
+          "excerpt": "lemma charFun_zero_measure : charFun (0 : Measure E) t = 0 := by simp [charFun_apply]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 16934,
+    "cache_read_input_tokens": 47132,
+    "output_tokens": 3793,
+    "output_tokens_details": {
+      "thinking_tokens": 650
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16934,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2466,
+        "cache_read_input_tokens": 18324,
+        "cache_creation_input_tokens": 2623,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2623
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2207904,
+  "duration_ms": 32910,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T16:36:41",
+  "unit": "file",
+  "source_sha256": "058cb3e0948bfa719fe48593a5c15d4f8abafe93d0a553132fd6a478b4076745",
+  "rubric": "simp-interface"
+}

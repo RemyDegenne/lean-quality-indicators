@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0029",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 82 lines of the target file. I also read the definitions it relies on:\n- `SmoothRealFunction` and `SmoothRealFunction.constant` in AnalyticSupport.lean.\n- `linearizedMongeAmpere_constant` in AnalyticSupport.lean.\n- `Smooth.part` and the existing `@[simp] Smooth.part_value` in ComplexOperator.lean.\n- `complexLValue` and `complexL` in ComplexOperator.lean.\n- `complexL_re` and `complexL_im` in ComplexKernel.lean.\n- `Smooth.ofReal` and `@[simp] Smooth.ofReal_apply` in GlobalPartition.lean.\n- `laplacianValue_local` and `laplacian` in GlobalOperator.lean.\n- `RealSmooth.ofReal`, `RealSmooth.source` and `ofReal_source` in RealSobolev.lean.\n\nI checked every downstream use of `complexL_ofReal`: RealVolume.lean:75, UniformPathSobolev.lean:33 and PathUniformSobolevBase.lean:105. All three use `rw`. None of the other lemmas in this file has a downstream use.\n\n`SmoothRealFunction` has no `Zero` instance, so `SmoothRealFunction.constant 0` is the right normal form for the zero function.\n\nI did not recommend a simp tag for `RealSmooth.ofReal_source` (`Smooth.ofReal f.source = f.val`) or its reverse. `f.source` unfolds to `f.val.part Complex.reCLM`, so a simp set that rewrites `f.val` into `Smooth.ofReal f.source` could plausibly cycle. This is reasoning only; I did not run it.\n\nTagging `SmoothRealFunction.ext_value` with `@[ext]` would also help, but that is about extensionality, not this rubric.\n\nRemaining uncertainty: I could not run Lean, so I have not checked that the proposed simp set closes these goals. In particular I have not checked whether `simp` fully discharges the `Complex.ext` goals in `complexL_ofReal`.",
+  "findings": [
+    {
+      "declaration": "Smooth.ofReal_part_re / Smooth.ofReal_part_im / laplacian_constant / complexL_ofReal",
+      "start_line": 26,
+      "end_line": 52,
+      "excerpt": "lemma laplacian_constant (g : KaehlerMetric A) (c : ℝ) :\n    g.laplacian (SmoothRealFunction.constant c) = SmoothRealFunction.constant 0 := by",
+      "problem": "These four lemmas each rewrite a composite term into a simpler one, and none of them has an argument that can grow under rewriting:\n- `(Smooth.ofReal f).part Complex.reCLM` becomes `f`.\n- `(Smooth.ofReal f).part Complex.imCLM` becomes `SmoothRealFunction.constant 0`.\n- `g.laplacian (SmoothRealFunction.constant c)` becomes `SmoothRealFunction.constant 0`.\n- `complexL g (Smooth.ofReal f)` becomes `Smooth.ofReal (g.laplacian f)`.\n\nNone of them has `@[simp]`, so they are only used through hand-written `rw ...; rfl` chains. Examples are lines 48–51 here and RealVolume.lean:75 (`rw [← f.ofReal_source, complexL_ofReal]` followed by `rfl`).\n\nThe surrounding interface already treats this layer as a simp layer: `Smooth.part_value` and `Smooth.ofReal_apply` are both `@[simp]`. There is a catch when tagging `ofReal_part_im`. Simp rewrites inner terms first, so `((Smooth.ofReal f).part Complex.imCLM).value x` would become `(SmoothRealFunction.constant 0).value x`. No simp lemma reduces that term. `constant` is an ordinary `def` and has no `value` lemma; I searched for `constant_value` and found nothing. Without one, the tag would make this term worse: today `part_value`, `ofReal_apply` and `Complex.ofReal_im` reduce it to `0`.",
+      "proposed_change": "1. Add a value lemma next to `ext_value` in the `SmoothRealFunction` namespace section (lines 14–21):\n`@[simp] lemma constant_value (c : ℝ) (x : X) : (SmoothRealFunction.constant c : SmoothRealFunction A).value x = c := rfl`\n\n2. Tag `Smooth.ofReal_part_re`, `Smooth.ofReal_part_im`, `laplacian_constant` and `complexL_ofReal` with `@[simp]`. Keep their current left-to-right orientation, since each one moves toward `Smooth.ofReal`, `f` or `constant 0`.\n\n3. Downstream, the `rw ...; rfl` endings, such as RealVolume.lean:75, can then be finished with `simp` or `simp only [complexL_ofReal, Smooth.ofReal_apply]`, with no `change`/`rfl` step. Do not add `← RealSmooth.ofReal_source` to a simp set (see the review notes).",
+      "benefit": "Users can rewrite `complexL g (Smooth.ofReal φ)` and real or imaginary parts of real-valued smooth functions with `simp`. They no longer need to know the exact lemma names and the definitional unfoldings closed by `rfl`. Adding `constant_value` alongside the tags means the `.value x` route and the structure-level route both reach the same normal form, `0` or `c`. Without it, tagging `ofReal_part_im` would leave goals stuck at `(constant 0).value x`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/ComplexOperator.lean",
+          "declaration": "Smooth.part_value",
+          "excerpt": "@[simp] lemma Smooth.part_value (f : Smooth A) (p : ℂ →L[ℝ] ℝ) (x : X) :\n    (f.part p).value x = p (f x) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/GlobalPartition.lean",
+          "declaration": "Smooth.ofReal_apply",
+          "excerpt": "@[simp] lemma Smooth.ofReal_apply (f : SmoothRealFunction A) (x : X) :\n    Smooth.ofReal f x = (f.value x : ℂ) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/AnalyticSupport.lean",
+          "declaration": "SmoothRealFunction.constant",
+          "excerpt": "def constant (c : ℝ) : SmoothRealFunction A where\n  value _ := c"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/RealVolume.lean",
+          "declaration": "completedVolume_real_directional",
+          "excerpt": "rw [← f.ofReal_source, complexL_ofReal]\n    rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/RealSmoothOperator.lean",
+          "declaration": "complexL_ofReal",
+          "excerpt": "· rw [complexL_im, Smooth.ofReal_part_im, laplacian_constant]\n    rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 37925,
+    "cache_read_input_tokens": 158524,
+    "output_tokens": 7852,
+    "output_tokens_details": {
+      "thinking_tokens": 2936
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37925,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4645,
+        "cache_read_input_tokens": 36621,
+        "cache_creation_input_tokens": 5317,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5317
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4922008,
+  "duration_ms": 77949,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T11:51:25",
+  "unit": "file",
+  "source_sha256": "90794b2169bc1400a4377f2343de3fdc6911dc2b725f717e2ae377bf08aafa54",
+  "rubric": "simp-interface"
+}

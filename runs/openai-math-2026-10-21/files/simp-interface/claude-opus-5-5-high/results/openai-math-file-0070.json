@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0070",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 57 lines of the target file. I checked how `Eisenstein` is defined (`abbrev Eisenstein := eisensteinRing`, a `Subalgebra ℤ ℂ`, in CubicGram/Definitions.lean). I searched Mathlib's Subsemiring and Subalgebra files and other `coe_ofNat`/`map_ofNat` declarations for a numeral-coercion simp lemma. I also searched the OAI tree for places that rewrite `((n:Eisenstein):ℂ)` by hand.\n\nMathlib has no `@[simp, norm_cast]` lemma that sends a numeral in a subalgebra to the same numeral in the ambient ring. `map_ofNat` is not simp; its docstring says it could be marked `@[simp]` once an issue is resolved. It also applies to ring-hom applications, not to the `Subtype.val` coercion. As a result, `push_cast` in `cubicThetaPrimeCubeBottomBranch_point` leaves `((3:Eisenstein):ℂ)` in the goal, and the next line patches it by hand. The same patch appears in about 20 sibling files.\n\nThe other two declarations, `cubicThetaPrimeCubeBottom_periodization` and `cubicThetaPrimeCubeBottom_mean`, use `unfold`, `rw` and `simp_rw` with lemmas from the same file. They raise no simp-orientation or loop concerns. I don't see a strong case for tagging the periodization lemma `@[simp]`: its hypothesis-laden right-hand side is a derived form, not a canonical normal form.\n\nRemaining uncertainty: I couldn't run Lean. I have not checked that the proposed lemma is accepted by the `norm_cast` attribute's classification, or that it lets `push_cast; field_simp [hpC]` close the goal without the `rw`.",
+  "findings": [
+    {
+      "declaration": "cubicThetaPrimeCubeBottomBranch_point",
+      "start_line": 24,
+      "end_line": 27,
+      "excerpt": "  · push_cast\n    rw [show ((3:Eisenstein):ℂ)=3 from\n      map_ofNat (eisensteinRing.subtype : Eisenstein →+* ℂ) 3]\n    field_simp [hpC]",
+      "problem": "After `push_cast` rewrites `((3*b:Eisenstein):ℂ)` to `((3:Eisenstein):ℂ)*(b:ℂ)`, the numeral coercion `((3:Eisenstein):ℂ)` is left in the goal. The desired normal form is the literal `(3:ℂ)`. Nothing in the simp or `norm_cast` set produces it. Mathlib's `map_ofNat` is not `@[simp]` and only fires on ring-hom applications, not on the subalgebra's `Subtype.val` coercion. The project's `Eisenstein` definitions provide no `coe_ofNat` lemma either. So this proof, and many siblings, add a one-off `rw [show ((3:Eisenstein):ℂ)=3 from ...]`. The justification varies between files: `map_ofNat` via `eisensteinRing.subtype`, `map_ofNat eisensteinRing.val`, or `rfl`.",
+      "proposed_change": "Next to `abbrev Eisenstein := eisensteinRing` in OAI/NumberTheory/CubicGram/Definitions.lean, add a canonical cast lemma such as\n\n@[simp, norm_cast] lemma Eisenstein.coe_ofNat (n : ℕ) [n.AtLeastTwo] :\n    ((ofNat(n) : Eisenstein) : ℂ) = (ofNat(n) : ℂ) :=\n  map_ofNat eisensteinRing.val n\n\nThe proof is copied from an existing use in AngularPrimaryLattice.lean. Lines 24–27 could then shrink to `· push_cast; field_simp [hpC]`, and the identical blocks in CubicThetaPrimeCubeFirstBranchMean.lean and the other files could be cleaned up the same way.",
+      "benefit": "With this lemma, `push_cast` and `simp` take Eisenstein numerals to their ordinary complex form. Proofs no longer need a hand-written coercion rewrite after each `push_cast`. It also replaces the several different ad hoc justifications now spread across about 20 files with one named lemma. The lemma only rewrites a coerced numeral to a bare numeral, so it is terminating and doesn't conflict with `Nat.cast_ofNat`-style rules.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Nat/Cast/Basic.lean",
+          "declaration": "map_ofNat",
+          "excerpt": "If that issue is resolved, this can be marked `@[simp]`. -/\ntheorem map_ofNat [FunLike F R S] [RingHomClass F R S] (f : F) (n : ℕ) [Nat.AtLeastTwo n] :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicGram/Definitions.lean",
+          "declaration": "Eisenstein",
+          "excerpt": "def eisensteinRing : Subalgebra ℤ ℂ := Algebra.adjoin ℤ {omega}\nabbrev Eisenstein := eisensteinRing"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaPrimeCubeFirstBranchMean.lean",
+          "declaration": "cubicThetaPrimeCubeFirstBranch_point",
+          "excerpt": "  · push_cast\n    rw [show ((3:Eisenstein):ℂ)=3 from\n      map_ofNat (eisensteinRing.subtype : Eisenstein →+* ℂ) 3]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Angular/AngularPrimaryLattice.lean",
+          "declaration": "(proof-local have h3)",
+          "excerpt": "have h3 : ((3:Eisenstein):ℂ) = 3 := map_ofNat eisensteinRing.val 3"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaLevelBruhat.lean",
+          "declaration": "(proof-local simp only)",
+          "excerpt": "all_goals simp only [show ((3:Eisenstein):ℂ)=3 from rfl]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 19812,
+    "cache_read_input_tokens": 134281,
+    "output_tokens": 5690,
+    "output_tokens_details": {
+      "thinking_tokens": 1229
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19812,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2925,
+        "cache_read_input_tokens": 23104,
+        "cache_creation_input_tokens": 721,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 721
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2992162,
+  "duration_ms": 62482,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T15:10:16",
+  "unit": "file",
+  "source_sha256": "1f5dc88c0a82163db8b7f948e21b23da53af97d6ab433e1b8116df84722c394e",
+  "rubric": "simp-interface"
+}

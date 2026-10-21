@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0089",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 118 lines of the target file. I also read its only downstream users, CurvePlaceSectionDivisor.lean (`divisor`, `divisor_apply`, `degree_eq_euler_difference`) and CurvePlaceSectionOrder.lean (`divisor_eq_local_order`), plus the statement of `euler_difference_eq_sum_zero_orders` in CurveSectionDegree.lean. In Mathlib I checked how `Function.Embedding` is set up for `@[simps]`.\n\nThe existing `@[simp] divisor_apply` (line 72) is well chosen. It rewrites `Finsupp.ofSupportFinite` evaluation to `orderAt`, every argument is fixed by the left-hand side, and the downstream `CurvePlaceSectionDivisor.divisor_apply` follows the same pattern. Line 98 depends on it through `simpa [D]`. I found no rewrite cycles and no lemmas that compete with each other.\n\nThe one gap is that `zeroPointEmbedding` has no evaluation lemma. Every place that uses it goes through definitional unfolding instead (`Subtype.ext hy` and a final `rfl`). This is a modest interface issue, not a failure.\n\nI considered recasting `orderAt_eq_zero_of_not_mem` as an iff simp lemma and decided against it. The converse direction needs `hs : s ≠ 0`, because the germ of a zero section gives `addVal = ⊤` and `toNat = 0`. That makes it a poor unconditional simp rule. Lean was not run, so the suggested lemma has not been compiled. It should be provable by `rfl`, since `divisor_apply` and the proofs here already depend on the same defeq.",
+  "findings": [
+    {
+      "declaration": "zeroPointEmbedding",
+      "start_line": 43,
+      "end_line": 47,
+      "excerpt": "toFun y := ⟨(SectionZeroIdeal.zeroIdeal L s).subschemeι y, zeroPoint_ne_generic L s hs y⟩",
+      "problem": "`zeroPointEmbedding` is a bare `def` of type `I.subscheme ↪ CurvePoint X`. It has no `@[simps]` attribute and no `@[simp]` lemma for its value. As a result, simp has no way to reduce `((zeroPointEmbedding L s hs y : CurvePoint X) : X)` to its intended normal form `(SectionZeroIdeal.zeroIdeal L s).subschemeι y`. All three uses depend on definitional unfolding instead. In `orderAt_finite_support` (line 64, `exact ⟨y, Subtype.ext hy⟩`) and in `divisor_degree_eq_euler_difference` (line 105), `hy : I.subschemeι y = x.1` is accepted as `(zeroPointEmbedding L s hs y).1 = x.1` only by defeq. After `Finset.sum_map`, lines 110–112 end with `rfl`. That `rfl` has to unfold both `orderAt` and `zeroPointEmbedding` to match the summand of `euler_difference_eq_sum_zero_orders`, which is stated directly in terms of `subschemeι y`.",
+      "proposed_change": "Mark the definition with `@[simps apply_coe]`. Mathlib registers `initialize_simps_projections Embedding (toFun → apply)`, so this should generate a coercion-of-apply lemma. Alternatively, add the lemma by hand:\n\n```lean\n@[simp] theorem coe_zeroPointEmbedding_apply (L : LineBundle X) (s : GlobalSections X L.sheaf)\n    (hs : s ≠ 0) (y : (SectionZeroIdeal.zeroIdeal L s).subscheme) :\n    ((zeroPointEmbedding L s hs y : CurvePoint X) : X) =\n      (SectionZeroIdeal.zeroIdeal L s).subschemeι y := rfl\n```\n\nWith either version, the membership steps can be written `Subtype.ext (by simpa using hy)` or `by ext; simp [hy]` without relying on the embedding's internals. A later evaluation lemma for `orderAt` at a coerced point could then be triggered by simp.",
+      "benefit": "It gives `zeroPointEmbedding` the standard evaluation simp lemma that Mathlib provides for embeddings. With it, the coercion of an embedded zero point reaches the same normal form (`subschemeι y`) used by `SectionZeroIdeal.range_subschemeι` and by `euler_difference_eq_sum_zero_orders`. Proofs about the divisor's support then no longer depend on the exact anonymous-constructor body of the definition, and simp can be used in place of `change`/`rfl` defeq steps.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/SectionOrderDivisor.lean",
+          "declaration": "divisor_degree_eq_euler_difference",
+          "excerpt": "exact Finset.mem_map.mpr ⟨y, Finset.mem_univ y, Subtype.ext hy⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/SectionOrderDivisor.lean",
+          "declaration": "orderAt_finite_support",
+          "excerpt": "exact ⟨y, Subtype.ext hy⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/CurveSectionDegree.lean",
+          "declaration": "euler_difference_eq_sum_zero_orders",
+          "excerpt": "(X.presheaf.stalk ((SectionZeroIdeal.zeroIdeal L s).subschemeι y))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Logic/Embedding/Basic.lean",
+          "declaration": "Function.Embedding",
+          "excerpt": "initialize_simps_projections Embedding (toFun → apply)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 23710,
+    "cache_read_input_tokens": 103603,
+    "output_tokens": 5144,
+    "output_tokens_details": {
+      "thinking_tokens": 1931
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23710,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2325,
+        "cache_read_input_tokens": 24425,
+        "cache_creation_input_tokens": 3298,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3298
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3133286,
+  "duration_ms": 48962,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T16:48:09",
+  "unit": "file",
+  "source_sha256": "9f1fc9587fa75c722b5e239c365748e1f23f8fe71072be77ee5e11dd2f715191",
+  "rubric": "simp-interface"
+}

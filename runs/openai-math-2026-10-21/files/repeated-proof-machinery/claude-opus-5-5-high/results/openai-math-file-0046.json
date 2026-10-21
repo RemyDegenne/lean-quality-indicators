@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0046",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, which has two theorems. `exists_preparedFiniteForwardProductiveSource` (lines 266–492) is a thin wrapper: it calls `preparedFiniteForwardSourceSlots_inputs` and then the first theorem. It repeats no reasoning of its own.\n\nThe useful duplication is in `exists_preparedFiniteScheduleProductiveSource`, compared against its sibling proofs:\n- `exists_preparedEmptyLayerFiniteScheduleDirectSource` in PreparedFiniteScheduleLocalScalarConstruction.lean.\n- The local productive-source proof in PreparedFiniteScheduleLocalProductiveSource.lean, lines 368–478.\n- PreparedEmptyLayerFiniteScheduleLocalDirectSource.lean, lines 115–137.\n\nI report two blocks that repeat real nonnegativity reasoning, almost word for word, over budget towers that are let-bound in the same way.\n\nTwo other duplicates were set aside on purpose:\n- The paired `preparedFiniteScheduleGeometryDirectSource` / `preparedFiniteScheduleGeometryModel` branches, and the matching `positiveModerate`/`uniform`/`analytic_capacity` argument triples. These are branch-level argument passing, which the rubric says is not enough.\n- The `scalar`/`hGeometryZero` specialisation at `kModel` (lines 203–236). It appears verbatim in PreparedFiniteScheduleLocalProductiveSource.lean, lines 436–469, but it only transports along `hdegreeZero`, `hCzero` and `hModelSource` with `rw`. That is routine rewriting, not mathematical reasoning.\n\n`hGainMaster` (lines 239–248) has a counterpart at line 473 of the local file. The master terms differ (a sum over all k here, a single k there), so I did not claim a common lemma for it.\n\nRemaining uncertainty: I could not compile anything, so I have not checked that the proposed `let` telescopes unify by `rfl` with every caller's local definitions. The sources suggest they do, because the definitions are syntactically identical.",
+  "findings": [
+    {
+      "declaration": "exists_preparedFiniteScheduleProductiveSource",
+      "start_line": 152,
+      "end_line": 178,
+      "excerpt": "  have hgainDetect (k) : 0 ≤ detectionGain k :=\n    slicedDetectionGainLog_nonneg (degree k) (Cdetect k) _ (hpDetect k) (hpDetect k) (haDetect k)\n  have hkernel (k) : 0 ≤ Pk k := by\n    dsimp only [Pk]\n    rw [scalarKernelLogarithmicBudget_eq]",
+      "problem": "The proof rebuilds the nonnegativity chain for the scheduled budget tower by hand: pDetect, then aDetect, then detectionGain (via `slicedDetectionGainLog_nonneg`), then Pk (via `scalarKernelLogarithmicBudget_eq` and positivity), then the sum of Pk, then Pphysical, then target (via `coefficientErrorSpatialLog_nonneg`). The same chain, over the same let-bound definitions (pDetect, aDetect, detectionGain, Pk, Pphysical, target), appears almost verbatim in `exists_preparedEmptyLayerFiniteScheduleDirectSource` (lines 401–423). It appears a third time, with a per-k Pphysical, in PreparedEmptyLayerFiniteScheduleLocalDirectSource.lean and PreparedFiniteScheduleLocalProductiveSource.lean. The only differences are the kernel type G and the variable count, which is `Fintype.card (LayerSamplerVariables …)` here and `count` there.",
+      "proposed_change": "Add one lemma in PreparedFiniteScheduleLocalScalarConstruction.lean, which the target file imports transitively, stated for any `{G K : Type} [Fintype G] [Fintype K]`, `degree Cdetect : K → ℕ`, `count : ℕ`, `Qstride : ℝ` and `sourceU modelLog : K → ℝ`, with `hsourceU : ∀ k, 0 ≤ sourceU k`, `hmodelLog : ∀ k, 0 ≤ modelLog k` and `hQstride : 0 ≤ Qstride`. Its statement opens the same `let` telescope as the theorems (pDetect := allocatedModelTestLog …, aDetect := 2 * sourceU k + 4 * modelLog k + 7, detectionGain := slicedDetectionGainLog … count …, Pk := scalarKernelLogarithmicBudget (Fin (degree k + 1)) G …, Pphysical := ((m + 2 : ℕ) : ℝ) + nX + count + Qstride + ∑ k, Pk k, target := detectionGain k + 40 + coefficientErrorSpatialLog Pphysical). Its conclusion is `(∀ k, 0 ≤ pDetect k) ∧ (∀ k, 0 ≤ aDetect k) ∧ (∀ k, 0 ≤ detectionGain k) ∧ (∀ k, 0 ≤ Pk k) ∧ 0 ≤ Pphysical ∧ (nX : ℝ) ≤ Pphysical ∧ ∀ k, 0 ≤ target k`. The proof is the existing lines 152–178, moved over unchanged. Here, lines 152–178 become `obtain ⟨hpDetect, haDetect, hgainDetect, hkernel, hphysical, hphysicalX, htarget⟩ := <lemma> (G := EnlargedPreparedCommonKernel m (modularInitialBlockCount m (nX + m * M))) degree Cdetect (Fintype.card (LayerSamplerVariables …)) Qstride sourceU modelLog hsourceU hmodelLog hQstride`. In `exists_preparedEmptyLayerFiniteScheduleDirectSource`, lines 401–423 become the same `obtain` with `(G := G) degree Cdetect count Qstride sourceU modelLog hsourceU hmodelLog hQstride`, ignoring the `hphysicalX` component. Both callers already have exactly these hypotheses in scope.",
+      "benefit": "The budget-positivity argument lives in one place instead of two (plus near-copies). Any change to `allocatedModelTestLog`, `scalarKernelLogarithmicBudget` or the Pphysical formula then needs only one proof update. Each top-level proof also loses about 25 lines of bookkeeping, so the geometric steps that follow are easier to see.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedFiniteScheduleLocalScalarConstruction.lean",
+          "declaration": "exists_preparedEmptyLayerFiniteScheduleDirectSource",
+          "excerpt": "  have hkernel (k) : 0 ≤ Pk k := by\n    dsimp only [Pk]\n    rw [scalarKernelLogarithmicBudget_eq]\n    have := hgain k\n    have := hpDetect k\n    positivity\n  have hkernelSum : 0 ≤ ∑ k, Pk k := Finset.sum_nonneg (fun k _ => hkernel k)\n  have hphysical : 0 ≤ Pphysical := by\n    dsimp only [Pphysical]\n    positivity"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedFiniteScheduleLocalScalarConstruction.lean",
+          "declaration": "exists_preparedEmptyLayerFiniteScheduleDirectSource",
+          "excerpt": "    let Pphysical : ℝ := ((m + 2 : ℕ) : ℝ) + nX + count + Qstride + ∑ k, Pk k\n    let target := fun k => detectionGain k + 40 + coefficientErrorSpatialLog Pphysical"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedEmptyLayerFiniteScheduleLocalDirectSource.lean",
+          "declaration": "(local direct source theorem, lines 115–137)",
+          "excerpt": "  have hgain (k) : 0 ≤ detectionGain k :=\n    slicedDetectionGainLog_nonneg (degree k) (Cdetect k) count\n      (hpDetect k) (hpDetect k) (haDetect k)"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_preparedFiniteScheduleProductiveSource",
+      "start_line": 188,
+      "end_line": 197,
+      "excerpt": "  have hLengths (s) : 0 ≤ lengthLogs s :=\n    (allocatedAffineLengthLog_bounds m hD hPscale (hlogs s).2.2.1 (hlogs s).2.1\n      (htarget s) (hF s) (hTmod s)).2.2.1",
+      "problem": "After the geometry step, the proof shows that the seed scale `Pseed = allocatedScaleLog (Pscale + ∑ s, lengthLogs s + Pmin + 1)` is nonnegative. It goes through hF, hTmod (0 ≤ ((m+1:ℕ):ℝ) * Pk s + nX * Qstride), hLengths via `allocatedAffineLengthLog_bounds`, and a nested `add_nonneg` chain closed by `allocatedScaleLog_nonneg`. The same ten lines are repeated character for character in PreparedFiniteScheduleLocalProductiveSource.lean, lines 396–405, over the same definitions of Tmod, lengthLogs and Pseed.",
+      "proposed_change": "Factor this out as `allocatedSeedScaleLog_nonneg (m nX : ℕ) {K : Type} [Fintype K] {D Pscale Qstride Pmin : ℝ} {Prho Pk target pDetect : K → ℝ} (hD : 0 ≤ D) (hPscale : 0 ≤ Pscale) (hr : ∀ s, 0 ≤ Prho s) (hk : ∀ s, 0 ≤ Pk s) (ht : ∀ s, 0 ≤ target s) (hd : ∀ s, 0 ≤ pDetect s) (hQstride : 0 ≤ Qstride) (hPmin : 0 ≤ Pmin) : 0 ≤ allocatedScaleLog (Pscale + ∑ s, allocatedAffineLengthLog m D Pscale (Prho s) (Pk s) (target s) (pDetect s + 2) (((m + 1 : ℕ) : ℝ) * Pk s + nX * Qstride) + Pmin + 1)`. The proof is the current hF/hTmod/hLengths/hPseed lines, with `(hlogs s).2.2.1` and `(hlogs s).2.1` replaced by `hr s` and `hk s`. In both files, lines 188–197 (here) and 396–405 (there) become `have hPseed : 0 ≤ Pseed := allocatedSeedScaleLog_nonneg m nX hD hPscale (fun s => (hlogs s).2.2.1) (fun s => (hlogs s).2.1) htarget hpDetect hQstride hPmin`. Every one of those hypotheses is already in scope in both proofs, from the `obtain` of `exists_preparedFiniteScheduleGeometry` and the earlier positivity facts.",
+      "benefit": "The lemma names the seed-scale positivity argument once, next to `allocatedAffineLengthLog_bounds`, so its dependence on the length-log envelope is explicit. It removes a verbatim copy from two large proofs. A future change to how `Pseed` is assembled, such as an extra summand, would need only one update.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedFiniteScheduleLocalProductiveSource.lean",
+          "declaration": "(local productive source theorem, lines 396–405)",
+          "excerpt": "  have hPseed : 0 ≤ Pseed := allocatedScaleLog_nonneg\n    (add_nonneg (add_nonneg (add_nonneg hPscale (Finset.sum_nonneg (fun s _ => hLengths s))) hPmin)\n      (by norm_num))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/PreparedFiniteScheduleLocalProductiveSource.lean",
+          "declaration": "(local productive source theorem, lines 396–405)",
+          "excerpt": "  have hTmod (s) : 0 ≤ Tmod s :=\n    add_nonneg (mul_nonneg (Nat.cast_nonneg _) (hlogs s).2.1)\n      (mul_nonneg (Nat.cast_nonneg _) hQstride)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Lattices/AllocatedAffineScaleEnvelope.lean",
+          "declaration": "allocatedAffineLengthLog_bounds",
+          "excerpt": "    (hD : 0 ≤ D) (hP : 0 ≤ P) (hr : 0 ≤ Prho) (hk : 0 ≤ Pk)\n    (ht : 0 ≤ target) (hF : 0 ≤ F) (hT : 0 ≤ T) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 52566,
+    "cache_read_input_tokens": 242848,
+    "output_tokens": 9502,
+    "output_tokens_details": {
+      "thinking_tokens": 3002
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 52566,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4902,
+        "cache_read_input_tokens": 53001,
+        "cache_creation_input_tokens": 3494,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3494
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.6591936,
+  "duration_ms": 88655,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T13:14:44",
+  "unit": "file",
+  "source_sha256": "ff6eb8b2a9db165a960edf22176da67348105d429d0b22a24cb3da76cc92b325",
+  "rubric": "repeated-proof-machinery"
+}

@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0092",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole proof of `exists_two_normalized_annular_equal_leaf_returns` (lines 22–89). I also read the statement of `exists_annular_return_with_equal_leaves` in LeafReturnCovariance.lean, to confirm `hlo b : ρ * r b < |t b|` and `hhi b : |t b| ≤ r b`. In Mathlib I checked `right_ne_zero_of_mul` (GroupWithZero/Basic), `pos_of_gt` (the additive version of `one_lt_of_gt` in Algebra/Order/IsBotOne.lean, used widely in Mathlib) and `mul_left_comm`. The file already uses `mul_lt_mul_of_pos_left`, `mul_le_mul_of_nonneg_left` and `abs_of_pos` in the same way the replacements do.\n\nI looked at three other spots and did not flag them:\n- `hr`: the `split_ifs` there is reasonable, because `positivity` cannot see `1 ≤ C`.\n- `hzero`/`hone`: these are simple specialisations.\n- `let := hloc`: this makes the locally-finite instance available for `measure_lt_top`, so it is needed.\n\nUncertainty: I could not compile anything. For the `hmass` term, `r b` has to unfold definitionally to the `if … / κ` form in `hsmall b`. That is the same check the original `change` relies on. For `hnorm`, the `rw [mul_left_comm]` is expected to hit only `ρ * (κ * r b)` after the earlier rewrites, but I did not verify this by running Lean.",
+  "findings": [
+    {
+      "declaration": "exists_two_normalized_annular_equal_leaf_returns",
+      "start_line": 58,
+      "end_line": 65,
+      "excerpt": "    intro he\n    have h := hsmall b\n    change intrinsicRootLeaf hij μ x (Metric.closedBall 0 (ρ * r b)) <\n      a * intrinsicRootLeaf hij μ x (Metric.closedBall 0 (r b)) at h\n    rw [he, mul_zero] at h\n    exact (not_lt_of_ge (bot_le : (0 : ℝ≥0∞) ≤ _) h)",
+      "problem": "The `hmass` step proves that the ball mass is nonzero by contradiction. It restates `hsmall b` in full with `change` (four lines), rewrites the mass to zero, and then rules out `_ < 0` using `bot_le` with a type ascription. The actual reason is short: `hsmall b` says something is strictly less than `a * mass`. So `a * mass` is positive, which makes `mass` nonzero.",
+      "proposed_change": "have hmass (b : Fin 2) :\n    intrinsicRootLeaf hij μ x (Metric.closedBall 0 (r b)) ≠ 0 :=\n  right_ne_zero_of_mul (pos_of_gt (hsmall b)).ne'",
+      "benefit": "The proof states the argument directly: the right-hand side of a strict inequality is positive, and a product that is nonzero has a nonzero right factor. It removes the restated hypothesis, the contradiction set-up and the `bot_le` type ascription, and both lemma names describe what they do.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/GroupWithZero/Basic.lean",
+          "declaration": "right_ne_zero_of_mul",
+          "excerpt": "theorem right_ne_zero_of_mul : a * b ≠ 0 → b ≠ 0 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/IsBotOne.lean",
+          "declaration": "one_lt_of_gt",
+          "excerpt": "theorem one_lt_of_gt (h : a < b) : 1 < b :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Combinatorics/Additive/AP/Three/Behrend.lean",
+          "declaration": "(usage of pos_of_gt)",
+          "excerpt": "h.resolve_right (pos_of_gt (hx₁ 0)).ne'"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_two_normalized_annular_equal_leaf_returns",
+      "start_line": 74,
+      "end_line": 83,
+      "excerpt": "    have hl := mul_lt_mul_of_pos_left (hlo b) hκ\n    have hu := mul_le_mul_of_nonneg_left (hhi b) hκ.le\n    rw [abs_mul, abs_of_pos hκ]\n    constructor\n    · have hp := congrArg (fun u : ℝ => ρ * u) (hκr b)\n      nlinarith\n    · linarith [hκr b]",
+      "problem": "The `hnorm` step computes the two monotonicity facts `hl` and `hu` it needs. It then builds an extra `congrArg` equation and calls `nlinarith` and `linarith` to finish. The only missing piece is rewriting the target with `κ * r b` (from `hκr`) and reordering a product. After that, the goals are exactly `hl` and `hu`, so the arithmetic tactics hide a direct calculation.",
+      "proposed_change": "have hnorm (b : Fin 2) :\n    ρ * (if b = 0 then 1 else C) < |κ * t b| ∧\n      |κ * t b| ≤ (if b = 0 then 1 else C) := by\n  rw [← hκr b, abs_mul, abs_of_pos hκ, mul_left_comm]\n  exact ⟨mul_lt_mul_of_pos_left (hlo b) hκ, mul_le_mul_of_nonneg_left (hhi b) hκ.le⟩",
+      "benefit": "The scaling argument becomes explicit. Writing the endpoints as `κ * r b` and multiplying the annulus bounds `ρ * r b < |t b| ≤ r b` by `κ > 0` gives the result. The helper `hp` and the two arithmetic tactic calls go away, and the reader can see which monotonicity lemma proves each conjunct.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/LeafReturnCovariance.lean",
+          "declaration": "exists_annular_return_with_equal_leaves",
+          "excerpt": "∃ t : ℝ, ρ * r < |t| ∧ |t| ≤ r ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/TwoAnnularEqualReturns.lean",
+          "declaration": "exists_two_normalized_annular_equal_leaf_returns",
+          "excerpt": "have hκr (b : Fin 2) : κ * r b = if b = 0 then 1 else C := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Group/Basic.lean",
+          "declaration": "mul_left_comm",
+          "excerpt": "theorem mul_left_comm (a b c : G) : a * (b * c) = b * (a * c) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 19400,
+    "cache_read_input_tokens": 175589,
+    "output_tokens": 8462,
+    "output_tokens_details": {
+      "thinking_tokens": 3780
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19400,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3785,
+        "cache_read_input_tokens": 22126,
+        "cache_creation_input_tokens": 1317,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1317
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3596378,
+  "duration_ms": 109862,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T17:03:06",
+  "unit": "file",
+  "source_sha256": "b5eab71d81ca85e08cf78c3b5c8526b2885286b8969d91dc14d4a5bac9b11cb3",
+  "rubric": "readable-proof-simplification"
+}

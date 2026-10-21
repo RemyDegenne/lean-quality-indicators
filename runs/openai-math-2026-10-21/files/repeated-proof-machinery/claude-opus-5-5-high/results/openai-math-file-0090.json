@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0090",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (64 lines, one theorem: `eventually_boundary_weighted_scale`). Because the file has only one proof, I looked for repeated reasoning in other files. I grepped the Ostmann tree for `isLittleO_log_rpow_rpow_atTop` and for `norm_num only [Real.rpow_ofNat]`, and read UpperWindow.lean, NumericKernelPopulationsGrowth.lean, FixedShiftInitialSegment.lean, ResidueBudgetScale.lean and BoundaryCoverageWeightScale.lean.\n\nThe same step appears in three proofs: the target, `eventually_initial_window_scale` and `eventually_numericKernel_population_budget`. Each turns Mathlib's little-o statement `log^k = o(x^ε)` into the explicit eventual inequality `log x ^ k ≤ c * x ^ ε`. Each does this by hand: take `.bound`, normalise the rpow exponent with `norm_num only [Real.rpow_ofNat]`, then remove both norms with `Real.norm_eq_abs` and `abs_of_nonneg`.\n\nFixedShiftInitialSegment and ResidueBudgetScale do a similar but not identical normalisation (they use `Real.rpow_natCast` and a `simp only`). The proposed helper would cover them too, but I did not use them as the main evidence. Once the bound is in hand, the target and UpperWindow both multiply it by a power of X, combine exponents and apply `le_div_iff₀`. Those steps differ in their constants and exponents, so I did not count them as duplication.\n\nTwo things remain uncertain. I did not confirm that the target transitively imports UpperWindow.lean, so I suggest putting the helper in a small new Preliminaries file that imports only `Mathlib.Analysis.SpecialFunctions.Pow.Asymptotics`. I cannot run Lean, so the proposed helper and rewrites have not been compiled.",
+  "findings": [
+    {
+      "declaration": "eventually_boundary_weighted_scale",
+      "start_line": 17,
+      "end_line": 25,
+      "excerpt": "  norm_num only [Real.rpow_ofNat] at hsmall\n  rw [Real.norm_eq_abs,Real.norm_eq_abs,abs_of_nonneg (pow_nonneg hl.le 5),\n    abs_of_nonneg (Real.rpow_nonneg hp.le _)] at hsmall",
+      "problem": "Lines 17–25 rebuild by hand the explicit eventual bound `log X ^ 5 ≤ c * X ^ ε` from `isLittleO_log_rpow_rpow_atTop`. The steps are: `.bound`, push along `Nat.cast`, `norm_num only [Real.rpow_ofNat]`, then two `Real.norm_eq_abs` rewrites and two `abs_of_nonneg` rewrites. The same block appears almost verbatim in `Ostmann.Preliminaries.eventually_initial_window_scale` (UpperWindow.lean, lines 65–74). The same normalisation also appears in `Ostmann.QuadraticCenter.eventually_numericKernel_population_budget` (NumericKernelPopulationsGrowth.lean, lines 41 and 49–53), with exponent 3. In each case the proof only needs the plain inequality; the norm clean-up is unrelated to the actual argument.",
+      "proposed_change": "Add one shared lemma in a small Preliminaries file that imports `Mathlib.Analysis.SpecialFunctions.Pow.Asymptotics`. It must be a new file because I could not confirm that the target transitively imports UpperWindow.lean.\n\n```lean\ntheorem eventually_log_pow_le_mul_rpow (k : ℕ) {ε c : ℝ} (hε : 0 < ε) (hc : 0 < c) :\n    ∀ᶠ x : ℝ in atTop, Real.log x ^ k ≤ c * x ^ ε := by\n  filter_upwards [(isLittleO_log_rpow_rpow_atTop (k : ℝ) hε).bound hc,\n    eventually_ge_atTop (1 : ℝ)] with x hx hx1\n  rw [Real.rpow_natCast, Real.norm_eq_abs, Real.norm_eq_abs,\n    abs_of_nonneg (pow_nonneg (Real.log_nonneg hx1) k),\n    abs_of_nonneg (Real.rpow_nonneg (by linarith) ε)] at hx\n  exact hx\n```\n\nIn the target, replace lines 17–18 and 23–25 with:\n\n```lean\n  have hsmall := tendsto_natCast_atTop_atTop.eventually\n    (eventually_log_pow_le_mul_rpow 5 (by norm_num : (0:ℝ) < 3/100)\n      (show 0 < η/(2*C^2) by positivity))\n```\n\nKeep `filter_upwards [hcount, hsmall, eventually_ge_atTop 2]`; the separate `hnat` is then no longer needed. `hsmall` now has type `Real.log (X:ℝ)^5 ≤ η/(2*C^2) * (X:ℝ)^(3/100:ℝ)`. That is the form `hs`/`hfinal` already use, so the rest of the proof stays the same.\n\nIn `eventually_initial_window_scale`, use `hnat.eventually (eventually_log_pow_le_mul_rpow 5 (show (0:ℝ) < 1/20 by norm_num) he)` and delete lines 71–74. `hxr` and `hl` are still used later in that proof.\n\nIn `eventually_numericKernel_population_budget`, filter on `eventually_log_pow_le_mul_rpow 3 (by linarith : 0 < η/10) hc` and bind its result directly as `hlogpow`, replacing lines 49–53.",
+      "benefit": "Each proof would start from the inequality it actually uses (`log X ^ k ≤ c·X^ε`), not from norm-and-cast clean-up. That removes about five lines of fragile rewriting per use. The degenerate range x < 1, where `log x` can be negative, is handled once inside the helper by `eventually_ge_atTop 1`. If a Mathlib rename changes how `isLittleO`/rpow normalises (for example `Real.rpow_ofNat` vs `Real.rpow_natCast`), only one place needs fixing. The helper is also directly reusable at the other `isLittleO_log_rpow_rpow_atTop` call sites in the Ostmann tree.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Preliminaries/UpperWindow.lean",
+          "declaration": "Ostmann.Preliminaries.eventually_initial_window_scale",
+          "excerpt": "  norm_num only [Real.rpow_ofNat] at hsmall\n  rw [Real.norm_eq_abs, Real.norm_eq_abs,\n    abs_of_nonneg (pow_nonneg hl.le 5),\n    abs_of_nonneg (Real.rpow_nonneg hxr.le _)] at hsmall"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Preliminaries/UpperWindow.lean",
+          "declaration": "Ostmann.Preliminaries.eventually_initial_window_scale",
+          "excerpt": "  have hsmall := (isLittleO_log_rpow_rpow_atTop (5 : ℝ)\n    (show (0 : ℝ) < 1 / 20 by norm_num)).bound he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/QuadraticCenter/NumericKernelPopulationsGrowth.lean",
+          "declaration": "Ostmann.QuadraticCenter.eventually_numericKernel_population_budget",
+          "excerpt": "  have hlogpow : (Real.log X)^3 ≤ c*X^(η/10) := by\n    norm_num only [Real.rpow_ofNat] at hlog\n    simp only [Real.norm_eq_abs, abs_of_nonneg (pow_nonneg hlogp.le 3),\n      abs_of_nonneg (Real.rpow_nonneg hXp.le (η/10))] at hlog"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Preliminaries/FixedShiftInitialSegment.lean",
+          "declaration": "Ostmann.sqrt_log_power_initial_small",
+          "excerpt": "  rw [Real.rpow_natCast, ← Real.sqrt_eq_rpow, Real.norm_eq_abs, Real.norm_eq_abs,\n    abs_of_nonneg hp, abs_of_nonneg (Real.sqrt_nonneg x)] at hx"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 25273,
+    "cache_read_input_tokens": 142389,
+    "output_tokens": 7304,
+    "output_tokens_details": {
+      "thinking_tokens": 2347
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25273,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4392,
+        "cache_read_input_tokens": 28596,
+        "cache_creation_input_tokens": 606,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 606
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3768057999999999,
+  "duration_ms": 60919,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-21T16:52:36",
+  "unit": "file",
+  "source_sha256": "d236332d15e7d03f6e26df3b395acb38ee0761a75e879b81971ec39515716d4a",
+  "rubric": "repeated-proof-machinery"
+}

@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0058",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 118 lines of the target file. I also read its one downstream user, WeightedMetricChains.lean, and the definition of `compactWeightedNorm` in CompactWordCost.lean. I checked how `dist_one_groupDifference` is used across the repo and how Mathlib defines `MetricSpace.ofDistTopology`. For comparison I used Mathlib's `CompleteCopy.dist_eq`, the usual `rfl` lemma that unfolds a custom metric built with `ofDistTopology`.\n\nThe main simp-interface gap: `weightedGroupMetric` is a `def` that creates a non-default metric, but nothing states what its `dist` equals. Every proof that uses it falls back on `change`. There are two such places in this file, and one of them must name the ambient metric's instance explicitly with `@` (lines 77–78). Two more are in WeightedMetricChains.lean (lines 44 and 49).\n\nA second pattern I noticed: the symmetry `N (x⁻¹ * y) = N (y⁻¹ * x)` is proved inline twice (lines 63 and 110–111). It could be a named lemma, but it must not be tagged simp, because a symmetric rewrite like this can loop. That makes it a lemma-factoring point rather than a simp-attribute point, so I only mention it inside the finding.\n\nThe other simp calls are `simp only` / `simpa only` with group-normalisation lemmas, or the repo lemma `dist_one_groupDifference`. Those look appropriate. Uncertainty: I couldn't run Lean, so I haven't checked that a simp lemma whose left side is the `letI`-instance `dist` actually fires through `simp` in the downstream proofs. Its proof should be `rfl`, since the existing `change` steps already rely on that definitional equality.",
+  "findings": [
+    {
+      "declaration": "weightedGroupMetric (with uses in weightedGroupMetric_isometric and weightedGroupMetric_proper)",
+      "start_line": 59,
+      "end_line": 112,
+      "excerpt": "  change @compactWeightedNorm G _ m₀ _ K hK hbounded hsymm ((g * x)⁻¹ * (g * y)) =\n    @compactWeightedNorm G _ m₀ _ K hK hbounded hsymm (x⁻¹ * y)",
+      "problem": "`weightedGroupMetric` puts a second metric on `G`, built with `MetricSpace.ofDistTopology (fun x y => N (x⁻¹ * y))`. The file has no lemma saying what `dist` equals under this metric. So when a goal contains `dist x y` with this metric active, neither `simp` nor `rw` can turn it into its normal form `N (x⁻¹ * y)`. Every proof has to restate the goal with `change` instead.\n\nIn `weightedGroupMetric_isometric` (lines 73–78), the proof binds the old metric as `m₀` and then writes out `@compactWeightedNorm G _ m₀ _ …` by hand. The norm's `[MetricSpace G]` argument has to stay the original metric, not the new one. This is exactly the instance bookkeeping that a lemma stated once, outside the `letI`, would handle.\n\n`weightedGroupMetric_proper` does the same thing at line 109 (`change n₀ (y⁻¹ * x) ≤ R at hy`). The downstream `weightedMetricChains` repeats it twice: `change (l.length : ℝ) ≤ (4 / δ) * n₀ (x⁻¹ * y) + …` and `change n₀ ((x * P.wordProd (l.take i))⁻¹ * …) ≤ 1`.",
+      "proposed_change": "Add a `rfl` lemma right after the definition, stated with the original metric in the ambient context. For example:\n\n```lean\n@[simp] theorem weightedGroupMetric_dist (x y : G) :\n    @dist G (weightedGroupMetric K hK hsymm hbounded δ hδ hball).toDist x y =\n      compactWeightedNorm K hK hbounded hsymm (x⁻¹ * y) := rfl\n```\n\n(It may need to be spelled via `PseudoMetricSpace.toDist`, matching how the `letI` instance elaborates.)\n\nThen replace the `change` steps:\n- `weightedGroupMetric_isometric`: `simp only [weightedGroupMetric_dist, mul_inv_rev, mul_assoc, inv_mul_cancel_left]`. The `m₀` binding and the explicit `@` terms can go.\n- `weightedGroupMetric_proper`: `rw [mem_closedBall, weightedGroupMetric_dist] at hy`.\n- WeightedMetricChains.lean: use the same rewrite at lines 44 and 49.\n\nOptionally, also add a plain (non-simp) lemma `compactWeightedNorm (x⁻¹ * y) = compactWeightedNorm (y⁻¹ * x)`. That would cover the symmetry argument now proved inline at lines 63 and 110–111. It should not get `@[simp]`, because a symmetric rewrite like this can loop.",
+      "benefit": "There would be one named, canonical way to unfold the weighted distance into its norm form. Proofs would no longer have to restate goals with hand-written instance arguments, which break easily if the definition's arguments or the ambient instances change. Users in this file and in WeightedMetricChains.lean could just call `simp`/`rw`. This follows Mathlib's convention of giving a custom `ofDistTopology` metric a `dist_eq` lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Geometry/WeightedMetricChains.lean",
+          "declaration": "weightedMetricChains",
+          "excerpt": "    change n₀ ((x * P.wordProd (l.take i))⁻¹ * (x * P.wordProd (l.take (i + 1)))) ≤ 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Geometry/WeightedMetricChains.lean",
+          "declaration": "weightedMetricChains",
+          "excerpt": "  · change (l.length : ℝ) ≤ (4 / δ) * n₀ (x⁻¹ * y) + ((4 / δ) + 1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/PolycyclicRecognition/Geometry/WeightedChainMetric.lean",
+          "declaration": "weightedGroupMetric_proper",
+          "excerpt": "  change n₀ (y⁻¹ * x) ≤ R at hy"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/MetricSpace/Polish.lean",
+          "declaration": "TopologicalSpace.Opens.CompleteCopy.dist_eq",
+          "excerpt": "theorem dist_eq (x y : CompleteCopy s) :\n    dist x y = dist x.1 y.1 + abs (1 / infDist x.1 sᶜ - 1 / infDist y.1 sᶜ) :=\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/MetricSpace/Polish.lean",
+          "declaration": "TopologicalSpace.Opens.CompleteCopy.instMetricSpace",
+          "excerpt": "  · simp only [dist_eq, dist_self, one_div, sub_self, abs_zero, add_zero]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 22348,
+    "cache_read_input_tokens": 97798,
+    "output_tokens": 4921,
+    "output_tokens_details": {
+      "thinking_tokens": 973
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22348,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3004,
+        "cache_read_input_tokens": 24905,
+        "cache_creation_input_tokens": 1456,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1456
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2968116,
+  "duration_ms": 45671,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T14:16:46",
+  "unit": "file",
+  "source_sha256": "1339637bf9a7cb4999a3843331254ac26171bab4399c158fd85be6aa0ad5de8f",
+  "rubric": "simp-interface"
+}

@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0026",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 172 lines of the target and checked how each declaration is used across lean/OAI. I also read the Mathlib lemmas the proofs rely on: `Matrix.mul_eq_one_comm_of_equiv` (Data/Matrix/Mul.lean), `fromRows_mul_fromCols`, `fromCols_mul_fromRows`, `transpose_fromCols` and `fromCols_mul_fromRows_eq_one_comm` (Data/Matrix/ColumnRowPartitioned.lean), and `fromBlocks_one` (Data/Matrix/Block.lean). None of these need the index types to be `Fin`. They only need `Fintype` and `DecidableEq` plus an equivalence.\n\nThe one finding is that `cavity_complement_projection` fixes its row index to `Fin (k + n)`. Because of this, the project already has a copy, `cavity_complement_projection_reindex` in CavitySpecialPythagoras.lean, which repeats the proof and changes only the equivalence. That copy is used three times (CavitySpecialPythagoras, CavityPhysicalEnergy, CavityCompressionLimitGeometry).\n\nOther candidates I looked at and did not report:\n- `cavityGroupLift` and its lemmas, `cavitySpectralSupport_crossGram`, `cavitySpectralSupport_eigen` and `cavitySpectralProjectors_sum` could take general index types or a general semiring instead of `Fin`/ℝ. But every use in the project is over ℝ with `Fin` indices, and I found no duplicated variants, so I judged these possible but not practically useful.\n- `cavityRetainedFrame_exists` and `cavityNormalizeFrame_spectral_support` depend on project-specific ℝ definitions (`cavitySpectralImage`, `cavityNormalizeFrame`, `PosDef`), so changing the scalar type is out of scope.\n\nI could not compile anything, so the proposed statement and proof are untested.",
+  "findings": [
+    {
+      "declaration": "cavity_complement_projection",
+      "start_line": 60,
+      "end_line": 73,
+      "excerpt": "lemma cavity_complement_projection {k n : ℕ}\n    (B : Matrix (Fin (k + n)) (Fin k) ℝ) (Y : Matrix (Fin (k + n)) (Fin n) ℝ)",
+      "problem": "The lemma says that two orthonormal column blocks with orthogonal ranges that together fill a square give a complete resolution of the identity: B Bᵀ + Y Yᵀ = 1. The proof only uses `Matrix.mul_eq_one_comm_of_equiv` with the equivalence `finSumFinEquiv : Fin k ⊕ Fin n ≃ Fin (k + n)`. Nothing in it needs the row index to be literally `Fin (k + n)` or the column indices to be `Fin k` and `Fin n`. Because the row type is fixed, a caller whose rows are `Fin s` with `s = d + n` only propositionally cannot use the lemma. The project has therefore written a near-verbatim copy, `cavity_complement_projection_reindex` in CavitySpecialPythagoras.lean. It repeats the same `fromCols`/`fromBlocks_one`/`mul_eq_one_comm_of_equiv` argument and differs only in the equivalence `finSumFinEquiv.trans e.symm`, and three files depend on it.",
+      "proposed_change": "Make the statement depend on an equivalence over arbitrary finite index types:\n\nlemma cavity_complement_projection {ι κ μ : Type*} [Fintype ι] [DecidableEq ι] [Fintype κ] [DecidableEq κ] [Fintype μ] [DecidableEq μ]\n    (e : κ ⊕ μ ≃ ι) (B : Matrix ι κ ℝ) (Y : Matrix ι μ ℝ)\n    (hB : B.transpose * B = 1) (hY : Y.transpose * Y = 1)\n    (hYB : Y.transpose * B = 0) :\n    B * B.transpose + Y * Y.transpose = 1\n\nThe proof is the existing one with `(Matrix.mul_eq_one_comm_of_equiv e).mp hQ` in place of the `finSumFinEquiv` instance. `transpose_fromCols`, `fromRows_mul_fromCols`, `fromBlocks_one` and `fromCols_mul_fromRows` already work for general `Fintype`/`DecidableEq` indices. Alternatively, apply Mathlib's `Matrix.fromCols_mul_fromRows_eq_one_comm e.symm` directly. Callers would change as follows:\n- line 131 becomes `cavity_complement_projection finSumFinEquiv B Y hB hY hYB`;\n- `cavity_complement_projection_reindex e B T hB hT hBT` becomes `cavity_complement_projection (finSumFinEquiv.trans e.symm) B T hB hT hTB`, where `hTB` is obtained by transposing `hBT`, as that proof already does.\n\nThe ℝ scalar could also become any `CommRing`, as in `fromCols_mul_fromRows_eq_one_comm`, but that is optional. Degenerate cases k = 0, n = 0 and empty index types are covered, because the equivalence handles them uniformly.",
+      "benefit": "One lemma would cover both the definitional `Fin (k + n)` case and the reindexed `Fin s ≃ Fin (d + n)` case, so the duplicate `cavity_complement_projection_reindex` could be deleted or made a one-line corollary. Future callers with other index types, such as subtypes of spectral groups as used by `cavityGroupLift`, could apply it directly instead of writing another copy.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavitySpecialPythagoras.lean",
+          "declaration": "cavity_complement_projection_reindex",
+          "excerpt": "have h := (Matrix.mul_eq_one_comm_of_equiv\n    ((finSumFinEquiv : Fin d ⊕ Fin n ≃ Fin (d + n)).trans e.symm)).mp hQ"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Matrix/Mul.lean",
+          "declaration": "Matrix.mul_eq_one_comm_of_equiv",
+          "excerpt": "theorem mul_eq_one_comm_of_equiv [IsStablyFiniteRing R] {A : Matrix m n R} {B : Matrix n m R}\n    (e : m ≃ n) : A * B = 1 ↔ B * A = 1 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Matrix/ColumnRowPartitioned.lean",
+          "declaration": "Matrix.fromCols_mul_fromRows_eq_one_comm",
+          "excerpt": "(e : n ≃ n₁ ⊕ n₂)\n    (A₁ : Matrix n n₁ R) (A₂ : Matrix n n₂ R) (B₁ : Matrix n₁ n R) (B₂ : Matrix n₂ n R) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Matrix/ColumnRowPartitioned.lean",
+          "declaration": "Matrix.fromRows_mul_fromCols",
+          "excerpt": "lemma fromRows_mul_fromCols [Fintype n] (A₁ : Matrix m₁ n R) (A₂ : Matrix m₂ n R)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 24505,
+    "cache_read_input_tokens": 110979,
+    "output_tokens": 5556,
+    "output_tokens_details": {
+      "thinking_tokens": 1561
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24505,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3437,
+        "cache_read_input_tokens": 27471,
+        "cache_creation_input_tokens": 1058,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1058
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3294038,
+  "duration_ms": 79080,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T11:33:46",
+  "unit": "file",
+  "source_sha256": "78dba352c1acb1853a17cf76ba39dbe99171f5dfe12d970dd71c827593e80b41",
+  "rubric": "statement-generality"
+}

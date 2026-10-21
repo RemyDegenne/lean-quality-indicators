@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0063",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–61). It contains a single theorem, `moving_windowed_integer_comparison`. I compared its proof with `PublishedProgressionInput.moving_windowed_prime_comparison` in the imported file MovingCompleteCells.lean (lines 64–86). Lines 35–57 of the target repeat that proof's lines 64–86 nearly character for character. The only difference is the final lemma applied (`moving_supported_integer_comparison` instead of `P.moving_supported_prime_comparison`) and its analytic arguments.\n\nI checked several definitions and lemmas to confirm what the repeated block actually depends on:\n- `movingCompleteRootCuts` (a union of the prime cuts and the window cuts)\n- `movingPrimeRootCuts` (a union of the top cuts and `polynomialRootCuts` over derivative roots)\n- the signatures of `moving_supported_integer_comparison` and `moving_supported_prime_comparison`, which take the same root and weight hypotheses\n- `movingWindowedSpectatorWeight_norm` and `movingWindowedSpectatorWeight_cells`\n\nThe repeated part has three pieces:\n1. A three-way coverage statement for the nested root-cut union. Both proofs depend on the internal union nesting of `movingPrimeRootCuts`.\n2. The fact that the windowed spectator weight is constant on residue/root cells of the complete cuts under arithmetic support. This goes through `ArithmeticSupport.integral` and the window-cut inclusion.\n3. Nonnegativity of the bound C.\n\nThe `pow_nonneg (hB i hi)` nonnegativity pattern also appears in MovingIntegerCells.lean and MovingSpectatorCells.lean, but those are less clearly the same block.\n\nUncertainty: each individual piece is short. Whether this clears the rubric's \"nontrivial\" bar is debatable. I report it because the whole 23-line reduction from the windowed spectator to the supported comparison is copied as a unit, and it depends on the representation of a definition. I have not compiled the proposed replacement. In particular, the `_` for the root set should unify with the `let roots` in the statement, but I have not checked this.",
+  "findings": [
+    {
+      "declaration": "moving_windowed_integer_comparison",
+      "start_line": 35,
+      "end_line": 57,
+      "excerpt": "    exact Finset.mem_union_left _ (Finset.mem_union_right _ (Finset.mem_biUnion.mpr\n      ⟨i, Finset.mem_univ _, Multiset.mem_toFinset.mpr hr⟩))",
+      "problem": "The entire proof repeats the proof of `PublishedProgressionInput.moving_windowed_prime_comparison` (MovingCompleteCells.lean, lines 64–86). The copied parts are:\n- the `let roots`\n- the three root-coverage facts `hrootA`, `hrootW` and `hroots`; `hroots` reaches inside the nested union/biUnion structure of `movingCompleteRootCuts` and `movingPrimeRootCuts`\n- the nonnegativity proof `hC`\n- the cell-constancy lambda that turns `ArithmeticSupport` into `Integral` and calls `movingWindowedSpectatorWeight_cells` with the window-cut inclusion\n\nOnly the final supported-comparison lemma differs. Together, these copied pieces are the reduction from \"windowed spectator coefficient\" to \"bounded weight that is constant on complete cells\". That reduction is written out twice, and both copies depend on how `movingCompleteRootCuts` is laid out internally.",
+      "proposed_change": "Add to MovingCompleteCells.lean, next to `movingCompleteRootCuts`. That file is already imported by the target, so the lemmas would be available to both proofs.\n\n(1) `theorem movingCompleteRootCuts_cover ... (W : Fin k → ClippedPolynomialFactor) (X lo hi : ℝ) : movingTopRootCuts value hvalue childBound pivotBound T hf XR ⊆ movingCompleteRootCuts value hvalue childBound pivotBound T hf XR W X lo hi ∧ movingWindowRootCuts value T Polynomial.X (Polynomial.C XR) X lo hi ⊆ movingCompleteRootCuts ... ∧ ∀ i r, r ∈ (W i).polynomial.derivative.roots → r ∈ movingCompleteRootCuts ...`\nProof: the existing three terms, i.e. `Finset.mem_union_left _ (Finset.mem_union_left _ hx)`, `Finset.subset_union_right`, and the `mem_biUnion` term.\n\n(2) `theorem movingWindowedSpectatorWeight_completeCells ... (hMq : ∀ i ∈ S, (q i : ℤ) * movingSpectatorDenominator value T ∣ (M : ℤ)) (XL YL : ℕ) (hX : T.ArithmeticSupport value childBound pivotBound XL XR) (hY : T.ArithmeticSupport value childBound pivotBound YL XR) (hres : (XL : ℤ) ≡ (YL : ℤ) [ZMOD M]) (hcode : rootCellCode (movingCompleteRootCuts ... W X lo hi) (XL : ℝ) = rootCellCode (movingCompleteRootCuts ...) (YL : ℝ)) : movingWindowedSpectatorWeight q value F E X lo hi g D S T XL XR = movingWindowedSpectatorWeight q value F E X lo hi g D S T YL XR`\nProof: `movingWindowedSpectatorWeight_cells ... _ Finset.subset_union_right (hX.integral value hvalue childBound pivotBound T XL XR) (hY.integral value hvalue childBound pivotBound T YL XR) hres hcode`.\n\n(3) A lemma stating `0 ≤ ‖movingDataWeight F E T‖ * ∏ i ∈ S, B i ^ (2 ^ n)` from `hB`, proved by the existing `mul_nonneg`/`Finset.prod_nonneg` block.\n\nThe target proof then becomes:\n`obtain ⟨hrootA, -, hroots⟩ := movingCompleteRootCuts_cover value hvalue childBound pivotBound T hf XR W X lo hi`\n`exact moving_supported_integer_comparison value hvalue childBound pivotBound T hf XR a M hM hM0 u v G huv W _ hrootA hroots (fun XL => movingWindowedSpectatorWeight q value F E X lo hi g D S T XL XR) _ (nonneg lemma) (fun XL _ => movingWindowedSpectatorWeight_norm q value F E X lo hi g D S B hB hg T XL XR) (fun XL YL hX hY hres hcode => movingWindowedSpectatorWeight_completeCells ... hMq XL YL hX hY hres hcode)`\n\nThe prime proof becomes the same, except that it calls `P.moving_supported_prime_comparison value hvalue childBound pivotBound T hf XR a M Q hM hQ hq hqQ ha u v hu huv hshort W _ hrootA hroots ...` with the same last four arguments.",
+      "benefit": "Each top-level comparison then reads as \"apply the supported comparison to the windowed spectator weight\", without 15 lines of setup. The coverage and cell-constancy facts become reusable API for `movingCompleteRootCuts`. If the union order or contents of `movingCompleteRootCuts` or `movingPrimeRootCuts` change, only one coverage lemma needs updating instead of two hand-written membership proofs. The integer and prime versions also cannot drift apart in how they discharge the cell hypothesis.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingCompleteCells.lean",
+          "declaration": "PublishedProgressionInput.moving_windowed_prime_comparison",
+          "excerpt": "  have hroots : ∀ i r, r ∈ (W i).polynomial.derivative.roots → r ∈ roots := by\n    intro i r hr\n    exact Finset.mem_union_left _ (Finset.mem_union_right _ (Finset.mem_biUnion.mpr\n      ⟨i, Finset.mem_univ _, Multiset.mem_toFinset.mpr hr⟩))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingCompleteCells.lean",
+          "declaration": "PublishedProgressionInput.moving_windowed_prime_comparison",
+          "excerpt": "    (fun XL YL hX hY hres hcode => movingWindowedSpectatorWeight_cells q value hvalue F E X lo hi\n      g D S T hf XR M XL YL hMq roots hrootW\n      (hX.integral value hvalue childBound pivotBound T XL XR)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingCompleteCells.lean",
+          "declaration": "movingCompleteRootCuts",
+          "excerpt": "  movingPrimeRootCuts value hvalue childBound pivotBound T hf XR F ∪\n    movingWindowRootCuts value T Polynomial.X (Polynomial.C XR) X lo hi"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingArithmeticPrimeComparison.lean",
+          "declaration": "movingPrimeRootCuts",
+          "excerpt": "  movingTopRootCuts value hvalue childBound pivotBound T hf XR ∪\n    polynomialRootCuts (fun i => (F i).polynomial.derivative)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingIntegerCells.lean",
+          "declaration": "moving_supported_integer_comparison",
+          "excerpt": "    (hS : movingTopRootCuts value hvalue childBound pivotBound T hf XR ⊆ S)\n    (hroots : ∀ i r, r ∈ (F i).polynomial.derivative.roots → r ∈ S)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 21814,
+    "cache_read_input_tokens": 82893,
+    "output_tokens": 7731,
+    "output_tokens_details": {
+      "thinking_tokens": 2862
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21814,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5240,
+        "cache_read_input_tokens": 21991,
+        "cache_creation_input_tokens": 3752,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3752
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3457586,
+  "duration_ms": 64734,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T14:36:30",
+  "unit": "file",
+  "source_sha256": "a2166c2b8ee98f5bfbc32808220fa13182c1f8fc804d86fa6fcd93d686b3b672",
+  "rubric": "repeated-proof-machinery"
+}

@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0047",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 167 lines of Loading.lean. To look for the same reasoning elsewhere, I searched the BalancedTransport directory and the wider NavierStokes tree for related patterns: smoothTransition collar lemmas, `=ᶠ[𝓝 t]` together with `Iio_mem_nhds`/`Ioi_mem_nhds`, and nlinarith calls of the convex-combination shape. I also read the related MotionField and CompactFamilies declarations and checked the import headers.\n\n**Finding.** One piece of reasoning is repeated: a time-dependent function is constant for s ≤ 1/4 and for s ≥ 3/4, so its derivative is zero when t < 1/4 or t > 3/4. It appears in `loadingCenter_deriv_zero` (two branches, here) and in `BoxMotion.velocity_collars` in MotionField.lean (four branches). A close variant using `iteratedDeriv` appears in Material/Clock.lean.\n\n**Patterns considered and not reported.**\n- `loadingPath_between`: its two `nlinarith` calls are short convex-combination bounds. I found no matching helper-worthy repetition.\n- `loadingPath_start` / `loadingPath_end`: short calculations.\n- The `loadingSwitch_*` lemmas: thin wrappers around Mathlib's `Real.smoothTransition` API.\n- `loadingVelocity_*`: thin applications of the `movingBoxVelocity_*` lemmas.\n\n**Uncertainty.**\n- I could not compile the proposed helper or the rewritten uses. In particular, the `simp` calls in the Loading use and the `rfl` in the MotionField scale use are carried over from the existing proofs and may need small adjustments.\n- I found no existing Mathlib or project lemma that already packages this collar argument; the closest Mathlib API is `Filter.EventuallyEq.deriv_eq` plus `deriv_const`.\n- Model.lean imports only Mathlib, so it is upstream of both Loading.lean and MotionField.lean. That makes it a suitable home for the helper; Elementary.lean also appears to work.",
+  "findings": [
+    {
+      "declaration": "loadingCenter_deriv_zero",
+      "start_line": 49,
+      "end_line": 59,
+      "excerpt": "  rcases ht with ht | ht\n  · have he : loadingCenter z =ᶠ[𝓝 t] fun _ => (0 : Space) := by\n      filter_upwards [Iio_mem_nhds ht] with s hs\n      simp [loadingCenter, loadingSwitch_zero hs.le]\n    rw [he.deriv_eq, deriv_const]",
+      "problem": "The argument \"f is constant left of a and right of b, so deriv f t = 0 whenever t < a ∨ b < t\" is written out by hand. The proof splits the disjunction, builds an `EventuallyEq` with `filter_upwards [Iio_mem_nhds ht]` or `[Ioi_mem_nhds ht]`, and finishes with `rw [he.deriv_eq, deriv_const]`. The same proof appears twice in `BoxMotion.velocity_collars` (MotionField.lean, lines 185–202): once for `fieldCenter` and once for `fieldScale`, giving four more copies of the branch. All of these proofs establish the same `TimeCollars`-style fact (zero velocity outside [1/4, 3/4]) for different path families. Each copy restates the neighbourhood and filter bookkeeping that the helper below would contain once.",
+      "proposed_change": "Add one helper upstream of both files, for example in Model.lean, which imports only Mathlib:\n\n```lean\nlemma deriv_eq_zero_of_const_collars {E : Type*} [NormedAddCommGroup E] [NormedSpace ℝ E]\n    {f : ℝ → E} {a b t : ℝ} {c d : E}\n    (h₀ : ∀ s, s ≤ a → f s = c) (h₁ : ∀ s, b ≤ s → f s = d)\n    (ht : t < a ∨ b < t) : deriv f t = 0 := by\n  rcases ht with ht | ht\n  · have he : f =ᶠ[𝓝 t] fun _ => c := by\n      filter_upwards [Iio_mem_nhds ht] with s hs using h₀ s hs.le\n    rw [he.deriv_eq, deriv_const]\n  · have he : f =ᶠ[𝓝 t] fun _ => d := by\n      filter_upwards [Ioi_mem_nhds ht] with s hs using h₁ s hs.le\n    rw [he.deriv_eq, deriv_const]\n```\n\nThe target proof then becomes:\n\n```lean\nlemma loadingCenter_deriv_zero {z : Space} {t : ℝ} (ht : t < 1 / 4 ∨ 3 / 4 < t) :\n    deriv (loadingCenter z) t = 0 :=\n  deriv_eq_zero_of_const_collars (c := 0) (d := z - fixedLabel)\n    (fun s hs => by simp [loadingCenter, loadingSwitch_zero hs])\n    (fun s hs => by simp [loadingCenter, loadingSwitch_one hs]) ht\n```\n\nIn `velocity_collars`, the two inner blocks become:\n\n```lean\n  · intro i\n    exact deriv_eq_zero_of_const_collars (fun s hs => m.fieldCenter_before i hs)\n      (fun s hs => m.fieldCenter_after i hs) ht\n  · intro i k\n    exact deriv_eq_zero_of_const_collars\n      (fun s hs => by rw [m.fieldScale_before i hs]; rfl)\n      (fun s hs => by rw [m.fieldScale_after i hs]) ht\n```\n\nHere `fieldCenter_before`/`fieldScale_before` already take `t ≤ 1 / 4`, and the `_after` versions take `3 / 4 ≤ t`, which matches the helper's `h₀`/`h₁` hypotheses.",
+      "benefit": "The rewritten proofs state only the mathematical content: what the function equals before the switch and what it equals after. The topology step (open half-lines are neighbourhoods, so the derivative equals that of a constant) is proved once, under a descriptive name. Six hand-written branches across two files are replaced by one lemma. Any future collar-type motion (new loading or parking paths) can reuse the helper instead of copying the filter boilerplate again. If the collar convention changes, for example to strict inequalities, only the helper needs updating.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/MotionField.lean",
+          "declaration": "BoxMotion.velocity_collars",
+          "excerpt": "    · have he : m.fieldCenter i =ᶠ[𝓝 t] fun _ => A.center i := by\n        filter_upwards [Iio_mem_nhds ht] with s hs using m.fieldCenter_before i hs.le\n      rw [he.deriv_eq, deriv_const]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/MotionField.lean",
+          "declaration": "BoxMotion.velocity_collars",
+          "excerpt": "    · have he : (fun s => m.fieldScale i s k) =ᶠ[𝓝 t] fun _ => B.width i k / A.width i k := by\n        filter_upwards [Ioi_mem_nhds ht] with s hs\n        rw [m.fieldScale_after i hs.le]\n      rw [he.deriv_eq, deriv_const]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/MotionField.lean",
+          "declaration": "BoxMotion.fieldCenter_before",
+          "excerpt": "lemma fieldCenter_before (m : BoxMotion A B safe η) (i : ι) {t : ℝ} (ht : t ≤ 1 / 4) :\n    m.fieldCenter i t = A.center i := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/CompactFamilies.lean",
+          "declaration": "familyVelocity_zero",
+          "excerpt": "    (hc : ∀ i, deriv (c i) t = 0) (hd : ∀ i j, deriv (fun s => d i s j) t = 0) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Model.lean",
+          "declaration": "fixedLabel",
+          "excerpt": "def fixedLabel : Space := ![4, 0, 0]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 31576,
+    "cache_read_input_tokens": 191472,
+    "output_tokens": 6903,
+    "output_tokens_details": {
+      "thinking_tokens": 2133
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31576,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3317,
+        "cache_read_input_tokens": 34133,
+        "cache_creation_input_tokens": 1372,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1372
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.42902640000000003,
+  "duration_ms": 62788,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T13:19:39",
+  "unit": "file",
+  "source_sha256": "cb9537d1e9487fd2e2db93536e45c3130be1028c26894617cf6523c83af269c2",
+  "rubric": "repeated-proof-machinery"
+}

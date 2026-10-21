@@ -1,0 +1,127 @@
+{
+  "id": "openai-math-file-0064",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all six proofs in the file (lines 1–140). I checked the local definitions they rely on: `lowDegree`, `lowDegree_mono`, `one_mem_lowDegree`, `coord_mem_lowDegree` and `mul_mem_lowDegree` in EdgeProducts.lean; `colorAverage` (a `Module.End ℝ`) and `colorAverage_mul_invariant` in EdgeMonomials.lean; `candidate_average_eq` and `tableCoordinate` in PartialColorings.lean. I also read the Mathlib lemmas I propose: `Submodule.smul_mem_iff`, `Submodule.span_le`, `Finset.prod_const`/`sum_const` and `Nat.cast_smul_eq_nsmul` (whose ring argument `R` is explicit).\n\nI found three simplifications. None of the replacements was compiled. Small details may need adjusting: whether `rw` finds the cast-card pattern, or whether a `Submodule.mem_comap` unfolding is needed.\n\nI left the other proofs alone. `list_prod_mem_lowDegree`, `lowDegree_substitute` and `lowDegree_lift` are already short and direct. The case analysis in `colorAverage_monomial_mem` matches the mathematics: an unsatisfiable list, a redundant edge, or a new candidate edge. `colorAverage_recurrence` is mostly calls to named lemmas; only its `hsum` step looked worth changing.",
+  "findings": [
+    {
+      "declaration": "colorAverage_lowDegree",
+      "start_line": 84,
+      "end_line": 92,
+      "excerpt": "  apply Submodule.span_induction (p := fun f _ => colorAverage z f ∈\n    lowDegree (tableCoordinate z) d) _ _ _ _ hf",
+      "problem": "The proof uses a four-case span induction. Three of the cases (zero, add, smul) just repeat the fact that `colorAverage z` is linear. That fact is already built into `Submodule.comap` along a linear map. Only the first case, about generators, carries any mathematical content. The very similar lemma `lowDegree_substitute` in the same file already uses the shorter `Submodule.span_le` pattern.",
+      "proposed_change": "Show that the span sits inside the preimage, then apply that to `hf`:\n```lean\n  have hle : lowDegree Pairing.edgeCoord d ≤\n      (lowDegree (tableCoordinate z) d).comap (colorAverage z) := by\n    apply Submodule.span_le.mpr\n    rintro f ⟨l, hl, rfl⟩\n    exact lowDegree_mono _ hl (colorAverage_monomial_mem z l)\n  exact hle hf\n```",
+      "benefit": "The proof shrinks to its one real idea: each generating monomial maps into low degree. This uses `colorAverage_monomial_mem` together with `lowDegree_mono`. The three linearity cases disappear. The proof now has the same shape as `lowDegree_substitute`, so a reader sees one pattern in both places.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/ColorPolynomials.lean",
+          "declaration": "lowDegree_substitute",
+          "excerpt": "  apply Submodule.span_le.mpr\n  rintro f ⟨l, hl, rfl⟩\n  exact lowDegree_mono x hl (list_prod_mem_lowDegree x l y hy)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/Span/Defs.lean",
+          "declaration": "Submodule.span_le",
+          "excerpt": "theorem span_le {p} : span R s ≤ p ↔ s ⊆ p :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/EdgeMonomials.lean",
+          "declaration": "colorAverage",
+          "excerpt": "noncomputable def colorAverage (z : V → C) : Module.End ℝ (Pairing V → ℝ) :="
+        }
+      ]
+    },
+    {
+      "declaration": "colorAverage_monomial_mem",
+      "start_line": 60,
+      "end_line": 77,
+      "excerpt": "        change D • colorAverage z (Pairing.edgeMonomial (e::l)) ∈\n          lowDegree (tableCoordinate z) (1+l.length) at hmem\n        have hh := (lowDegree (tableCoordinate z) (1+l.length)).smul_mem D⁻¹ hmem",
+      "problem": "To cancel the nonzero scalar `D`, the proof introduces `let D`, uses a `change` to restate the goal with `D` visible, and multiplies by `D⁻¹`. It then cleans up with `smul_smul, inv_mul_cancel₀ hD, one_smul`. All of this does one step: if `D ≠ 0`, then `D • x ∈ p ↔ x ∈ p`. Mathlib has a lemma for exactly this.",
+      "proposed_change": "Remove the `let` and the `change`, and cancel with `Submodule.smul_mem_iff`:\n```lean\n        have hD : ((candidateEdges z (Pairing.edgeSupport l) (z e.1,z e.2)).card : ℝ) ≠ 0 :=\n          Nat.cast_ne_zero.mpr (Finset.card_ne_zero.mpr ⟨e, he⟩)\n        have hlin : ... := ...   -- unchanged\n        have hmem := mul_mem_lowDegree (tableCoordinate z) hlin ih\n        rw [← colorAverage_recurrence z l e he M₀ h₀, Submodule.smul_mem_iff _ hD] at hmem\n        simpa only [List.length_cons, Nat.add_comm] using hmem\n```",
+      "benefit": "The argument now reads in order: apply the recurrence, cancel the nonzero candidate count, and adjust the degree index. The lemma name `smul_mem_iff` says what happens. The reader no longer has to follow a `let`-bound abbreviation, a `change`, and an explicit inverse calculation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Module/Submodule/Basic.lean",
+          "declaration": "Submodule.smul_mem_iff",
+          "excerpt": "theorem smul_mem_iff (s0 : s ≠ 0) : s • x ∈ p ↔ x ∈ p :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/ColorPolynomials.lean",
+          "declaration": "colorAverage_recurrence",
+          "excerpt": "    ((candidateEdges z (Pairing.edgeSupport l) (z e.1,z e.2)).card : ℝ) •\n      colorAverage z (Pairing.edgeMonomial (e::l)) ="
+        }
+      ]
+    },
+    {
+      "declaration": "colorAverage_recurrence",
+      "start_line": 22,
+      "end_line": 31,
+      "excerpt": "      _ = _ := by\n        funext M\n        simp [Pi.smul_apply]",
+      "problem": "The `hsum` step shows that a sum of equal terms equals card • term. It uses a two-step `calc`. The second step checks the claim one point at a time with `funext M` and an unrestricted `simp`, which hides that this is just the sum-of-a-constant identity plus a cast from nsmul to a real scalar.",
+      "proposed_change": "Use the named lemmas directly:\n```lean\n  have hsum : (∑ f ∈ S, colorAverage z (Pairing.edgeMonomial (f::l))) =\n      (S.card : ℝ) • colorAverage z (Pairing.edgeMonomial (e::l)) := by\n    rw [Finset.sum_congr rfl fun f hf => candidate_average_eq z l _ f e hf he,\n      Finset.sum_const, Nat.cast_smul_eq_nsmul ℝ]\n```",
+      "benefit": "Each rewrite is one named step: every term equals the average at `e`, a constant sum is card • constant, and the nsmul becomes a real scalar. This makes the structure clearer than an unrestricted `simp` after `funext`. It also removes the unneeded double cast `((S.card : ℕ) : ℝ)`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Basic.lean",
+          "declaration": "Finset.prod_const",
+          "excerpt": "theorem prod_const (b : M) : ∏ _x ∈ s, b = b ^ #s :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Module/NatInt.lean",
+          "declaration": "Nat.cast_smul_eq_nsmul",
+          "excerpt": "lemma Nat.cast_smul_eq_nsmul (n : ℕ) (b : M) : (n : R) • b = n • b := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/MatchingPSD/PartialColorings.lean",
+          "declaration": "candidate_average_eq",
+          "excerpt": "    colorAverage z (Pairing.edgeMonomial (e::l)) =\n      colorAverage z (Pairing.edgeMonomial (f::l)) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 30567,
+    "cache_read_input_tokens": 131699,
+    "output_tokens": 8018,
+    "output_tokens_details": {
+      "thinking_tokens": 3011
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30567,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3721,
+        "cache_read_input_tokens": 33931,
+        "cache_creation_input_tokens": 679,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 679
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4312838,
+  "duration_ms": 68694,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T14:43:19",
+  "unit": "file",
+  "source_sha256": "8631f821dd3f4a388502ee940735dcbd714578b65ae546acc03d06bb122c3df9",
+  "rubric": "readable-proof-simplification"
+}

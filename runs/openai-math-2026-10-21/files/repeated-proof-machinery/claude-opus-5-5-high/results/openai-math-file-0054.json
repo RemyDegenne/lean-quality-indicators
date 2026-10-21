@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0054",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all three theorems in the target file (lines 1–73). I also read the statements of the lemmas they rely on: `spectralSecondFlux_primitive`, `spectralFirstFlux_primitive`, `spectralSecondFlux_hasDerivAt` and Mathlib's `ae_of_mem_of_ae_of_mem_inter_Ioo`. Then I searched for downstream uses. `spectralLocalFlux_classical_ae` (lines 11–23) is a short proof and is not repeated. `spectralSecondClassicalFlux_ae` and `spectralFirstClassicalFlux_ae` share the same localization argument almost line for line. A third copy of that argument appears in `SpectralForcedClassicalAE.lean` (`spectralSecond_forced_classical_ae`), which imports this file. A helper defined here could therefore replace all three copies. The only real differences between the copies are the lower endpoint (0 or l), the weight and pair (a/u or spectralNegWeight a/spectralSwapPair u), and which primitive-existence lemma is called. I could not compile anything. The suggested helper is untested, and two details need checking: that `ha.neg` still elaborates against `(spectralNegWeight a).density` (the current code already relies on this), and how the `0 ≤ L` endpoint arithmetic works out.",
+  "findings": [
+    {
+      "declaration": "spectralSecondClassicalFlux_ae / spectralFirstClassicalFlux_ae",
+      "start_line": 36,
+      "end_line": 70,
+      "excerpt": "  apply ae_of_mem_of_ae_of_mem_inter_Ioo\n  intro α β hα hβ hαβ",
+      "problem": "Both theorems use the same nontrivial localization argument. They cover the open interval by subintervals (α, β) via `ae_of_mem_of_ae_of_mem_inter_Ioo`, get a local primitive P, prove `Ioo α β ⊆ Ioo 0 R`, restrict the continuity and positivity hypotheses to it, turn `HasDerivAt` into `ContinuousOn P`, call `spectralLocalFlux_classical_ae`, and then use `filter_upwards` to drop the intersection. Lines 36–45 and 59–70 differ only in the lower endpoint (0 vs l), the weight/pair passed in (a,u vs spectralNegWeight a, spectralSwapPair u, with `ha` vs `ha.neg`), and the primitive lemma called. `spectralSecond_forced_classical_ae` in SpectralForcedClassicalAE.lean has a third verbatim copy for a general endpoint L.",
+      "proposed_change": "Add one helper in this file, after `spectralLocalFlux_classical_ae`:\n\ntheorem spectralSecondClassicalFlux_ae_of_local_primitive (ell : ℕ) (L R : ℝ) (hL : 0 ≤ L) (hR : 0 < R)\n    (w a : SpectralHarmonicWeight R) (u : SpectralHarmonicPair ell R)\n    (hw : ContinuousOn w.density (Ioo L R)) (ha : ContinuousOn a.density (Ioo L R))\n    (hpos : ∀ x ∈ Ioo L R, 0 < w.density x)\n    (hprim : ∀ l r, L < l → l < r → r < R → ∃ P : ℝ → ℂ, ContinuousOn P (Ioo l r) ∧\n      ∀ᵐ x, x ∈ Ioo l r → spectralSecondFlux ell R w a u x = P x) :\n    ∀ᵐ x, x ∈ Ioo L R →\n      spectralSecondFlux ell R w a u x = spectralSecondClassicalFlux ell R hR w a u x := by\n  apply ae_of_mem_of_ae_of_mem_inter_Ioo\n  intro l r hl hr hlr\n  obtain ⟨P, hP, hflux⟩ := hprim l r hl.1 hlr hr.2\n  have hs : Ioo l r ⊆ Ioo L R := fun x hx => ⟨hl.1.trans hx.1, hx.2.trans hr.2⟩\n  filter_upwards [spectralLocalFlux_classical_ae ell R l r hR (hL.trans_lt hl.1) hr.2.le w a u P\n    (hw.mono hs) (ha.mono hs) (fun x hx => hpos x (hs hx)) hP hflux] with x hx hxr\n  exact hx hxr.2\n\nThe two proofs then become:\n\n(second) `spectralSecondClassicalFlux_ae_of_local_primitive ell 0 R le_rfl hR w a u hw ha hpos fun l r hl hlr hr => by obtain ⟨P, hP, hf⟩ := spectralSecondFlux_primitive ell R l r hR hl hlr hr w a u c ζ B hw ha he; exact ⟨P, fun x hx => (hP x hx).continuousAt.continuousWithinAt, hf⟩`\n\n(first) with `hs : Ioo l R ⊆ Ioo 0 R := fun x hx => ⟨hl.trans hx.1, hx.2⟩`: `spectralSecondClassicalFlux_ae_of_local_primitive ell l R hl.le hR w (spectralNegWeight a) (spectralSwapPair ell R u) (hw.mono hs) (ha.neg.mono hs) (fun x hx => hpos x (hs hx)) fun α β hα hαβ hβ => by obtain ⟨P, hP, hf⟩ := spectralFirstFlux_primitive ell R l α β hR hl hα hαβ hβ w a u c ζ B hw ha he; exact ⟨P, fun x hx => (hP x hx).continuousAt.continuousWithinAt, hf⟩`.\n\nThe forced variant in SpectralForcedClassicalAE.lean could use the same helper with `L`, `hL`, `hw`, `ha`, `hpos` directly and `spectralAnnulusFlux_primitive` as the source of primitives.",
+      "benefit": "The localization step (cover by subintervals, local identification, then globalize) would be written once and named, so each theorem only states which primitive lemma supplies P. That removes about eight lines of interval and filter bookkeeping per use, across three uses in two files. It also makes the actual mathematical difference between the first and second flux easy to see (negated weight and swapped pair), and any later change to `spectralLocalFlux_classical_ae`'s hypotheses would need to be fixed in only one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Spectrum/SpectralClassicalFluxAE.lean",
+          "declaration": "spectralSecondClassicalFlux_ae",
+          "excerpt": "  have hs : Ioo l r ⊆ Ioo 0 R := fun x hx => ⟨hl.1.trans hx.1,hx.2.trans hr.2⟩\n  have hlocal := spectralLocalFlux_classical_ae ell R l r hR hl.1 hr.2.le w a u P"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Spectrum/SpectralClassicalFluxAE.lean",
+          "declaration": "spectralFirstClassicalFlux_ae",
+          "excerpt": "  have hs : Ioo α β ⊆ Ioo 0 R := fun x hx => ⟨(hl.trans hα.1).trans hx.1,hx.2.trans hβ.2⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Spectrum/SpectralForcedClassicalAE.lean",
+          "declaration": "spectralSecond_forced_classical_ae",
+          "excerpt": "  have hs : Ioo l r ⊆ Ioo L R := fun x hx => ⟨hl.1.trans hx.1,hx.2.trans hr.2⟩\n  have hlocal := spectralLocalFlux_classical_ae ell R l r hR (hL.trans_lt hl.1) hr.2.le"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Spectrum/SpectralFirstFluxPrimitive.lean",
+          "declaration": "spectralFirstFlux_primitive",
+          "excerpt": "      ∀ᵐ x, x ∈ Ioo α β →\n        spectralSecondFlux ell R w (spectralNegWeight a) (spectralSwapPair ell R u) x=P x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Lebesgue/Basic.lean",
+          "declaration": "ae_of_mem_of_ae_of_mem_inter_Ioo",
+          "excerpt": "(h : ∀ a b, a ∈ s → b ∈ s → a < b → ∀ᵐ x ∂μ, x ∈ s ∩ Ioo a b → p x) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18208,
+    "cache_read_input_tokens": 52742,
+    "output_tokens": 5515,
+    "output_tokens_details": {
+      "thinking_tokens": 1374
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18208,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4159,
+        "cache_read_input_tokens": 20870,
+        "cache_creation_input_tokens": 1267,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1267
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2665444,
+  "duration_ms": 44386,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T13:59:54",
+  "unit": "file",
+  "source_sha256": "791e5b0f09a2e5776865fda4a91184473b02aebec2c2e226a26c2886c421be4e",
+  "rubric": "repeated-proof-machinery"
+}

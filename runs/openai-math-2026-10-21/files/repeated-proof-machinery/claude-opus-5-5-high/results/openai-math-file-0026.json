@@ -1,0 +1,95 @@
+{
+  "id": "openai-math-file-0026",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all 172 lines of the target file. For each of the shared-looking lemmas I searched the Cavity directory for uses and for proof patterns that match it (`mul_eq_one_comm_of_equiv`, `fromCols_mul_fromRows`, `diagonal_apply_ne`, `sum_congr_set`).\n\nInside the file itself I found no nontrivial repetition between two proofs. The near-symmetric off-diagonal branches of `cavityGroupLift_projection` are branches of a single proof, which this rubric excludes. The support/zero-sum arguments in `cavityNormalizeFrame_spectral_support` and `cavitySpectralSupport_crossGram` are short routine calculations.\n\nThe one substantive repetition is between the target's `cavity_complement_projection` and `cavity_complement_projection_reindex` in CavitySpecialPythagoras.lean. The second is the same proof with an extra reindexing equivalence. The target file comes earlier in the import chain: CavityConcreteComplement uses the target's `cavitySpectralProjectors_sum`, and CavitySpecialPythagoras imports CavityConcreteComplement. So the general lemma can live in the target file and serve both places.\n\nI also noted, but did not report, that the 'complete frame' block in `cavity_complete_blocks_determinant` (CavitySchurMultiplicity.lean) partly repeats this reasoning, but it takes `hcomplete` as a hypothesis rather than deriving it. Nothing here was compiled. The suggested call-site proof term for the transposed hypothesis uses the real Mathlib lemmas `Matrix.transpose_eq_zero`, `Matrix.transpose_mul` and `Matrix.transpose_transpose`, but I have not checked it with Lean.",
+  "findings": [
+    {
+      "declaration": "cavity_complement_projection",
+      "start_line": 60,
+      "end_line": 73,
+      "excerpt": "  have hQ : (Matrix.fromCols B Y).transpose * Matrix.fromCols B Y = 1 := by\n    rw [Matrix.transpose_fromCols, Matrix.fromRows_mul_fromCols, hB, hBY, hYB, hY,\n      Matrix.fromBlocks_one]\n  have h := (Matrix.mul_eq_one_comm_of_equiv\n    (finSumFinEquiv : Fin k ⊕ Fin n ≃ Fin (k + n))).mp hQ",
+      "problem": "Two lemmas carry the same proof of the column-completeness fact. Both prove that if two column blocks are orthonormal and orthogonal to each other, and their column counts add up to the ambient dimension, then B Bᵀ + Y Yᵀ = 1. Both do it in four steps: transpose the cross-Gram identity, build the Gram matrix of `fromCols B Y` from `fromBlocks_one`, swap QᵀQ = 1 to QQᵀ = 1 with `Matrix.mul_eq_one_comm_of_equiv`, and unfold with `fromCols_mul_fromRows`. The downstream `cavity_complement_projection_reindex` in CavitySpecialPythagoras.lean repeats this word for word. The only differences are that its ambient index is `Fin s` with an equivalence `e : Fin s ≃ Fin (d + n)`, and it feeds `finSumFinEquiv.trans e.symm` to the swap step. That version is used three times (CavitySpecialPythagoras, CavityPhysicalEnergy, CavityCompressionLimitGeometry). The target version is the special case `e = Equiv.refl _`. The file layering already allows the general lemma to sit in the target file.",
+      "proposed_change": "Keep one general lemma in this file and delete the downstream copy:\n\n```lean\nlemma cavity_complement_projection {s k n : ℕ} (e : Fin s ≃ Fin (k + n))\n    (B : Matrix (Fin s) (Fin k) ℝ) (Y : Matrix (Fin s) (Fin n) ℝ)\n    (hB : B.transpose * B = 1) (hY : Y.transpose * Y = 1)\n    (hBY : B.transpose * Y = 0) :\n    B * B.transpose + Y * Y.transpose = 1 := by\n  have hYB : Y.transpose * B = 0 := by\n    simpa only [Matrix.transpose_mul, Matrix.transpose_transpose, Matrix.transpose_zero]\n      using congrArg Matrix.transpose hBY\n  have hQ : (Matrix.fromCols B Y).transpose * Matrix.fromCols B Y = 1 := by\n    rw [Matrix.transpose_fromCols, Matrix.fromRows_mul_fromCols, hB, hBY, hYB, hY,\n      Matrix.fromBlocks_one]\n  have h := (Matrix.mul_eq_one_comm_of_equiv\n    ((finSumFinEquiv : Fin k ⊕ Fin n ≃ Fin (k + n)).trans e.symm)).mp hQ\n  simpa only [Matrix.transpose_fromCols, Matrix.fromCols_mul_fromRows] using h\n```\n\nRewritten uses:\n\n1. In `cavityRetainedFrame_exists` (line 131), `hYB : Y.transpose * B = 0` comes from `cavity_frame_completion`. Replace the call with `cavity_complement_projection (Equiv.refl _) B Y hB hY (by rw [← Matrix.transpose_eq_zero, Matrix.transpose_mul, Matrix.transpose_transpose, hYB])`. Alternatively, keep the lemma's cross hypothesis in the `Y.transpose * B` orientation and transpose at the three downstream sites instead.\n2. In `cavity_full_special_pythagoras` (CavitySpecialPythagoras.lean line 86), the call becomes `cavity_complement_projection e B T hB hT hBT`. The same rename applies in CavityPhysicalEnergy.lean (line 53) and CavityCompressionLimitGeometry.lean (line 56), whose hypotheses already match the `Bᵀ * T = 0` orientation.\n\nThen delete `cavity_complement_projection_reindex`. CavitySpecialPythagoras already imports this file transitively through CavityConcreteComplement.",
+      "benefit": "The completeness argument appears once instead of twice, so a change in Mathlib's `fromCols`/`fromRows`/`mul_eq_one_comm_of_equiv` API needs fixing in only one place. The general statement covers both the definitionally indexed case (`Fin (k + n)`) and the reindexed case (`Fin (m * n) ≃ Fin (d + n)`). Readers no longer have to check that two differently named lemmas prove the same fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavitySpecialPythagoras.lean",
+          "declaration": "cavity_complement_projection_reindex",
+          "excerpt": "  have h := (Matrix.mul_eq_one_comm_of_equiv\n    ((finSumFinEquiv : Fin d ⊕ Fin n ≃ Fin (d + n)).trans e.symm)).mp hQ\n  simpa only [Matrix.transpose_fromCols, Matrix.fromCols_mul_fromRows] using h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavitySpecialPythagoras.lean",
+          "declaration": "cavity_complement_projection_reindex",
+          "excerpt": "    rw [Matrix.transpose_fromCols, Matrix.fromRows_mul_fromCols, hB, hBT, hTB, hT,\n      Matrix.fromBlocks_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityRetainedFrame.lean",
+          "declaration": "cavityRetainedFrame_exists",
+          "excerpt": "exact cavityGroupLift_projection g a e B Y (cavity_complement_projection B Y hB hY hYB)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityPhysicalEnergy.lean",
+          "declaration": "cavity_complement_projection_reindex use",
+          "excerpt": "    cavity_complement_projection_reindex e B₁ T hB hT hBT"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityConcreteComplement.lean",
+          "declaration": "cavityCompressionGrams_sum",
+          "excerpt": "rw [← Matrix.sum_mul, ← Matrix.mul_sum, cavitySpectralProjectors_sum, Matrix.mul_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/Matrix/Defs.lean",
+          "declaration": "Matrix.transpose_eq_zero",
+          "excerpt": "theorem transpose_eq_zero [Zero α] {M : Matrix m n α} : Mᵀ = 0 ↔ M = 0 := transpose_inj"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 33013,
+    "cache_read_input_tokens": 124186,
+    "output_tokens": 7309,
+    "output_tokens_details": {
+      "thinking_tokens": 2537
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33013,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3518,
+        "cache_read_input_tokens": 35520,
+        "cache_creation_input_tokens": 1422,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1422
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.43516920000000003,
+  "duration_ms": 65545,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T11:36:13",
+  "unit": "file",
+  "source_sha256": "78dba352c1acb1853a17cf76ba39dbe99171f5dfe12d970dd71c827593e80b41",
+  "rubric": "repeated-proof-machinery"
+}

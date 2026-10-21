@@ -1,0 +1,149 @@
+{
+  "id": "openai-math-file-0030",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 194 lines: exists_odd_integer_between, primitive_direction_coordinates, compressedTriangle, directionProjection, compressedTriangle_projection_endpoints and eventual_primitive_direction. I also read planeForm / planeForm_nonneg_on_hull in Moments.lean, the call site in TorusJets.lean, Mathlib's `linear_combination` docstring and `LT.lt.trans_le`.\n\nThe main pattern is in primitive_direction_coordinates and eventual_primitive_direction. Several algebraic identities are proved with `nlinarith only [...]` or with a two-step calc, even though each is an exact multiple of one hypothesis. I checked each proposed `linear_combination` coefficient by hand (goal.lhs − goal.rhs − (e.lhs − e.rhs) reduces to 0 by `ring`). None of the replacements has been compiled.\n\nOne uncertainty: `ring1` sees the let-bound names `W`, `a₀`, `a` and `t`. It should treat them consistently, either as atoms or unfolded, and the identities hold either way. The inequality steps that use `nlinarith only` (for example lines 75–83 and 106) are left alone: there the hint lists document which facts are used, so I could not argue for a clear readability gain. compressedTriangle_projection_endpoints is already structured readably, and I found no clear simplification in it.",
+  "findings": [
+    {
+      "declaration": "primitive_direction_coordinates",
+      "start_line": 56,
+      "end_line": 62,
+      "excerpt": "      calc\n        _ = d * (j : ℝ) * ((W - a₀) * (1 + T)) := by ring\n        _ = _ := by rw [hgap]",
+      "problem": "The identity `heq` is exactly `d * j` times `hgap`. The proof states this through a two-step calc: a `ring` step to factor out `(W - a₀) * (1 + T)`, then a rewrite with `hgap`. That takes four lines for one scaled hypothesis.",
+      "proposed_change": "have heq :\n    (d * (R - (j : ℝ) * a₀) - d * (R - (j : ℝ) * W)) * (1 + T) =\n      d * (j : ℝ) * W := by\n  linear_combination (d * (j : ℝ)) * hgap",
+      "benefit": "The certificate `d * j * hgap` says directly that the width identity is the gap identity scaled by `d * j`. That is the same mathematical content the calc encodes, without the reader having to check the intermediate factored form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Tactic/LinearCombination.lean",
+          "declaration": "Mathlib.Tactic.LinearCombination.linearCombination",
+          "excerpt": "The input `e` in `linear_combination e` is a linear combination of proofs of (in)equalities,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/PrimitiveDirections.lean",
+          "declaration": "primitive_direction_coordinates",
+          "excerpt": "have hgap : (W - a₀) * (1 + T) = W := by nlinarith only [ha₀]"
+        }
+      ]
+    },
+    {
+      "declaration": "primitive_direction_coordinates",
+      "start_line": 49,
+      "end_line": 103,
+      "excerpt": "have hgap : (W - a₀) * (1 + T) = W := by nlinarith only [ha₀]",
+      "problem": "Several exact equalities are proved with the nonlinear inequality prover `nlinarith`, which proves an equality by proving two inequalities. Each one is just a signed copy of a single hypothesis: `hgap` (line 49) from `ha₀ : a₀ * (1 + T) = W * T`; the final goal of `htb` (line 99, after `apply (div_eq_iff ...).mpr`, goal `W = (W - a) * (1 + t)`) from `haeq`; and the first output equation (line 103, goal `i/d + j*a = R`) from `ha : a * j = R - i/d`. Using `nlinarith` hides that these are pure rearrangements.",
+      "proposed_change": "Line 49: `have hgap : (W - a₀) * (1 + T) = W := by linear_combination -ha₀`\nLine 99: `linear_combination -haeq`\nLine 103: `linear_combination ha`",
+      "benefit": "`linear_combination` names the exact certificate (the coefficient ±1 on one hypothesis), so a reader sees immediately that each step only rearranges an earlier identity. It also replaces a heuristic search with a deterministic `ring1` check.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Tactic/LinearCombination.lean",
+          "declaration": "Mathlib.Tactic.LinearCombination.linearCombination",
+          "excerpt": "* The default normalization tactic is `ring1` (for equalities)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/PrimitiveDirections.lean",
+          "declaration": "primitive_direction_coordinates",
+          "excerpt": "have ha : a * (j : ℝ) = R - (i : ℝ) / d := div_mul_cancel₀ _ hjR.ne'"
+        }
+      ]
+    },
+    {
+      "declaration": "eventual_primitive_direction",
+      "start_line": 187,
+      "end_line": 188,
+      "excerpt": "rw [hmin.csInf_eq, hmax.csSup_eq]\n  nlinarith only [hlen]",
+      "problem": "After rewriting sSup/sInf, the goal `i/d - -j * (d*H*t/(1+t)) = √(r*H)` is literally `hlen : i/d + j * (d*H*t/(1+t)) = √(r*H)` up to a ring rearrangement (`a - -b = a + b`). Calling `nlinarith` for this equality obscures that.",
+      "proposed_change": "rw [hmin.csInf_eq, hmax.csSup_eq]\n  linear_combination hlen",
+      "benefit": "The final step now reads as 'width = max − min, which is exactly the length equation `hlen`'. That is the key point of the theorem, and no inequality search is involved.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/PrimitiveDirections.lean",
+          "declaration": "primitive_direction_coordinates",
+          "excerpt": "(i : ℝ) / d + (j : ℝ) * (d * H * t / (1 + t)) = R ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/PrimitiveDirections.lean",
+          "declaration": "compressedTriangle_projection_endpoints",
+          "excerpt": "(-(j : ℝ) * (d * H * t / (1 + t))) ∧"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_odd_integer_between",
+      "start_line": 11,
+      "end_line": 20,
+      "excerpt": "  · have h := Int.lt_floor_add_one ((lo + 1) / 2)\n    change (lo + 1) / 2 < (k : ℝ) + 1 at h\n    push_cast\n    linarith",
+      "problem": "The `let k` forces two `change ... at h` steps that only re-express the floor lemmas with the local name `k`. Apart from that, the two bullets are the same tactic script with different floor facts.",
+      "proposed_change": "theorem exists_odd_integer_between (lo hi : ℝ) (hlen : 2 < hi - lo) :\n    ∃ i : ℤ, Odd i ∧ lo < (i : ℝ) ∧ (i : ℝ) < hi := by\n  refine ⟨2 * ⌊(lo + 1) / 2⌋ + 1, odd_two_mul_add_one _, ?_, ?_⟩ <;> push_cast <;>\n    linarith [Int.floor_le ((lo + 1) / 2), Int.lt_floor_add_one ((lo + 1) / 2)]",
+      "benefit": "The witness `2⌊(lo+1)/2⌋ + 1` and the two floor bounds that justify it are both visible in one place. The `change` steps, which only fold a let-binding, are gone, so the argument reads as 'take the odd integer next to (lo+1)/2 and use the floor bounds'.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Interpolation/PrimitiveDirections.lean",
+          "declaration": "exists_odd_integer_between",
+          "excerpt": "  · have h := Int.floor_le ((lo + 1) / 2)\n    change (k : ℝ) ≤ (lo + 1) / 2 at h"
+        }
+      ]
+    },
+    {
+      "declaration": "primitive_direction_coordinates",
+      "start_line": 30,
+      "end_line": 31,
+      "excerpt": "  have hR : 0 < R := lt_of_lt_of_le (by positivity : 0 < 2 * W) hR1\n  have htwoW : 0 < 2 * W := by positivity",
+      "problem": "The fact `0 < 2 * W` is proved twice by `positivity`: once inline with a type ascription inside `hR`, then again as `htwoW` on the next line.",
+      "proposed_change": "  have htwoW : 0 < 2 * W := by positivity\n  have hR : 0 < R := htwoW.trans_le hR1",
+      "benefit": "The duplicated proof and the inline type ascription disappear, and the dependency `0 < 2W ≤ R` is stated in the order a reader would argue it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Order/Basic.lean",
+          "declaration": "LT.lt.trans_le",
+          "excerpt": "@[to_dual trans_le'] alias LT.lt.trans_le := lt_of_lt_of_le"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 25505,
+    "cache_read_input_tokens": 130777,
+    "output_tokens": 12943,
+    "output_tokens_details": {
+      "thinking_tokens": 5517
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25505,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3708,
+        "cache_read_input_tokens": 26782,
+        "cache_creation_input_tokens": 2766,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2766
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4891114,
+  "duration_ms": 113048,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T11:58:33",
+  "unit": "file",
+  "source_sha256": "f7e5ff2088e17ef72d00bed06f5c76e1a800bf2159d0a84d2aab5f6de98198c1",
+  "rubric": "readable-proof-simplification"
+}

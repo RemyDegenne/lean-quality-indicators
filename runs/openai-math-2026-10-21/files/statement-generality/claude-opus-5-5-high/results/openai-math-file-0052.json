@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0052",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of the target file (lines 1–112) and the declarations it relies on:\n- `cutoffHeatGram` and `cutoffHeatGramEquiv` in ActualHeatGrams.lean\n- `dyadic_heat_increment_lower_mass` in UniformHeatMassIncrement.lean\n- `gaussian_dyadic_heat_increment_envelope` and `dyadicHeatEnvelopeConstant` in ActualHeatEnvelope.lean\n- `harmonic_heat_increment_lower_mass` in HeatMassIncrement.lean\n\nI also read the files downstream of the target, HeatPoleIncrements.lean and DyadicHeatAt.lean. Both import the target file through HeatPoleIncrements and SupportedHeatEnvelope. They repeat the target's statements word for word with the heat pole `p` replaced by an arbitrary `x : X`. The proofs are the same, apart from calling the `_at` versions of the base lemmas.\n\n**Main finding.** The target fixes the heat pole to `p`, the centre of the cutoff `χ`, in places where the mathematics does not use that choice.\n\n**Considered and rejected:**\n- `dyadicHeatGram_upper`: it uses `gaussian_dyadic_heat_increment_envelope`, which is stated only at `p`. Its general-pole counterpart, `dyadicHeatGramAt_upper_supported`, needs an extra support hypothesis and uses a different constant. Generalising it is therefore not a simple restatement, so I did not report it.\n- The encoding `hn : n = m + 2`: this is a design choice tied to how `dyadicHeatEnvelopeConstant` is indexed, not an over-specialisation.\n- `dyadic_radius_square_succ` over a general field: possible, but too small a gain to report.\n\n**Uncertainty:** I could not compile anything, so the proposed statements are untested.",
+  "findings": [
+    {
+      "declaration": "cutoffHeatGram_time_congr",
+      "start_line": 35,
+      "end_line": 40,
+      "excerpt": "theorem cutoffHeatGram_time_congr {s t lambda : ℝ} (hs : 0 < s) (ht : 0 < t)\n    (hst : s = t) :\n    cutoffHeatGram μ hQ hk χ.weight.continuous (χ.hasCompactSupport μ hQ) U hs p lambda =\n      cutoffHeatGram μ hQ hk χ.weight.continuous (χ.hasCompactSupport μ hQ) U ht p lambda := by",
+      "problem": "This lemma only says that `cutoffHeatGram` does not depend on which positivity proof is supplied for the time. Even so, it is stated only at the heat pole `p`, the centre of `χ`. Its proof (`subst t; rfl`) never uses that choice, nor that the weight comes from a `GoodLaplacianCutoff`. As a result, DyadicHeatAt.lean repeats it word for word as `cutoffHeatGram_time_congr_at (x : X)`, with only the pole changed.",
+      "proposed_change": "Make the pole an explicit argument: `theorem cutoffHeatGram_time_congr (x : X) {s t lambda : ℝ} (hs : 0 < s) (ht : 0 < t) (hst : s = t) : cutoffHeatGram μ hQ hk χ.weight.continuous (χ.hasCompactSupport μ hQ) U hs x lambda = cutoffHeatGram μ hQ hk χ.weight.continuous (χ.hasCompactSupport μ hQ) U ht x lambda := by subst t; rfl`. Better still, state it in ActualHeatGrams.lean for an arbitrary kernel `hp`, continuous compactly supported weight `hχ hsχ`, and space `E`, using the same proof. The existing call sites then pass `p`, and `cutoffHeatGram_time_congr_at` can be deleted. With `x = p` the statement is exactly the current one.",
+      "benefit": "There is one congruence lemma for every pole and weight instead of two copies that differ only in the pole. Users working at a moving pole, as DyadicHeatAt.lean does, can use it directly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/DyadicHeatAt.lean",
+          "declaration": "cutoffHeatGram_time_congr_at",
+          "excerpt": "theorem cutoffHeatGram_time_congr_at (x : X) {s t lambda : ℝ} (hs : 0 < s) (ht : 0 < t)\n    (hst : s = t) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/ActualHeatGrams.lean",
+          "declaration": "cutoffHeatGram",
+          "excerpt": "def cutoffHeatGram {t : ℝ} (ht : 0 < t) (x : X) (lambda : ℝ) : E →L[ℝ] E :="
+        }
+      ]
+    },
+    {
+      "declaration": "dyadicHeatGram / dyadicHeatGram_coe / dyadicHeatGram_isPositive / dyadicHeatGram_lower",
+      "start_line": 27,
+      "end_line": 79,
+      "excerpt": "def dyadicHeatGram {R lambda : ℝ} (hR : 0 < R) (hlambda : 0 < lambda) (i : ℕ) :\n    Euclidean n ≃L[ℝ] Euclidean n :=",
+      "problem": "The dyadic heat Gram family and its lower decrement bound are tied to the cutoff centre `p` as the heat pole. The underlying `cutoffHeatGramEquiv` takes an arbitrary pole `x`. The lower-bound argument also works at any pole: its hypotheses `hχone`, `herror` and `hkernel` are already stated at the pole and do not use the fact that it is the centre of `χ`. DyadicHeatAt.lean therefore re-proves the same statements with `x` in place of `p`: `dyadicHeatGramAt`, `dyadicHeatGramAt_coe`, `dyadicHeatGramAt_isPositive` and `dyadicHeatGramAt_lower`. The proofs are identical, except that `dyadicHeatGramAt_lower` calls `harmonic_heat_increment_lower_mass_at` directly.",
+      "proposed_change": "Add an explicit pole argument `(x : X)` and replace `p` by `x` in the definition and in the three lemmas. For example: `def dyadicHeatGram (x : X) {R lambda : ℝ} (hR : 0 < R) (hlambda : 0 < lambda) (i : ℕ) : Euclidean n ≃L[ℝ] Euclidean n := cutoffHeatGramEquiv μ hQ hk χ.weight.continuous (χ.hasCompactSupport μ hQ) U (fun z => (χ.bounds z).1) (sq_pos_of_pos …) x hlambda`. The lower bound becomes `dyadicHeatGram_lower (x : X) … (hχone : ∀ y ∈ ball x (R / 2 ^ i), …) (herror : … ‖harmonicHeatError μ hQ (k := ker) G χ t x‖ ≤ η) (hkernel : … c / (R / 2 ^ i) ^ n ≤ ker t x y)`, with conclusion involving `dyadicBochnerMass M n x R i v`. For its proof, state `dyadic_heat_increment_lower_mass` with a pole argument. Its proof only passes the pole on to `harmonic_heat_increment_lower_mass`, whose general-pole form `harmonic_heat_increment_lower_mass_at` already exists with the same proof. Then reuse the rest of the current proof unchanged, as `dyadicHeatGramAt_lower` does. Leave `dyadicHeatGram_upper` at `p`, or derive it with `x := p`, because its Gaussian envelope lemma is specific to `p`. Instantiating `x := p` gives back the current declarations by `rfl`.",
+      "benefit": "One family covers both the centred case and the moving-pole case used later. This removes the parallel `dyadicHeatGramAt*` API in DyadicHeatAt.lean and keeps the two copies from drifting apart. Users can apply the lower decrement bound at nearby poles without a separate copy.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/DyadicHeatAt.lean",
+          "declaration": "dyadicHeatGramAt",
+          "excerpt": "def dyadicHeatGramAt (x : X) {R lambda : ℝ} (hR : 0 < R) (hlambda : 0 < lambda) (i : ℕ) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/DyadicHeatAt.lean",
+          "declaration": "dyadicHeatGramAt_lower",
+          "excerpt": "theorem dyadicHeatGramAt_lower (x : X) (hρ : 0 < ρ) (hρr : ρ < r) (hκ : 0 ≤ κ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/HeatPoleIncrements.lean",
+          "declaration": "harmonic_heat_increment_lower_mass_at",
+          "excerpt": "theorem harmonic_heat_increment_lower_mass_at (x : X) (hρ : 0 < ρ) (hρr : ρ < r) (hκ : 0 ≤ κ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Heat/ActualHeatGrams.lean",
+          "declaration": "cutoffHeatGramEquiv",
+          "excerpt": "{t : ℝ} (ht : 0 < t) (x : X) {lambda : ℝ} (hlambda : 0 < lambda) : E ≃L[ℝ] E :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 33427,
+    "cache_read_input_tokens": 126496,
+    "output_tokens": 7333,
+    "output_tokens_details": {
+      "thinking_tokens": 2457
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33427,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4206,
+        "cache_read_input_tokens": 33428,
+        "cache_creation_input_tokens": 4023,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4023
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.43942319999999996,
+  "duration_ms": 71511,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T13:45:30",
+  "unit": "file",
+  "source_sha256": "244dc7dac15af9863647543f1a73ac138f4cd2a4bf3c80a16f868574338cc308",
+  "rubric": "statement-generality"
+}

@@ -1,0 +1,95 @@
+{
+  "id": "openai-math-file-0045",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–76). It has two declarations. `partialIsometryDilation_conjugates_unitary` is a single matrix computation that is used once. `relativeClass_partialIsometry` is the main K₁ argument. To look for repeated proof machinery, I read the files that supply the lemmas it uses: RelativeTwoConjugation.lean (`relativeTwoClass_conjugationPath`, `mapTwoUnitary_conjugate`, `mapTwoUnitary_one`), RelativeTwoDiagonal.lean (`relativeTwoClass_diagonal`, `diagonalTwoUnitary_relative`), RelativeUnitary.lean (`relativeClass_one`), and the path lemmas in PartialIsometryDilation.lean and IsometryDilation.lean. I also grepped the whole OAI tree for other users of this machinery. The only other proof that uses it is `relativeClass_isometry` in RelativeIsometry.lean. Its proof matches the target's main proof step for step: the start-point simplification, the transport of the endpoint identity through φ, applying the conjugation-path homotopy, and the cleanup with the diagonal/one lemmas. Only the dilation path and the endpoint conjugation identity differ. This is the single finding. The two dilation paths are both built on `involutionUnitaryPath`, but the helper I propose takes an arbitrary continuous path, so that does not matter. Uncertainties: I could not compile anything. The final `simp only [map_one, relativeClass_one, ...]` cleanup at each call site may need adjusting, for example an explicit `Unitary.map ... 1 = 1` rewrite before `relativeClass_one`, because the membership-proof argument is dependent. The membership hypotheses `φ (a : A) - 1 ∈ S` are definitionally equal to `(Unitary.map _ a : R) - 1 ∈ S`, and the existing code already relies on this (RelativeIsometry.lean line 38: `have hv : (v : R) - 1 ∈ S := hu`).",
+  "findings": [
+    {
+      "declaration": "relativeClass_partialIsometry (with OAI.CoarseAssembly.OperatorKTheory.relativeClass_isometry in RelativeIsometry.lean)",
+      "start_line": 32,
+      "end_line": 72,
+      "excerpt": "    have hm := congrArg (mapTwoUnitary φ) hd\n    rw [mapTwoUnitary_conjugate, mapTwoUnitary_diagonal, mapTwoUnitary_diagonal] at hm",
+      "problem": "The proof of `relativeClass_partialIsometry` (lines 43–72) repeats the proof of `relativeClass_isometry` (RelativeIsometry.lean lines 35–65) block for block. Both proofs: (1) `h0` shows that conjugating by `mapTwoUnitary φ (W start)` does nothing, via `*_start`, `mapTwoUnitary_one` and `simp [conjugatedTwoUnitary]`; (2) `hd` turns the unmapped endpoint conjugation into the `.val` identity; (3) `h1` pushes `hd` through φ with `congrArg (mapTwoUnitary φ)`, `mapTwoUnitary_conjugate` and `mapTwoUnitary_diagonal` twice, then `simpa only [map_one]`; (4) both build `hz`, apply `relativeTwoClass_conjugationPath ... (diagonalTwoUnitary_relative ...)`, run `simp only [h0, h1] at h`, and rewrite with `relativeTwoClass_diagonal` twice, `relativeClass_one`, `add_zero` and `zero_add`. Only the path (`partialIsometryDilationPath` vs `isometryDilationPath`) and the endpoint identity (`partialIsometryDilation_conjugates_unitary` vs `isometryDilation_conjugates_unitary`) change. The shared part is the actual K₁ argument: a continuous unitary path starting at 1 that conjugates one diagonal into another gives equal sums of relative classes. Right now that argument is written out twice and never stated on its own.",
+      "proposed_change": "Add one lemma to RelativeTwoConjugation.lean. That file already imports RelativeTwoDiagonal, which provides `relativeTwoClass_diagonal`; use the same section variables `S` and `[IsClosed (S : Set R)]`:\n\ntheorem relativeClass_add_eq_of_conjugationPath (φ : A →⋆ₐ[ℂ] R) (hφc : Continuous φ)\n    (hφ : ∀ a b, b ∈ S → φ a * b ∈ S ∧ b * φ a ∈ S)\n    (W : Analytic.Interval → unitary (Matrix (Fin 2) (Fin 2) A)) (hW : Continuous W)\n    (hW0 : W Analytic.start = 1) (a b c d : unitary A)\n    (hconj : conjugatedTwoUnitary (W Analytic.finish) (diagonalTwoUnitary a b) =\n      diagonalTwoUnitary c d)\n    (ha : φ (a : A) - 1 ∈ S) (hb : φ (b : A) - 1 ∈ S)\n    (hc : φ (c : A) - 1 ∈ S) (hd : φ (d : A) - 1 ∈ S) :\n    relativeClass S (Unitary.map (StarMonoidHom.ofClass φ) a) ha +\n        relativeClass S (Unitary.map (StarMonoidHom.ofClass φ) b) hb =\n      relativeClass S (Unitary.map (StarMonoidHom.ofClass φ) c) hc +\n        relativeClass S (Unitary.map (StarMonoidHom.ofClass φ) d) hd\n\nProof sketch: get `h0` from `hW0`, `mapTwoUnitary_one` and `simp [conjugatedTwoUnitary]`. Get `h1` from `congrArg (mapTwoUnitary φ) hconj` and `rw [mapTwoUnitary_conjugate, mapTwoUnitary_diagonal, mapTwoUnitary_diagonal]`. Then `have h := relativeTwoClass_conjugationPath S φ hφc hφ W hW _ (diagonalTwoUnitary_relative S _ _ ha hb)`, `simp only [h0, h1] at h`, `rw [relativeTwoClass_diagonal S _ _ ha hb, relativeTwoClass_diagonal S _ _ hc hd] at h`, `exact h`. These are lines 50–70 of the target with the four unitaries left general.\n\nRewritten target use (keep the local `hd` at lines 52–57 unchanged, with `W := partialIsometryDilationPath T hT`):\n  have h := relativeClass_add_eq_of_conjugationPath S φ hφc hφ W\n    (partialIsometryDilationPath_continuous T hT) (partialIsometryDilationPath_start T hT)\n    u 1 1 v hd huS (by simp) (by simp) hvS\n  simpa only [map_one, relativeClass_one, add_zero, zero_add] using h\n\nRewritten `relativeClass_isometry` (keep its local `hd` at lines 45–51):\n  have h := relativeClass_add_eq_of_conjugationPath S φ hφc hφ W\n    (isometryDilationPath_continuous V hV) (isometryDilationPath_start V hV)\n    1 u (isometryExtensionUnitary V hV u) 1 hd (by simp) hu he (by simp)\n  simpa only [map_one, relativeClass_one, zero_add, add_zero] using h\n\nThe `h0`, `h1`, `hz`, `u'`/`v'` (respectively `v`/`e`) lets and the final rewrite chains disappear from both proofs.",
+      "benefit": "The K₁ step, \"a null-homotopic conjugation of diagonal unitaries preserves the sum of relative classes\", becomes one named, documented lemma. Each geometric theorem then reduces to what is specific to it: the dilation path and its endpoint conjugation identity. Both proofs drop to roughly a third of their current length. A later change to the conjugation-path API (for example to `relativeTwoClass_conjugationPath` or `mapTwoUnitary_diagonal`) only has to be fixed in one place. Any future dilation argument (another `involutionUnitaryPath` instance) can reuse the lemma instead of copying a third ~20-line block.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeIsometry.lean",
+          "declaration": "OAI.CoarseAssembly.OperatorKTheory.relativeClass_isometry",
+          "excerpt": "    have hm := congrArg (mapTwoUnitary φ) hd\n    rw [mapTwoUnitary_conjugate, mapTwoUnitary_diagonal, mapTwoUnitary_diagonal] at hm\n    simpa only [map_one] using hm\n  have hz : ((1 : unitary R) : R) - 1 ∈ S := by simp\n  have h := relativeTwoClass_conjugationPath S φ hφc hφ W"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeIsometry.lean",
+          "declaration": "OAI.CoarseAssembly.OperatorKTheory.relativeClass_isometry",
+          "excerpt": "    rw [isometryDilationPath_start, mapTwoUnitary_one]\n    simp [conjugatedTwoUnitary]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativePartialIsometry.lean",
+          "declaration": "OAI.CoarseAssembly.OperatorKTheory.relativeClass_partialIsometry",
+          "excerpt": "  simp only [h0, h1] at h\n  rw [relativeTwoClass_diagonal S u' 1 huS hz,\n    relativeTwoClass_diagonal S 1 v' hz hvS, relativeClass_one S hz, add_zero, zero_add] at h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeTwoConjugation.lean",
+          "declaration": "OAI.CoarseAssembly.OperatorKTheory.relativeTwoClass_conjugationPath",
+          "excerpt": "    relativeTwoClass S (conjugatedTwoUnitary (mapTwoUnitary φ (w Analytic.start)) u)\n      (conjugatedTwoUnitary_relative S φ hφ (w Analytic.start) u hu) ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeTwoDiagonal.lean",
+          "declaration": "OAI.CoarseAssembly.OperatorKTheory.relativeTwoClass_diagonal",
+          "excerpt": "    relativeTwoClass S (diagonalTwoUnitary u v) (diagonalTwoUnitary_relative S u v hu hv) =\n      relativeClass S u hu + relativeClass S v hv := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/PartialIsometryDilation.lean",
+          "declaration": "OAI.CoarseAssembly.OperatorKTheory.partialIsometryDilationPath_start",
+          "excerpt": "partialIsometryDilationPath T hT start = 1 := involutionUnitaryPath_start _ _ _"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 19258,
+    "cache_read_input_tokens": 86244,
+    "output_tokens": 7242,
+    "output_tokens_details": {
+      "thinking_tokens": 2023
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19258,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4584,
+        "cache_read_input_tokens": 22319,
+        "cache_creation_input_tokens": 868,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 868
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.31620080000000006,
+  "duration_ms": 64277,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T13:09:07",
+  "unit": "file",
+  "source_sha256": "e8c0422f1bd340609ff651991560060b024fe6e3cc82e91604c950c4eab821d4",
+  "rubric": "repeated-proof-machinery"
+}

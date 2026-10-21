@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0076",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definitions of operatorNorm, choiLam and wedgeCoordinates and the whole of OperatorEntries.lean. I grepped the HyperbolicCones directory for existing zero or self lemmas for wedgeCoordinates and choiLam, and for uses of operatorNorm_eq_norm. I found no existing simp lemma for wedgeCoordinates v v or choiLam 0 y. I did not look at all 38 files that mention operatorNorm, so the downstream effect of the proposed @[simp] on operatorNorm_eq_norm is not checked. In particular, I did not check other files that use operatorNorm outside HyperbolicCones, which may be affected. I did not run Lean, so nothing here has been compiled or observed to loop.",
+  "findings": [
+    {
+      "declaration": "NormalizedPencil.same_direction_zero",
+      "start_line": 71,
+      "end_line": 73,
+      "excerpt": "have hz : wedgeCoordinates v v = 0 := by ext i; simp [wedgeCoordinates]",
+      "problem": "The degenerate cases wedgeCoordinates v v = 0 and choiLam 0 y = 0 are not available as lemmas. Both are proved in the proof body, and each proof unfolds the definition inside `simp [...]`. `choiLam` is a long expression with sums, so a plain `simp` cannot see that it vanishes at 0. Callers cannot use `simp` for `choiLam (wedgeCoordinates v v) y`; they must repeat the unfolding. A grep found no existing simp lemma for either fact.",
+      "proposed_change": "In Model.lean, next to the definitions, add `@[simp] theorem wedgeCoordinates_self (v : Vec 4) : wedgeCoordinates v v = 0` and `@[simp] theorem choiLam_zero_left (y : Fin 3 → R) : choiLam 0 y = 0`. Both have a definition-free LHS head, the RHS is strictly simpler, and neither rule can loop. The `hz`/`hc` steps in same_direction_zero then reduce to `simp` or `rw [wedgeCoordinates_self, choiLam_zero_left] at h`.",
+      "benefit": "The zero case is stated once and found automatically by `simp`. Downstream proofs about same-direction vectors no longer unfold `choiLam` or `wedgeCoordinates`. The normal form of `choiLam (wedgeCoordinates v v) y` becomes 0.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/Model.lean",
+          "declaration": "wedgeCoordinates",
+          "excerpt": "fun i => v 0 * u i.succ - u 0 * v i.succ"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/Model.lean",
+          "declaration": "choiLam",
+          "excerpt": "def choiLam {R : Type u} [CommRing R] (z y : Fin 3 → R) : R :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/NormIdentity.lean",
+          "declaration": "NormalizedPencil.same_direction_zero",
+          "excerpt": "have hc : choiLam (0 : Fin 3 → ℝ) y = 0 := by simp [choiLam]"
+        }
+      ]
+    },
+    {
+      "declaration": "NormalizedPencil.norm_identity / NormalizedPencil.same_direction_zero",
+      "start_line": 65,
+      "end_line": 65,
+      "excerpt": "simpa only [operatorNorm_eq_norm] using heq",
+      "problem": "`operatorNorm_eq_norm : operatorNorm A = ‖A‖ := rfl` is not a simp lemma, so every consumer has to name it by hand. In HyperbolicCones it is passed explicitly to `simpa only`/`simp only`/`rw` in NormIdentity (lines 65 and 74), TangentIdentity (36 and 44), TangentRigidity (44) and OperatorEntries (17 and 21). `operatorNorm` is a reducible-looking wrapper around the norm, so the library's `norm_*` lemmas (`norm_smul`, `norm_zero`, `norm_nonneg`) do not fire on it by default. Without the rule, `simp` leaves `operatorNorm` terms in goals, and the lemmas operatorNorm_smul and operatorNorm_continuous are needed only to work around this.",
+      "proposed_change": "Mark `operatorNorm_eq_norm` as `@[simp]` in OperatorEntries.lean, so the canonical form is `‖A‖` with the L2-operator norm. Then the `simpa only [operatorNorm_eq_norm]`/`rw [..., operatorNorm_eq_norm]` calls can use plain `simpa`/`simp`. `operatorNorm_smul` would then be subsumed by `norm_smul` and should not also be tagged simp. This orientation (wrapper to norm) cannot cycle. Before committing, check other users of `operatorNorm` outside this directory.",
+      "benefit": "It removes the repeated manual rewrite, and the `norm_zero`/`norm_smul` simp lemmas apply to operator norms automatically. It also avoids two competing normal forms (`operatorNorm A` and `‖A‖`) in the same goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/OperatorEntries.lean",
+          "declaration": "operatorNorm_eq_norm",
+          "excerpt": "operatorNorm A = ‖A‖ := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/TangentRigidity.lean",
+          "declaration": "hz/hc step in tangent rigidity proof",
+          "excerpt": "rw [choiLam_nonzero, hz, operatorNorm_eq_norm, norm_zero, zero_pow (by decide)] at hc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/HyperbolicCones/TangentIdentity.lean",
+          "declaration": "tangent identity limit step",
+          "excerpt": "simpa only [operatorNorm_eq_norm] using hlim.symm"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 12016,
+    "cache_read_input_tokens": 84909,
+    "output_tokens": 4218,
+    "output_tokens_details": {
+      "thinking_tokens": 812
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12016,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2693,
+        "cache_read_input_tokens": 22831,
+        "cache_creation_input_tokens": 959,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 959
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0987549,
+  "duration_ms": 29074,
+  "turns": 8,
+  "attempts": 2,
+  "judged": "2026-10-21T13:20:09",
+  "unit": "file",
+  "source_sha256": "532b880e9a6e272d9df3b1cbab5dda3e85c51bfac7f6f6f403be5f900d1ea62c",
+  "rubric": "simp-interface"
+}

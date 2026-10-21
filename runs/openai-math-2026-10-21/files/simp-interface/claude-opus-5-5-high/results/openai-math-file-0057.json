@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0057",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all 46 lines of the target file. It has one theorem, `exists_scaledPair_basis_height`, and declares no simp lemmas of its own. I also read `DilationPairCoordinates.lean`, which defines `scaledPairDifference`, `scaledPairAssemble`, `scaledPairLayer` and `scaledPairLayerEquiv`. I grepped the OAI tree for uses of `scaledPairLayerEquiv` and `scaledPairAssemble`. Outside its defining file, `scaledPairLayerEquiv` appears only in this target and in two wrapper definitions: `dilationPairLayerEquiv` in DilationPairFiltration.lean and in MultidegreeDilationPair.lean. Neither wrapper unfolds it in `simp`. So the target is currently the only proof that must look inside `scaledPairLayerEquiv` through the simplifier.\n\nThe one simp-interface problem I found is that the target proof has to unfold `scaledPairLayerEquiv` and `scaledPairAssemble`. This is because the defining file has no apply/projection simp lemmas for either. The fix belongs in the imported file, but the cost shows up here.\n\nThe other simp calls look fine. `simpa only [map_zero, Finsupp.zero_apply]`, `simpa only [Nat.mul_comm K H]` and `simpa only [c', Basis.reindex_apply]` use standard canonical lemmas with no competing rules or cycles. I did not run Lean, so I cannot confirm that the proposed lemmas make the simplified calls close without changes. I am not claiming any simp failure was observed.",
+  "findings": [
+    {
+      "declaration": "exists_scaledPair_basis_height",
+      "start_line": 31,
+      "end_line": 38,
+      "excerpt": "simpa [c, Basis.prod_apply, scaledPairLayerEquiv, scaledPairAssemble] using",
+      "problem": "To simplify expressions like `((scaledPairLayerEquiv P Q hQP q) (a.prod b (Sum.inl j))).val.1` to the desired normal form `(a j : L) + q • 0` (and later `(a j : L)`), both `simp` calls (lines 31 and 36) must unfold two definitions. The first is `scaledPairLayerEquiv`, a `LinearEquiv` built with `where` (toFun/invFun/left_inv/right_inv/map_add'/map_smul' fields). The second is `scaledPairAssemble`. This happens because the imported interface has no simp lemma giving the coercion or projections of `scaledPairLayerEquiv` applied to an element. `scaledPairAssemble` also has no `_fst`/`_snd` lemmas. The only simp lemmas next to them are `scaledPairDifference_apply`, `scaledPairDifference_assemble` and `mem_scaledPairLayer`. Unfolding the whole structure exposes its proof fields to the simplifier. It also makes the proof depend on how the equivalence is implemented rather than on what it does.",
+      "proposed_change": "In `OAI/Combinatorics/Progressions/Geometry/DilationPairCoordinates.lean`, add canonical simp lemmas (all `rfl`):\n\n```lean\n@[simp] theorem scaledPairAssemble_fst (q : ℚ) (u v : L) : (scaledPairAssemble q u v).1 = u + q • v := rfl\n@[simp] theorem scaledPairAssemble_snd (q : ℚ) (u v : L) : (scaledPairAssemble q u v).2 = v := rfl\n@[simp] theorem coe_scaledPairLayerEquiv_apply (P Q : Submodule ℚ L) (hQP : Q ≤ P) (q : ℚ) (x : Q × P) :\n    ((scaledPairLayerEquiv P Q hQP q x : scaledPairLayer P Q q) : L × L) = scaledPairAssemble q x.1 x.2 := rfl\n```\n\nAlternatively, tag `scaledPairLayerEquiv` with `@[simps apply]`. Then, in the target, replace the two unfolding calls with `simpa [c, Basis.prod_apply] using …` and `simpa [c, Basis.prod_apply, smul_eq_mul] using …`, removing `scaledPairLayerEquiv, scaledPairAssemble` from the simp sets.",
+      "benefit": "The simp calls in this proof would rewrite through a stable, documented interface (`coe ∘ scaledPairLayerEquiv = scaledPairAssemble`, then component lemmas) instead of unfolding a `LinearEquiv` structure. That makes them less sensitive to changes in how the equivalence is implemented, and simp no longer has to work through the structure's proof fields. The wrapper definitions `dilationPairLayerEquiv` in DilationPairFiltration.lean and MultidegreeDilationPair.lean are defined as `scaledPairLayerEquiv`. Any future proof that unfolds them would get the same projection lemmas instead of having to unfold this definition again.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Geometry/DilationPairCoordinates.lean",
+          "declaration": "scaledPairLayerEquiv",
+          "excerpt": "(Q × P) ≃ₗ[ℚ] scaledPairLayer P Q q where\n  toFun x := ⟨scaledPairAssemble q x.1 x.2,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Geometry/DilationPairCoordinates.lean",
+          "declaration": "scaledPairAssemble",
+          "excerpt": "def scaledPairAssemble (q : ℚ) (u v : L) : L × L := (u + q • v, v)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Geometry/DilationPairCoordinates.lean",
+          "declaration": "scaledPairAssemble_decompose",
+          "excerpt": "apply Prod.ext <;> simp [scaledPairAssemble]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Linear/ScaledPairBasisHeight.lean",
+          "declaration": "exists_scaledPair_basis_height",
+          "excerpt": "simpa [c, Basis.prod_apply, scaledPairLayerEquiv, scaledPairAssemble, smul_eq_mul] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/DilationPairFiltration.lean",
+          "declaration": "dilationPairLayerEquiv",
+          "excerpt": "scaledPairLayerEquiv (F.layer n) (F.layer (n + 1)) (F.antitone (Nat.le_succ n)) (q ^ n)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 12207,
+    "cache_read_input_tokens": 42374,
+    "output_tokens": 4266,
+    "output_tokens_details": {
+      "thinking_tokens": 1083
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12207,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3206,
+        "cache_read_input_tokens": 15461,
+        "cache_creation_input_tokens": 759,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 759
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19148279999999998,
+  "duration_ms": 37782,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T14:12:34",
+  "unit": "file",
+  "source_sha256": "fd52f693d6c09cd70a1efcac191b2f6cbf41cea641d6a219add77aa47e28657f",
+  "rubric": "simp-interface"
+}

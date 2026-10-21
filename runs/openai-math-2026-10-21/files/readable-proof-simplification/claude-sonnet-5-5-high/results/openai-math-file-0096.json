@@ -1,0 +1,117 @@
+{
+  "id": "openai-math-file-0096",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the helper structures `GroundDefinableFunction`, `GroundSetTerm` and `GroundDefinableFunction.congr`, and the definition of `structuralAssignmentActionGraph` with `mem_structuralAssignmentActionGraph`. I looked for existing helpers for the repeated `Fin.cases` chains and found none. Other files in the repo already use `fin_cases i <;> rfl` and `fin_cases i <;> assumption` for the same kind of goal, so I report that as the replacement. I could not compile anything, so all replacements are untested. The `fin_cases` and `assumption` suggestions in particular depend on defeq unfolding of `![…]` and `extend`, which I have not checked. Findings 1 and 2 are low-risk local cleanups. Finding 3 is a repeated pattern, and its `assumption` variant is the least certain. I did not flag the large `meaning` statement duplicating the formula, because it is a restatement needed for the proof rather than a simplification target. I also did not flag the `GroundDefinableFunction.congr` shape: it takes `∀ env, f env = g env` with no membership hypothesis, so it does not fit `equal`, which needs `members`.",
+  "findings": [
+    {
+      "declaration": "definable_structuralAssignmentActionGraph (the `args` helper inside `equal`) and realize_structuralForcingCarrierFormula (its `args` helper)",
+      "start_line": 117,
+      "end_line": 120,
+      "excerpt": "exact Fin.cases rfl (Fin.cases rfl (Fin.cases rfl (Fin.cases rfl (Fin.cases rfl",
+      "problem": "The goal `(fun j : Fin 9 => …) = env` is closed by `funext j` and then a hand-nested term of nine `Fin.cases rfl (…)` layers, each ending in `fun k => Fin.elim0 k`. The reader must count parentheses to see that this is only 'every coordinate is rfl'. The same pattern appears in `args` at lines 50–55 with eight layers. Any change in arity means rebuilding the nesting by hand.",
+      "proposed_change": "Replace the `exact Fin.cases rfl (…) j` line with a case split on the coordinate. Line 119 becomes `fin_cases j <;> rfl`. Lines 54–55 become the same line. The `funext j` before it stays. This is untested; it relies on `![…] j.succ` and `extend` reducing definitionally on numeral indices. The repo already does this in ProductNames.lean, where `funext i; fin_cases i <;> rfl` proves `v ∘ ![f,x,y] = …`.",
+      "benefit": "The argument is stated directly as 'check each coordinate by rfl'. There is no arity-dependent nesting to read, count or repair, and the proof keeps the same mathematical content.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionConsistency/Forcing/ProductNames.lean",
+          "declaration": "forces_edge",
+          "excerpt": "funext i\n    fin_cases i <;> rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Forcing/GroundStructuralForcingActionGraphs.lean",
+          "declaration": "realize_structuralForcingCarrierFormula",
+          "excerpt": "exact Fin.cases rfl (Fin.cases rfl (Fin.cases rfl (Fin.cases rfl (Fin.cases rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "definable_structuralAssignmentActionGraph (reverse direction of `equal` and the final structure)",
+      "start_line": 131,
+      "end_line": 140,
+      "excerpt": "have raw := member\n      unfold structuralAssignmentActionGraph at raw\n      have hz : z ∈ bound.eval env := (ZFSet.mem_sep.1 raw).1",
+      "problem": "The reverse direction copies `member` into `raw` and unfolds the copy just to apply `ZFSet.mem_sep`. The `unfold` is not needed, because `structuralAssignmentActionGraph` is a plain def over `ZFSet.sep` and unifies with `ZFSet.mem_sep` by delta. The closing structure also builds the `correct` field from `.trans`, `congrArg (fun x => z = x)` and `.to_iff`. That is an opaque way to say 'rewrite with `equal`'.",
+      "proposed_change": "Delete the `have raw` and `unfold … at raw` lines and write `have hz : z ∈ bound.eval env := (ZFSet.mem_sep.1 member).1`. Replace the `correct` field with `fun env members z hz => by rw [term.correct env members z hz, equal env members]`. The latter is the same proof shape as `GroundDefinableFunction.congr`, whose `correct` is `rw [definition.correct env members z hz, equal env]`. Untested; if the `mem_sep` unification fails, keep `unfold … at member`, which still avoids the copy.",
+      "benefit": "This removes a throwaway hypothesis and an `unfold`. The final field now reads the same way as the existing `congr` helper, so it is clear it is just 'transport along `equal`'.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Definability/GroundDefinableRelationProducts.lean",
+          "declaration": "GroundDefinableFunction.congr",
+          "excerpt": "rw [definition.correct env members z hz, equal env]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Forcing/StructuralAssignmentActionGraphs.lean",
+          "declaration": "structuralAssignmentActionGraph",
+          "excerpt": "ZFSet.sep (fun z => ∃ g ∈ G, ∃ x y, z = ZFSet.pair (ZFSet.pair g x) y ∧"
+        }
+      ]
+    },
+    {
+      "declaration": "structuralAssignmentActionGraph_mem, structuralForcingActionGraph_mem and `ground` in realize_structuralForcingCarrierFormula",
+      "start_line": 148,
+      "end_line": 150,
+      "excerpt": "![G,nodes,nodeOrder,nodeAction,basis,T,T2,stages,history]\n    (Fin.cases hG (Fin.cases hn (Fin.cases hno (Fin.cases hna (Fin.cases hb",
+      "problem": "Each time a `![…]` environment is passed to `.closed`, the membership hypothesis is rebuilt as a 9-, 8- or 10-deep nested `Fin.cases h₁ (Fin.cases h₂ … (fun j => Fin.elim0 j))`. This is repeated in `structuralAssignmentActionGraph_mem` (148–150), `structuralForcingActionGraph_mem` (lines 179–186, twice) and the `ground` helper (lines 47–49). The argument is only 'every entry of the vector is in M.sets', but the nested term hides that. The hypotheses have to be listed in the same order as the vector, and the closing parentheses must be counted.",
+      "proposed_change": "Prove the vector-membership goal by cases on the index. For example, write `(fun j => by fin_cases j <;> assumption)` in place of each nested chain. Alternatively, state a local `have members : ∀ j, ![G, …] j ∈ M.sets := by intro j; fin_cases j <;> assumption` once per proof. This is untested; if `assumption` does not see through `![…]` after `fin_cases`, add `simp` or `exact` per case.",
+      "benefit": "The reader sees directly that all listed sets are hypotheses of the lemma, and the order no longer has to be matched by nesting. The shape also stays valid when an argument is added or removed. The repo already uses `fin_cases i <;> assumption` for similar goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionConsistency/Forcing/ProductNames.lean",
+          "declaration": "app_congr",
+          "excerpt": "intro i\n  fin_cases i <;> assumption"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Forcing/GroundStructuralForcingActionGraphs.lean",
+          "declaration": "structuralForcingActionGraph_mem",
+          "excerpt": "(Fin.cases hRows (Fin.cases hG (Fin.cases hn (Fin.cases hno (Fin.cases hb"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 35408,
+    "cache_read_input_tokens": 245738,
+    "output_tokens": 9269,
+    "output_tokens_details": {
+      "thinking_tokens": 3175
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35408,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3226,
+        "cache_read_input_tokens": 36063,
+        "cache_creation_input_tokens": 3388,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3388
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.25893579999999994,
+  "duration_ms": 81101,
+  "turns": 18,
+  "attempts": 1,
+  "judged": "2026-10-21T14:42:44",
+  "unit": "file",
+  "source_sha256": "6852b848e1bc70f3d9441c4a22bdc2ce52084b989667a3bbc95aa55057d25a96",
+  "rubric": "readable-proof-simplification"
+}

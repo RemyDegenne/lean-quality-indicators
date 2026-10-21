@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0096",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 192 lines of the target file, then searched the PartitionPrinciple sources for the same proof shapes.\n\nWhat I checked in the target:\n- structuralForcingCarrier_mem: a one-term proof.\n- realize_structuralForcingCarrierFormula: its proof uses the `meaning` / `and_congr` / `constructor` pattern for a formula of the form `.ex (.conj …)`.\n- definable_structuralAssignments: a term-building definition.\n- definable_structuralAssignmentActionGraph: the separation-set `equal` block plus a hand-built structure.\n- The two `_mem` theorems near the end of the file.\n\nWhat I found:\n- The proof pattern \"∃ H, (formula pins H to one ground value) ∧ (second formula about H)\" also appears in `realize_structuralForcingStageFormula` (GroundStructuralForcingHistoryConstruction.lean) and in `realize_refinementHistoryOrderOutputFormula` (RefinementHistoryOrderOutputFormulas.lean). That is three uses in total, and I could not find a shared lemma for it. This is the single finding.\n\nWhat I rejected:\n- The repeated `Fin.cases (members …)` chains and the `Fin.cases rfl` argument-alignment chains. They are repetitive but routine unfolding, which the rubric excludes.\n- The sep-equality `equal` block in definable_structuralAssignmentActionGraph (lines 114–136). It occurs only once. The similar proofs in GroundRawStageRefinementTestActions.lean finish with `term.definition.congr` and `rfl`, because there the separation predicate matches the definition exactly.\n- The hand-built structure at lines 137–140. It nearly repeats `GroundDefinableFunction.congr`, but that lemma needs equality for every `env`, while this one only holds for ground environments. Adding a variant would be a short wrapper, which is too small to report.\n\nUncertainty: I cannot run Lean, so the proposed lemma and the rewritten uses are untested. Two points to check:\n- Destructuring `Realize U (.conj φ ψ) _` as a pair. The existing `and_congr` uses show this is definitionally `And`, but a `show`/`change` may be needed.\n- Closing `P a` against `M.structuralForcingCarrier …`, which holds only after unfolding the definition. This may need `.trans Iff.rfl` or `unfold structuralForcingCarrier`.",
+  "findings": [
+    {
+      "declaration": "realize_structuralForcingCarrierFormula",
+      "start_line": 56,
+      "end_line": 77,
+      "excerpt": "  constructor\n  · rintro ⟨H, hH, holds⟩\n    obtain ⟨rfl, equal⟩ := (meaning H hH).1 holds\n    exact equal\n  · intro equal",
+      "problem": "The proof handles `.ex (.conj φ ψ)` where φ forces the witness H to equal one ground value a and ψ says something about H. It does this by hand. First it restates the whole conjunction formula in a `meaning` statement (lines 56–64, which copy the `reindex (extend 0 ![…])` formula text again). It then proves `meaning` with `and_congr` and removes the existential with a `constructor`/`rintro`/`obtain ⟨rfl, _⟩`/membership block. The same reasoning appears in `realize_structuralForcingStageFormula` (GroundStructuralForcingHistoryConstruction.lean, lines 200–230) and in `realize_refinementHistoryOrderOutputFormula` (RefinementHistoryOrderOutputFormulas.lean, lines 133–152). In each copy the large formula is restated in a `meaning` statement only so the same existential argument can run.",
+      "proposed_change": "Add one lemma next to `realize_ex` (CountableSetFormulas.lean):\n\ntheorem realize_ex_conj_of_unique (U : Set ZFSet.{u}) {n : Nat} (φ ψ : SetFormula (n + 1))\n    (env : Fin n → ZFSet.{u}) {a : ZFSet.{u}} {P : ZFSet.{u} → Prop} (ha : a ∈ U)\n    (first : ∀ H ∈ U, Realize U φ (extend H env) ↔ H = a)\n    (second : ∀ H ∈ U, Realize U ψ (extend H env) ↔ P H) :\n    Realize U (.ex (.conj φ ψ)) env ↔ P a\n\nProof sketch: `rw [realize_ex]; constructor`. Forward: `rintro ⟨H, hH, h1, h2⟩; obtain rfl := (first H hH).1 h1; exact (second H hH).1 h2`. Backward: `exact fun p => ⟨a, ha, (first a ha).2 rfl, (second a ha).2 p⟩`. This relies on `.conj` being definitionally `And`, which the existing `and_congr` uses already rely on.\n\nRewritten target proof (keep `params`, `ground` and `args`; delete `meaning` and the final `constructor` block):\n  unfold structuralForcingCarrierFormula\n  …params/ground/args…\n  exact realize_ex_conj_of_unique M.sets _ _ env\n    (P := fun H => env output = M.refinementHistoryForcing (env rows) (env T) (env stages) H)\n    ((M.definable_structuralRefinementHistory pairing unions powers separation collection).closed params ground)\n    (fun H hH => by\n      rw [realize_reindex, map_extend, args]\n      exact (M.definable_structuralRefinementHistory pairing unions powers separation collection).correct params ground H hH)\n    (fun H hH => M.realize_refinementHistoryForcingOutputFormula pairing unions powers separation\n      output.succ rows.succ T.succ stages.succ 0 N.succ (extend H env) (Fin.cases hH members) naturals)\nIf `exact` does not unfold `structuralForcingCarrier` automatically, append `.trans Iff.rfl`.\n\nRewritten `realize_structuralForcingStageFormula`: call the same lemma with `ha := carrier` (the existing `structuralForcingCarrier_mem` term). Use `first := fun Q hQ => M.realize_structuralForcingCarrierFormula … 0 rows.succ … N.succ (extend Q env) (Fin.cases hQ members) naturals`. Use `second :=` the current `rw [realize_reindex, map_extend, args]; exact (M.definable_structuralForcingStageFromCarrier …).correct …` branch.\n\nRewritten `realize_refinementHistoryOrderOutputFormula`: use `first :=` the `realize_refinementHistoryForcingOutputFormula` term and `second :=` the `realize_rawRowAssignmentOrderOutputFormula` term. Then use `rw [M.refinementHistoryOrder_raw]`, as that proof already does.",
+      "benefit": "Each `realize_*Formula` proof would state only its two meaningful facts: which definable function fixes the hidden witness, and what the output formula says. It would no longer restate the whole conjunction formula in a `meaning` statement (nine lines here, twelve in the stage version) or repeat the existential bookkeeping. If the `SetFormula` encoding of `.ex`/`.conj` changes, only one lemma needs fixing instead of three proofs. Future formulas built from a function graph plus an output formula, which this development produces regularly, could use the lemma directly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Forcing/GroundStructuralForcingHistoryConstruction.lean",
+          "declaration": "realize_structuralForcingStageFormula",
+          "excerpt": "  · rintro ⟨Q, hQ, holds⟩\n    obtain ⟨rfl, equal⟩ := (meaning Q hQ).1 holds\n    exact equal"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Forcing/GroundStructuralForcingHistoryConstruction.lean",
+          "declaration": "realize_structuralForcingStageFormula",
+          "excerpt": "    exact ⟨_, carrier, (meaning _ carrier).2 ⟨rfl, equal⟩⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Definability/RefinementHistoryOrderOutputFormulas.lean",
+          "declaration": "realize_refinementHistoryOrderOutputFormula",
+          "excerpt": "  · rintro ⟨Q, hQ, recognized⟩\n    obtain ⟨rfl, equal⟩ := (meaning Q hQ).1 recognized"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Definability/CountableSetFormulas.lean",
+          "declaration": "realize_ex",
+          "excerpt": "Realize U (ex φ) env ↔ ∃ x ∈ U, Realize U φ (extend x env) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/SetTheory/PartitionPrinciple/Forcing/GroundStructuralForcingActionGraphs.lean",
+          "declaration": "realize_structuralForcingCarrierFormula",
+          "excerpt": "    have packed := (M.definable_structuralRefinementHistory pairing unions powers separation collection).closed params ground\n    exact ⟨_, packed, (meaning _ packed).2 ⟨rfl, equal⟩⟩"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 46329,
+    "cache_read_input_tokens": 333763,
+    "output_tokens": 10587,
+    "output_tokens_details": {
+      "thinking_tokens": 3906
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 46329,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4563,
+        "cache_read_input_tokens": 48420,
+        "cache_creation_input_tokens": 1838,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1838
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.6492205999999999,
+  "duration_ms": 100185,
+  "turns": 19,
+  "attempts": 1,
+  "judged": "2026-10-21T17:21:17",
+  "unit": "file",
+  "source_sha256": "6852b848e1bc70f3d9441c4a22bdc2ce52084b989667a3bbc95aa55057d25a96",
+  "rubric": "repeated-proof-machinery"
+}

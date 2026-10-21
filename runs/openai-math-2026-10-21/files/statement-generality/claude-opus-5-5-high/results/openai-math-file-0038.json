@@ -1,0 +1,116 @@
+{
+  "id": "openai-math-file-0038",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 70 lines of the target file. I also read the definitions it depends on in SmoothNormPartition.lean (normPartitionWeight, its _low/_high/_smooth/_tsupport/_compact lemmas) and its only downstream consumer, DistinguishedStoppingWeights.lean. A grep showed that the hypothesis shape `∀ x, 0 < x → ‖deriv W x‖*x ≤ V` is taken for an arbitrary W by dozens of downstream theorems, for example distinguishedRadialWeight_bounds. That makes generic producers of the bound useful. In Mathlib I checked deriv_comp_mul_left (it needs no differentiability), deriv_of_notMem_tsupport, HasCompactSupport.deriv, HasCompactSupport.norm, HasCompactSupport.mul_right and HasCompactSupport.exists_bound_of_continuous.\n\nBoth theorems are about one concrete weight, but neither proof uses anything specific to it beyond C¹ smoothness and compact support, or just the radial bound itself. I make two findings, one per theorem.\n\nSome things are out of scope or minor:\n- normPartitionWeight_deriv_zero is essentially Mathlib's deriv_of_notMem_tsupport combined with normPartitionWeight_tsupport. That is more a duplication issue than a specialisation one, so I only mention it as part of finding 1.\n- The positivity conditions `0 < x` and `0 < c` could be relaxed (using |x|, or any c ≠ 0), because the derivative vanishes on the nonpositive axis. No consumer needs that, so I don't report it.\n- scaledNormPartitionWeight_smooth and _norm are trivial wrappers and I raise nothing about them.\n\nI could not compile anything, so the proposed proofs are sketches built from lemmas whose statements I read. Small elaboration details may need adjusting: unfolding scaledNormPartitionWeight to match the `(f <| c * ·)` form, and a `Pi.mul_apply` rewrite when turning the `HasCompactSupport.mul_right` result into the pointwise function.",
+  "findings": [
+    {
+      "declaration": "scaledNormPartitionWeight_deriv_bound",
+      "start_line": 52,
+      "end_line": 64,
+      "excerpt": "theorem scaledNormPartitionWeight_deriv_bound :\n    ∃ D : ℝ, 0 ≤ D ∧ ∀ c : ℝ, 0 < c → ∀ x : ℝ, 0 < x →\n      ‖deriv (scaledNormPartitionWeight c) x‖*x ≤ D := by",
+      "problem": "This theorem states that rescaling preserves the radial derivative bound, but only for the one function normPartitionWeight. Its proof uses just two facts about that function: the radial bound from normPartitionWeight_radial_deriv_bound, and differentiability (used to build the chain-rule HasDerivAt). The real content is that the bound `‖deriv f x‖*x ≤ D` is invariant under `x ↦ c*x` for c > 0, and that holds for every f. Mathlib's `deriv_comp_mul_left` gives `deriv (f <| c * ·) x = c • deriv f (c * x)` with no differentiability assumption, so even the smoothness step is unnecessary.",
+      "proposed_change": "Add a general lemma and derive the current theorem from it:\n\n```lean\ntheorem radial_deriv_bound_comp_mul {E : Type*} [NormedAddCommGroup E] [NormedSpace ℝ E]\n    {f : ℝ → E} {D : ℝ} (hf : ∀ x, 0 < x → ‖deriv f x‖ * x ≤ D)\n    {c : ℝ} (hc : 0 < c) {x : ℝ} (hx : 0 < x) :\n    ‖deriv (fun y => f (c * y)) x‖ * x ≤ D := by\n  rw [deriv_comp_mul_left, norm_smul, Real.norm_of_nonneg hc.le]\n  calc _ = ‖deriv f (c*x)‖*(c*x) := by ring\n    _ ≤ D := hf _ (mul_pos hc hx)\n```\n\nThen scaledNormPartitionWeight_deriv_bound becomes `obtain ⟨D,hD,h⟩ := normPartitionWeight_radial_deriv_bound; exact ⟨D,hD,fun c hc x hx => radial_deriv_bound_comp_mul h hc hx⟩`, after unfolding scaledNormPartitionWeight. The c ≤ 0 case is excluded exactly as it is now.",
+      "benefit": "Many downstream theorems take an arbitrary weight W with a hypothesis `∀ x, 0 < x → ‖deriv W x‖*x ≤ V`. With the general lemma, a user can rescale any such weight, not just this partition function, without repeating the chain-rule computation. The proof also gets shorter because no differentiability or HasDerivAt.scomp step is needed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/Deriv/CompMul.lean",
+          "declaration": "deriv_comp_mul_left",
+          "excerpt": "theorem deriv_comp_mul_left : deriv (f <| c * ·) x = c • deriv f (c * x) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Decomposition/DistinguishedPrimeVariation.lean",
+          "declaration": "distinguishedRadialWeight_bounds",
+          "excerpt": "(hWderiv : ∀ x, 0 < x → ‖deriv W x‖*x ≤ D)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Decomposition/DistinguishedStoppingWeights.lean",
+          "declaration": "distinguishedStoppingWeights_uniform",
+          "excerpt": "obtain ⟨V,hV,hbound⟩ := scaledNormPartitionWeight_deriv_bound"
+        }
+      ]
+    },
+    {
+      "declaration": "normPartitionWeight_radial_deriv_bound",
+      "start_line": 27,
+      "end_line": 41,
+      "excerpt": "theorem normPartitionWeight_radial_deriv_bound :\n    ∃ D : ℝ, 0 ≤ D ∧ ∀ x : ℝ, 0 < x → ‖deriv normPartitionWeight x‖*x ≤ D := by",
+      "problem": "This theorem and its helper normPartitionWeight_deriv_zero (lines 13–25) are stated only for normPartitionWeight. The proof uses just two facts: deriv f is continuous (from ContDiff), and deriv f vanishes outside a compact set (from the hand-proved helper). So the result holds for any C¹ compactly supported f : ℝ → E. Mathlib already supplies the support part: `deriv_of_notMem_tsupport` and `HasCompactSupport.deriv`. The hand-written case split on `x < 1` / `2 < x` in the helper is therefore only needed because the statement is specialised.",
+      "proposed_change": "State and prove the general version:\n\n```lean\ntheorem radial_deriv_bound_of_hasCompactSupport {E : Type*} [NormedAddCommGroup E]\n    [NormedSpace ℝ E] {f : ℝ → E} (hf : ContDiff ℝ 1 f) (hc : HasCompactSupport f) :\n    ∃ D : ℝ, 0 ≤ D ∧ ∀ x : ℝ, 0 < x → ‖deriv f x‖ * x ≤ D\n```\n\nProof sketch:\n1. `hc.deriv.norm.mul_right` (with g = id) gives compact support for `fun x => ‖deriv f x‖ * x`.\n2. `(hf.continuous_deriv le_rfl).norm.mul continuous_id` gives continuity.\n3. `HasCompactSupport.exists_bound_of_continuous` then yields C with `‖‖deriv f x‖ * x‖ ≤ C`.\n4. Take `max C 0` and use `Real.le_norm_self`.\n\nThe current theorem is then `radial_deriv_bound_of_hasCompactSupport (normPartitionWeight_smooth.of_le (by norm_num)) normPartitionWeight_compact`, and normPartitionWeight_deriv_zero can be dropped or replaced by `deriv_of_notMem_tsupport`.",
+      "benefit": "Users get a reusable way to establish the radial derivative hypothesis that many downstream theorems require, for any smooth compactly supported weight, instead of reproving it per function. The proof no longer depends on the specific interval [1,2] or the _low/_high lemmas. The statement also makes clear that only C¹ smoothness and compact support matter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/Deriv/Support.lean",
+          "declaration": "HasCompactSupport.deriv",
+          "excerpt": "protected theorem HasCompactSupport.deriv (hf : HasCompactSupport f) :\n    HasCompactSupport (deriv f) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Group/Bounded.lean",
+          "declaration": "HasCompactMulSupport.exists_bound_of_continuous",
+          "excerpt": "{f : α → E} (hf : HasCompactMulSupport f) (h'f : Continuous f) : ∃ C, ∀ x, ‖f x‖ ≤ C := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/Algebra/Support.lean",
+          "declaration": "HasCompactSupport.mul_right",
+          "excerpt": "theorem HasCompactSupport.mul_right (hf : HasCompactSupport f) : HasCompactSupport (f * f') := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/SmoothNormPartition.lean",
+          "declaration": "normPartitionWeight_compact",
+          "excerpt": "lemma normPartitionWeight_compact : HasCompactSupport normPartitionWeight :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/Deriv/Support.lean",
+          "declaration": "deriv_of_notMem_tsupport",
+          "excerpt": "theorem deriv_of_notMem_tsupport (h : x ∉ tsupport f) : deriv f x = 0 := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 22,
+    "cache_creation_input_tokens": 38158,
+    "cache_read_input_tokens": 276396,
+    "output_tokens": 9023,
+    "output_tokens_details": {
+      "thinking_tokens": 2668
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 38158,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3997,
+        "cache_read_input_tokens": 40043,
+        "cache_creation_input_tokens": 2139,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2139
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5410912,
+  "duration_ms": 99962,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-21T12:33:31",
+  "unit": "file",
+  "source_sha256": "ccc6c7fb60624dd03c7da0082eabfd0113752db6c6d9ee5af4c43dea7b84ae7d",
+  "rubric": "statement-generality"
+}

@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0081",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 142 lines of the target file. I also read the definitions it relies on: `bit`, `degree`, `synth`, `fourier`, `flip`, `diff`, `fourier_noise`, `fourier_diff` and `sum_succ` in Fourier/Fourier.lean, and `mean_mono`, `mean_nonneg` and `noise_small_l1` in Reduction/Cube.lean. I checked each proposed Mathlib lemma in the sources: `sq_le` and `pow_le_of_le_one` in Algebra/Order/GroupWithZero/Basic.lean, and `sq_abs` in Algebra/Order/Ring/Abs.lean. The bare name `sq_le` resolves to the root lemma: the other `sq_le` lives in namespace `Real`, which this file does not open, and openai-math has no local `sq_le`. I also checked that `ite_eq_left`/`ite_eq_right` are the current core names; `if_pos`/`if_neg` are deprecated aliases of them.\n\nCandidates I looked at and left out:\n- `low_degree_coefficient`: an explicit `calc` would be more transparent than the final `nlinarith`. But whether the `rw [fourier_noise]` output beta-reduces, and whether `gcongr` closes the step, are uncertain, so I could not give a reliable replacement.\n- `noise_small_influence`: every hypothesis, including `hN`, is needed for the nonlinear step. A `calc` rewrite would be longer, not simpler.\n- `truncate_depends`: `split_ifs` instead of `by_cases` with `ite_eq_left`/`ite_eq_right` is mostly a matter of taste.\n- `synth_eq_sum` and `degree_eq_sum`: these are already compact simp/induction proofs, and I found no clearly more readable alternative.\n\nNothing was compiled.",
+  "findings": [
+    {
+      "declaration": "diff_square_le_influence",
+      "start_line": 96,
+      "end_line": 101,
+      "excerpt": "  have h := diff_bounded f hf i x\n  nlinarith [abs_nonneg (diff i f x), sq_abs (diff i f x)]",
+      "problem": "The pointwise step is the elementary fact that a number in [0,1] has a square no larger than itself (here applied to |diff i f x|). The proof stores the bound in `h` and then calls `nlinarith` with two hints. A reader has to work out which product of hypotheses nlinarith uses, even though Mathlib has a lemma stating exactly this fact.",
+      "proposed_change": "Use Mathlib's `sq_le` (0 ≤ a → a ≤ 1 → a ^ 2 ≤ a) after rewriting the square as the square of the absolute value:\n```lean\nlemma diff_square_le_influence {n : ℕ} (f : Cube n → ℝ) (hf : ∀ x, |f x| ≤ 1)\n    (i : Fin n) : mean (fun x => diff i f x^2) ≤ influence f i := by\n  apply mean_mono\n  intro x\n  rw [← sq_abs]\n  exact sq_le (abs_nonneg _) (diff_bounded f hf i x)\n```",
+      "benefit": "The argument now reads directly as: compare means pointwise, write diff² as |diff|², and use that t² ≤ t for 0 ≤ t ≤ 1. A named lemma replaces nonlinear-arithmetic search with hints, and the intermediate `have` goes away. The bound from `diff_bounded` still appears explicitly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/GroupWithZero/Basic.lean",
+          "declaration": "sq_le",
+          "excerpt": "lemma sq_le [PosMulMono M₀] (h₀ : 0 ≤ a) (h₁ : a ≤ 1) : a ^ 2 ≤ a :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/Ring/Abs.lean",
+          "declaration": "sq_abs",
+          "excerpt": "@[simp] lemma sq_abs (a : α) : |a| ^ 2 = a ^ 2 := by simpa only [sq] using abs_mul_abs_self a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Reduction/Cube.lean",
+          "declaration": "mean_mono",
+          "excerpt": "lemma mean_mono {n : ℕ} {f g : Cube n → ℝ} (h : ∀ x, f x ≤ g x) : mean f ≤ mean g :="
+        }
+      ]
+    },
+    {
+      "declaration": "walsh_depends",
+      "start_line": 43,
+      "end_line": 57,
+      "excerpt": "    have hh : b = true → c = d := fun hb => h 0 hb\n    cases b\n    · simp [walsh, ht]\n    · have he := hh rfl\n      subst d",
+      "problem": "The helper `hh : b = true → c = d` is created before the case split, but it is only used in the `true` branch. There it is applied to `rfl` and the result is then substituted in a separate step. That is three steps (`have hh`, `have he`, `subst d`) for one fact: when the first bit of `s` is set, the first coordinates of `x` and `y` agree. Both `hh` and `he` are named and used only once.",
+      "proposed_change": "Drop `hh` and get the equality directly in the `true` branch:\n```lean\n  | succ n ih =>\n    obtain ⟨b,s⟩ := s\n    obtain ⟨c,x⟩ := x\n    obtain ⟨d,y⟩ := y\n    have ht : walsh s x = walsh s y := ih s x y (fun i hi => h i.succ hi)\n    cases b\n    · simp [walsh, ht]\n    · obtain rfl : c = d := h 0 rfl\n      simp [walsh, ht]\n```\n(`h 0 rfl` uses the same definitional unfolding of `bit` at index `0` as the original `h 0 hb`.)",
+      "benefit": "The `true` branch now states the needed fact right where it is used ('the first coordinates agree, so substitute') in a single `obtain rfl`. The reader no longer has to track two auxiliary hypotheses. The mathematical structure is unchanged: induction on the tail via `ht`, then a split on whether coordinate 0 is in the support.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Fourier/Fourier.lean",
+          "declaration": "bit",
+          "excerpt": "  | _+1, (b,x), i => Fin.cases b (bit x) i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Expansion/Supported.lean",
+          "declaration": "walsh",
+          "excerpt": "  | _+1, (b,s), (c,x) => (if b && c then -1 else 1) * walsh s x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 31006,
+    "cache_read_input_tokens": 206716,
+    "output_tokens": 12882,
+    "output_tokens_details": {
+      "thinking_tokens": 8034
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31006,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5911,
+        "cache_read_input_tokens": 34689,
+        "cache_creation_input_tokens": 360,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 360
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5471032,
+  "duration_ms": 121178,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T16:08:56",
+  "unit": "file",
+  "source_sha256": "0dc0f2001bd90936e76f5260aed27d6483724f2ee3ad3382e58efc97a877969e",
+  "rubric": "readable-proof-simplification"
+}

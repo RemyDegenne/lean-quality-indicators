@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0083",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the defining files for `directional` (Sampling/Directional.lean) and `adjointCoordinate`/`tensorAdjoint` (JetEstimates/PolyC1.lean). I grepped the LogConcave directory for uses of `directional_gradient` and for `change`/`unfold`/`simp only [directional]` patterns. The file has no `@[simp]` declarations of its own, so the findings are about missing or inconsistently oriented simp interface in the definitions it relies on. I could not run Lean. The suggestions are untested, and the claim that the `change` steps could be replaced by simp lemmas is a plan, not something I checked by compiling. I did not see a loop or a clear competing-rule problem.",
+  "findings": [
+    {
+      "declaration": "adjointCoordinate_compact_pairing (and tensorAdjoint_compact_pairing)",
+      "start_line": 60,
+      "end_line": 60,
+      "excerpt": "change (∫z,(-directional v f z+directional v H z*f z)*g z ∂gibbs H)=_",
+      "problem": "`adjointCoordinate` and `tensorAdjoint` are plain `def`s with no pointwise unfolding lemmas, such as `adjointCoordinate H v f z = -directional v f z + directional v H z * f z`. Because of this, line 60 uses a defeq `change` that restates the whole integrand. Line 80 uses `simp only [tensorAdjoint, ...]`, which unfolds the definition by name. The same `change` is repeated in PolyC1.lean's `adjointCoordinate_pairing`, and `unfold tensorAdjoint adjointCoordinate` appears in MaterialScalar.lean. Each client has to remember the unfolded shape and restate it by hand.",
+      "proposed_change": "Next to the definitions in PolyC1.lean, add equation lemmas `adjointCoordinate_apply : adjointCoordinate H v f z = -directional v f z + directional v H z * f z` and `tensorAdjoint_apply : tensorAdjoint H b V z = ∑ i, adjointCoordinate H (b i) (V i) z`. Prove both by `rfl`, and make them `@[simp]` only if the unfolding is wanted globally. Otherwise use them through `simp only [adjointCoordinate_apply]`. Then replace the `change` on line 60 with `simp only [adjointCoordinate_apply]` (or `rw`), and the `simp only [tensorAdjoint, ...]` on line 80 with `tensorAdjoint_apply`.",
+      "benefit": "The unfolded form is stated once and has a name, so proofs no longer retype the integrand. The `change` is not tied to the exact `-a + b*f` ordering. If `adjointCoordinate` is later redefined, the proofs keep working through the lemma, and `ring`/`linarith` can see through the lemma without using defeq.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/JetEstimates/PolyC1.lean",
+          "declaration": "adjointCoordinate",
+          "excerpt": "fun x => -directional v f x+directional v H x*f x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/JetEstimates/PolyC1.lean",
+          "declaration": "adjointCoordinate_pairing",
+          "excerpt": "change (∫x,(-directional v f x+directional v H x*f x)*g x ∂gibbs H)=_"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/Sampling/MaterialScalar.lean",
+          "declaration": "(proof using tensorAdjoint)",
+          "excerpt": "unfold tensorAdjoint adjointCoordinate"
+        }
+      ]
+    },
+    {
+      "declaration": "adjointCoordinate_compact_pairing / compact_gibbs_ibp / compact_gaussian_ibp (use of directional_gradient and directional)",
+      "start_line": 59,
+      "end_line": 59,
+      "excerpt": "simp only [←directional_gradient,mul_assoc] at h3 ⊢ hh",
+      "problem": "The simp interface between `directional v H z` and `inner ℝ (gradient H z) v` has no fixed normal form. `directional_gradient` is stated as `directional v H x = inner ℝ (gradient H x) v` and is not tagged simp. Here it is used in reverse (`←directional_gradient`) to fold `inner (gradient H z) v` back into `directional`. Elsewhere it is used forward, as in MaterialScalar.lean and ConditionalMeanArray.lean. `compact_gibbs_ibp` states its result with `inner ℝ (gradient H z) v`, while `adjointCoordinate` is stated with `directional`. Every consumer therefore needs a manual reverse rewrite. Line 117 instead unfolds `directional` by name in `simp only [directional, gaussianProposalPotential_gradient, id_eq]`. It reaches `inner (id z) v` through the `fderiv` form and never uses `directional_gradient`. A `←` rewrite with a pattern `inner ℝ (gradient H x) v` is also fragile when H is not a variable. It would rewrite any inner product with a gradient, for example in the Gaussian instance.",
+      "proposed_change": "Choose a canonical form. A cleaner option is to state `compact_gibbs_ibp` with `directional v H z * g z` on the right-hand side. That matches the shape `adjointCoordinate` already uses and removes the `←directional_gradient` step on line 59. The Gaussian corollary on line 117 can then use `directional_gradient` plus `gaussianProposalPotential_gradient`. If the `inner` form must be kept, add a separate lemma `inner_gradient_eq_directional : inner ℝ (gradient H x) v = directional v H x`, so the intended direction is a named lemma and not `←`. Add a lemma `directional_apply : directional v f x = fderiv ℝ f x v := rfl`, so that `simp only [directional]` is not needed on lines 39 and 117.",
+      "benefit": "One direction per expression means downstream proofs, in this file and in PolyC1.lean line 85, no longer need ad hoc `←` rewrites. The `simp only` calls become shorter and less sensitive to the `at h3 ⊢ hh` locations. The Gaussian corollary would no longer depend on unfolding `directional`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/Sampling/Directional.lean",
+          "declaration": "directional_gradient",
+          "excerpt": "directional v H x=inner ℝ (gradient H x) v"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/JetEstimates/PolyC1.lean",
+          "declaration": "adjointCoordinate_pairing",
+          "excerpt": "simp only [←directional_gradient,mul_assoc] at hi₃ ⊢ hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/Sampling/ConditionalMeanArray.lean",
+          "declaration": "directional_basis_gradient",
+          "excerpt": "rw [directional_gradient]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/LogConcave/Sampling/MaterialScalar.lean",
+          "declaration": "(proof using directional_gradient)",
+          "excerpt": "simp only [hD,directional_gradient,interpolationPotential_gradient hF x hr hl hρ0 hρ1]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 32991,
+    "cache_read_input_tokens": 98958,
+    "output_tokens": 5064,
+    "output_tokens_details": {
+      "thinking_tokens": 1311
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32991,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3035,
+        "cache_read_input_tokens": 32786,
+        "cache_creation_input_tokens": 4218,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4218
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19251980000000002,
+  "duration_ms": 39790,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T13:47:39",
+  "unit": "file",
+  "source_sha256": "85b92b27e9819d5a72cb485284384cebb502791efac30fc197c6e0d3d9c4b1d4",
+  "rubric": "simp-interface"
+}

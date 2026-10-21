@@ -1,0 +1,137 @@
+{
+  "id": "openai-math-file-0027",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 384 lines and checked the main dependencies: Mathlib's `IsAlgClosed.cardinal_eq_cardinal_transcendence_basis_of_aleph0_lt'`, `MvPolynomial.cardinalMk_le_max`, `Cardinal.mk_le_aleph0`, `MvPolynomial.map_injective`, `Polynomial.map_injective` and `FaithfulSMul.algebraMap_injective`. I also checked the project's `homogeneousLinearForm` (defined over `CommRing`), `hyperplaneFamilyAlgebra`, `hyperplane_specialization_equiv`, `etale_hyperplane_geometricGeneric`, and the call sites in SimultaneousHyperplanes.lean and Descent.lean.\n\nThings I considered and did not report:\n- `field_embedding_over_countable`: it works in `Type` and assumes `[Countable R] [Uncountable K]`. A universe-polymorphic version would need extra `Cardinal.lift` bookkeeping. The Mathlib lemma the proof relies on requires `#R ≤ ℵ₀` and `ℵ₀ < #K`, so there is no cheap weakening.\n- `countable_etale_hyperplane_integral_equation` needs `[IsAlgClosed R]` because `etale_hyperplane_geometricGeneric` requires it.\n- The `hgeo` hypothesis of `integral_specialization_of_countable_model` is only used at `E = K`. However, the algebra structure on `K` is chosen inside the proof, so there is no clean weaker statement.\n- `countable_polynomial_model` is the `k = 0` case of `countable_model_with_elements`. That is duplication rather than over-specialisation, so it is outside this rubric.\n\nI could not compile anything, so the proposed changes are argued from the existing proof terms and the lemma signatures I read.",
+  "findings": [
+    {
+      "declaration": "MaximalSeshadri.BertiniIntegral.generic_field_embedding",
+      "start_line": 35,
+      "end_line": 44,
+      "excerpt": "(n : Type) [Finite n] :\n    Nonempty (FractionRing (MvPolynomial n K) →ₐ[R] K) := by",
+      "problem": "The variable type is required to be `Finite`. The proof only uses `#n ≤ ℵ₀`, via `Cardinal.mk_le_aleph0`, and that lemma only needs `[Countable n]`. So the statement leaves out the case of countably many generic parameters, for example `FractionRing (MvPolynomial ℕ K)`, even though the same argument covers it.",
+      "proposed_change": "Change the binder to `(n : Type) [Countable n]`, giving `theorem generic_field_embedding {R K : Type} [Field R] [Countable R] [Field K] [Algebra R K] [IsAlgClosed K] [Uncountable K] (n : Type) [Countable n] : Nonempty (FractionRing (MvPolynomial n K) →ₐ[R] K)`. The proof should not need to change. After `MvPolynomial.cardinalMk_le_max` and `simp only [max_le_iff]`, the goal is `(#K ≤ #K ∧ #n ≤ #K) ∧ ℵ₀ ≤ #K`. The middle part is closed by `Cardinal.mk_le_aleph0.trans (le_of_lt Cardinal.aleph0_lt_mk)`, which only needs `Countable n`. Edge cases: if `n` is empty, `MvPolynomial n K` is just `K`, so the bound still holds. Existing callers with `[Finite n]` still work, because `Finite` implies `Countable`.",
+      "benefit": "Users can embed the function field of countably many indeterminates without first restricting to a finite index type. Existing uses are unaffected, and the hypothesis now matches what the proof actually uses.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/SetTheory/Cardinal/Basic.lean",
+          "declaration": "Cardinal.mk_le_aleph0",
+          "excerpt": "theorem mk_le_aleph0 [Countable α] : #α ≤ ℵ₀ :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/MvPolynomial/Cardinal.lean",
+          "declaration": "MvPolynomial.cardinalMk_le_max",
+          "excerpt": "theorem cardinalMk_le_max : #(MvPolynomial σ R) ≤ #R ⊔ #σ ⊔ ℵ₀ :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "MaximalSeshadri.BertiniIntegral.generic_field_embedding",
+          "excerpt": "exact ⟨⟨le_rfl, Cardinal.mk_le_aleph0.trans (le_of_lt Cardinal.aleph0_lt_mk)⟩,"
+        }
+      ]
+    },
+    {
+      "declaration": "MaximalSeshadri.BertiniIntegral.hyperplane_injective_descent",
+      "start_line": 217,
+      "end_line": 250,
+      "excerpt": "theorem hyperplane_injective_descent {R K A A₀ σ : Type*}\n    [Field R] [Field K] [Algebra R K]",
+      "problem": "The lemma requires `R` and `K` to be fields. The proof never uses division. Its only property of `R → K` is that `algebraMap R K` is injective, obtained from `FaithfulSMul.algebraMap_injective R K`. Everything else works over commutative rings: `homogeneousLinearForm` is defined for `CommRing`, `MvPolynomial.map_injective` and `Polynomial.map_injective` only need an injective ring map, and the `hcomp` argument is ring-hom bookkeeping.",
+      "proposed_change": "Weaken the base assumptions to `[CommRing R] [CommRing K] [Algebra R K] [FaithfulSMul R K]`, keeping everything else the same: `theorem hyperplane_injective_descent {R K A A₀ σ : Type*} [CommRing R] [CommRing K] [Algebra R K] [FaithfulSMul R K] [CommRing A] [Algebra K A] [Algebra R A] [IsScalarTower R K A] [CommRing A₀] [Algebra R A₀] [Fintype σ] (g : A₀ →ₐ[R] A) ...`. The proof stays as written, because `FaithfulSMul.algebraMap_injective R K` only needs `[CommSemiring R] [Semiring K] [Algebra R K] [FaithfulSMul R K]`. Edge cases: if `K` is the zero ring, `MvPolynomial σ K` is trivial and `hdom` forces the source to be trivial too, which agrees with `FaithfulSMul`. When `R` is a subfield of `K`, Mathlib provides `FaithfulSMul` automatically, so the existing calls in SimultaneousHyperplanes.lean and Descent.lean, which pass `(R := R) (K := K)`, should still work.",
+      "benefit": "This injectivity-descent step then applies to models over any subring with an injective map into `K`, such as ℤ, a finitely generated ℤ-algebra, or an order. That is the usual setting for spreading-out and reduction arguments. The statement also shows that the result is purely about injective coefficient extension, not about fields.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "MaximalSeshadri.BertiniIntegral.hyperplane_injective_descent",
+          "excerpt": "Polynomial.map_injective _ (MvPolynomial.map_injective (algebraMap R K) (FaithfulSMul.algebraMap_injective R K))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Algebra/Basic.lean",
+          "declaration": "FaithfulSMul.algebraMap_injective",
+          "excerpt": "lemma algebraMap_injective : Injective (algebraMap R A) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/LinearForms.lean",
+          "declaration": "MaximalSeshadri.BertiniIntegral.homogeneousLinearForm",
+          "excerpt": "def homogeneousLinearForm (v : σ → R) : MvPolynomial σ R :=\n  ∑ i, C (v i) * X i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/MvPolynomial/Eval.lean",
+          "declaration": "MvPolynomial.map_injective",
+          "excerpt": "theorem map_injective (hf : Function.Injective f) :"
+        }
+      ]
+    },
+    {
+      "declaration": "MaximalSeshadri.BertiniIntegral.countable_model_with_elements",
+      "start_line": 321,
+      "end_line": 339,
+      "excerpt": "[Algebra K A] [Algebra.FiniteType K A] {k : ℕ} (v : Fin k → A)",
+      "problem": "The family of elements must be indexed by `Fin k`. The proof only uses the index type through `Finset.univ.biUnion fun i => (p i).coeffs`, `Finset.mem_univ` and `choose`, all of which work for any `Fintype` index. Related results in this file, such as `hyperplane_injective_descent` with `[Fintype σ] (v₀ : σ → A₀)`, already use a general finite index type `σ`. Because of this lemma, the caller `generic_hyperplane_section` is stuck with `v : Fin n → A`, and anyone with a naturally indexed family has to reindex through `Fin`.",
+      "proposed_change": "Generalise the index: `theorem countable_model_with_elements {K A : Type} {ι : Type*} [Fintype ι] [Field K] [CommRing A] [Algebra K A] [Algebra.FiniteType K A] (v : ι → A) (c : Set K) (hc : c.Countable) : ∃ (S : Subfield K), Countable S ∧ c ⊆ S ∧ ∃ (n : ℕ) (I : Ideal (MvPolynomial (Fin n) S)) (e : (K ⊗[S] (MvPolynomial (Fin n) S ⧸ I)) ≃ₐ[K] A) (v₀ : ι → MvPolynomial (Fin n) S ⧸ I), ∀ i, e (1 ⊗ₜ[S] v₀ i) = v i`. The proof should go through as written, with `Fin k` replaced by `ι`: `Finset.univ` comes from `[Fintype ι]`, and `classical` supplies the decidable equality that `biUnion` needs. Edge case: an empty index type gives back `countable_polynomial_model`. Existing callers that use `Fin n` are unaffected.",
+      "benefit": "Downstream code can work directly with the finite index type `σ` used by the hyperplane-family API (`homogeneousLinearForm`, `hyperplane_injective_descent`), without converting to and from `Fin n`. This also removes the reason for `generic_hyperplane_section` to be stated only for `Fin n`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "MaximalSeshadri.BertiniIntegral.countable_model_with_elements",
+          "excerpt": "(Finset.univ.biUnion fun i => (p i).coeffs)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "MaximalSeshadri.BertiniIntegral.hyperplane_injective_descent",
+          "excerpt": "[CommRing A₀] [Algebra R A₀] [Fintype σ]\n    (g : A₀ →ₐ[R] A) (v₀ : σ → A₀) (v : σ → A)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/SimultaneousHyperplanes.lean",
+          "declaration": "MaximalSeshadri.BertiniIntegral.generic_hyperplane_section",
+          "excerpt": "obtain ⟨S, hS, hcS, m, I, e, v₀, hv⟩ := countable_model_with_elements v c hc"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 58568,
+    "cache_read_input_tokens": 374423,
+    "output_tokens": 11390,
+    "output_tokens_details": {
+      "thinking_tokens": 4424
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 58568,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4683,
+        "cache_read_input_tokens": 61930,
+        "cache_creation_input_tokens": 662,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 662
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.7713005999999999,
+  "duration_ms": 102468,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-21T11:40:26",
+  "unit": "file",
+  "source_sha256": "a385fec0279b02bb275f224192cc0e8ba7a096c4bc1e082be18e433746a5ff7e",
+  "rubric": "statement-generality"
+}

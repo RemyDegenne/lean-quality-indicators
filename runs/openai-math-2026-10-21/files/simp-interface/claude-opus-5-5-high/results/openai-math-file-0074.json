@@ -1,0 +1,132 @@
+{
+  "id": "openai-math-file-0074",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 177 lines of the target file. I also read the definitions of `interpolation`, `endpointCoupling`, `IsCoupling` and `QuadraticTransportCost` in Model.lean, and the existing lemmas `endpointCoupling_add`, `quadraticTransportCost_add` and `interpolation_restricted` in TimeHalf.lean. In Mathlib I checked `Measure.map_smul`, which is tagged `@[simp]` but takes an `AEMeasurable` side condition. Grep turned up the same manual proof patterns in other WeakHessian files (OptimalPlansShort, RerouteFiniteSubplanShort, GeodesicPlanSupportedBall, LiftBoundedCoupling).\n\nThe file has no simp attributes of its own. Its main simp-interface problem is that `interpolation` and `endpointCoupling` are plain `def`s wrapping `Measure.map`, and they come with no smul or projection lemmas. So Mathlib's simp lemma `Measure.map_smul` never matches them unless the definitions are unfolded with `change` or `simp only [def]`, and its measurability side condition then has to be supplied by hand.\n\nI did not run Lean, so the proposed lemmas and simplified proofs are untested. I only suggest `@[simp]` for lemmas with no hypotheses, which push a scalar outward through a definition; these cannot loop. Degenerate cases (for example c = 0 or c = ∞) need no hypotheses, because both `Measure.map_smul` and `lintegral_smul_measure` hold for every `ℝ≥0∞` scalar.",
+  "findings": [
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan (local `he`, `hξend`, `hs'`)",
+      "start_line": 94,
+      "end_line": 166,
+      "excerpt": "    change (q • π).map _ = _\n    rw [Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable]\n    change q • interpolation π t = _",
+      "problem": "The term `interpolation (c • π) t` comes up three times in this proof: in `he` (l.94–95), `hξend` (l.140–147) and `hs'` (l.162–166). Its natural normal form is `c • interpolation π t`, but no lemma about `interpolation` gives it. `interpolation` is an opaque `def` for `Measure.map (fun γ => γ t) π`, so Mathlib's `@[simp] Measure.map_smul` does not fire on it. Even after unfolding, simp would still need the `AEMeasurable` side condition. Each time, the proof unfolds with `change`, rewrites with an explicit measurability proof, and folds back with `change`. The same block is copied into OptimalPlansShort.lean, RerouteFiniteSubplanShort.lean and GeodesicPlanSupportedBall.lean.",
+      "proposed_change": "Next to `interpolation` (Model.lean), or next to `interpolation_restricted` in TimeHalf.lean, add a lemma with no hypotheses:\n```lean\n@[simp] lemma interpolation_smul (c : ℝ≥0∞) (π : Measure (Curve X)) (t : Time) :\n    interpolation (c • π) t = c • interpolation π t :=\n  Measure.map_smul c (continuous_eval_const t).measurable.aemeasurable\n```\nThen `he t` becomes `interpolation_smul _ _ _`. `hξend` becomes `by simp only [ξ, interpolation_smul, ht, he, smul_smul, ENNReal.mul_inv_cancel hq hqt, one_smul]` or an equivalent `rw` chain. In `hs'`, `simp only [interpolation_smul, Measure.smul_apply, smul_eq_mul] at hs` replaces the `change`/`rw` pair.",
+      "benefit": "The scalar moves outward to a canonical form that simp can reach without unfolding `interpolation`, so the `change` steps that depend on definitional unfolding go away. All the duplicated call sites across the WeakHessian files could use the same one-line lemma. Orienting it outward matches Mathlib's `Measure.map_smul`, and since the lemma has no hypotheses simp can always apply it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Model.lean",
+          "declaration": "interpolation",
+          "excerpt": "def interpolation (π : Measure (Curve X)) (t : Time) : Measure X :=\n  Measure.map (fun γ : Curve X => γ t) π"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Map.lean",
+          "declaration": "MeasureTheory.Measure.map_smul",
+          "excerpt": "(c : R) {μ : Measure α} {f : α → β} (hf : AEMeasurable f μ) : (c • μ).map f = c • μ.map f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/OptimalPlansShort.lean",
+          "declaration": "(local hξend)",
+          "excerpt": "    change (q • η).map _ = θ.map _\n    rw [Measure.map_smul _ (continuous_eval_const t).measurable.aemeasurable]\n    change q • interpolation η t = _"
+        }
+      ]
+    },
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan (local `hs`)",
+      "start_line": 150,
+      "end_line": 160,
+      "excerpt": "      simp only [QuadraticTransportCost,endpointCoupling,\n        Measure.map_smul _ hmeas.aemeasurable,lintegral_smul_measure,smul_eq_mul]",
+      "problem": "The proof needs `QuadraticTransportCost (endpointCoupling (q • η)) = q * QuadraticTransportCost (endpointCoupling η)`. It gets this from a local `have hs` that unfolds both definitions and passes `Measure.map_smul` an explicitly built measurability proof. The project already has the additive counterparts `endpointCoupling_add` and `quadraticTransportCost_add`, but no scalar ones. The same `hs` block is copied verbatim into OptimalPlansShort.lean (l.265–270). There is also a `change` on line 151, which only turns `•` into `*` on `ℝ≥0∞`.",
+      "proposed_change": "Put two lemmas with no hypotheses beside `endpointCoupling_add` and `quadraticTransportCost_add` in TimeHalf.lean:\n```lean\n@[simp] lemma endpointCoupling_smul (c : ℝ≥0∞) (π : Measure (Curve X)) :\n    endpointCoupling (c • π) = c • endpointCoupling π :=\n  Measure.map_smul c ((continuous_eval_const timeZero).measurable.prodMk\n    (continuous_eval_const timeOne).measurable).aemeasurable\n\n@[simp] lemma quadraticTransportCost_smul (c : ℝ≥0∞) (q : Measure (X × X)) :\n    QuadraticTransportCost (c • q) = c * QuadraticTransportCost q :=\n  lintegral_smul_measure _ _\n```\nThen the local `hs η` becomes `by simp`, or `by rw [endpointCoupling_smul, quadraticTransportCost_smul]`, and the local `have hs` with its `hmeas` can be deleted.",
+      "benefit": "This completes the existing `_add` API with the matching `_smul` rules, so simp can normalize scalar multiples of transport plans to `c * cost` without unfolding the definitions. A copied block in at least two files is replaced, and readers see a named fact instead of a re-derived one.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/LocalBounds/TimeHalf.lean",
+          "declaration": "OAI.WeakHessian.endpointCoupling_add",
+          "excerpt": "lemma endpointCoupling_add (π ξ : Measure (Curve X)) :\n    endpointCoupling (π+ξ) = endpointCoupling π+endpointCoupling ξ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/LocalBounds/TimeHalf.lean",
+          "declaration": "OAI.WeakHessian.quadraticTransportCost_add",
+          "excerpt": "    QuadraticTransportCost (q+q') = QuadraticTransportCost q + QuadraticTransportCost q' :=\n  lintegral_add_measure _ _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/OptimalPlansShort.lean",
+          "declaration": "(local hs)",
+          "excerpt": "    have hs (ρ : Measure (Curve X)) : QuadraticTransportCost (endpointCoupling (q • ρ)) =\n        q*QuadraticTransportCost (endpointCoupling ρ) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "endpointCoupling_couples",
+      "start_line": 58,
+      "end_line": 63,
+      "excerpt": "  · simp only [endpointCoupling,Measure.map_map measurable_fst hm,Function.comp_def,interpolation]",
+      "problem": "`IsCoupling q μ₀ μ₁` is defined as `Measure.map Prod.fst q = μ₀ ∧ Measure.map Prod.snd q = μ₁`. So the expressions `(endpointCoupling π).map Prod.fst` and `(endpointCoupling π).map Prod.snd` come up often, and their natural normal forms are `interpolation π timeZero` and `interpolation π timeOne`. There are no named projection lemmas for this. Instead the proof unfolds both definitions, applies `Measure.map_map` with a local measurability proof `hm`, and relies on `Function.comp_def`. IsOptimalCoupling.reroute_plan in TimeHalf.lean repeats this exact `hm` and `simp only` combination.",
+      "proposed_change": "Add projection lemmas with no hypotheses and use them to prove `endpointCoupling_couples` and the TimeHalf proof:\n```lean\n@[simp] lemma map_fst_endpointCoupling (π : Measure (Curve X)) :\n    (endpointCoupling π).map Prod.fst = interpolation π timeZero := by\n  simp only [endpointCoupling, interpolation, Measure.map_map measurable_fst\n    ((continuous_eval_const timeZero).measurable.prodMk\n      (continuous_eval_const timeOne).measurable), Function.comp_def]\n```\nAdd the analogous `map_snd_endpointCoupling` with `timeOne`. Then `endpointCoupling_couples π := ⟨map_fst_endpointCoupling π, map_snd_endpointCoupling π⟩`, and in `reroute_plan` the coupling step becomes `⟨by simpa using hends'.1, by simpa using hends'.2⟩`.",
+      "benefit": "The link between the two definitions is stated once, in a form simp can use, instead of being rebuilt by unfolding at each use. Downstream goals of the form `IsCoupling (endpointCoupling _) _ _` then reduce by `simp` to equalities between `interpolation` terms, which is the form the rest of the development works in (`interpolation_endpoints`, `he0`, `he1`).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Model.lean",
+          "declaration": "IsCoupling",
+          "excerpt": "  Measure.map Prod.fst q = μ₀ ∧ Measure.map Prod.snd q = μ₁"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/LocalBounds/TimeHalf.lean",
+          "declaration": "OAI.WeakHessian.IsOptimalCoupling.reroute_plan",
+          "excerpt": "    · simpa only [endpointCoupling,Measure.map_map measurable_fst hm,Function.comp_def,\n        interpolation] using hends'.1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Model.lean",
+          "declaration": "endpointCoupling",
+          "excerpt": "  Measure.map (fun γ : Curve X => (γ timeZero, γ timeOne)) π"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 23278,
+    "cache_read_input_tokens": 144776,
+    "output_tokens": 6939,
+    "output_tokens_details": {
+      "thinking_tokens": 925
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23278,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4565,
+        "cache_read_input_tokens": 26349,
+        "cache_creation_input_tokens": 942,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 942
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3540232,
+  "duration_ms": 63722,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T15:28:37",
+  "unit": "file",
+  "source_sha256": "659acbb3a82e0e7548787ca860f4814b3dd1940c61d717d0b3b39fece39b5163",
+  "rubric": "simp-interface"
+}

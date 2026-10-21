@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0065",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all three theorems in the file (lines 17–76). I searched for uses of their names and found them only in this file: `two_center_constant_recovery` calls the other two at lines 60 and 71. In Mathlib I checked which instances and lemmas the proofs need. `ContinuousLinearMap.toNormedRing : NormedRing (E →L[𝕜] E)` is stated for any `NontriviallyNormedField 𝕜`. `norm_mul_le` holds in any `NonUnitalSeminormedRing`. `ContinuousLinearMap.le_opNorm` is in a section over `NontriviallyNormedField 𝕜`.\n\nThe proof of `radial_commutator_norm_le` uses only `noncomm_ring`, `norm_sub_le`, `norm_mul_le`, `norm_nonneg` and `nlinarith` on real numbers. None of these is specific to operators, so the lemma is really a fact about normed rings. The other two theorems only ever use ℝ as the scalar field of `E`. I did not change the thresholds 1/4 and 1/2 or the hypotheses `hc`/`hM`: they are part of the intended quantitative statement, not unnecessary specialisation.\n\nRemaining uncertainty: I could not compile anything, so the replacement statements are argued from the definitions and lemmas I read, not tested. Generalising the scalar field is a modest benefit for an RCD file, since RCD geometry works over ℝ.",
+  "findings": [
+    {
+      "declaration": "OAI.RegularPointCoordinates.radial_commutator_norm_le",
+      "start_line": 21,
+      "end_line": 37,
+      "excerpt": "theorem radial_commutator_norm_le (A B : E →L[ℝ] E)\n    (hA : ‖A - 1‖ ≤ 1 / 4) {η : ℝ}",
+      "problem": "The lemma is stated only for continuous real-linear endomorphisms `E →L[ℝ] E`. Its proof never uses that `A` and `B` are operators. It rewrites `B` with `noncomm_ring`, then uses the triangle inequality `norm_sub_le`, submultiplicativity `norm_mul_le` and `norm_nonneg`, and finishes with `nlinarith` on real numbers. All of these hold in any seminormed ring. So the statement is an operator-specific version of a purely Banach-algebra fact: if ‖A-1‖ ≤ 1/4 and the twisted commutator is small, then B is small.",
+      "proposed_change": "Generalise the carrier to an arbitrary seminormed ring:\n```lean\ntheorem radial_commutator_norm_le {R : Type*} [SeminormedRing R] (A B : R)\n    (hA : ‖A - 1‖ ≤ 1 / 4) {η : ℝ}\n    (herror : ‖B * A - (A - 1) * B‖ ≤ η) : ‖B‖ ≤ 2 * η := by\n  -- proof body unchanged\n```\n`noncomm_ring` only needs `Ring R`. `norm_sub_le` comes from the `SeminormedAddCommGroup` structure. `norm_mul_le` is stated for `NonUnitalSeminormedRing`. The final `nlinarith` works only with real norms. The call at line 60, `radial_commutator_norm_le Az (Az - Ax) hz hcomm`, still elaborates: `R` is inferred from `Az : E →L[ℝ] E`, and the ring structure comes from `ContinuousLinearMap.toNormedRing`. Degenerate case: in the zero ring every norm is 0 and the conclusion `0 ≤ 2 * η` follows from `herror`, so nothing breaks.",
+      "benefit": "The estimate becomes usable for matrices (`Matrix` with an operator or Frobenius norm), for Banach algebras, and for operators over any field, with no change to the proof. This fits the file's description of 'normalization matrices' and the imported `MatrixNormConversion` module. Readers also see directly that the absorption argument is pure normed-ring algebra.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Ring/Basic.lean",
+          "declaration": "norm_mul_le",
+          "excerpt": "theorem norm_mul_le (a b : α) : ‖a * b‖ ≤ ‖a‖ * ‖b‖ :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Operator/NormedSpace.lean",
+          "declaration": "ContinuousLinearMap.toNormedRing",
+          "excerpt": "instance toNormedRing : NormedRing (E →L[𝕜] E) where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Harmonic/TwoCenterCommutator.lean",
+          "declaration": "OAI.RegularPointCoordinates.two_center_constant_recovery",
+          "excerpt": "have hB := radial_commutator_norm_le Az (Az - Ax) hz hcomm"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.RegularPointCoordinates.norm_le_two_mul_norm_of_near_id / two_center_constant_recovery (shared variable line 17)",
+      "start_line": 17,
+      "end_line": 76,
+      "excerpt": "variable {E : Type*} [NormedAddCommGroup E] [NormedSpace ℝ E]",
+      "problem": "The scalar field is fixed to ℝ for both vector-level lemmas. Their proofs use only facts that hold over any `NontriviallyNormedField`. These are `ContinuousLinearMap.le_opNorm`, the `simp` identity `v = A v - (A - 1) v` (via `sub_apply`/`one_apply`), `map_sub`, `norm_sub_le` and `norm_neg`, plus real-number `nlinarith` on norms. The normed-ring structure on `E →L[𝕜] E` is also available for any such field.",
+      "proposed_change": "Replace line 17 with\n```lean\nvariable {𝕜 : Type*} [NontriviallyNormedField 𝕜]\n  {E : Type*} [NormedAddCommGroup E] [NormedSpace 𝕜 E]\n```\nand write `E →L[𝕜] E` in place of `E →L[ℝ] E` at lines 41 and 54. For example:\n```lean\ntheorem norm_le_two_mul_norm_of_near_id (A : E →L[𝕜] E)\n    (hA : ‖A - 1‖ ≤ 1 / 2) (v : E) : ‖v‖ ≤ 2 * ‖A v‖\n```\nThe proof bodies stay the same: `le_opNorm` is in the `NontriviallyNormedField 𝕜` section of `Operator/Basic.lean`, and `ContinuousLinearMap.toNormedRing` gives the ring structure needed for `A - 1` and `(Az - Ax) * Az`. The bounds η and M stay real. Existing real-scalar users get `𝕜 := ℝ` by unification.",
+      "benefit": "The same near-identity and constant-recovery estimates then apply to complex (or other normed-field) coordinate systems without a duplicate copy. The statements also say exactly what the argument uses, which is the operator norm and nothing about the real scalars.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Operator/Basic.lean",
+          "declaration": "ContinuousLinearMap.le_opNorm",
+          "excerpt": "theorem le_opNorm : ‖f x‖ ≤ ‖f‖ * ‖x‖ := (isLeast_opNorm f).1.2 x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Operator/Basic.lean",
+          "declaration": "section SemiNormed variables",
+          "excerpt": "variable [NontriviallyNormedField 𝕜] [NontriviallyNormedField 𝕜₂] [NontriviallyNormedField 𝕜₃]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Harmonic/TwoCenterCommutator.lean",
+          "declaration": "OAI.RegularPointCoordinates.norm_le_two_mul_norm_of_near_id",
+          "excerpt": "_ ≤ _ := add_le_add le_rfl ((A - 1).le_opNorm v)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 20389,
+    "cache_read_input_tokens": 57499,
+    "output_tokens": 6169,
+    "output_tokens_details": {
+      "thinking_tokens": 2082
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20389,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3903,
+        "cache_read_input_tokens": 21897,
+        "cache_creation_input_tokens": 2516,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2516
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.29802379999999995,
+  "duration_ms": 55180,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T14:44:57",
+  "unit": "file",
+  "source_sha256": "a7dd4f0117507aef3035029d425b2281b80957513bf75a23fcb605eef758a8c4",
+  "rubric": "statement-generality"
+}

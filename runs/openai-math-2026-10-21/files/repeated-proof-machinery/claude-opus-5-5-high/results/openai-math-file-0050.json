@@ -1,0 +1,116 @@
+{
+  "id": "openai-math-file-0050",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 1336 lines, looking for reasoning that more than one proof repeats. I checked the definitions this file relies on in LoewnerFlow.lean: `deficit_pos_iff`, `deficit_nonneg_iff`, `nonneg_until`, `stop_bounds` and `nonpos_at_of_lt`. I also looked at sibling files (AngularClock.lean, PhysicalPast.lean, ConditionalTilts.lean, IntegratedMeshSimple.lean) to see how often the same pattern recurs.\n\nI found two repeated blocks:\n1. **In the generic `LoewnerLocalized` lemmas.** Several proofs turn \"the deficit is nonnegative up to the stop time\" into the three inequalities (radius, height, sine) with the same two-lemma chain.\n2. **In the `FiniteTilt.Cutoff` lemmas.** Three proofs repeat a longer chain at the stop time of a Brownian sample: initial deficit, nonnegativity up to the stop time, `stopTime ∈ [0, horizon]`, then unpacking the inequalities.\n\nThe second block is the stronger finding. It chains three lemmas and recurs across files. The first block is closer to a thin wrapper, but it states a named mathematical fact (the three constraints hold until the stop time) and appears seven times.\n\nThings I looked at and rejected:\n- The proof term `(continuous_const.mul (hc.comp continuous_real_toNNReal)).continuousOn`, repeated five times. It is a routine continuity argument.\n- The two `codimension κ = 1-κ/8` calculations and the `0 ≤ 8/κ-1` side conditions. These are short calculations.\n- The two `rcases C.source_terminal` case splits. They rule out opposite branches and reach different conclusions.\n- `derivWithin_right`/`derivWithin_left` in `BoundaryFunctional`. These are already shared helpers.\n\nI could not compile anything, so the proposed rewrites are untested. Elaboration should go through, because each rewritten use only replaces a term whose type matches the helper's stated conclusion.",
+  "findings": [
+    {
+      "declaration": "FiniteTilt.Cutoff.value_bound / FiniteTilt.Cutoff.radius_lower / FiniteTilt.Cutoff.value_eq_source",
+      "start_line": 391,
+      "end_line": 589,
+      "excerpt": "  exact ((deficit_nonneg_iff C.height_pos C.horizon.coe_nonneg _ z _ C.angle _).1\n    (nonneg_until C.height_pos C.horizon.coe_nonneg C.horizon_pos _ z _ C.angle\n      (C.initial_deficit_brownian κ B sample hz hu hc hb0) ⟨(C.bounds κ B sample).1,le_rfl⟩)).1",
+      "problem": "Three Cutoff proofs re-derive the same fact: the three exit constraints hold at the stop time of a Brownian sample. Each one chains the same lemmas: `initial_deficit_brownian`, then `nonneg_until` at `⟨(C.bounds κ B sample).1, le_rfl⟩`, then `deficit_nonneg_iff`, then a projection.\n- In `value_bound` (lines 398–401) it is the `hd` block.\n- In `radius_lower` (lines 577–579) it is the final `exact`.\n- In `value_eq_source` (lines 584–586) it is the `hh` block.\nThe same block also appears in AngularClock.lean (`barrier_at_radius`) and PhysicalPast.lean, where the proof of `value_bound` is copied almost verbatim. None of this needs the Loewner trace hypothesis `h`.",
+      "proposed_change": "Add this lemma to `namespace Cutoff` right after `bounds` (line 386). It needs only the hypotheses of `initial_deficit_brownian`.\n```\nlemma stop_constraints {Ω : Type*} (κ : ℝ) (B : ℝ≥0 → Ω → ℝ) (sample : Ω)\n    (hz : z ∈ halfPlane) (hu : 0 < u)\n    (hc : Continuous (fun t => B t sample)) (hb0 : B 0 sample = 0) :\n    (2*z.im)*Real.exp (-u) ≤ LoewnerExit.radius C.height_pos C.horizon.coe_nonneg\n        (C.paths κ B sample) z (C.stopTime κ B sample) ∧\n      C.height ≤ (position C.height_pos C.horizon.coe_nonneg (C.paths κ B sample) z\n        (C.stopTime κ B sample)).im ∧\n      C.angle ≤ LoewnerExit.sine C.height_pos C.horizon.coe_nonneg (C.paths κ B sample) z\n        (C.stopTime κ B sample) :=\n  (deficit_nonneg_iff C.height_pos C.horizon.coe_nonneg _ z _ C.angle _).1\n    (nonneg_until C.height_pos C.horizon.coe_nonneg C.horizon_pos _ z _ C.angle\n      (C.initial_deficit_brownian κ B sample hz hu hc hb0) ⟨(C.bounds κ B sample).1, le_rfl⟩)\n```\nRewrite the three uses as follows:\n- `value_bound`: delete `h0` and replace lines 399–401 with `have hd := C.stop_constraints κ B sample hz hu hc hb0`. The existing `max_eq_right hd.2.1` and `using hd.1` stay as they are.\n- `radius_lower`: `rw [← C.source_radius κ B sample h hz hu hc hb0]; exact (C.stop_constraints κ B sample hz hu hc hb0).1`.\n- `value_eq_source`: `have hh := (C.stop_constraints κ B sample hz hu hc hb0).2.1`, with the `rw` left unchanged.\nThe sibling files AngularClock.lean (lines 382–384) and PhysicalPast.lean could use the same lemma (or a variant over a general time in `[0, stop]`).",
+      "benefit": "The fact \"at the cutoff stop time, the radius is at least ρ, the height is at least ε and the sine is at least the angle\" gets a name. Each use drops from three lines to one. Readers no longer have to parse a chain of three lemma applications with `_` placeholders and tuple projections. If the signature of `nonneg_until`, `deficit_nonneg_iff` or `initial_deficit_brownian` changes, only one proof needs fixing, not three here plus the copies in sibling files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/GreenTilts.lean",
+          "declaration": "OAI.SLEExactGauge.FiniteTilt.Cutoff.value_bound",
+          "excerpt": "  have hd := (deficit_nonneg_iff C.height_pos C.horizon.coe_nonneg _ z _ C.angle _).1\n    (nonneg_until C.height_pos C.horizon.coe_nonneg C.horizon_pos _ z _ C.angle h0\n      ⟨(C.bounds κ B sample).1,le_rfl⟩)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/GreenTilts.lean",
+          "declaration": "OAI.SLEExactGauge.FiniteTilt.Cutoff.value_eq_source",
+          "excerpt": "  have hh := ((deficit_nonneg_iff C.height_pos C.horizon.coe_nonneg _ z _ C.angle _).1\n    (nonneg_until C.height_pos C.horizon.coe_nonneg C.horizon_pos _ z _ C.angle\n      (C.initial_deficit_brownian κ B sample hz hu hc hb0) ⟨(C.bounds κ B sample).1,le_rfl⟩)).2.1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/AngularClock.lean",
+          "declaration": "barrier_at_radius",
+          "excerpt": "  have hh := ((deficit_nonneg_iff C.height_pos C.horizon.coe_nonneg _ z _ C.angle _).1\n    (nonneg_until C.height_pos C.horizon.coe_nonneg C.horizon_pos _ z _ C.angle h0\n      ⟨(C.bounds κ B sample).1,le_rfl⟩)).2.1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/LoewnerFlow.lean",
+          "declaration": "OAI.SLEExactGauge.LoewnerExit.deficit_nonneg_iff",
+          "excerpt": "    0 ≤ deficit hε hT U z ρ δ t ↔\n      ρ ≤ radius hε hT U z t ∧ ε ≤ (position hε hT U z t).im ∧ δ ≤ sine hε hT U z t := by"
+        }
+      ]
+    },
+    {
+      "declaration": "LoewnerLocalized.source_until_stop / logDerivative_eq_source / sine_eq_source / clock_bounds_stop / terminal_cases",
+      "start_line": 41,
+      "end_line": 225,
+      "excerpt": "    exact ((deficit_nonneg_iff hε hT.le U z ρ δ t).1\n      (nonneg_until hε hT.le hT U z ρ δ h0 ht)).2.1",
+      "problem": "Five proofs repeat the same step seven times: for a time t in `Icc 0 (stop …)`, they turn the positive initial deficit `h0` into the three exit inequalities by applying `nonneg_until` and then `(deficit_nonneg_iff …).1`.\n- `source_until_stop`, lines 55–56.\n- `logDerivative_eq_source`, lines 77–78.\n- `sine_eq_source`, lines 103–104.\n- `clock_bounds_stop`, lines 184–185 and 198–199.\n- `terminal_cases`, lines 217–218.\nEach copy spells out all eight arguments (`hε hT.le hT U z ρ δ h0`) twice and then projects `.1`, `.2.1` or `.2.2`. The meaning, \"until the stop time the radius is at least ρ, the height at least ε and the sine at least δ\", is never stated as a lemma.",
+      "proposed_change": "Add this lemma at the top of the first `LoewnerLocalized` section (before `source_until_stop`), using the section variables `hε hT`.\n```\nlemma constraints_until (U : C(I, ℝ)) (z : ℂ) (ρ δ : ℝ)\n    (h0 : 0 < deficit hε hT.le U z ρ δ 0) {t : ℝ}\n    (ht : t ∈ Icc 0 (stop hε hT.le U z ρ δ)) :\n    ρ ≤ radius hε hT.le U z t ∧ ε ≤ (position hε hT.le U z t).im ∧\n      δ ≤ sine hε hT.le U z t :=\n  (deficit_nonneg_iff hε hT.le U z ρ δ t).1 (nonneg_until hε hT.le hT U z ρ δ h0 ht)\n```\nRewrite the uses as follows:\n- `source_until_stop`, last bullet: `exact (constraints_until hε hT U z ρ δ h0 ht).2.1`.\n- `logDerivative_eq_source`: `have hh := (constraints_until hε hT U z ρ δ h0 hss).2.1`.\n- `sine_eq_source`: `have hh := (constraints_until hε hT U z ρ δ h0 ht).2.1`.\n- `clock_bounds_stop`: `exact (constraints_until hε hT U z ρ δ h0 ht).2.2` in `ha`, and `exact (constraints_until hε hT U z ρ δ h0 ⟨hb.1,le_rfl⟩).1` in the last bullet.\n- `terminal_cases`: `have hp := constraints_until hε hT U z ρ δ h0 ⟨hb.1,le_rfl⟩`.\nThe Cutoff helper from the first finding can then be proved as `constraints_until C.height_pos C.horizon_pos _ z _ C.angle (C.initial_deficit_brownian …) ⟨(C.bounds κ B sample).1, le_rfl⟩`.",
+      "benefit": "The localization proofs then say directly which constraint they use (the height bound in `source_until_stop`, the sine bound in `clock_bounds_stop`, and so on), without the deficit plumbing. The eight-argument boilerplate disappears from seven places in this file, and the new lemma also gives the Cutoff-level helper a one-line proof. Changes to how the exit path or deficit is encoded then need fixing in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/GreenTilts.lean",
+          "declaration": "OAI.SLEExactGauge.LoewnerLocalized.clock_bounds_stop",
+          "excerpt": "    exact ((deficit_nonneg_iff hε hT.le U z ρ δ τ).1\n      (nonneg_until hε hT.le hT U z ρ δ h0 ⟨hb.1,le_rfl⟩)).1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/GreenTilts.lean",
+          "declaration": "OAI.SLEExactGauge.LoewnerLocalized.terminal_cases",
+          "excerpt": "  have hp := (deficit_nonneg_iff hε hT.le U z ρ δ τ).1\n    (nonneg_until hε hT.le hT U z ρ δ h0 ⟨hb.1,le_rfl⟩)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/GreenTilts.lean",
+          "declaration": "OAI.SLEExactGauge.LoewnerLocalized.logDerivative_eq_source",
+          "excerpt": "  have hh := ((deficit_nonneg_iff hε hT.le U z ρ δ s).1\n    (nonneg_until hε hT.le hT U z ρ δ h0 hss)).2.1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLELocalization/LoewnerFlow.lean",
+          "declaration": "OAI.SLEExactGauge.LoewnerExit.nonneg_until",
+          "excerpt": "lemma nonneg_until (hTp : 0 < T) (U : C(I, ℝ)) (z : ℂ) (ρ δ : ℝ)\n    (h0 : 0 < deficit hε hT U z ρ δ 0) {t : ℝ}\n    (ht : t ∈ Icc 0 (stop hε hT U z ρ δ)) : 0 ≤ deficit hε hT U z ρ δ t := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 58301,
+    "cache_read_input_tokens": 255394,
+    "output_tokens": 9653,
+    "output_tokens_details": {
+      "thinking_tokens": 2967
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 58301,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5811,
+        "cache_read_input_tokens": 60375,
+        "cache_creation_input_tokens": 1855,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1855
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.7105948,
+  "duration_ms": 85566,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T13:36:53",
+  "unit": "file",
+  "source_sha256": "f114303badbc5e031a5cce0ccbc3a2417f85fb8343ee138b4e092834b896b8f7",
+  "rubric": "repeated-proof-machinery"
+}

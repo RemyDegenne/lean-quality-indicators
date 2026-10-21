@@ -1,0 +1,116 @@
+{
+  "id": "openai-math-file-0081",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 142 lines of Supported.lean. I also read the definitions it relies on in Fourier/Fourier.lean (`fourier`, `synth`, `bit`, `degree`, `flip`, `diff`, `fourier_noise`, `fourier_diff`) and Reduction/Cube.lean (`Cube`, `mean`, `mean_mono`, `noise`, `noise_small_l1`, `hypercontractive_two_four`). I also read the only downstream uses, in Reduction/Heavy.lean.\n\nThe whole development works over ℝ with the fixed noise rate 1/2, and the hypercontractive inequality is proved only at ρ = 1/2. So generalising the scalar field or the noise rate in `low_degree_coefficient` or `noise_weight_cancel` would add abstraction with no clear user. I did not report those.\n\n`degree_eq_sum`, `walsh`, `walsh_depends`, `synth_eq_sum`, `truncate`, `truncate_depends` and `truncate_error` already state their hypotheses in natural form. For example, `truncate_depends` only needs agreement on S.\n\nI found two related generalisations around `diff`:\n1. In `diff_square_le_influence` and `noise_small_influence`, the global bound `|f x| ≤ 1` can be weakened to the bound on the derivative in coordinate i that the proofs actually use.\n2. `diff_bounded` can be stated for an arbitrary bound M.\n\nI could not compile the proposed replacements. The proof sketches reuse exactly the existing tactic steps, with the hypothesis substituted.",
+  "findings": [
+    {
+      "declaration": "diff_square_le_influence, noise_small_influence",
+      "start_line": 96,
+      "end_line": 123,
+      "excerpt": "lemma noise_small_influence {n : ℕ} (f : Cube n → ℝ) (hf : ∀ x, |f x| ≤ 1)\n    (i : Fin n) {θ : ℝ} (hθ : 0 ≤ θ) (hi : influence f i ≤ θ^2) :",
+      "problem": "Both lemmas assume a global sup-norm bound `∀ x, |f x| ≤ 1`. They only use it to derive `∀ x, |diff i f x| ≤ 1` for the one coordinate i in the statement, via `diff_bounded f hf i`; nothing else in either proof uses `hf`. The conclusions concern only `diff i f` and `influence f i`, and both are unchanged when a constant is added to f. The derivative hypothesis is strictly weaker. For example, f = 5 + g with |g| ≤ 1 satisfies it but not `|f x| ≤ 1`. More generally, any f with values in an interval of length 2 satisfies it.",
+      "proposed_change": "State the lemmas with the hypothesis they actually use:\n\n`lemma diff_square_le_influence {n : ℕ} (f : Cube n → ℝ) (i : Fin n) (hd : ∀ x, |diff i f x| ≤ 1) : mean (fun x => diff i f x^2) ≤ influence f i`\n\nIn the proof, replace `have h := diff_bounded f hf i x` with `have h := hd x`.\n\n`lemma noise_small_influence {n : ℕ} (f : Cube n → ℝ) (i : Fin n) (hd : ∀ x, |diff i f x| ≤ 1) {θ : ℝ} (hθ : 0 ≤ θ) (hi : influence f i ≤ θ^2) : mean (fun x => noise (1/2) (diff i f) x^2) ≤ θ * influence f i`\n\nIn the proof, replace the first line with `have h := noise_small_l1 (diff i f) hd`.\n\nThe current forms follow as `diff_square_le_influence f i (diff_bounded f hf i)` and `noise_small_influence f i (diff_bounded f hf i) hθ hi`. The two call sites in Heavy.lean (`diff_square_le_influence f hf i` and `noise_small_influence f hf i hθ hsmall`) would pass `diff_bounded f hf i` instead.\n\nDegenerate case: for n = 0, `Fin 0` is empty, so nothing changes.",
+      "benefit": "The lemmas then apply to any function whose discrete derivative in coordinate i is bounded. This covers {0,1}-valued indicators shifted by constants and functions bounded only in oscillation, with no need to first rescale or recentre f to [-1,1]. Each statement also shows that only the local, per-coordinate bound matters, matching `noise_small_l1`, which is stated for the function it is applied to (`diff i f`).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Expansion/Supported.lean",
+          "declaration": "noise_small_influence",
+          "excerpt": "have h := noise_small_l1 (diff i f) (diff_bounded f hf i)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Expansion/Supported.lean",
+          "declaration": "diff_square_le_influence",
+          "excerpt": "have h := diff_bounded f hf i x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Reduction/Cube.lean",
+          "declaration": "noise_small_l1",
+          "excerpt": "theorem noise_small_l1 {n : ℕ} (g : Cube n → ℝ) (hg : ∀ x, |g x| ≤ 1) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Fourier/Fourier.lean",
+          "declaration": "diff",
+          "excerpt": "(f x - f (flip i x))/2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Reduction/Heavy.lean",
+          "declaration": "low_degree_outside",
+          "excerpt": "mul_le_mul_of_nonneg_left (noise_small_influence f hf i hθ hsmall) (by positivity)"
+        }
+      ]
+    },
+    {
+      "declaration": "diff_bounded",
+      "start_line": 87,
+      "end_line": 94,
+      "excerpt": "lemma diff_bounded {n : ℕ} (f : Cube n → ℝ) (hf : ∀ x, |f x| ≤ 1) (i : Fin n) :\n    ∀ x, |diff i f x| ≤ 1 := by",
+      "problem": "The lemma fixes the bound at 1, but the argument works for any bound: |(f x - f (flip i x))/2| ≤ (|f x| + |f (flip i x)|)/2 ≤ M. The proof already reduces to the linear goal `|f x - f (flip i x)| ≤ 1 * 2` and closes it with `linarith` from `abs_sub` and the two instances of `hf`. Nothing depends on the constant being 1.",
+      "proposed_change": "`lemma diff_bounded {n : ℕ} (f : Cube n → ℝ) {M : ℝ} (hf : ∀ x, |f x| ≤ M) (i : Fin n) : ∀ x, |diff i f x| ≤ M`\n\nUse the same proof: `intro x; dsimp [diff]; rw [abs_div, abs_of_pos (by norm_num : (0:ℝ)<2)]; apply (div_le_iff₀ (by norm_num : (0:ℝ)<2)).mpr; have h := abs_sub (f x) (f (flip i x)); linarith [hf x, hf (flip i x)]`. The goal after `div_le_iff₀` is `… ≤ M * 2`, which is linear in the hypotheses.\n\nThe current lemma is the special case `M := 1`, which Lean infers from `hf` at existing call sites such as `diff_bounded f hf i`. So callers need no change.\n\nDegenerate cases: `Cube n` is always nonempty (`cubeNonempty`), so `hf` forces 0 ≤ M and no extra side condition is needed. For n = 0, `Fin 0` is empty.",
+      "benefit": "Users with functions bounded by some other constant (for example {0,1}-valued indicators bounded by 1 after shifting, or functions bounded by an arbitrary M before normalising) get the sup-norm contraction property of the discrete derivative directly. They no longer have to rescale f first. This at no cost to existing uses.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Expansion/Supported.lean",
+          "declaration": "diff_bounded",
+          "excerpt": "have h := abs_sub (f x) (f (flip i x))\n  linarith [hf x, hf (flip i x)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Reduction/Cube.lean",
+          "declaration": "cubeNonempty",
+          "excerpt": "instance cubeNonempty : (n : ℕ) → Nonempty (Cube n)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/IndependentSets/Fourier/Fourier.lean",
+          "declaration": "diff",
+          "excerpt": "(f x - f (flip i x))/2"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 30242,
+    "cache_read_input_tokens": 104820,
+    "output_tokens": 6608,
+    "output_tokens_details": {
+      "thinking_tokens": 2353
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30242,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3714,
+        "cache_read_input_tokens": 30798,
+        "cache_creation_input_tokens": 2562,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2562
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.395108,
+  "duration_ms": 60456,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T16:04:13",
+  "unit": "file",
+  "source_sha256": "0dc0f2001bd90936e76f5260aed27d6483724f2ee3ad3382e58efc97a877969e",
+  "rubric": "statement-generality"
+}

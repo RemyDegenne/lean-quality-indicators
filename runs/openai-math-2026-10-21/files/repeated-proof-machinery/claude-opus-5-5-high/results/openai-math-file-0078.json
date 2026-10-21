@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0078",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all four declarations in the target file. Within the file there is no duplication worth extracting. `sourceT_forall_arithmetic_real` gets its result from `sourceT_exists_arithmetic_real` through `hQ.neg`, and `sourceT_piOneOne` and `sourceT_persistence_presentation` are thin wrappers. To look for repetition across files, I read the helpers the target uses in SetModels/ModelArithmeticTreeDescent.lean (`Test.sourceT_chain`, `sourceT_chainGraph`, `sourceT_realPart`) and grepped for related patterns. That search found Representation/SourceTTreeAbsoluteness.lean, which repeats the target's main argument on its own: `sourceT_merge_witness` and `sourceT_piOneOne_matrix`. Neither file imports the other, and neither result is built from the other. Import checks: ModelArithmeticTreeDescent is imported only by the target. The target is imported only by PiOneOneSatisfaction, which leads only to PersistenceExtensionAbsoluteness. SourceTTreeAbsoluteness is imported only by ProjectedArithmeticOutputName, SourceTPresentationComparison and SourceTCountability, and their downstream files do not appear in the target's import chain. So placing a shared lemma in ModelArithmeticTreeDescent and importing that file from SourceTTreeAbsoluteness seems cycle-free, but I did not trace every transitive import. I also have not compiled the proposed code. It reuses the existing proof text with only renaming. `modelReals_eq : modelReals M = reals M := rfl` means the two statements match definitionally.",
+  "findings": [
+    {
+      "declaration": "sourceT_exists_arithmetic_real (and its duplicate pair sourceT_merge_witness / sourceT_piOneOne_matrix in SourceTTreeAbsoluteness.lean)",
+      "start_line": 16,
+      "end_line": 34,
+      "excerpt": "obtain ⟨s,G,hGM,hG,hs⟩ := t.mergeReal.sourceT_chain M hM hT\n      (parameters A R (fun _ => false)) hO v ((t.exists_mergeReal A R v).mp htest)",
+      "problem": "The forward direction of `sourceT_exists_arithmetic_real` proves a test-witness reflection argument. Given a test `t` with a witness `∃ H f, ∀ n, t.eval (parameters A R H) f (Nat.pair v n)`, it: (1) puts the oracle `fun _ => false` in `modelReals M`; (2) proves that every coordinate of `parameters A R (fun _ => false)` is in M, splitting on index 0, 1 and the rest; (3) uses `t.exists_mergeReal` to fold `H` into the merged test; (4) gets a descending sequence of the merged tree inside M; (5) splits it back into a real part in M and a witness part with `Test.realPart`/`Test.witnessPart` and `t.mergeReal_eval`. `sourceT_merge_witness` in Representation/SourceTTreeAbsoluteness.lean proves the same five steps on its own. It uses its own `zero_real_mem`, the same `rcases i with _|_|i` split, `t.exists_mergeReal`, a descent lemma and `realPart`/`witnessPart`/`mergeReal_eval`. Its caller `sourceT_piOneOne_matrix` has the same statement as this file's `sourceT_forall_arithmetic_real`, since `modelReals_eq` is `rfl`. As a result, two independent proofs of the same absoluteness principle are kept in parallel. Downstream code uses both: PersistenceExtensionAbsoluteness and PiOneOneSatisfaction use this file, while SourceTPresentationComparison and SourceTNativeAbsoluteness use `sourceT_piOneOne_matrix`.",
+      "proposed_change": "Move the witness reflection into one shared lemma in SetModels/ModelArithmeticTreeDescent.lean, which the target already imports:\n\n```lean\ntheorem Test.sourceT_witness (t : Test) (M : ZFSet.{u}) (hM : Transitive M) (hT : SourceT M)\n    (A R : Oracle) (hA : A ∈ modelReals M) (hR : R ∈ modelReals M) (v : ℕ)\n    (hw : ∃ H : Oracle, ∃ f : ℕ → ℕ, ∀ n, t.eval (parameters A R H) f (Nat.pair v n)) :\n    ∃ H ∈ modelReals M, ∃ f : ℕ → ℕ, ∀ n, t.eval (parameters A R H) f (Nat.pair v n)\n```\n\nThe proof is the current lines 22–34, with `htest` replaced by `hw`. It builds `hz` and `hO`, applies `t.mergeReal.sourceT_chain` to `(t.exists_mergeReal A R v).mp hw`, then `sourceT_chainGraph` and `sourceT_realPart`. It ends with `⟨Test.realPart (chainValue s), sourceT_realPart M hM hT _ hFM hF, Test.witnessPart (chainValue s), fun n => (t.mergeReal_eval A R (chainValue s) (Nat.pair v n)).mp (hs n)⟩`.\n\nUse 1, in this file (same hypotheses):\n```lean\n  · rintro ⟨H,hH⟩\n    obtain ⟨t,ht⟩ := (arithmetic_tests hQ).1\n    obtain ⟨K,hKM,f,hf⟩ := t.sourceT_witness M hM hT A R hA hR v\n      ⟨H,(ht (parameters A R H) v).mp hH⟩\n    exact ⟨K,hKM,(ht _ v).mpr ⟨f,hf⟩⟩\n```\n\nUse 2, in SourceTTreeAbsoluteness.lean: add `import OAI.Computability.DegreeRigidity.SetModels.ModelArithmeticTreeDescent`, delete `sourceT_merge_witness` and `zero_real_mem`, and replace line 85 with `obtain ⟨K,hKM,g,hg⟩ := t.sourceT_witness M hM hT A R hA hR v ⟨H,f,hf⟩`. This typechecks against `reals M` because `modelReals M = reals M` holds by `rfl`. Alternatively, `sourceT_piOneOne_matrix` can simply be `sourceT_forall_arithmetic_real` after importing this file.",
+      "benefit": "The tree-descent argument, which takes the most work, would exist in one place. Today a reader has to check two different descent routes (`sourceT_chain`/`sourceT_chainGraph` here, `illFounded_edges`/`sourceT_natural_descent_real` there) that prove the same fact. Any change to `Test.mergeReal`, `parameters` or the realPart/witnessPart encoding currently has to be made in both. With the shared lemma, `sourceT_exists_arithmetic_real` reduces to a few lines of test translation. The two downstream groups (PersistenceExtensionAbsoluteness via this file, and SourceTPresentationComparison/SourceTNativeAbsoluteness via `sourceT_piOneOne_matrix`) would then rest on one proof of the same principle.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/Representation/SourceTTreeAbsoluteness.lean",
+          "declaration": "sourceT_merge_witness",
+          "excerpt": "(hw : ∃ H : Oracle, ∃ f : ℕ → ℕ, ∀ n, t.eval (parameters A R H) f (Nat.pair v n)) :\n    ∃ H ∈ reals M, ∃ f : ℕ → ℕ, ∀ n, t.eval (parameters A R H) f (Nat.pair v n) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/Representation/SourceTTreeAbsoluteness.lean",
+          "declaration": "sourceT_merge_witness",
+          "excerpt": "t.mergeReal.illFounded_edges O v r hr ((t.exists_mergeReal A R v).mp hw)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/Representation/SourceTTreeAbsoluteness.lean",
+          "declaration": "sourceT_piOneOne_matrix",
+          "excerpt": "(∀ H ∈ reals M, Q (parameters A R H) v) ↔ ∀ H : Oracle, Q (parameters A R H) v := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/Representation/SourceTTreeAbsoluteness.lean",
+          "declaration": "modelReals_eq",
+          "excerpt": "theorem modelReals_eq (M : ZFSet.{u}) : modelReals M = reals M := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/SetModels/ModelArithmeticTreeDescent.lean",
+          "declaration": "Test.sourceT_chain",
+          "excerpt": "(O : Oracles) (hO : ∀ i, O i ∈ modelReals M) (v : ℕ)\n    (hw : ∃ f : ℕ → ℕ, ∀ n, t.eval O f (Nat.pair v n)) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 21860,
+    "cache_read_input_tokens": 107855,
+    "output_tokens": 7356,
+    "output_tokens_details": {
+      "thinking_tokens": 2194
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21860,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3810,
+        "cache_read_input_tokens": 24649,
+        "cache_creation_input_tokens": 1140,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1140
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.34362699999999996,
+  "duration_ms": 68757,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T15:53:15",
+  "unit": "file",
+  "source_sha256": "475a7b97a002b0276d2ecad18debfb6bfe8c6dfbc4b7950958d6706dacd4ba34",
+  "rubric": "repeated-proof-machinery"
+}

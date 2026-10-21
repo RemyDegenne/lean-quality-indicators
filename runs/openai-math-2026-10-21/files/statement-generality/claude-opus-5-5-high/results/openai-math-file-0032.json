@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0032",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 61 lines of the target. I also read the definition of `residueTestMean` in OppositeBiasTransfer.lean, which is polymorphic over `{ι : Type*}` and is already used with a general `ι` there (`complementary_test_mean`, `complementary_empirical_bias`). I checked `quadraticResidueTest` and `quadraticResidueTest_abs_le`, and searched the repository for uses of the two auxiliary lemmas. Both lemmas are stated only for index type ℕ, although nothing in their statements or proofs depends on ℕ. That gives two findings.\n\n`biasedPrimeBand` and `biasedPrimeBand_weight` are tied to the concrete prime-band construction, so specialising them is reasonable. Their hypotheses (`hT`, `hC`, `hM`) are passed on to `logPrimeBand_weight_bounds`, and `hδ` is used in the final `nlinarith`. I did not count these as defects.\n\nGeneralising the scalar field of `weighted_bias_threshold` from ℝ to a linearly ordered field would also be possible, since `linarith` and `nlinarith` work there. The index-type generalisation is the clearer gain, so the finding is limited to that. I could not compile any of the proposed statements. The claim that the existing proofs still work rests on reading the lemmas they use, all of which are generic over the index type.",
+  "findings": [
+    {
+      "declaration": "residueTestMean_abs_le_one",
+      "start_line": 13,
+      "end_line": 23,
+      "excerpt": "theorem residueTestMean_abs_le_one (S : Finset ℕ) (f : ℕ → ℝ)\n    (hf : ∀ r ∈ S, |f r| ≤ 1) : |residueTestMean S f| ≤ 1 := by",
+      "problem": "`residueTestMean` is defined for any index type `{ι : Type*}`, and the repository already uses it with a general `ι` (for example `complementary_empirical_bias`). This basic bound is nevertheless stated only for `Finset ℕ` and `ℕ → ℝ`. The proof uses nothing specific to ℕ: it uses `Finset.Nonempty.card_pos`, `abs_div`, `Finset.abs_sum_le_sum_abs`, `Finset.sum_le_sum`, and `simp` for the empty case (where the mean is `0 / 0 = 0`). So the lemma cannot be applied to means over other index types such as `ZMod p` or a general `Fintype ι`.",
+      "proposed_change": "Generalise the index type and keep the proof as it is:\n\ntheorem residueTestMean_abs_le_one {ι : Type*} (S : Finset ι) (f : ι → ℝ)\n    (hf : ∀ r ∈ S, |f r| ≤ 1) : |residueTestMean S f| ≤ 1 := by\n  (same proof)\n\nThe nonempty branch only needs `S.card` and the sum lemmas listed above, all of which are generic in `ι`. The empty branch reduces `residueTestMean ∅ f` to `0 / 0 = 0` for any `ι`. The existing callers (line 55 here, and `MaximalQuadraticBias.lean` line 42, where `S` is a `Finset ℕ`) still elaborate because `ι` is inferred as ℕ.",
+      "benefit": "The lemma then matches the generality of the definition it bounds. Code working with `residueTestMean` over other index types (for example the complementary-support lemmas in OppositeBiasTransfer.lean, which use a `Fintype ι`) can use it directly instead of re-proving the bound. Existing call sites are unaffected.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/OppositeBiasTransfer.lean",
+          "declaration": "residueTestMean",
+          "excerpt": "noncomputable def residueTestMean {ι : Type*} (S : Finset ι) (f : ι → ℝ) : ℝ :=\n  (∑ x ∈ S, f x) / S.card"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/OppositeBiasTransfer.lean",
+          "declaration": "complementary_empirical_bias",
+          "excerpt": "theorem complementary_empirical_bias {ι : Type*} [Fintype ι] [DecidableEq ι]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/QuadraticCenter/MaximalQuadraticBias.lean",
+          "declaration": "(use site of residueTestMean_abs_le_one)",
+          "excerpt": "residueTestMean_abs_le_one S _ (fun r _ => quadraticResidueTest_abs_le p _ r)"
+        }
+      ]
+    },
+    {
+      "declaration": "weighted_bias_threshold",
+      "start_line": 25,
+      "end_line": 37,
+      "excerpt": "theorem weighted_bias_threshold (P : Finset ℕ) (w b : ℕ → ℝ) (δ : ℝ)\n    (hδ : 0 ≤ δ) (hw : ∀ p ∈ P, 0 ≤ w p) (hb : ∀ p ∈ P, b p ≤ 1) :",
+      "problem": "This is a general averaging inequality: if the weights are nonnegative and `b ≤ 1`, then the weighted sum minus `δ` times the total weight is at most the weight carried by `{b ≥ δ}`. It is stated only for a `Finset ℕ` with `ℕ`-indexed weights. The proof is a pointwise case split followed by `Finset.sum_le_sum`, `Finset.sum_add_distrib`, `Finset.mul_sum` and `Finset.sum_filter`. None of these depend on the index type, and the filter predicate is decidable by the file's `open scoped Classical`.",
+      "proposed_change": "Generalise the index type and keep the proof unchanged:\n\ntheorem weighted_bias_threshold {ι : Type*} (P : Finset ι) (w b : ι → ℝ) (δ : ℝ)\n    (hδ : 0 ≤ δ) (hw : ∀ p ∈ P, 0 ≤ w p) (hb : ∀ p ∈ P, b p ≤ 1) :\n    (∑ p ∈ P, w p * b p) - δ * (∑ p ∈ P, w p) ≤\n      ∑ p ∈ P.filter (fun p => δ ≤ b p), w p := by\n  (same proof, with `have hp (p : ι) (hp : p ∈ P) : ...`)\n\nDegenerate cases still hold: for `P = ∅` both sides are 0, and `δ = 0` gives `∑ w b ≤ ∑_{b ≥ 0} w`, which also follows. The only caller, `biasedPrimeBand_weight` at line 52, passes `logPrimeBand T : Finset ℕ`, so `ι := ℕ` is inferred and the call does not change.",
+      "benefit": "The lemma is a reusable weighted-Markov-type selection step. Stated over an arbitrary index type, it can be applied to biased sets indexed by characters, residues or other finite types, as appear elsewhere in this development. It would no longer read as something specific to primes, while the prime-band application stays exactly as it is.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Quadratic/QuadraticBiasSelection.lean",
+          "declaration": "weighted_bias_threshold",
+          "excerpt": "simp only [Finset.sum_add_distrib, ← Finset.mul_sum, ← Finset.sum_filter] at hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Quadratic/QuadraticBiasSelection.lean",
+          "declaration": "biasedPrimeBand_weight",
+          "excerpt": "have hh := weighted_bias_threshold (logPrimeBand T) (fun p => Real.log (p : ℝ) / p)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 17262,
+    "cache_read_input_tokens": 48134,
+    "output_tokens": 4326,
+    "output_tokens_details": {
+      "thinking_tokens": 903
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17262,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3424,
+        "cache_read_input_tokens": 18778,
+        "cache_creation_input_tokens": 2508,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2508
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2342748,
+  "duration_ms": 37055,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T12:06:38",
+  "unit": "file",
+  "source_sha256": "6e9f334a6c5502b37aac22d7b014779bb222846fc720f09203ccd65a407404b6",
+  "rubric": "statement-generality"
+}

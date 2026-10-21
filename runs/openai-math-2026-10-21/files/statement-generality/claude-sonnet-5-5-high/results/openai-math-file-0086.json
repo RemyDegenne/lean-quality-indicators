@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0086",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read ArrayActions.lean (the nonaffineTranslation, arrayTestExtend and integral_arrayTestExtend definitions), CriticalLimits.lean (the LimitLaws structure), ScaleLaws.lean (scaleLaw_translate), and LimitBalance.lean, which is the dilation analogue. I read Mathlib's Measure.ext_of_integral_eq_on_compactlySupported and Regular.map. The two findings are about duplicated, over-specialised statements. Both are tied to `L.multi`/`L.terminal` and `S.multiLaw`/`S.terminalLaw`, although the proofs only use a vague limit, an eventual invariance, and the homeomorphism. I did not check which typeclass instances NonAffineArray has. The sketched general lemmas assume the instances that Measure.ext_of_integral_eq_on_compactlySupported and Regular.map need, and they would compile only if NonAffineArray provides them; the existing proofs use these lemmas on NonAffineArray, so that is likely. I did not flag arrayTestExtend_translate and arrayTestExtend_dilate. They are parallel but only mildly specialised, and arrayTestExtend is defined only for real-valued functions. I could not run Lean, so none of the proposed statements has been compiled.",
+  "findings": [
+    {
+      "declaration": "StandardMapEntropy.CriticalScaleSequence.multi_integral_translate / terminal_integral_translate",
+      "start_line": 45,
+      "end_line": 60,
+      "excerpt": "filter_upwards [L.refines (S.multiLaw_translate_eventually r)] with i hi",
+      "problem": "The two lemmas have the same proof, and each is stated only for the concrete laws `L.multi` and `L.terminal` of one `LimitLaws`. The argument uses none of this structure. It needs only (a) vague convergence of `fun i => ∫ g ∂nonaffinePart (μ i)` along a filter to `∫ g ∂ν`, (b) eventual invariance `(μ i).map (arrayTranslate r) = μ i`, and (c) `integral_translate_nonaffine`. Elsewhere the project already states this kind of limit argument for an arbitrary filter, sequence and limit, as in `vague_integrable_bound L.filter (fun i => nonaffinePart (S.terminalLaw i)) L.terminal L.terminal_converges`. Here the generic content is duplicated and tied to `S`/`L`.",
+      "proposed_change": "Add a general lemma, for example `lemma integral_translate_of_vague_limit {ι : Type*} (l : Filter ι) [l.NeBot] (μ : ι → Measure DistanceArray) [∀ i, IsFiniteMeasure (μ i)] (ν : Measure NonAffineArray) (r : DyadicTime) (hconv : ∀ g : C_c(NonAffineArray,ℝ), Tendsto (fun i => ∫ d, g d ∂nonaffinePart (μ i)) l (𝓝 (∫ d, g d ∂ν))) (hinv : ∀ᶠ i in l, (μ i).map (arrayTranslate r) = μ i) (g : C_c(NonAffineArray,ℝ)) : (∫ d, g (nonaffineTranslation r d) ∂ν) = ∫ d, g d ∂ν`. The proof is the current body. Build `hh` with `filter_upwards [hinv]` and `integral_translate_nonaffine`. Then apply `tendsto_nhds_unique` to `hconv (g.comp ...)` and `(hconv g).congr' hh.symm`. `tendsto_nhds_unique` needs `NeBot`, which an `Ultrafilter` coerced to a filter provides. `multi_integral_translate` and `terminal_integral_translate` then become one-line instantiations with `l := (L.filter : Filter ℕ)`, `hinv := L.refines (S.multiLaw_translate_eventually r)` (resp. `terminalLaw`) and `hconv := L.multi_converges` (resp. `L.terminal_converges`).",
+      "benefit": "The vague-limit/translation-invariance argument is proved once. It can be reused for other limit families (other filters or sequences, not only the two in `LimitLaws`) and for any later sequence of laws. A reader sees what is used: convergence plus eventual invariance. The multi and terminal copies no longer have to be kept in sync.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/TerminalShortfall.lean",
+          "declaration": "vague_integrable_bound (use in TerminalShortfall)",
+          "excerpt": "vague_integrable_bound L.filter (fun i => nonaffinePart (S.terminalLaw i)) L.terminal L.terminal_converges"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/CriticalLimits.lean",
+          "declaration": "CriticalScaleSequence.LimitLaws.multi_converges",
+          "excerpt": "Tendsto (fun i => ∫ d,g d ∂nonaffinePart (S.multiLaw i)) (filter:Filter ℕ) (𝓝 (∫ d,g d ∂multi))"
+        }
+      ]
+    },
+    {
+      "declaration": "StandardMapEntropy.CriticalScaleSequence.multi_translate / terminal_translate",
+      "start_line": 61,
+      "end_line": 72,
+      "excerpt": "lemma multi_translate (r : DyadicTime) : L.multi.map (nonaffineTranslation r)=L.multi := by",
+      "problem": "Both lemmas prove the general fact that a regular measure `ν` on `NonAffineArray` with `∫ g (φ x) ∂ν = ∫ g ∂ν` for all `g : C_c(NonAffineArray, ℝ)` satisfies `ν.map φ = ν`, for the homeomorphism `φ = nonaffineTranslation r`. They use no property of `L.multi`/`L.terminal` beyond regularity and the integral identity. The proof is duplicated, once per measure, and the `Regular.map` instance is built by hand each time. The same pattern appears in Mathlib's Haar extension (`ext_of_integral_eq_on_compactlySupported` with `Regular.map (Homeomorph.mulLeft b)`).",
+      "proposed_change": "State and prove one lemma, for example `lemma map_eq_self_of_integral_comp_eq (φ : NonAffineArray ≃ₜ NonAffineArray) (ν : Measure NonAffineArray) [ν.Regular] (h : ∀ g : C_c(NonAffineArray,ℝ), (∫ d, g (φ d) ∂ν) = ∫ d, g d ∂ν) : ν.map φ = ν`. The proof is the current one: `have := Measure.Regular.map φ`, `apply Measure.ext_of_integral_eq_on_compactlySupported`, `intro g`, then rewrite with `integral_map φ.continuous.measurable.aemeasurable g.continuous.aestronglyMeasurable` and close with `h g`. A general version would need no hypothesis on `φ` beyond being a homeomorphism, so it also covers inverse translations and other symmetries. `multi_translate` and `terminal_translate` become `map_eq_self_of_integral_comp_eq _ _ (S.multi_integral_translate L r)` and the analogue for terminal. Measurable-space or Borel-space instance requirements should be checked against `NonAffineArray`.",
+      "benefit": "One proof replaces two copies, so the Riesz-uniqueness and `Regular.map` bookkeeping appears once. The lemma could also serve a dilation analogue, although `nonaffineDilate` is not a homeomorphism, so that would need a separate statement. It states cleanly the principle that an invariant integral on `C_c` determines an invariant measure. Users no longer need `S` and `L` to get this fact for other regular measures.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/RieszMarkovKakutani/Real.lean",
+          "declaration": "MeasureTheory.Measure.ext_of_integral_eq_on_compactlySupported",
+          "excerpt": "[μ.Regular] [ν.Regular] (hμν : ∀ f : C_c(X, ℝ), ∫ x, f x ∂μ = ∫ x, f x ∂ν) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Regular.lean",
+          "declaration": "MeasureTheory.Measure.Regular.map",
+          "excerpt": "⟨Regular.innerRegular.map' f.toMeasurableEquiv"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/LimitActions.lean",
+          "declaration": "CriticalScaleSequence.terminal_translate",
+          "excerpt": "let := Measure.Regular.map (μ := L.terminal) (nonaffineTranslation r)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 35597,
+    "cache_read_input_tokens": 142029,
+    "output_tokens": 7995,
+    "output_tokens_details": {
+      "thinking_tokens": 2977
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35597,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5353,
+        "cache_read_input_tokens": 31239,
+        "cache_creation_input_tokens": 8382,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 8382
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.23656890000000003,
+  "duration_ms": 67335,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T13:59:22",
+  "unit": "file",
+  "source_sha256": "1e9e39c521763e17514a77e70b82c46cba8befa27bac857bd6fb3f1dc5125d98",
+  "rubric": "statement-generality"
+}

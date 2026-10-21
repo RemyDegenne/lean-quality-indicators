@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0075",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I checked Mathlib's HomogeneousLocalization and ProjectiveSpectrum files for an existing evaluation or lift out of `Away`. I found none: only `Localization.awayLift`, `Away.mk`, `awayMap` and `Proj.awayι`. The duplication is inside the repo. I read `SurfaceCones/HomogeneousEvaluation.lean`, which does not import the target, and `NumericalDimension/SectionCoordinates.lean`, which does import it. I did not use `homogeneousAwayEval` as the main replacement, because it sits downstream of the target. I only cite it to show that the IsUnit-general form is already wanted. I did not report `eval₂_homogeneous_scaling` against `homogeneous_eval₂_scale`, because that is theorem duplication. I considered the projective-space and chart definitions and found no clear Mathlib competitor, since Mathlib has no point-of-projective-space API. Uncertainty: I could not compile anything. Whether `projectiveFieldMap` and `projectiveAffineMap` could be merged is a judgment call. I only suggest it as part of the second finding.",
+  "findings": [
+    {
+      "declaration": "OAI.NumericalDimensionOne.homogeneousFieldEval (and homogeneousFieldEval_mk, homogeneousFieldEval_awayMap)",
+      "start_line": 360,
+      "end_line": 363,
+      "excerpt": "noncomputable def homogeneousFieldEval (h : A →+* K) (f : A) (hf : h f ≠ 0) :\n    HomogeneousLocalization.Away 𝒜 f →+* K :=\n  (Localization.awayLift h f (isUnit_iff_ne_zero.mpr hf)).comp\n    (algebraMap _ (Localization.Away f))",
+      "problem": "This file defines its own evaluation map `Away 𝒜 f →+* K` for a field `K` by composing `Localization.awayLift` with `algebraMap`. The repo already has the same definition, with the same hypotheses and the same lemmas, as `HomogeneousEvaluation.evaluate` in `SurfaceCones/HomogeneousEvaluation.lean`. There the `_mk` formula and the `awayMap` compatibility lemma are also proved, in the equivalent form `e a / (e f)^n`. `SectionCoordinates.lean` adds a third copy, `homogeneousAwayEval`, which takes `IsUnit (e t)` instead of `≠ 0`. That is two or three parallel evaluation APIs for one concept, so the `_mk` and `awayMap` lemmas are proved several times and cannot be reused across the repo's projective-geometry files.",
+      "proposed_change": "Keep one evaluation map for homogeneous localizations, stated with `IsUnit (e f)`. This is the most general form and covers the field case via `isUnit_iff_ne_zero`. Put it in a small shared file imported by `CurveCoordinates` and `SurfaceCones`. Make `homogeneousFieldEval` either disappear in favour of that map or become an `abbrev` or one-line wrapper with the `≠ 0` hypothesis, if the name is wanted. Then derive `homogeneousFieldEval_mk` and `homogeneousFieldEval_awayMap` from the shared lemmas. Alternatively, import `HomogeneousEvaluation.evaluate` and use it directly.",
+      "benefit": "The `Away`-evaluation API and its `mk` and `awayMap` lemmas are proved once. A result about `projectiveFieldMap` here can then be combined with results from `SurfaceCones` and `SectionCoordinates` without conversion lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/SurfaceCones/HomogeneousEvaluation.lean",
+          "declaration": "OAI.HomogeneousEvaluation.evaluate",
+          "excerpt": "def evaluate (f : A) (hf : e f ≠ 0) : Away G f →+* F :=\n  (Localization.awayLift e f (isUnit_iff_ne_zero.mpr hf)).comp\n    (algebraMap (Away G f) (Localization.Away f))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/SurfaceCones/HomogeneousEvaluation.lean",
+          "declaration": "OAI.HomogeneousEvaluation.evaluate_awayMap",
+          "excerpt": "evaluate G e x h (awayMap G he hx a) = evaluate G e f hf a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/SectionCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.homogeneousAwayEval",
+          "excerpt": "def homogeneousAwayEval (e : A →+* B) (t : A) (ht : IsUnit (e t)) :\n    HomogeneousLocalization.Away 𝒜 t →+* B :=\n  (Localization.awayLift e t ht).comp (algebraMap _ (Localization.Away t))"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.NumericalDimensionOne.projectiveChartRingHom, projectiveAffineMap and projectiveFieldMap (with projectiveFieldMap_eq_affine)",
+      "start_line": 213,
+      "end_line": 219,
+      "excerpt": "noncomputable def projectiveChartRingHom (c : k →+* R) (x : σ → R)\n    (i : σ) (hi : x i = 1) :\n    HomogeneousLocalization.Away (MvPolynomial.homogeneousSubmodule σ k)\n      (MvPolynomial.X i) →+* R :=\n  (Localization.awayLift (MvPolynomial.eval₂Hom c x) (MvPolynomial.X i)",
+      "problem": "Within this one file, `projectiveChartRingHom` is `Localization.awayLift (eval₂Hom c x) (X i) _ ∘ algebraMap`. That is exactly `homogeneousFieldEval` (line 360) applied to the grading `homogeneousSubmodule`, `h = eval₂Hom c x` and `f = X i`. The only difference is the hypothesis: `x i = 1` here against `h f ≠ 0` there. This duplicates the definition, and `projectiveChartRingHom_mk` repeats `homogeneousFieldEval_mk` with its own `change … awayLift_mk` proof. The two resulting point constructions, `projectiveAffineMap` and `projectiveFieldMap`, are the same `Spec.map _ ≫ Proj.awayι …` over two parallel evaluation maps. The file shows they are not substantively different, because `projectiveFieldMap_eq_affine` is closed by `unfold … congr 2`. The `_independent`, `_naturality` and `_over` lemmas then need separate versions or a bridge through that lemma.",
+      "proposed_change": "Define `projectiveChartRingHom c x i hi` as the shared IsUnit-based `Away`-evaluation map from the previous finding, applied to `MvPolynomial.X i` with `eval₂Hom c x`. Derive `projectiveChartRingHom_mk` from that map's `_mk` lemma. Keep `projectiveAffineMap` and `projectiveFieldMap` as named wrappers, since both orientations are useful. Define `projectiveAffineMap` as the unit-hypothesis case and `projectiveFieldMap` as the `≠ 0` case, or one as an abbreviation of the other, so that `projectiveFieldMap_eq_affine` becomes `rfl`.",
+      "benefit": "One construction of the point `Spec R ⟶ ℙ^N` from coordinates replaces two parallel ones. The `_mk`, `_over` and `_naturality` lemmas can be proved once, and the reader does not have to verify that the two constructions agree.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.homogeneousFieldEval",
+          "excerpt": "(Localization.awayLift h f (isUnit_iff_ne_zero.mpr hf)).comp\n    (algebraMap _ (Localization.Away f))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.projectiveFieldMap_eq_affine",
+          "excerpt": "  unfold projectiveFieldMap projectiveAffineMap\n  congr 2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/SectionCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.homogeneousAwayEval",
+          "excerpt": "def homogeneousAwayEval (e : A →+* B) (t : A) (ht : IsUnit (e t)) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 44304,
+    "cache_read_input_tokens": 283963,
+    "output_tokens": 8260,
+    "output_tokens_details": {
+      "thinking_tokens": 1855
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 44304,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3685,
+        "cache_read_input_tokens": 46448,
+        "cache_creation_input_tokens": 1937,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1937
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.28824829999999996,
+  "duration_ms": 67703,
+  "turns": 19,
+  "attempts": 1,
+  "judged": "2026-10-21T13:14:06",
+  "unit": "file",
+  "source_sha256": "bc944b38a7f78265930c550938f48cc2a0be622227f457149e460cfb09aa6713",
+  "rubric": "concept-reinvention"
+}

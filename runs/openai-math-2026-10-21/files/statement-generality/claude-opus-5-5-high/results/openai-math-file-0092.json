@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0092",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of the target file (lines 1–95). I also read the lemma it calls, `exists_annular_return_with_equal_leaves`, and the helper underneath it, `exists_annular_simultaneous_root_return_ae`, both in LeafReturnCovariance.lean. The only caller of the target is `exists_synchronized_annular_equal_leaf_returns` in SynchronizedReturns.lean, which I read as well.\n\nThe target's proof already establishes the general per-radius bound `ρ * R < |κ * t| ≤ R` (`hnorm`). The statement then narrows this in several ways:\n- It fixes the index type to `Fin 2`.\n- It uses the radii `if b = 0 then 1 else C`.\n- It weakens the strict lower bounds to `≤`.\n- It adds the downstream-specific hypothesis `hsecond : 16 / ρ ≤ ρ * C`, which is used only to convert `ρ * C < |κ t 1|` into `16 / ρ ≤ |κ t 1|`.\n\nI report this as one combined finding.\n\nOther hypotheses I checked:\n- `hloc` is needed to get finite mass on closed balls (`hfin`).\n- The strict `<` in `hsmall` is what gives nonzero mass (`hmass`).\n- `hC : 1 ≤ C` is used only to show `0 < C`. Weakening it to `0 < C` would be valid but marginal, and the general family version below subsumes it.\n\nUncertainty: I could not compile the proposed statement. The proof sketch reuses the existing proof steps nearly verbatim, so I expect it to go through with minor adjustments.",
+  "findings": [
+    {
+      "declaration": "OAI.DukePrimeDegree.exists_two_normalized_annular_equal_leaf_returns",
+      "start_line": 22,
+      "end_line": 89,
+      "excerpt": "    (hsecond : 16 / ρ ≤ ρ * C)\n    (hsmall : ∀ b : Fin 2, intrinsicRootLeaf hij μ x\n        (Metric.closedBall 0 (ρ * ((if b = 0 then 1 else C) / κ))) <",
+      "problem": "The statement is narrower than its proof in four ways.\n\n1. It is tied to `Fin 2` with radii `if b = 0 then 1 else C`. The proof never uses that shape: it applies the one-radius lemma for each `b` separately and proves `hnorm`, i.e. `ρ * R b < |κ * t b| ∧ |κ * t b| ≤ R b` with `R b = if b = 0 then 1 else C`.\n2. `hC : 1 ≤ C` is used only to show the radii are positive.\n3. The conclusion drops the strict lower bounds the proof already has (`hzero.1.le`).\n4. The hypothesis `hsecond : 16 / ρ ≤ ρ * C` is imported from the downstream noncancellation step. It serves only to rewrite the stronger conclusion `ρ * C < |κ * t 1|` as `16 / ρ ≤ |κ * t 1|` (`hsecond.trans hone.1.le`).\n\nAs a result, the lemma cannot be reused for a different number of annuli or different radii. It also forces every user to supply `hsecond`, even one who only wants the annulus bounds.",
+      "proposed_change": "State a family version, with the other binders unchanged and `hloc`/`hκ` as now:\n\n```lean\ntheorem exists_normalized_annular_equal_leaf_returns {ι : Type*} ... (κ ρ : ℝ) (hκ : 0 < κ)\n    (R : ι → ℝ) (hR : ∀ b, 0 < R b)\n    (hsmall : ∀ b, intrinsicRootLeaf hij μ x (Metric.closedBall 0 (ρ * (R b / κ))) <\n      a * intrinsicRootLeaf hij μ x (Metric.closedBall 0 (R b / κ)))\n    (hcoeff : c + c + a < 1) :\n    ∃ t : ι → ℝ, ∀ b,\n      rightAction x (transvection hij (t b)) ∈ K ∧\n      rightAction y (transvection hij (t b)) ∈ K ∧\n      intrinsicRootLeaf hij μ (rightAction x (transvection hij (t b))) =\n        intrinsicRootLeaf hij μ (rightAction y (transvection hij (t b))) ∧\n      ρ * R b < |κ * t b| ∧ |κ * t b| ≤ R b\n```\n\nThe proof is the current body with `r b := R b / κ`:\n- `hr b` becomes `div_pos (hR b) hκ`.\n- `hmass` and `hfin` are unchanged.\n- `hex` and `choose` use `exists_annular_return_with_equal_leaves` exactly as now.\n- `hκr b : κ * r b = R b` follows by `field_simp [hκ.ne']`.\n- The `hnorm` argument (`mul_lt_mul_of_pos_left`, `abs_of_pos`, `nlinarith`/`linarith`) is unchanged.\n\nThe current two-annulus statement, if kept, becomes a short corollary. Take `R := fun b => if b = 0 then 1 else C` with positivity from `hC`, then specialise `b = 0, 1` with the existing `simpa only [ite_true, mul_one]`. Finally apply `hsecond.trans` to the strict bound. Better still, return `ρ * C < |κ * t 1|` and let `exists_synchronized_annular_equal_leaf_returns` apply `hsecond` itself; that caller already has `hsecond` in scope.\n\nDegenerate cases:\n- Empty `ι` is trivially fine.\n- No sign condition on `ρ` is needed, because the `nlinarith` step only uses `ρ * (κ * r b) = ρ * R b` with `κ > 0`.",
+      "benefit": "The general form says plainly what was proved: compact equal-leaf returns in any finite or infinite family of normalized annuli `ρR < |κt| ≤ R`. It drops the opaque `if b = 0 then 1 else C` encoding, the downstream constant `16 / ρ`, and the needless weakening of `<` to `≤`. Users needing other radii or more than two annuli can apply it directly. The one existing caller (`exists_synchronized_annular_equal_leaf_returns`) can instantiate it, because its `hmass'` already has exactly the `R b / κ` shape.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/TwoAnnularEqualReturns.lean",
+          "declaration": "OAI.DukePrimeDegree.exists_two_normalized_annular_equal_leaf_returns",
+          "excerpt": "  exact ⟨t, fun b => ⟨hxK b, hyK b, heqK b⟩, hzero.1.le, hzero.2,\n    hsecond.trans hone.1.le, hone.2⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/LeafReturnCovariance.lean",
+          "declaration": "OAI.DukePrimeDegree.exists_annular_return_with_equal_leaves",
+          "excerpt": "    (r ρ : ℝ) (hr : 0 < r)\n    (hpos : intrinsicRootLeaf hij μ x (Metric.closedBall 0 r) ≠ 0)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/SynchronizedReturns.lean",
+          "declaration": "OAI.DukePrimeDegree.exists_synchronized_annular_equal_leaf_returns",
+          "excerpt": "    exists_two_normalized_annular_equal_leaf_returns hij μ K G c a hgood\n      (x 0) (x 1) (hxG 0) (hxG 1) hleaf hxreg.2.2 hyreg.2.2 hxreg.2.1\n      κ ρ C hκ hC hsecond hmass' hcoeff"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Dynamics/TwoAnnularEqualReturns.lean",
+          "declaration": "OAI.DukePrimeDegree.exists_two_normalized_annular_equal_leaf_returns",
+          "excerpt": "      ρ * (if b = 0 then 1 else C) < |κ * t b| ∧\n        |κ * t b| ≤ (if b = 0 then 1 else C) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18901,
+    "cache_read_input_tokens": 47736,
+    "output_tokens": 5950,
+    "output_tokens_details": {
+      "thinking_tokens": 2201
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18901,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3365,
+        "cache_read_input_tokens": 19185,
+        "cache_creation_input_tokens": 3740,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3740
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2797872,
+  "duration_ms": 55319,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T16:59:18",
+  "unit": "file",
+  "source_sha256": "b5eab71d81ca85e08cf78c3b5c8526b2885286b8969d91dc14d4a5bac9b11cb3",
+  "rubric": "statement-generality"
+}

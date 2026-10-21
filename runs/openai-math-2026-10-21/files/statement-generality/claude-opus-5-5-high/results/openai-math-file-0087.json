@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0087",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all four declarations in ShellMixtures.lean (lines 1–69). I also read the definitions of `dyadicShell`, `shellEnergy` and `shell_energy_integrable` in Shells.lean, and the uses in FilteredClassShell.lean and TwoRootShellDecay.lean. In Mathlib I checked `charFun`, `charFun_eq_integral_innerProbChar` and their variable contexts, plus `BoundedContinuousFunction.integrable`, `integral_finsetSum_measure` and `integral_smul_nnreal_measure`.\n\n`shellEnergy_weighted_sum_le` and `shellEnergy_weighted_sum_uniform` cannot be generalised beyond `Measure ℝ`, because `shellEnergy` itself is defined only for `Measure ℝ`.\n\nIn `shellEnergy_weighted_sum_uniform`, the hypothesis `hC : 0 ≤ C` is really needed. If `s` is empty, the left side is `shellEnergy 0 N = 0`, so `C < 0` would make the claim false.\n\nThe `hc : ∑ c ≤ 1` conditions are the natural sub-probability normalisation, so I did not flag them.\n\nI could not compile the proposed generalisations. My claims that they go through rest on reading the instance requirements of the lemmas the proofs already use.\n\nThere is a near-duplicate copy of the first two lemmas in FalconerCompletion/Measures/AssemblyPositiveEnergy.lean. Since that is a duplication issue rather than over-specialisation, it is outside this rubric.",
+  "findings": [
+    {
+      "declaration": "OAI.PlanarFalconer.norm_weighted_sum_sq_le",
+      "start_line": 10,
+      "end_line": 24,
+      "excerpt": "theorem norm_weighted_sum_sq_le {ι : Type*} (s : Finset ι) (c : ι → ℝ≥0) (z : ι → ℂ)",
+      "problem": "This Jensen/Cauchy–Schwarz inequality for sub-probability weights is stated only for complex numbers `z : ι → ℂ`. The proof never uses anything specific to ℂ. It uses only `norm_sum_le`, `norm_smul`, `Real.norm_eq_abs`, `Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul` (which works on real numbers `(c i : ℝ)` and `‖z i‖`) and `pow_le_pow_left₀` with `norm_nonneg`. All of these hold in any real seminormed vector space.",
+      "proposed_change": "Generalise the vector type:\n`theorem norm_weighted_sum_sq_le {ι E : Type*} [SeminormedAddCommGroup E] [NormedSpace ℝ E] (s : Finset ι) (c : ι → ℝ≥0) (z : ι → E) (hc : (∑ i ∈ s, (c i : ℝ)) ≤ 1) : ‖∑ i ∈ s, (c i : ℝ) • z i‖^2 ≤ ∑ i ∈ s, (c i : ℝ) * ‖z i‖^2`.\nThe proof can stay as it is. `norm_smul` turns `‖(c i : ℝ) • z i‖` into `‖(c i : ℝ)‖ * ‖z i‖` in any `NormedSpace ℝ E`, and the other steps are inequalities between real numbers. The edge case `s = ∅` is unchanged (both sides are 0). The caller at line 46 passes `charFun … r : ℂ`, so it still elaborates, using the instance `NormedSpace ℝ ℂ`.",
+      "benefit": "The same weighted-mixture bound then applies to characteristic functions with values in any normed space, to vector-valued Fourier transforms, or to plain real numbers. Users would not need to restate it. It would also remove the motivation for the near-identical `assembly_norm_weighted_sum_sq_le` copy elsewhere in the project.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Shells/ShellMixtures.lean",
+          "declaration": "OAI.PlanarFalconer.norm_weighted_sum_sq_le",
+          "excerpt": "simpa only [norm_smul, Real.norm_eq_abs, abs_of_nonneg (NNReal.coe_nonneg _)] using\n      norm_sum_le s (fun i => (c i : ℝ) • z i)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/FalconerCompletion/Measures/AssemblyPositiveEnergy.lean",
+          "declaration": "assembly_norm_weighted_sum_sq_le",
+          "excerpt": "lemma assembly_norm_weighted_sum_sq_le {ι : Type*} (s : Finset ι) (c : ι → ℝ≥0) (z : ι → ℂ)"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.PlanarFalconer.charFun_weighted_sum",
+      "start_line": 26,
+      "end_line": 35,
+      "excerpt": "(τ : ι → Measure ℝ) [∀ i, IsFiniteMeasure (τ i)] (r : ℝ) :",
+      "problem": "The statement that the characteristic function is linear in the measure, for finite non-negative combinations, is fixed to measures on ℝ. Mathlib defines `charFun` and `charFun_eq_integral_innerProbChar` for any `[SeminormedAddCommGroup E] [InnerProductSpace ℝ E]`. The integrability step uses `BoundedContinuousFunction.integrable`, which needs only `[OpensMeasurableSpace E]` and finiteness of the measure. `integral_finsetSum_measure` and `integral_smul_nnreal_measure` work for an arbitrary measurable space. Nothing in the proof uses ℝ. Mathlib also has no `charFun_add`/`charFun_sum`-style lemma, so this generalisation would fill a real gap.",
+      "proposed_change": "Generalise to\n`theorem charFun_weighted_sum {ι E : Type*} [SeminormedAddCommGroup E] [InnerProductSpace ℝ E] [MeasurableSpace E] [OpensMeasurableSpace E] (s : Finset ι) (c : ι → ℝ≥0) (τ : ι → Measure E) [∀ i, IsFiniteMeasure (τ i)] (t : E) : charFun (∑ i ∈ s, c i • τ i) t = ∑ i ∈ s, (c i : ℝ) • charFun (τ i) t`.\nThe proof can stay the same: rewrite with `charFun_eq_integral_innerProbChar`, apply `integral_finsetSum_measure` with integrability from `(BoundedContinuousFunction.innerProbChar t).integrable _`, then apply `integral_smul_nnreal_measure` to each term. Callers at line 45 and in FilteredClassShell.lean (`charFun_weighted_sum F (fun _ => (1:ℝ≥0)) τ r` with `τ : ι → Measure ℝ`) still elaborate, because ℝ provides all the required instances.",
+      "benefit": "The project is about planar Falconer problems, so measure mixtures on ℝ² or `EuclideanSpace ℝ (Fin d)` are natural targets. A general version would give linearity of `charFun` over finite mixtures in every inner product space at no extra cost, and it would be a reusable lemma that is missing from Mathlib.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/CharacteristicFunction/Basic.lean",
+          "declaration": "MeasureTheory.charFun",
+          "excerpt": "noncomputable def charFun [Inner ℝ E] (μ : Measure E) (t : E) : ℂ := ∫ x, exp (⟪x, t⟫ * I) ∂μ"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/BoundedContinuousFunction.lean",
+          "declaration": "BoundedContinuousFunction.integrable",
+          "excerpt": "lemma integrable [IsFiniteMeasure μ] (f : X →ᵇ E) :\n    Integrable f μ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/Bochner/Basic.lean",
+          "declaration": "MeasureTheory.integral_smul_nnreal_measure",
+          "excerpt": "theorem integral_smul_nnreal_measure (f : α → G) (c : ℝ≥0) :\n    ∫ x, f x ∂(c • μ) = c • ∫ x, f x ∂μ :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Shells/FilteredClassShell.lean",
+          "declaration": "OAI.Falconer.positive_shell_finite_sum",
+          "excerpt": "simpa using PlanarFalconer.charFun_weighted_sum F (fun _ => (1:ℝ≥0)) τ r"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 17796,
+    "cache_read_input_tokens": 86920,
+    "output_tokens": 6080,
+    "output_tokens_details": {
+      "thinking_tokens": 1364
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17796,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3477,
+        "cache_read_input_tokens": 21486,
+        "cache_creation_input_tokens": 334,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 334
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2814,
+  "duration_ms": 64423,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T16:35:43",
+  "unit": "file",
+  "source_sha256": "058cb3e0948bfa719fe48593a5c15d4f8abafe93d0a553132fd6a478b4076745",
+  "rubric": "statement-generality"
+}

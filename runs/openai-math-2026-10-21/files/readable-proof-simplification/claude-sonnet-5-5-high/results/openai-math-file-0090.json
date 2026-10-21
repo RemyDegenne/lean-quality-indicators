@@ -1,0 +1,102 @@
+{
+  "id": "openai-math-file-0090",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the `eventually_boundaryPairCount_le` statement in BoundaryCoverageCounts.lean. I checked Mathlib's `Real.rpow_add_one` and `Real.norm_of_nonneg` by reading their statements. I did not compile anything, so the replacements are untested. Their small `norm_num` and `rw` side goals are the main uncertainty. I did not flag the overall proof structure: it is long but follows the mathematical argument (count bound, then the little-o bound, then combining exponents).",
+  "findings": [
+    {
+      "declaration": "eventually_boundary_weighted_scale (hsum)",
+      "start_line": 36,
+      "end_line": 42,
+      "excerpt": "      _ = (X:ℝ)^(99/100:ℝ) := by rw [←Real.rpow_add hp]; norm_num\n      _ = (X:ℝ)^(-(1/100:ℝ))*(X:ℝ)^(1:ℝ) := by\n        rw [←Real.rpow_add hp]; norm_num\n      _ = _ := by rw [Real.rpow_one]",
+      "problem": "`hsum` is proved by a three-step calc. It goes through an artificial `X^(99/100)`, then writes `X` as `X^(1:ℝ)`, and finally undoes that with `rpow_one`. Mathlib's `Real.rpow_add_one` states `x ^ (y + 1) = x ^ y * x` directly, so the detour through `X^(1:ℝ)` and the extra `rpow_one` step are unnecessary.",
+      "proposed_change": "Replace the calc by `by rw [←Real.rpow_add hp, ←Real.rpow_add_one hp.ne']; norm_num`. The first rewrite merges the left side into `X^(24/25+3/100)`. The second rewrites the right side `X^(-(1/100))*X` as `X^(-(1/100)+1)`. The remaining goal is the numeric identity `24/25+3/100 = -(1/100)+1`, which `norm_num` closes.",
+      "benefit": "The proof shrinks from seven lines to one. The exponent bookkeeping becomes visible as a single numeric identity, with no intermediate `X^(99/100)` and no `rpow_one` round trip.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/SpecialFunctions/Pow/Real.lean",
+          "declaration": "Real.rpow_add_one",
+          "excerpt": "theorem rpow_add_one {x : ℝ} (hx : x ≠ 0) (y : ℝ) : x ^ (y + 1) = x ^ y * x"
+        }
+      ]
+    },
+    {
+      "declaration": "eventually_boundary_weighted_scale (hpowers/hb)",
+      "start_line": 27,
+      "end_line": 35,
+      "excerpt": "      _ = 2*C^2*((X:ℝ)^(19/20:ℝ)*(X:ℝ)^(1/100:ℝ))*Real.log (X:ℝ)^4 := by ring\n      _ = _ := by rw [hpowers]",
+      "problem": "The auxiliary fact `hpowers` is used once, in the last line of the `hb` calc. The calc has a regrouping step by `ring` followed by a separate `rw [hpowers]` step. `ring` could do the rearrangement after the rewrite, and `hpowers` could be local to `hb`.",
+      "proposed_change": "Merge the last two calc steps into `_ = _ := by rw [←hpowers]; ring`. Better, move `hpowers` inside `hb` so it is not left in the outer context. Then the calc is `_ ≤ ... := hb` followed by one equality step.",
+      "benefit": "This removes one intermediate calc line that only restates associativity. The key mathematical content is the one visible fact 19/20 + 1/100 = 24/25, and it sits next to its only use.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Supply/BoundaryCoverageScale.lean",
+          "declaration": "hpowers",
+          "excerpt": "(X:ℝ)^(19/20:ℝ)*(X:ℝ)^(1/100:ℝ) =\n      (X:ℝ)^(24/25:ℝ) := by rw [←Real.rpow_add hp]; norm_num"
+        }
+      ]
+    },
+    {
+      "declaration": "eventually_boundary_weighted_scale (hsmall normalisation)",
+      "start_line": 24,
+      "end_line": 25,
+      "excerpt": "  rw [Real.norm_eq_abs,Real.norm_eq_abs,abs_of_nonneg (pow_nonneg hl.le 5),\n    abs_of_nonneg (Real.rpow_nonneg hp.le _)] at hsmall",
+      "problem": "The `Asymptotics` bound is stated with norms. The proof first rewrites each norm to `|·|` with two `Real.norm_eq_abs` steps and then removes each absolute value with `abs_of_nonneg`. That is four rewrites for two nonnegativity facts. Mathlib has `Real.norm_of_nonneg`, which does each norm-to-value step in one rewrite.",
+      "proposed_change": "Use `rw [Real.norm_of_nonneg (pow_nonneg hl.le 5), Real.norm_of_nonneg (Real.rpow_nonneg hp.le _)] at hsmall`.",
+      "benefit": "This halves the number of rewrites and drops the intermediate `|·|` form. The reader sees directly that the norms are removed because both quantities are nonnegative.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Group/Real.lean",
+          "declaration": "Real.norm_of_nonneg",
+          "excerpt": "theorem norm_of_nonneg (hr : 0 ≤ r) : ‖r‖ = r :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 14330,
+    "cache_read_input_tokens": 64000,
+    "output_tokens": 4230,
+    "output_tokens_details": {
+      "thinking_tokens": 1190
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14330,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2218,
+        "cache_read_input_tokens": 17635,
+        "cache_creation_input_tokens": 738,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 738
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10604,
+  "duration_ms": 36140,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T14:16:36",
+  "unit": "file",
+  "source_sha256": "d236332d15e7d03f6e26df3b395acb38ee0761a75e879b81971ec39515716d4a",
+  "rubric": "readable-proof-simplification"
+}

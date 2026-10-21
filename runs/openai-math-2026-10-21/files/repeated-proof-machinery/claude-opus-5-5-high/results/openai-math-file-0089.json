@@ -1,0 +1,80 @@
+{
+  "id": "openai-math-file-0089",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 118 lines of the target file and checked Mathlib's `Scheme.IdealSheafData.range_subschemeι` (`Set.range I.subschemeι = I.support`), which both proofs rely on. There is one repeated block. `orderAt_finite_support` (lines 57–64) and the `hDT` sub-proof of `divisor_degree_eq_euler_difference` (lines 97–105) both show that a curve point with nonzero order is the image under `zeroPointEmbedding` of a point of the zero subscheme. Both do it the same way: `by_contra` with `orderAt_eq_zero_of_not_mem`, then `change` to a set membership, rewrite with `range_subschemeι`, destructure, and finish with `Subtype.ext`.\n\nI found no other repeated reasoning. `mem_zero_support_iff_not_isUnit`, `orderAt_eq_zero_of_not_mem`, `zeroPointEmbedding`, `divisor` and `divisor_apply` are each used once or are thin definitions. The `finite_subscheme_of_curve` call appears twice, but it is a single-line instance and does not count under this rubric. I could not compile the proposed helper, so it has not been checked by Lean. It uses only declarations that the two proofs already use, under hypotheses they already have.",
+  "findings": [
+    {
+      "declaration": "orderAt_finite_support / divisor_degree_eq_euler_difference",
+      "start_line": 57,
+      "end_line": 105,
+      "excerpt": "  have hmem : x.1 ∈ (SectionZeroIdeal.zeroIdeal L s).support := by\n    by_contra hn\n    exact hx (orderAt_eq_zero_of_not_mem hDVR L s x hn)\n  change x.1 ∈ ((SectionZeroIdeal.zeroIdeal L s).support : Set X) at hmem\n  rw [← (SectionZeroIdeal.zeroIdeal L s).range_subschemeι] at hmem\n  obtain ⟨y, hy⟩ := hmem\n  exact ⟨y, Subtype.ext hy⟩",
+      "problem": "Two proofs repeat the same mathematical step: a point where the section has nonzero order lies in the zero locus, so it is the image of a point of the zero subscheme. The step appears in `orderAt_finite_support` (lines 58–64) and again inside the `hDT` proof of `divisor_degree_eq_euler_difference` (lines 98–105). Both copies use the contrapositive of `orderAt_eq_zero_of_not_mem`, coerce to a set with `change`, rewrite with `← range_subschemeι`, destructure, and close with `Subtype.ext hy`. The only differences are the name of the ideal (`I` versus `SectionZeroIdeal.zeroIdeal L s`) and the final wrapper (`Set.range` versus `Finset.mem_map`). The result is a basic fact about the divisor's support, but it never gets a name of its own.",
+      "proposed_change": "Add this lemma after `zeroPointEmbedding`. It needs neither `p`, `IsProper` nor `hd`:\n\ntheorem support_orderAt_subset_range\n    (hDVR : ∀ x : X, x ≠ genericPoint X → IsDiscreteValuationRing (X.presheaf.stalk x))\n    (L : LineBundle X) (s : GlobalSections X L.sheaf) (hs : s ≠ 0) :\n    Function.support (orderAt hDVR L s) ⊆ Set.range (zeroPointEmbedding L s hs) := by\n  intro x hx\n  have hmem : x.1 ∈ (SectionZeroIdeal.zeroIdeal L s).support := by\n    by_contra hn\n    exact hx (orderAt_eq_zero_of_not_mem hDVR L s x hn)\n  change x.1 ∈ ((SectionZeroIdeal.zeroIdeal L s).support : Set X) at hmem\n  rw [← (SectionZeroIdeal.zeroIdeal L s).range_subschemeι] at hmem\n  obtain ⟨y, hy⟩ := hmem\n  exact ⟨y, Subtype.ext hy⟩\n\nIn `orderAt_finite_support`, lines 56–64 become:\n  exact (Set.finite_range (zeroPointEmbedding L s hs)).subset\n    (support_orderAt_subset_range hDVR L s hs)\n\nIn `divisor_degree_eq_euler_difference`, lines 99–105 become:\n    obtain ⟨y, hy⟩ := support_orderAt_subset_range hDVR L s hs hn\n    exact Finset.mem_map.mpr ⟨y, Finset.mem_univ y, hy⟩\n\nHere `hn : orderAt hDVR L s x ≠ 0` is already in scope at line 98, and it is definitionally `x ∈ Function.support (orderAt hDVR L s)`. Both call sites keep all the hypotheses they already have (`hDVR`, `L`, `s`, `hs`), and no new imports are needed.",
+      "benefit": "The fact that a nonzero order implies a point of the zero subscheme gets a name and a single proof. `orderAt_finite_support` becomes a one-line finiteness argument, and the `hDT` step in the degree theorem reads as an application of that fact rather than repeated subscheme bookkeeping. Any later change to `orderAt`, `zeroPointEmbedding` or the `range_subschemeι` rewrite path then needs fixing in one place only. The lemma is also more general than either call site, since it holds without properness or the dimension bound, so later results about `divisor` can use it too.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/SectionOrderDivisor.lean",
+          "declaration": "orderAt_finite_support",
+          "excerpt": "  rw [← (SectionZeroIdeal.zeroIdeal L s).range_subschemeι] at hmem\n  obtain ⟨y, hy⟩ := hmem\n  exact ⟨y, Subtype.ext hy⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/SectionOrderDivisor.lean",
+          "declaration": "divisor_degree_eq_euler_difference",
+          "excerpt": "    have hm : x.1 ∈ I.support := by\n      by_contra hh\n      exact hn (orderAt_eq_zero_of_not_mem hDVR L s x hh)\n    change x.1 ∈ (I.support : Set X) at hm\n    rw [← I.range_subschemeι] at hm\n    obtain ⟨y, hy⟩ := hm\n    exact Finset.mem_map.mpr ⟨y, Finset.mem_univ y, Subtype.ext hy⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/AlgebraicGeometry/IdealSheaf/Subscheme.lean",
+          "declaration": "AlgebraicGeometry.Scheme.IdealSheafData.range_subschemeι",
+          "excerpt": "lemma range_subschemeι : Set.range I.subschemeι = I.support := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 15157,
+    "cache_read_input_tokens": 49643,
+    "output_tokens": 4164,
+    "output_tokens_details": {
+      "thinking_tokens": 1027
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15157,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3442,
+        "cache_read_input_tokens": 16696,
+        "cache_creation_input_tokens": 2390,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2390
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.21449659999999998,
+  "duration_ms": 36744,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T16:48:51",
+  "unit": "file",
+  "source_sha256": "9f1fc9587fa75c722b5e239c365748e1f23f8fe71072be77ee5e11dd2f715191",
+  "rubric": "repeated-proof-machinery"
+}

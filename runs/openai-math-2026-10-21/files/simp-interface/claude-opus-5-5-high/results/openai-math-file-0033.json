@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0033",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and searched the `lean/` tree for downstream uses of `factorRadiusLevel`, `factorSwitchList` and `actualFactorStops`. I found one problem: `factorRadiusLevel` has no evaluation lemmas, so every caller has to unfold its `if` chain with its own simp set. The finding below gives the evidence. Things I checked and did not report: (1) The `factorSwitchList_*` membership lemmas are only passed as terms to other lemmas in MultipointActualExpectation.lean, never used by simp. A simp-normal `mem_factorSwitchList` iff lemma would therefore not help any existing use. (2) The right-hand side of `actual_phase_switch_clock` is also an `if k = 0 … else if k = 1 …` chain. The one caller with a concrete `k` closes it with `simpa only [ite_true]`, which works. Restating it with `factorRadiusLevel` would bring in a `ring` step for k=1, because `(u₀+u₂)/2 - u₀` and `(u₂-u₀)/2` are not syntactically equal. So I did not report it as a clear improvement. (3) No `@[simp]` attributes appear in the file, so there are no competing rules or loops to assess. I did not run Lean, so I have not checked that the proposed `by simp [factorRadiusLevel]` proofs compile, though they are routine.",
+  "findings": [
+    {
+      "declaration": "factorRadiusLevel",
+      "start_line": 16,
+      "end_line": 17,
+      "excerpt": "if k = 0 then u₀ else if k = 1 then (u₀+u₂)/2 else u₂",
+      "problem": "`factorRadiusLevel` is defined as a nested `if` on `Fin 3`, and the file gives no equation lemmas for the three concrete indices. So every proof that meets `factorRadiusLevel u₀ u₂ 2` (or `0`, or `1`) has to unfold the definition and then discharge the `Fin` decidable equalities with whatever simp set it happens to choose. The uses show this happening. The target file runs `norm_num [factorRadiusLevel]` three times (lines 21, 26, 157). MultipointCompletionExhaustion.lean proves a one-off `hfactor` with `norm_num [factorRadiusLevel]`. MultipointActualBudget.lean needs `simp only [ρ, actualFactorStops, factorRadiusLevel, Fin.reduceEq, ite_false, cutoffStop]`. The normal forms we want are `u₀`, `(u₀+u₂)/2` and `u₂`, but they can only be reached by unfolding the whole `if` chain.",
+      "proposed_change": "Add three evaluation lemmas right after the definition:\n```\n@[simp] lemma factorRadiusLevel_zero (u₀ u₂ : ℝ) : factorRadiusLevel u₀ u₂ 0 = u₀ := by\n  simp [factorRadiusLevel]\n@[simp] lemma factorRadiusLevel_one (u₀ u₂ : ℝ) : factorRadiusLevel u₀ u₂ 1 = (u₀+u₂)/2 := by\n  simp [factorRadiusLevel]\n@[simp] lemma factorRadiusLevel_two (u₀ u₂ : ℝ) : factorRadiusLevel u₀ u₂ 2 = u₂ := by\n  simp [factorRadiusLevel]\n```\nThen replace the ad hoc unfoldings: `hfactor` in MultipointCompletionExhaustion becomes `factorRadiusLevel_two _ _`, or simply `simp only [factorRadiusLevel_two]`. In MultipointActualBudget, replace `factorRadiusLevel, Fin.reduceEq, ite_false` with `factorRadiusLevel_two`. The `fin_cases k <;> norm_num [factorRadiusLevel]` proofs can use `simp`/`norm_num` directly, because after `fin_cases` the indices are literals.",
+      "benefit": "With these lemmas, concrete indices simplify straight to their canonical values. Callers no longer depend on the `if` encoding of the definition or have to add `Fin.reduceEq`/`ite_false` to their simp sets. The downstream proofs get shorter and do not break if the definition is later restated, for example with `![u₀, (u₀+u₂)/2, u₂]` or a `match`. The lemmas assume nothing and only rewrite a closed literal index, so they cannot cause a simp loop.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointCompletionExhaustion.lean",
+          "declaration": "(proof using actualFactorStops at index 2)",
+          "excerpt": "have hfactor : factorRadiusLevel (u₀ i) (u₂ i) 2 = u₂ i := by\n      norm_num [factorRadiusLevel]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointActualBudget.lean",
+          "declaration": "(hend inside actual budget proof)",
+          "excerpt": "simpa only [ρ, actualFactorStops, factorRadiusLevel, Fin.reduceEq, ite_false, cutoffStop] using hc.mpr h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointActualPhases.lean",
+          "declaration": "actual_phase_switch_clock",
+          "excerpt": "fin_cases k <;> norm_num [factorRadiusLevel, sourceClockLevel] <;> ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointActualPhases.lean",
+          "declaration": "factorRadiusLevel_monotone",
+          "excerpt": "fin_cases i <;> fin_cases j <;> norm_num [factorRadiusLevel] at * <;> linarith"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 15961,
+    "cache_read_input_tokens": 35690,
+    "output_tokens": 3691,
+    "output_tokens_details": {
+      "thinking_tokens": 1002
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15961,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3126,
+        "cache_read_input_tokens": 17181,
+        "cache_creation_input_tokens": 2793,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2793
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.20866999999999997,
+  "duration_ms": 31952,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T12:13:44",
+  "unit": "file",
+  "source_sha256": "04cc465baec7ccb4d9f99e2b70e311463fb127cd3e4c8cd1343832651acd71b6",
+  "rubric": "simp-interface"
+}

@@ -1,0 +1,95 @@
+{
+  "id": "openai-math-file-0075",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file (lines 1–512) and compared each definition with Mathlib.\n\n- **`HomogeneousLocalization`:** Mathlib has no general lift from `HomogeneousLocalization.Away` along a ring hom that sends `f` to a unit (its defs are `map`, `awayMap`, `localRingHom`, etc.). So `homogeneousFieldEval` and `projectiveChartRingHom` are not duplicates as ring homs.\n- **Small wrappers:** `PolynomialCurveChart.scalar`, `germ`, `ProjectiveCurveCoordinates`, `projectiveChartRatio` and `projectiveVariable_mem` are project-specific and have no Mathlib counterpart.\n- **Excluded by the rubric:** standalone lemmas such as `eval₂_homogeneous_scaling`, `nonconstant_inv` and `polynomial_eval_surjective_of_contains` count as theorem duplication.\n- **The one real overlap:** Mathlib's `AlgebraicGeometry.Proj.fromOfGlobalSections` builds a morphism `X ⟶ Proj 𝒜` from a graded ring hom into global sections. It does this by gluing over the charts, with no chosen chart, and comes with lemmas for preimages of basic opens and for composing with `toSpecZero`. The target's `projectiveFieldMap` (and, for unit coordinates, `projectiveAffineMap`) is the same construction specialised to `X = Spec K`, but it is tied to a chosen chart. As a result the file and its users have to re-prove chart independence and keep converting between charts.\n\nI checked the downstream uses in SurfaceSquare, SectionCoordinates, RelativeAmpleness and CompleteIntersections. They often `unfold projectiveAffineMap` to get at the chart formula, and they rely on naturality (`projectiveAffineMap_naturality`), which Mathlib does not provide for `fromOfGlobalSections`. Consolidating would therefore need a bridge lemma for the Spec case, plus a naturality lemma. That cost is why I report one moderate finding rather than recommending removal of the chart-level definitions.",
+  "findings": [
+    {
+      "declaration": "projectiveFieldMap (with homogeneousFieldEval_awayMap, homogeneousFieldEval_awayMap', homogeneousFieldPoint_independent, projectiveFieldMap_independent, projectiveFieldMap_over)",
+      "start_line": 404,
+      "end_line": 509,
+      "excerpt": "noncomputable def projectiveFieldMap (c : ℂ →+* K) (x : Fin (N+1) → K)\n    (i : Fin (N+1)) (hi : x i ≠ 0) : Spec (.of K) ⟶ complexProjectiveSpace N :=",
+      "problem": "`projectiveFieldMap` builds the point of `Proj` given by a nonzero coordinate vector by picking a chart `i` with `x i ≠ 0` and composing with `Proj.awayι`. Mathlib already has the chart-free version: `Proj.fromOfGlobalSections 𝒜 f hf` glues exactly these chart maps for any `f : A →+* Γ(X, ⊤)` whose image of the irrelevant ideal generates the unit ideal. Because the target picks a chart, it has to re-prove chart independence by hand: `homogeneousFieldEval_awayMap` and its primed variant, `homogeneousFieldPoint_independent` and `projectiveFieldMap_independent`, about 40 lines. Mathlib proves the same compatibility once inside `fromOfGlobalSections` (via `homOfLE_toBasicOpenOfGlobalSections_ι`). The target's statements over the base (`projectiveFieldMap_over`, `projectiveAffineMap_over`) and its preimage lemma (`projectiveAffineMap_preimage`) restate `fromOfGlobalSections_toSpecZero` and `fromOfGlobalSections_preimage_basicOpen` for the Spec case. Downstream files keep paying for the chart choice: RelativeAmpleness and SectionCoordinates rewrite with `projectiveFieldMap_independent` just to move between charts.",
+      "proposed_change": "Keep the name `projectiveFieldMap`, but define it through Mathlib's construction and drop the chart index: `projectiveFieldMap c x (hx : ∃ i, x i ≠ 0) := Proj.fromOfGlobalSections _ (f := (Scheme.ΓSpecIso _).inv.hom.comp (MvPolynomial.eval₂Hom c x)) hf`. The proof `hf` is short: `X i` lies in the irrelevant ideal and maps to a unit, so the image ideal is `⊤`. Then prove one bridge lemma from `fromOfGlobalSections_resLE` or `fromOfGlobalSections_morphismRestrict` with `r = X i`. It should say that when `x i ≠ 0` the map equals the current chart formula `Spec.map (homogeneousFieldEval …) ≫ Proj.awayι …`, and in particular equals `projectiveAffineMap` when `x i = 1`. Chart independence then holds by definition, so `homogeneousFieldPoint_independent`, `homogeneousFieldEval_awayMap` and its primed variant can be deleted. The 'over' and preimage lemmas follow from `fromOfGlobalSections_toSpecZero` and `fromOfGlobalSections_preimage_basicOpen`. Keep `projectiveAffineMap` and its naturality and immersion lemmas, which need the explicit chart formula and have no Mathlib counterpart, and connect them through the bridge lemma.",
+      "benefit": "Readers and downstream proofs get a point of projective space that depends only on the coordinate vector, so no chart index or nonvanishing proof has to be threaded through, and the rewrites with `projectiveFieldMap_independent` go away. The file reuses Mathlib's gluing and its preimage and base-compatibility lemmas instead of keeping a parallel chart-by-chart version. It also lines the project up with Mathlib's general `X ⟶ Proj 𝒜` interface, which the same files already reach by hand when they compose `toSpecΓ` with `projectiveAffineMap` (SectionCoordinates).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/AlgebraicGeometry/ProjectiveSpectrum/Basic.lean",
+          "declaration": "AlgebraicGeometry.Proj.fromOfGlobalSections",
+          "excerpt": "irrelevant ideal under `f` generates the whole ring, we can construct a map `X ⟶ Proj 𝒜`. -/\ndef fromOfGlobalSections : X ⟶ Proj 𝒜 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/AlgebraicGeometry/ProjectiveSpectrum/Basic.lean",
+          "declaration": "AlgebraicGeometry.Proj.fromOfGlobalSections_preimage_basicOpen",
+          "excerpt": "fromOfGlobalSections 𝒜 f hf ⁻¹ᵁ basicOpen 𝒜 r = X.basicOpen (f r)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/AlgebraicGeometry/ProjectiveSpectrum/Basic.lean",
+          "declaration": "AlgebraicGeometry.Proj.fromOfGlobalSections_toSpecZero",
+          "excerpt": "fromOfGlobalSections 𝒜 f hf ≫ toSpecZero 𝒜 =\n      X.toSpecΓ ≫ Spec.map (CommRingCat.ofHom (f.comp (algebraMap _ _)))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/AlgebraicGeometry/ProjectiveSpectrum/Basic.lean",
+          "declaration": "AlgebraicGeometry.Proj.fromOfGlobalSections_resLE",
+          "excerpt": "toBasicOpenOfGlobalSections 𝒜 f rfl hn hr"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/RelativeAmpleness.lean",
+          "declaration": "(use in RelativeAmpleness, line 81)",
+          "excerpt": "rw [← projectiveFieldMap_independent (curveFieldScalar sC) _ z.i z.j hi'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/SectionCoordinates.lean",
+          "declaration": "(use in SectionCoordinates, line 364)",
+          "excerpt": "exact projectiveFieldMap_independent _ s _ _ _ _"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 53651,
+    "cache_read_input_tokens": 329309,
+    "output_tokens": 9593,
+    "output_tokens_details": {
+      "thinking_tokens": 3849
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 53651,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3640,
+        "cache_read_input_tokens": 56902,
+        "cache_creation_input_tokens": 830,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 830
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.6870098000000001,
+  "duration_ms": 95567,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-21T15:34:04",
+  "unit": "file",
+  "source_sha256": "bc944b38a7f78265930c550938f48cc2a0be622227f457149e460cfb09aa6713",
+  "rubric": "concept-reinvention"
+}

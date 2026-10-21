@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0095",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (93 lines). It has two declarations. The first, `sum_selected_cells_le_overlap`, is a general double-counting inequality but is stated only for real weights. The second, `manuscript_geometric_residue_energy`, is a manuscript-specific estimate. Its concrete types (ℝ, ℕ, ℤ, `Fin (channelFineCount m B)`, `(ZMod q)ˣ`) and hypotheses come from upstream objects such as `manuscriptResidueEnergy`, `histogramWindowCells` and `manuscriptChannel_residue_rate`. I found no useful generalisation of it that would not need new mathematics.\n\nI checked where the lemma is used. Its only use is at line 65 of the target file. A private copy, `local_mass_sum`, appears in `HistogramOverlapEnergy.lean`; its statement and proof are identical. I also checked the typeclass requirements of the Mathlib lemmas the proof uses: `Finset.sum_le_sum` needs an ordered additive monoid (`IsOrderedAddMonoid`), `mul_le_mul_of_nonneg_right` needs `MulPosMono`, and `IsOrderedRing` supplies both. `sum_filter`, `sum_comm`, `mul_sum`, `sum_const` and `nsmul_eq_mul` only need a semiring.\n\nRemaining uncertainty: I could not compile the proposed generalised statement. I expect the existing proof to work unchanged once ℝ is replaced by `R`, but this is untested. The duplication with `local_mass_sum` belongs to a different rubric and is mentioned only as an extra benefit of a generalised lemma.",
+  "findings": [
+    {
+      "declaration": "OAI.JointDickman.sum_selected_cells_le_overlap",
+      "start_line": 12,
+      "end_line": 28,
+      "excerpt": "theorem sum_selected_cells_le_overlap {ι κ : Type*} [Fintype ι] [DecidableEq ι]\n    (S : Finset κ) (J : κ → Finset ι) (w : ι → ℝ) (hw : ∀ i, 0 ≤ w i)\n    (K : ℝ) (hK : ∀ i, ((S.filter (fun k => i ∈ J k)).card : ℝ) ≤ K) :",
+      "problem": "This is a purely combinatorial double-counting inequality: if each cell lies in at most K of the selected windows, then summing the weights window by window costs at most K times the total weight. Nothing in it is specific to the reals. The proof only uses `sum_filter`, `sum_comm`, `mul_sum`, `sum_const`/`nsmul_eq_mul`, `sum_le_sum` and `mul_le_mul_of_nonneg_right`, and all of these hold in any ordered semiring. Fixing `w` and `K` to ℝ means the lemma cannot be reused for weights in ℕ, ℚ, `NNReal` or `ENNReal`-like semirings without casting. The specialisation also discourages reuse: the identical lemma was re-proved as the private `local_mass_sum` in `HistogramOverlapEnergy.lean` rather than shared.",
+      "proposed_change": "Generalise the scalar type to an ordered semiring:\n\n```lean\ntheorem sum_selected_cells_le_overlap {ι κ R : Type*} [Fintype ι] [DecidableEq ι]\n    [Semiring R] [PartialOrder R] [IsOrderedRing R]\n    (S : Finset κ) (J : κ → Finset ι) (w : ι → R) (hw : ∀ i, 0 ≤ w i)\n    (K : R) (hK : ∀ i, ((S.filter (fun k => i ∈ J k)).card : R) ≤ K) :\n    (∑ k ∈ S, ∑ i ∈ J k, w i) ≤ K * ∑ i, w i\n```\n\nThe proof should go through unchanged, with `(… : ℝ)` replaced by `(… : R)` in `hc`. Step by step:\n- `he` rewrites each inner sum as a sum of `if` expressions over the whole of ι (`sum_filter`, then `simp`).\n- `sum_comm` and `mul_sum` swap the order of summation and push K inside.\n- `sum_le_sum`, which needs `IsOrderedAddMonoid` (supplied by `IsOrderedRing`), reduces the goal to one cell `i` at a time.\n- `hc` turns that cell's sum into `card • w i` (`sum_filter`, `sum_const`) and then into `card * w i` (`nsmul_eq_mul`, which holds in any semiring).\n- `mul_le_mul_of_nonneg_right`, which needs `MulPosMono` (also supplied by `IsOrderedRing`), finishes the proof.\n\nOptionally, replace `[Fintype ι]` with a finite ambient set `T : Finset ι` and a hypothesis `hJ : ∀ k ∈ S, J k ⊆ T`, so the conclusion bounds by `K * ∑ i ∈ T, w i`. Degenerate cases are unaffected: if `S` is empty the left side is 0, and the bound holds because `K ≥ 0` is forced whenever ι is nonempty (from `hK`) and the right side is 0 when ι is empty. The existing call at line 65 (`sum_selected_cells_le_overlap S J w hw _ hK`) elaborates with `R := ℝ` inferred from `w`.",
+      "benefit": "The general version states the real mathematical content, a double-counting bound for ordered semirings. Callers can then use it for counting weights, rational weights or other ordered semirings without casting to ℝ. The two copies of this argument (this lemma and the private `local_mass_sum`) could also become one shared lemma, so later window-overlap arguments have a single, discoverable statement to depend on.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Counting/HistogramOverlapEnergy.lean",
+          "declaration": "OAI.JointDickman.local_mass_sum",
+          "excerpt": "private theorem local_mass_sum {ι κ : Type*} [Fintype ι] [DecidableEq ι]\n    (S : Finset κ) (J : κ → Finset ι) (w : ι → ℝ) (hw : ∀ i, 0 ≤ w i)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/Ring/Defs.lean",
+          "declaration": "IsOrderedRing",
+          "excerpt": "class IsOrderedRing (R : Type*) [Semiring R] [PartialOrder R] extends\n    IsOrderedAddMonoid R, ZeroLEOneClass R, PosMulMono R, MulPosMono R where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/GroupWithZero/Defs.lean",
+          "declaration": "mul_le_mul_of_nonneg_right",
+          "excerpt": "theorem mul_le_mul_of_nonneg_right [MulPosMono α] (hbc : b ≤ c) (ha : 0 ≤ a) : b * a ≤ c * a :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/BigOperators/Group/Finset.lean",
+          "declaration": "Finset.prod_le_prod",
+          "excerpt": "theorem prod_le_prod [MulLeftMono N] (h : ∀ i ∈ s, f i ≤ g i) : ∏ i ∈ s, f i ≤ ∏ i ∈ s, g i :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Counting/ResidueBoxEnergy.lean",
+          "declaration": "OAI.JointDickman.manuscript_geometric_residue_energy",
+          "excerpt": "have hsum := sum_selected_cells_le_overlap S J w hw _ hK"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 28526,
+    "cache_read_input_tokens": 173750,
+    "output_tokens": 5506,
+    "output_tokens_details": {
+      "thinking_tokens": 1053
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28526,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3057,
+        "cache_read_input_tokens": 31547,
+        "cache_creation_input_tokens": 1003,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1003
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.373142,
+  "duration_ms": 51169,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T17:14:12",
+  "unit": "file",
+  "source_sha256": "18b59b4b916e1ccacccdf7d7a1b16378cc0842baf223f8998d9e9d8f2cfbd25d",
+  "rubric": "statement-generality"
+}

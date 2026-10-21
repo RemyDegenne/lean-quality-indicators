@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0049",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all four declarations in the file. `transportKernel_apply` and `transportKernel_markov` are already short. `transportKernel_self_constant` is a direct use of `selfConstant_kernel_map`, so it needs no change. The one real simplification is in `transportKernel_stationary`.\n\nThat proof does several invariance steps by hand: it derives `μ.map e.symm = μ` itself, uses `integral_map` with measurability side goals plus `change` and `rfl`, and finishes with a `congrArg ENNReal.toReal` chain. Mathlib already has lemmas for each of these steps under the `MeasurePreserving` name. I read every lemma used in the replacement:\n- `MeasurePreserving.symm` and `MeasurePreserving.measureReal_preimage` in Mathlib/Dynamics/Ergodic/MeasurePreserving.lean\n- `MeasurePreserving.integral_comp'` in Integral/Bochner/Basic.lean\n- `map_measureReal_apply` in Measure/Real.lean\n- the project's own `bind_eq_of_real_integrals` and `bind_kernel_real` in StationaryRestrictions.lean\n\nRemaining uncertainty: I could not compile the replacement. Small details may need adjusting, such as whether `integral_comp'` elaborates the function `g` from the expected type, or whether the final `rw` closes the goal by `rfl`. The mathematics does not change, and the degenerate cases are unaffected: there are no new hypotheses and finiteness is still only used through `bind_eq_of_real_integrals`.",
+  "findings": [
+    {
+      "declaration": "OAI.DukePrimeDegree.transportKernel_stationary",
+      "start_line": 24,
+      "end_line": 49,
+      "excerpt": "  have heinv : μ.map e.symm=μ := by\n    have H := congrArg (fun ν : Measure Y => ν.map e.symm) he\n    rw [Measure.map_map e.symm.measurable e.measurable] at H\n    simpa only [Function.comp_def,e.symm_apply_apply,Measure.map_id'] using H.symm",
+      "problem": "The proof rebuilds measure-preservation facts by hand. It proves `μ.map e.symm = μ` with four lines of `congrArg`, `map_map` and `simpa`. It changes variables in the integral using `integral_map`, which needs an `aestronglyMeasurable` side goal and a `change … rfl` round trip. It then proves `μ.real (e ⁻¹' A) = μ.real A` with a `congrArg ENNReal.toReal (… .symm.trans (congrArg (fun ν => ν A) he))` term. Mathlib already provides each of these facts for `MeasurePreserving`: `MeasurePreserving.symm`, `MeasurePreserving.integral_comp'` (for a measurable equivalence, with no measurability hypothesis on the integrand) and `MeasurePreserving.measureReal_preimage`. The first calc step can also use `map_measureReal_apply` directly instead of going through `congrArg ENNReal.toReal`.",
+      "proposed_change": "Package the hypothesis once as measure preservation and use the named lemmas (not compiled):\n\n```lean\n  have hpres : MeasurePreserving e μ μ := ⟨e.measurable, he⟩\n  apply bind_eq_of_real_integrals\n  intro A hA\n  have hEA : MeasurableSet (e ⁻¹' A) := hA.preimage e.measurable\n  calc\n    _ = ∫ x, (κ (e.symm x)).real (e ⁻¹' A) ∂μ :=\n      integral_congr_ae <| ae_of_all _ fun x => by\n        rw [transportKernel_apply, map_measureReal_apply e.measurable hA]\n    _ = ∫ x, (κ x).real (e ⁻¹' A) ∂μ :=\n      (hpres.symm e).integral_comp' (fun x => (κ x).real (e ⁻¹' A))\n    _ = (μ.bind κ).real (e ⁻¹' A) := (bind_kernel_real κ μ _ hEA).symm\n    _ = μ.real A := by rw [hstat, hpres.measureReal_preimage hA.nullMeasurableSet]\n```\n\nThis removes `heinv`, the `change`/`rfl` pair, the explicit `aestronglyMeasurable` argument and both `congrArg ENNReal.toReal` terms.",
+      "benefit": "The calc chain now reads like the paper argument. The kernel pushforward is evaluated on a preimage, `e.symm` preserves `μ` so the integral is unchanged under the substitution, stationarity is applied, and `e` preserves `μ` so the measure of `e ⁻¹' A` equals that of `A`. Each step is a single well-named lemma about measure preservation, not hand-made measure algebra, so the reader sees the key idea (invariance of `μ` under `e` and `e.symm`) stated directly and has less low-level plumbing to follow. The `symm` step also makes clear that only the inverse's invariance is used in the change of variables.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Dynamics/Ergodic/MeasurePreserving.lean",
+          "declaration": "MeasureTheory.MeasurePreserving.symm",
+          "excerpt": "theorem symm (e : α ≃ᵐ β) {μa : Measure α} {μb : Measure β} (h : MeasurePreserving e μa μb) :\n    MeasurePreserving e.symm μb μa :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/Bochner/Basic.lean",
+          "declaration": "MeasureTheory.MeasurePreserving.integral_comp'",
+          "excerpt": "(h : MeasurePreserving f μ ν) (g : β → G) :\n    ∫ x, g (f x) ∂μ = ∫ y, g y ∂ν"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Dynamics/Ergodic/MeasurePreserving.lean",
+          "declaration": "MeasureTheory.MeasurePreserving.measureReal_preimage",
+          "excerpt": "theorem measureReal_preimage {f : α → β} (hf : MeasurePreserving f μa μb) {s : Set β}\n    (hs : NullMeasurableSet s μb) : μa.real (f ⁻¹' s) = μb.real s"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Measure/Real.lean",
+          "declaration": "MeasureTheory.map_measureReal_apply",
+          "excerpt": "{s : Set β} (hs : MeasurableSet s) : (μ.map f).real s = μ.real (f ⁻¹' s)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DukePrimeDegree/Geometry/KernelTransport.lean",
+          "declaration": "OAI.DukePrimeDegree.transportKernel_stationary",
+          "excerpt": "      change (∫ x, (κ (e.symm x) (e ⁻¹' A)).toReal ∂μ)=_\n      rw [←integral_map e.symm.measurable.aemeasurable\n        (κ.measurable_coe hEA).ennreal_toReal.aestronglyMeasurable,heinv]\n      rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 15021,
+    "cache_read_input_tokens": 81855,
+    "output_tokens": 5955,
+    "output_tokens_details": {
+      "thinking_tokens": 1938
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15021,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3591,
+        "cache_read_input_tokens": 18628,
+        "cache_creation_input_tokens": 436,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 436
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.255687,
+  "duration_ms": 53209,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T13:30:33",
+  "unit": "file",
+  "source_sha256": "8499a5062a82afaadd62ccc896663e9db5e5f4ccb9df77644f90e35ac8ff2a22",
+  "rubric": "readable-proof-simplification"
+}

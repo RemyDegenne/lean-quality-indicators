@@ -1,0 +1,117 @@
+{
+  "id": "openai-math-file-0036",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (one lemma, lines 11–49) and the definitions it depends on: `primeContourDenominator` and `primeContourDenominator_ge_one` (HeckePrimeScales.lean), `primeCancellationWeight` (PrimeDyadicMajorant.lean), `heckeExponentialError` (FixedAngularHecke.lean) and `primeLogSize_bounds` (PrimeContourOptimization.lean). I also checked the Mathlib signatures of `pow_le_pow_right₀` and `div_le_div_of_nonneg_left`.\n\nThe overall structure is easy to follow: compare the denominators, compare the exponentials, compare the log powers, then combine. I found three local simplifications. None of them has been compiled.\n- Finding 1 replaces an `nlinarith` call that relies on an oddly chosen hint with a named monotonicity lemma.\n- Finding 2 merges two steps that scale the same inequality.\n- Finding 3 replaces two `nlinarith` calls with `linarith`, because both goals are linear in the atoms involved.\n\nThe final `nlinarith only [hh]` (line 49) and the `nlinarith only [hh,hp]` (line 46) might also work with `linarith`, because linarith's preprocessing normalises products of atoms. I was less sure about this, so I did not report it. I also left the small `hlog4` and `hlogR` steps alone; they read fine as written.",
+  "findings": [
+    {
+      "declaration": "primeCancellation_polynomial_conductor",
+      "start_line": 44,
+      "end_line": 45,
+      "excerpt": "have hp : (Real.log (X*Q))^2 ≤ (Real.log (X*Q))^4 := by\n      nlinarith [sq_nonneg ((Real.log (X*Q))^2-1)]",
+      "problem": "The fact b^2 ≤ b^4 for b = log(XQ) ≥ 1 is proved with `nlinarith` and the hint `sq_nonneg (b^2-1)`. That hint gives b^4 - 2b^2 + 1 ≥ 0, which does not match the real reason (b^4 - b^2 = b^2(b^2-1) ≥ 0). The reader has to work out how nlinarith combines it with `hP : 1 ≤ log(XQ)`. This is exactly the statement that powers of a number ≥ 1 increase with the exponent, and Mathlib has a lemma for that.",
+      "proposed_change": "have hp : (Real.log (X*Q))^2 ≤ (Real.log (X*Q))^4 :=\n      pow_le_pow_right₀ hP (by norm_num)",
+      "benefit": "The named lemma states the mathematical reason directly: the base is at least 1 (`hP`) and 2 ≤ 4. It replaces nonlinear search driven by a misleading hint, and it uses `hP` explicitly instead of leaving it for automation to find.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/GroupWithZero/Basic.lean",
+          "declaration": "pow_le_pow_right₀",
+          "excerpt": "lemma pow_le_pow_right₀ [ZeroLEOneClass M₀] [PosMulMono M₀] (ha : 1 ≤ a) (hmn : m ≤ n) :\n    a ^ m ≤ a ^ n :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/PrimeContourOptimization.lean",
+          "declaration": "primeLogSize_bounds",
+          "excerpt": "1 ≤ Real.log (X*Q) ∧ Real.log X ≤ Real.log (X*Q) ∧"
+        }
+      ]
+    },
+    {
+      "declaration": "primeCancellation_polynomial_conductor",
+      "start_line": 29,
+      "end_line": 36,
+      "excerpt": "have hratio : Real.log X/(5*primeContourDenominator Q X) ≤\n      Real.log X/primeContourDenominator (4*Q^2) X :=\n    div_le_div_of_nonneg_left (by linarith) (by linarith) hden",
+      "problem": "The proof first compares the ratios with numerator `log X` (`hratio`). It then multiplies that inequality by `c` (`mul_le_mul_of_nonneg_left hratio hc`) and finally negates it. The separate multiplication step is unnecessary, because `div_le_div_of_nonneg_left` accepts any nonnegative numerator. Using `c * log X` as the numerator directly removes one intermediate hypothesis and one lemma application.",
+      "proposed_change": "Delete `hratio` and write:\n  have he : Real.exp (-c*Real.log X/primeContourDenominator (4*Q^2) X) ≤\n      Real.exp (-(c/5)*Real.log X/primeContourDenominator Q X) := by\n    apply Real.exp_le_exp.mpr\n    have hh : c*Real.log X/(5*primeContourDenominator Q X) ≤\n        c*Real.log X/primeContourDenominator (4*Q^2) X :=\n      div_le_div_of_nonneg_left (mul_nonneg hc (by linarith)) (by linarith) hden\n    convert neg_le_neg hh using 1 <;> ring",
+      "benefit": "The key idea stays explicit and appears in one place: a larger denominator (`hden`) makes the nonnegative ratio c·log X/D smaller, and negation reverses the inequality. The reader no longer has to track a ratio with numerator `log X` that only serves as an intermediate step before scaling by `c`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/GroupWithZero/Basic.lean",
+          "declaration": "div_le_div_of_nonneg_left",
+          "excerpt": "lemma div_le_div_of_nonneg_left (ha : 0 ≤ a) (hc : 0 < c) (h : c ≤ b) : a / b ≤ a / c := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/PrimeConductorComparison.lean",
+          "declaration": "primeCancellation_polynomial_conductor",
+          "excerpt": "have hh := mul_le_mul_of_nonneg_left hratio hc\n    convert neg_le_neg hh using 1 <;> ring"
+        }
+      ]
+    },
+    {
+      "declaration": "primeCancellation_polynomial_conductor",
+      "start_line": 25,
+      "end_line": 41,
+      "excerpt": "rw [Real.log_mul hXp.ne' (by positivity),hlogR,Real.log_mul hXp.ne' hQp.ne']\n    nlinarith",
+      "problem": "After the rewrites, both `hden` (line 28) and `hlogs` (line 41) are linear inequalities in the atoms `log X`, `log Q`, `log 4` and `√(log X)`, but both are closed with `nlinarith`.\n- `hlogs` becomes `log X + (log 4 + 2 log Q) ≤ 5*(log X + log Q)`. This is 4·log X + 3·log Q ≥ log 4, which follows from `hL`, `hlogQ` and `hlog4`.\n- `hden` becomes `log 4 + 2 log Q + √(log X) ≤ 5*(log Q + √(log X))`. This follows from the unfolded `hd` (1 ≤ log Q + √(log X)), `hlog4` and `√(log X) ≥ 0`.\nUsing `nlinarith` suggests that products of hypotheses are needed, which they are not.",
+      "proposed_change": "Line 28: `linarith [Real.sqrt_nonneg (Real.log X)]`\nLine 41: `linarith`",
+      "benefit": "`linarith` tells the reader that each step is a linear combination of the hypotheses already in context (log 4 ≤ 3, log X ≥ 1, log Q ≥ 0, and denominator ≥ 1). This makes the arithmetic easier to check by hand. It is also a lighter and more predictable tactic than `nlinarith`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/HeckePrimeScales.lean",
+          "declaration": "primeContourDenominator",
+          "excerpt": "def primeContourDenominator (Q X : ℝ) : ℝ := Real.log Q+Real.sqrt (Real.log X)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/PrimeConductorComparison.lean",
+          "declaration": "primeCancellation_polynomial_conductor",
+          "excerpt": "have hlog4 : Real.log (4:ℝ) ≤ 3 := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 15996,
+    "cache_read_input_tokens": 48493,
+    "output_tokens": 7834,
+    "output_tokens_details": {
+      "thinking_tokens": 3851
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15996,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4364,
+        "cache_read_input_tokens": 19180,
+        "cache_creation_input_tokens": 859,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 859
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2943786,
+  "duration_ms": 66640,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T12:27:22",
+  "unit": "file",
+  "source_sha256": "bc76f7efcfa58841144daf09c1b5d0810a7ec4ed906eab484cc2402950fe1d52",
+  "rubric": "readable-proof-simplification"
+}

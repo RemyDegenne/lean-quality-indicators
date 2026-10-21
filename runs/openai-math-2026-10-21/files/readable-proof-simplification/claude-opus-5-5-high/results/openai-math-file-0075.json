@@ -1,0 +1,96 @@
+{
+  "id": "openai-math-file-0075",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 512 lines of the file. For the main finding I checked the Mathlib lemmas it relies on: `MvPolynomial.aeval_unique`, `aeval`, `aeval_eq_eval₂Hom` and `Algebra.FiniteType.iff_quotient_mvPolynomial''`.\n\nOther candidates I looked at and did not report:\n- The two `calc` blocks in `homogeneousFieldEval_awayMap` and `projectiveFieldMap_scaling`. A `field_simp` version might be shorter, but I can't predict the goal it would leave.\n- The `by exact` wrapper in `projectiveChartRingHom_constants`. It may be needed so that `0 • 1` unifies, so removing it is risky.\n- Replacing `apply RingHom.ext; intro` with `ext`. This is a matter of taste, and `ext` might pick a different extensionality lemma.\n- The `change`-based proofs in the Proj section, such as `projectiveAffineMap_preimage` and `projectiveAffineMap_immersion`. These state the unfolded goal explicitly, which helps the reader.\n\nThe rest of the file (`exists_uniform_pow_mul_integer_of_integral_inverse`, `clear`, `projectiveChartRingHom_surjective`, `homogeneousFieldPoint_independent`, `projectiveFieldMap_over`) is already short and direct.\n\nUncertainty: none of the replacements has been compiled. Finding 1 depends on two things being definitionally equal: the function behind `aeval g` and `eval₂Hom (algebraMap ℂ Γ) g`, and `algebraMap ℂ Γ(C,A.U)` and `A.scalar` (under the local `RingHom.toAlgebra` instance). Mathlib proves both `aeval_def` and `aeval_eq_eval₂Hom` by `rfl`, so this should hold. If `exact hf` does not close the goal, `simpa [MvPolynomial.aeval_eq_eval₂Hom] using hf` is a fallback.",
+  "findings": [
+    {
+      "declaration": "OAI.NumericalDimensionOne.PolynomialCurveChart.generators",
+      "start_line": 69,
+      "end_line": 79,
+      "excerpt": "  have he : MvPolynomial.eval₂Hom A.scalar (fun i => f (MvPolynomial.X i)) = f.toRingHom := by\n    apply MvPolynomial.ringHom_ext\n    · intro c\n      rw [MvPolynomial.eval₂Hom_C]\n      change (algebraMap ℂ Γ(C,A.U)) c = f ((algebraMap ℂ (MvPolynomial (Fin m) ℂ)) c)\n      exact (f.commutes c).symm",
+      "problem": "The auxiliary fact `he` says that an ℂ-algebra map out of a polynomial ring is evaluation at the images of the variables. The proof re-derives this by hand: `ringHom_ext`, one case for constants with a `change` that restates algebra maps, and one case for variables. Mathlib already has this exact statement as `MvPolynomial.aeval_unique`. The hand-written version is ten lines with a fragile `change`, and it hides that this is a standard fact.",
+      "proposed_change": "Choose the generators as `f ∘ MvPolynomial.X` and rewrite `hf` with the library lemma:\n```lean\n  obtain ⟨m,f,hf⟩ := Algebra.FiniteType.iff_quotient_mvPolynomial''.mp\n    (inferInstance : Algebra.FiniteType ℂ Γ(C,A.U))\n  refine ⟨m, f ∘ MvPolynomial.X, ?_⟩\n  -- an algebra map out of a polynomial ring is evaluation at the images of the variables\n  rw [MvPolynomial.aeval_unique f] at hf\n  exact hf\n```\nThis relies on `aeval g` unfolding to `eval₂Hom (algebraMap ℂ Γ) g`, and on `algebraMap` being `A.scalar` here. If the final `exact` needs help, use `simpa [MvPolynomial.aeval_eq_eval₂Hom] using hf`.",
+      "benefit": "The argument is unchanged: the generators are the images of the variables, and evaluation at them is the given surjection. The key step now points to a well-named Mathlib lemma instead of a manual extensionality proof with a `change` that restates instance-level terms. A reader sees at once why surjectivity carries over.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/MvPolynomial/Eval.lean",
+          "declaration": "MvPolynomial.aeval_unique",
+          "excerpt": "theorem aeval_unique (φ : MvPolynomial σ R →ₐ[R] S₁) : φ = aeval (φ ∘ X) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/MvPolynomial/Eval.lean",
+          "declaration": "MvPolynomial.aeval_eq_eval₂Hom",
+          "excerpt": "theorem aeval_eq_eval₂Hom (p : MvPolynomial σ R) : aeval f p = eval₂Hom (algebraMap R S₁) f p :=\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/FiniteType.lean",
+          "declaration": "Algebra.FiniteType.iff_quotient_mvPolynomial''",
+          "excerpt": "FiniteType R S ↔ ∃ (n : ℕ) (f : MvPolynomial (Fin n) R →ₐ[R] S), Surjective f := by"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.NumericalDimensionOne.exists_projectiveCurveCoordinates",
+      "start_line": 171,
+      "end_line": 172,
+      "excerpt": "  have hclear := PolynomialCurveChart.clear_reciprocal (inv_ne_zero ha) (inv_inv a).symm B A xb\n  obtain ⟨nb,hnb⟩ := hclear",
+      "problem": "`hclear` is named and then immediately destructured, and it is never used again. Two lines before, the matching statement for `xa` is destructured directly (`obtain ⟨na,hna⟩ := PolynomialCurveChart.clear ha A B xa`). The extra step breaks that symmetry for no reason.",
+      "proposed_change": "```lean\n  obtain ⟨nb,hnb⟩ :=\n    PolynomialCurveChart.clear_reciprocal (inv_ne_zero ha) (inv_inv a).symm B A xb\n```",
+      "benefit": "With the redundant name gone, the two clearing steps (for the A-generators and for the B-generators) now read as parallel `obtain` lines. That makes the symmetric structure of the construction easier to see.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.exists_projectiveCurveCoordinates",
+          "excerpt": "  obtain ⟨na,hna⟩ := PolynomialCurveChart.clear ha A B xa"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 31889,
+    "cache_read_input_tokens": 92967,
+    "output_tokens": 7104,
+    "output_tokens_details": {
+      "thinking_tokens": 3556
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31889,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2721,
+        "cache_read_input_tokens": 34195,
+        "cache_creation_input_tokens": 1737,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1737
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4158174,
+  "duration_ms": 65793,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T15:40:09",
+  "unit": "file",
+  "source_sha256": "bc944b38a7f78265930c550938f48cc2a0be622227f457149e460cfb09aa6713",
+  "rubric": "readable-proof-simplification"
+}

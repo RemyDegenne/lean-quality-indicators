@@ -1,0 +1,95 @@
+{
+  "id": "openai-math-file-0056",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–118). It defines no simp lemmas or attributes. All of its simp uses are `simp only`/`simpa only` calls inside proofs. I checked the definition and API of `ModularConjugationData.rightAction` in ModularRightAction.lean, the `fixes_vector` field, `conjugationOperator_apply` in CommonRightAction.lean, and every use of `d.fixes_vector` across the KadisonKastler directory.\n\nThe one well-supported simp-interface problem is a missing rewrite lemma for `d.rightAction a Ω`. Because there is none, the same `change … ; rw [d.fixes_vector …]` unfolding is repeated in this file and in at least five other files. Two further files do it by unfolding the definition inside `simp only` (`simp only [rightAction, conjugationOperator_apply, …]`).\n\nI do not recommend a global `@[simp]` attribute. `rightAction` is the preferred interface for most statements, and rewriting it everywhere could undo downstream statements written in terms of `rightAction`. A named lemma used in `simp only` / `rw` is the safe change.\n\nOther `simp only` calls in the file (`heq` at lines 51–54 and `neg_zero` at line 56) use standard Mathlib lemmas and have no interface problem. I could not run Lean, so I have not compiled the proposed lemma or the rewritten proofs. The excerpts show that the lemma's proof would be exactly the existing `change`/`rw [d.fixes_vector]` steps.",
+  "findings": [
+    {
+      "declaration": "exists_modular_scaling_all_vectors / exists_modular_coisometry_sequence (local `he`)",
+      "start_line": 39,
+      "end_line": 78,
+      "excerpt": "    change d.conjugation (star (v n).val (d.conjugation Ω)) = _\n    rw [d.fixes_vector,hd]",
+      "problem": "Rewriting `d.rightAction (v n) Ω` to a form without `rightAction` takes two steps every time. You must first unfold the definition with `change` to `d.conjugation (star (v n).val (d.conjugation Ω))`, then rewrite with `d.fixes_vector`. The `rightAction` API in ModularRightAction.lean has `rightAction_mul`, `rightAction_one`, `rightAction_star` and others, but no evaluation lemma, either at a general vector or at the distinguished fixed vector Ω. So the identical local lemma `he` is restated in both theorems here (lines 39–42 and 75–78). The same unfolding appears in SpatialModularCoisometries, CenteredTestEnergy (`hr`), ModularProductTest and PositiveGraphAlgebraicApproximation. ModularScalingDefect and CoisometryShiftConvergence do it by unfolding the definition inside `simp only [rightAction, conjugationOperator_apply, …]`. That is the unwanted kind of expansion: it exposes `conjugationOperator` internals when only the value at Ω is needed.",
+      "proposed_change": "Add two lemmas to ModularRightAction.lean, next to the existing `rightAction` API:\n\n```lean\ntheorem rightAction_apply (a : Algebra M) (ξ : H) :\n    d.rightAction a ξ = d.conjugation (star a.val (d.conjugation ξ)) := rfl\n\ntheorem rightAction_apply_vector (a : Algebra M) :\n    d.rightAction a Ω = d.conjugation (star a.val Ω) := by\n  rw [rightAction_apply, d.fixes_vector]\n```\n\nDo not tag them `@[simp]`, because `rightAction` is the user-facing form. Then replace both local `he` blocks in this file with `have he (n : ℕ) := (d.rightAction_apply_vector (v n)).trans (by rw [hd])`, or simply use `simpa only [d.rightAction_apply_vector, hd, Real.sqrt_sq ht.le] using hscale`. Callers that currently write `simp only [rightAction, conjugationOperator_apply, d.fixes_vector, …]` can use `simp only [d.rightAction_apply_vector, …]` instead.",
+      "benefit": "With these lemmas, Ω-evaluations of the right action have one named normal form, `d.conjugation (star a.val Ω)`. Proofs can reach it with `rw`/`simp only` instead of definitional `change` steps that depend on how `rightAction` and `conjugationOperator` are implemented. The duplicated `he` blocks in this file (and the copies in at least six sibling files) collapse to a single lemma reference. Changing the definition of `rightAction` would then mean fixing one lemma instead of every `change` site.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/ModularRightAction.lean",
+          "declaration": "ModularConjugationData.rightAction",
+          "excerpt": "def rightAction (a : Algebra M) : H →L[ℂ] H :=\n  conjugationOperator d.conjugation (star a.val)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/SpatialModularCoisometries.lean",
+          "declaration": "he (local)",
+          "excerpt": "    change d.conjugation (star (w n).val (d.conjugation (tensorVector ξ Ω)))=_\n    rw [d.fixes_vector,hd]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/CenteredTestEnergy.lean",
+          "declaration": "modularCenteredTest_right_energy",
+          "excerpt": "    change d.conjugation (star b.val (d.conjugation Ω))=_\n    rw [d.fixes_vector]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/ModularScalingDefect.lean",
+          "declaration": "ModularConjugationData.rightAction_adjoint_defect",
+          "excerpt": "  simp only [rightAction,conjugationOperator_apply,d.fixes_vector,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/PositiveGraphAlgebraicApproximation.lean",
+          "declaration": "he (local)",
+          "excerpt": "    change ‖d.conjugation (star a.val (d.conjugation Ω))-y‖=_\n    rw [d.fixes_vector,hd,tomitaLinearPolarUnitary_apply,← J.map_sub,J.norm_map]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/ModularProductTest.lean",
+          "declaration": "ModularConjugationData.rightAction_vectorState",
+          "excerpt": "  change inner ℂ Ω (d.conjugation (star a.val (d.conjugation Ω)))=_\n  rw [d.fixes_vector]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 27201,
+    "cache_read_input_tokens": 112713,
+    "output_tokens": 4907,
+    "output_tokens_details": {
+      "thinking_tokens": 959
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27201,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2704,
+        "cache_read_input_tokens": 29621,
+        "cache_creation_input_tokens": 1593,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1593
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3383386,
+  "duration_ms": 47173,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T14:08:03",
+  "unit": "file",
+  "source_sha256": "ebb373198a88dccc8c0dccd1f18c69f893c5f1b8d7a12a77f472def9999ab757",
+  "rubric": "simp-interface"
+}

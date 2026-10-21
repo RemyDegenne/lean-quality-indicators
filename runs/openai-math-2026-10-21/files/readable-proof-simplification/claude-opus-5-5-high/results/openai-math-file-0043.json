@@ -1,0 +1,96 @@
+{
+  "id": "openai-math-file-0043",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 58 lines of the target file: `diskLogDerivativeConstant` and the proof of `normalized_disk_logDeriv`. The file imports `StrongPNT.Erdos970.PNT2_LogDerivative`, which is produced by `lean/patches/StrongPNT-lean4341.patch`. In that patch, the signature of `final_ineq1` matches the one in the pinned StrongPNT `PNT2_LogDerivative.lean`. I also read `lem_analytic_zero_factor` (StrongPNT) and the `choose!` documentation (Mathlib/Tactic/Choose.lean).\n\nI found two simplifications:\n1. The `by_cases` step that builds a total witness function with a dummy `fun _ => 1` branch can be replaced by Mathlib's `choose!`.\n2. `have h := …; exact h` can become a single `exact`.\n\nThe other steps already read clearly: the membership `simp only`, the named `hz'`, and the `ha` and `hfin` setup. I left them alone. Neither replacement has been compiled. For the `choose!` version, `Nonempty (ℂ → ℂ)` should be found automatically. The `by norm_num` proof argument inside `zerosetKfR` should not matter, because proofs are irrelevant. Still, the result needs checking in Lean.",
+  "findings": [
+    {
+      "declaration": "normalized_disk_logDeriv",
+      "start_line": 30,
+      "end_line": 40,
+      "excerpt": "    by_cases hρ : ρ ∈ zerosetKfR (3/4:ℝ) (by norm_num) f\n    · obtain ⟨g,hg⟩ := lem_analytic_zero_factor (7/8:ℝ) (3/4:ℝ)\n        (by norm_num) (by norm_num) (by norm_num) f ha (hf0 ▸ one_ne_zero) ρ hρ\n      exact ⟨g,fun _ => hg⟩\n    · exact ⟨fun _ => 1,fun h => (hρ h).elim⟩\n  choose g hg using hex",
+      "problem": "The statement of `hex` is shaped as `∀ ρ, ∃ g, ρ ∈ S → …` instead of the natural `∀ ρ ∈ S, ∃ g, …`. This is done only so that plain `choose` returns a function `g : ℂ → ℂ → ℂ` that does not depend on the membership proof. The cost is a `by_cases`, a dummy witness `fun _ => 1` for points outside the zero set, and an `.elim` branch. None of this is part of the mathematics; it is bookkeeping for `choose`. Mathlib's `choose!` exists to remove dependencies on propositional arguments like this one.",
+      "proposed_change": "Replace lines 30–40 with:\n```lean\n  have hex : ∀ ρ ∈ zerosetKfR (3/4:ℝ) (by norm_num) f, ∃ g : ℂ → ℂ,\n      AnalyticAt ℂ g ρ ∧ g ρ ≠ 0 ∧\n        ∀ᶠ z in 𝓝 ρ, f z=(z-ρ)^(analyticOrderAt f ρ).toNat*g z :=\n    fun ρ hρ => lem_analytic_zero_factor (7/8:ℝ) (3/4:ℝ)\n      (by norm_num) (by norm_num) (by norm_num) f ha (hf0 ▸ one_ne_zero) ρ hρ\n  choose! g hg using hex\n```\nThis should give `g : ℂ → ℂ → ℂ` and `hg : ∀ ρ ∈ zerosetKfR …, …`, which is the shape `final_ineq1`'s `h_σ_spec` expects. Not compiled.",
+      "benefit": "With this change, `hex` states exactly what `lem_analytic_zero_factor` gives: each zero in the closed 3/4-disc has a local factorisation. It is proved by a direct application of that lemma. The reader no longer has to work out why there is a case split, or why a constant-1 function appears off the zero set. The key idea, \"choose a factorisation at each zero\", becomes the only thing on the page. `choose!` is a standard Mathlib tactic with documented behaviour, not opaque automation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Tactic/Choose.lean",
+          "declaration": "Mathlib.Tactic.Choose (choose! docstring)",
+          "excerpt": "* `choose! a b h h' using hyp` does the same, except that it will remove dependency of\n  the functions on propositional arguments if possible."
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/StrongPNT-2f5835c32231/StrongPNT/PNT2_LogDerivative.lean",
+          "declaration": "lem_analytic_zero_factor",
+          "excerpt": "    (σ : ℂ) (hσ : σ ∈ zerosetKfR R1 (by linarith) f) :\n    ∃ h_σ : ℂ → ℂ, AnalyticAt ℂ h_σ σ ∧ h_σ σ ≠ 0 ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/patches/StrongPNT-lean4341.patch",
+          "declaration": "final_ineq1",
+          "excerpt": "(h_σ_spec : ∀ σ ∈ zerosetKfR R1 (by linarith) f,\n+      AnalyticAt ℂ (h_σ σ) σ ∧ h_σ σ σ ≠ 0 ∧"
+        }
+      ]
+    },
+    {
+      "declaration": "normalized_disk_logDeriv",
+      "start_line": 48,
+      "end_line": 52,
+      "excerpt": "    have h := final_ineq1 B hB (1/2:ℝ) (2/3:ℝ) (7/8:ℝ) (3/4:ℝ)\n      (by norm_num) (by norm_num) (by norm_num) (by norm_num) (by norm_num)\n      f ha hf0 hfin (h_σ := g) hg\n      (fun w hw => hb w (by simpa using hw)) z hz'\n    exact h",
+      "problem": "The proof names the fully applied `final_ineq1` as `h` and then immediately closes the goal with `exact h`. The intermediate `have` adds no information. Its type is not written down, and `h` is used only once, right away.",
+      "proposed_change": "```lean\n    exact final_ineq1 B hB (1/2:ℝ) (2/3:ℝ) (7/8:ℝ) (3/4:ℝ)\n      (by norm_num) (by norm_num) (by norm_num) (by norm_num) (by norm_num)\n      f ha hf0 hfin (h_σ := g) hg\n      (fun w hw => hb w (by simpa using hw)) z hz'\n```\nThe definitional check (`logDeriv f z` against `deriv f z / f z`, and `diskLogDerivativeConstant` unfolding) is the same one `exact h` already performs, so the behaviour should not change. Not compiled.",
+      "benefit": "The reader sees directly that the goal is exactly the StrongPNT bound `final_ineq1`, specialised to radii 1/2, 2/3, 7/8 and 3/4. There is no detour through an unannotated local name.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/patches/StrongPNT-lean4341.patch",
+          "declaration": "final_ineq1",
+          "excerpt": "+    ∀ z ∈ Metric.closedBall (0 : ℂ) r1 \\ zerosetKfR R1 (by linarith) f,\n+    ‖(deriv f z / f z) - ∑ ρ ∈ h_finite_zeros.toFinset,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 20501,
+    "cache_read_input_tokens": 132299,
+    "output_tokens": 5369,
+    "output_tokens_details": {
+      "thinking_tokens": 1279
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20501,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3115,
+        "cache_read_input_tokens": 22561,
+        "cache_creation_input_tokens": 1983,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1983
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.29791179999999995,
+  "duration_ms": 49057,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T13:02:17",
+  "unit": "file",
+  "source_sha256": "3511dd26c5a0c142fc981286673bc8cac918566f8d485c7ec2136c411bf5ac08",
+  "rubric": "readable-proof-simplification"
+}

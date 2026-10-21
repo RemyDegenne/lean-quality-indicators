@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0031",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed the whole target file (lines 1–66). It contains one theorem, `tailPrime_high_group_uniform`. I also read the definitions and lemmas its simp step depends on:\n- `largeTupleGroupLength` (LargeTupleWeightLengths.lean)\n- `largeTupleRestrictedLength`, `largeTupleRestrictedLength_mem` and `largeTupleRestrictedLength_notMem` (LargeTupleRestrictedWeights.lean)\n- `envelopeCutoffBilinearTail_swap` (TailPrimeHeckeGroup.lean)\n\nFor comparison I read the sibling file TailPrimeMiddleGroup.lean, and I searched for the same `hprodA`/`hprodB` + `simp only` pattern across CubicMoment. It recurs verbatim in TailPrimeLowGroup, AngularTailPrimeHighGroup and AngularTailPrimeLowGroup.\n\nThe only simp call in the file is `simp only [hprodA,hprodB,Fintype.card_coe] at hb`. It works, but only after two local equations are rebuilt in the shape the simp call needs. That one interface gap is my single finding. The other parts of the file did not justify a finding:\n- `dsimp only` just zeta-reduces the `let`s.\n- `Fintype.card_coe` is the standard Mathlib simp lemma for `Fintype.card ↥s`.\n- `envelopeCutoffBilinearTail_swap` is a commutativity lemma. It is correctly used with `rw` rather than tagged `@[simp]`, which could loop.\n\nThe statement mixes `Finset.univ\\s` (for `A`) with `Fintype.card {x // x ∉ s}` (for the power of 2). This is a minor canonical-form mismatch, but I found no use where it causes a problem, so I did not report it. I could not run Lean, so the proposed replacement is untested.",
+  "findings": [
+    {
+      "declaration": "tailPrime_high_group_uniform",
+      "start_line": 53,
+      "end_line": 57,
+      "excerpt": "simp only [hprodA,hprodB,Fintype.card_coe] at hb",
+      "problem": "`hb` comes from the generic `high_full_prime_envelope_tail_uniform`, so its lengths appear as raw subtype products: `∏ x : {x // x ∉ s}, largeTupleNormScale z.1.2 x` and `∏ x : s, largeTupleNormScale z.1.2 x`. The library's bridging lemma `largeTupleRestrictedLength_notMem` only has the folded left side `largeTupleRestrictedLength (fun a => a ∉ s) z`, and simp matches syntactically, so it cannot rewrite these products. The file therefore restates the identity locally as `hprodA`, relying on definitional unfolding to make the term `largeTupleRestrictedLength_notMem s z` typecheck. It also rebuilds `hprodB` from `Finset.prod_coe_sort` and only then calls `simp only`. The same five-line workaround appears verbatim in TailPrimeLowGroup, AngularTailPrimeHighGroup and AngularTailPrimeLowGroup. In TailPrimeMiddleGroup, by contrast, the generic theorem is instantiated with the folded `largeTupleRestrictedLength`, so a plain `simp only [largeTupleRestrictedLength_notMem,Fintype.card_coe] at hb` works. The missing piece is a rewrite rule whose left side is the unfolded product, which is the form these callers actually produce.",
+      "proposed_change": "In LargeTupleRestrictedWeights.lean, next to `largeTupleRestrictedLength_notMem`, add an unfolded companion. One option: `lemma prod_largeTupleNormScale_notMem (s) (z) : (∏ a : {a : Fin i ⊕ Fin j // a ∉ s}, largeTupleNormScale z.1.2 a) = largeTupleGroupLength (Finset.univ\\s) z := largeTupleRestrictedLength_notMem s z`. Add the analogous `(∏ a : s, largeTupleNormScale z.1.2 a) = largeTupleGroupLength s z` with proof `Finset.prod_coe_sort s _`. The new lemma names are proposals, not existing declarations. Then replace lines 53–57 with `simp only [prod_largeTupleNormScale_notMem, prod_largeTupleNormScale_coe, Fintype.card_coe] at hb`. Do the same in the three sibling files. Do not add `@[simp]` globally: the right side folds into a definition, so the rule should stay opt-in.",
+      "benefit": "The simp step becomes one line that names reusable lemmas. It no longer depends on a local `have` whose proof works only by definitional unfolding. Four files lose duplicated product-folding boilerplate, and the restricted-length lemmas can be used whether a generic estimate leaves the length folded or unfolded.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/LargeTupleRestrictedWeights.lean",
+          "declaration": "largeTupleRestrictedLength_notMem",
+          "excerpt": "largeTupleRestrictedLength (fun a => a ∉ s) z =\n      largeTupleGroupLength (Finset.univ\\s) z := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/LargeTupleRestrictedWeights.lean",
+          "declaration": "largeTupleRestrictedLength",
+          "excerpt": "∏ a : {a : Fin i ⊕ Fin j // P a}, largeTupleNormScale z.1.2 a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/TailPrimeMiddleGroup.lean",
+          "declaration": "tailPrime_middle_group",
+          "excerpt": "simp only [largeTupleRestrictedLength_notMem,Fintype.card_coe] at hb"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/TailPrimeHighGroup.lean",
+          "declaration": "tailPrime_high_group_uniform",
+          "excerpt": "largeTupleGroupLength (Finset.univ\\s) z := largeTupleRestrictedLength_notMem s z"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/LargeTupleWeightLengths.lean",
+          "declaration": "largeTupleGroupLength",
+          "excerpt": "(z : largeTupleBoxIndex i j) : ℝ := ∏ a ∈ s, largeTupleNormScale z.1.2 a"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 25057,
+    "cache_read_input_tokens": 84150,
+    "output_tokens": 6185,
+    "output_tokens_details": {
+      "thinking_tokens": 2452
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25057,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4427,
+        "cache_read_input_tokens": 25491,
+        "cache_creation_input_tokens": 3579,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3579
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.341034,
+  "duration_ms": 64749,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T12:02:42",
+  "unit": "file",
+  "source_sha256": "b06aac0c52d66f4f28b4d68ba7e3de0cd329b1d797e0f6946d76b76076a0b87c",
+  "rubric": "simp-interface"
+}

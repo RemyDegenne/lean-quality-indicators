@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0088",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 54 lines of the target file, plus its dependencies `matrixOperator` (MatrixAction.lean) and `projection_norm_apply_le` (SpectralTransfer.lean). I also read the downstream uses in GraphSpectralTransfer.lean, ProjectedGraphTesting.lean, PrimeComplexMatrix.lean, ProjectedPrimeLiouville.lean and Walks/BlockTesting.lean.\n\nI compared against Mathlib's `IsStarProjection` (Algebra/Star/StarProjection.lean), `IsStarProjection.norm_le` (CStarAlgebra/Basic.lean), the `CStarRing (E →L[𝕜] E)` instance, and `isStarProjection_iff_eq_starProjection` (InnerProductSpace/Adjoint.lean).\n\nThe definition of `coordinateProjection` itself is fine. It is a named 0/1 diagonal operator on `EuclideanSpace ℂ V`. Mathlib has no direct coordinate-subset projection on Pi or EuclideanSpace. Writing it as `Submodule.starProjection` of a span of `EuclideanSpace.single` vectors would make `_apply` harder to state and use, so I don't count it as a defect.\n\nThe finding is about how the file states the projection property. It proves a self-adjoint idempotent as two separate lemmas, and these two facts are threaded through a local API that does not use Mathlib's bundled concept.\n\nOther `coordinateProjection` definitions exist elsewhere in the repository, such as RepresentationTheory/Saxl/CoordinateSector.lean, which works on `WordSpace`, not `EuclideanSpace`. They are not Mathlib concepts, so I did not report them under this rubric.\n\nRemaining uncertainty: I could not compile the proposed replacement. It depends on Mathlib's `CStarRing` instance for `EuclideanSpace ℂ V →L[ℂ] EuclideanSpace ℂ V` being found by instance search, which should hold because `EuclideanSpace ℂ V` is a complete inner product space.",
+  "findings": [
+    {
+      "declaration": "coordinateProjection_selfAdjoint / coordinateProjection_idempotent / coordinateProjection_norm_le",
+      "start_line": 24,
+      "end_line": 50,
+      "excerpt": "projection_norm_apply_le _ (coordinateProjection_selfAdjoint keep)",
+      "problem": "The file shows that `coordinateProjection keep` is a self-adjoint idempotent, but proves it as two separate lemmas: `IsSelfAdjoint` and `P * P = P`. It then gets the contraction bound from the local helper `projection_norm_apply_le`, which takes the same two facts as separate hypotheses. Mathlib already has this concept: `IsStarProjection` (\"a self-adjoint idempotent\"). Mathlib also proves `IsStarProjection.norm_le`, and it has a `CStarRing` instance on `E →L[𝕜] E`. The concrete costs are: (1) `projection_norm_apply_le` is an 18-line local proof that Mathlib's star-projection API already covers; (2) every consumer has to pass the pair `(coordinateProjection_selfAdjoint keep) (coordinateProjection_idempotent keep)` separately, as in GraphSpectralTransfer; (3) the file cannot use Mathlib's `IsStarProjection` results, such as `isStarProjection_iff_eq_starProjection`.",
+      "proposed_change": "Add `lemma coordinateProjection_isStarProjection (keep : V → Prop) : IsStarProjection (coordinateProjection keep) := ⟨coordinateProjection_idempotent keep, coordinateProjection_selfAdjoint keep⟩`. The idempotent lemma's `P * P = P` statement is definitionally `IsIdempotentElem P`. Keep the two component lemmas under their current names if callers want them. Prove `coordinateProjection_norm_le` from Mathlib, e.g. `(ContinuousLinearMap.le_of_opNorm_le _ (coordinateProjection_isStarProjection keep).norm_le v).trans_eq (one_mul _)`, instead of the local `projection_norm_apply_le`. Downstream, the transfer lemmas in SpectralTransfer could take a single `hP : IsStarProjection P` hypothesis in place of `hP`/`hPP`.",
+      "benefit": "Readers see the standard Mathlib notion of an orthogonal (star) projection. Proofs pass one bundled fact instead of two. The local re-proof of the norm bound for projections can go, and Mathlib's `IsStarProjection` API becomes available for this operator.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Star/StarProjection.lean",
+          "declaration": "IsStarProjection",
+          "excerpt": "structure IsStarProjection [Mul R] [Star R] (p : R) : Prop where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/CStarAlgebra/Basic.lean",
+          "declaration": "IsStarProjection.norm_le",
+          "excerpt": "(e : E) (he : IsStarProjection e) : ‖e‖ ≤ 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/InnerProductSpace/Adjoint.lean",
+          "declaration": "ContinuousLinearMap CStarRing instance",
+          "excerpt": "instance : CStarRing (E →L[𝕜] E) where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TwoPoint/Bounds/SpectralTransfer.lean",
+          "declaration": "OAI.TwoPointCorrelations.projection_norm_apply_le",
+          "excerpt": "lemma projection_norm_apply_le (P : E →L[ℂ] E) (hP : IsSelfAdjoint P)\n    (hPP : P * P = P) (v : E) : ‖P v‖ ≤ ‖v‖ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TwoPoint/Bounds/GraphSpectralTransfer.lean",
+          "declaration": "use of coordinateProjection in noncommuting_spectral_transfer application",
+          "excerpt": "proj (coordinateProjection_selfAdjoint keep) (coordinateProjection_idempotent keep)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 33158,
+    "cache_read_input_tokens": 173780,
+    "output_tokens": 6898,
+    "output_tokens_details": {
+      "thinking_tokens": 2684
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33158,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2849,
+        "cache_read_input_tokens": 35451,
+        "cache_creation_input_tokens": 1788,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1788
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.438044,
+  "duration_ms": 67674,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T16:40:32",
+  "unit": "file",
+  "source_sha256": "485292f0ab862e1e10858f28a51f7b9f363a014aa056e67a817c3f55647be09c",
+  "rubric": "concept-reinvention"
+}

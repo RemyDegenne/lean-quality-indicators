@@ -1,0 +1,96 @@
+{
+  "id": "openai-math-file-0085",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the end of the proof in detail. I checked that Mathlib has `tsum_eq_single` by looking at how Mathlib itself calls it (`rw [tsum_eq_single x (proof of vanishing off x)]` in DiscreteConvolution.lean). I checked that `Units.mul_eq_one_iff_eq_inv` and the Group `mul_eq_one_iff_eq_inv'` exist in Mathlib. I read `cubicThetaArithmeticFourierResidue_primary_unit` in the repo, which is where the `if e=1 ∨ e=-1` form comes from. I did not compile anything, so both replacements are untested. For the second finding I am less sure that the replacement reads better, so I phrased it as a smaller improvement.",
+  "findings": [
+    {
+      "declaration": "CubicFirstMoment.cubicThetaRamifiedForcing_phase (final summation step: hp, tsum_congr, tsum_ite_eq)",
+      "start_line": 55,
+      "end_line": 66,
+      "excerpt": "rw [show (∑' e : Eisensteinˣ, F e)=∑' e : Eisensteinˣ,\n      (if e=-(d⁻¹) then F (-(d⁻¹)) else 0) from tsum_congr hp,tsum_ite_eq]",
+      "problem": "The proof first builds `hp`, which rewrites each term as `if e=-(d⁻¹) then F (-(d⁻¹)) else 0`. It then restates the whole sum with a `show` and an explicit `if`, and applies `tsum_congr` and `tsum_ite_eq`. The only fact this encodes is that every term except the one at `-(d⁻¹)` vanishes, and `tsum_eq_single` states that fact directly. The `by_cases`/`subst`/`ite_eq_left`/`ite_eq_right` bookkeeping in `hp`, the `change` and the long `show` are all unnecessary.",
+      "proposed_change": "Delete `hp`, the `change` and the `rw [show ...]`, and finish with:\n  show (∑' e : Eisensteinˣ, F e)=_\n  rw [tsum_eq_single (-(d⁻¹)) (fun e he => ?_)]\n  · exact hneg\n  · by_cases he' : e=d⁻¹\n    · rw [he',hpos]\n    · exact hzero e he' he\nHere `tsum_eq_single b (hf : ∀ b' ≠ b, f b' = 0) : ∑' b, f b = f b`, so the `he` goal has the form `e ≠ -(d⁻¹)`. If `rw` with a placeholder is awkward, use `refine (tsum_eq_single (-(d⁻¹)) ?_).trans hneg`, followed by `intro e he; by_cases ...`. The `hzero` and `hpos` lemmas stay as they are.",
+      "benefit": "The final step now reads as the mathematical claim: only the term at −d⁻¹ survives, so the sum equals that term. Roughly ten lines of `if`-rewriting and a duplicated sum expression go away, and the reader no longer has to check that a rewritten `ite` matches.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/Algebra/InfiniteSum/DiscreteConvolution.lean",
+          "declaration": "Mathlib usage of tsum_eq_single in the discrete convolution file",
+          "excerpt": "rw [tsum_eq_single (⟨(1, x), by grind⟩ : mulFiber x) (by grind [LinearMap.zero_apply])]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/VelocityDetection/RoutingArray.lean",
+          "declaration": "Same repo uses tsum_eq_single directly",
+          "excerpt": "apply tsum_eq_single n"
+        }
+      ]
+    },
+    {
+      "declaration": "CubicFirstMoment.cubicThetaRamifiedForcing_phase (hunit inside hzero)",
+      "start_line": 43,
+      "end_line": 50,
+      "excerpt": "calc e=d⁻¹*(d*e) := by group\n             _=d⁻¹ := by rw [hu,mul_one]",
+      "problem": "`hunit` proves `¬(d*e=1 ∨ d*e=-1)` by two symmetric `calc` blocks that multiply by `d⁻¹` and use `group` to cancel. The first branch is a standard fact about inverses: `d*e=1` gives `e=d⁻¹`. The second branch also repeats the cancellation by hand, as `e=d⁻¹*(d*e)` and then `_=-(d⁻¹)`.",
+      "proposed_change": "Get the first branch from the standard lemma `mul_eq_one_iff_eq_inv'` (`a * b = 1 ↔ b = a⁻¹`):\n      · exact he (mul_eq_one_iff_eq_inv'.mp hu)\nFor the second branch, rewrite `hu` as `d*(-e)=1` with `← mul_neg`, so `-e = d⁻¹`, and then conclude `e = -(d⁻¹)` with `neg_eq_iff_eq_neg`. The `group` call can go in both branches, so the argument no longer needs the `d⁻¹*(d*e)` detour.",
+      "benefit": "Cancelling units is done by named Mathlib lemmas, so the reader does not have to check two `calc` chains or know what `group` is doing. The proof stays at the same level of detail and gets shorter. This one is a smaller improvement than the first finding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Group/Basic.lean",
+          "declaration": "mul_eq_one_iff_eq_inv'",
+          "excerpt": "theorem mul_eq_one_iff_eq_inv' : a * b = 1 ↔ b = a⁻¹"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaPrimaryUnitResidue.lean",
+          "declaration": "cubicThetaArithmeticFourierResidue_primary_unit",
+          "excerpt": "if e=1 ∨ e=-1 then cubicThetaArithmeticFourierResidue h (4/3) else 0"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 16845,
+    "cache_read_input_tokens": 88347,
+    "output_tokens": 5940,
+    "output_tokens_details": {
+      "thinking_tokens": 1510
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16845,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2362,
+        "cache_read_input_tokens": 18913,
+        "cache_creation_input_tokens": 1975,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1975
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1356427,
+  "duration_ms": 56432,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T13:57:36",
+  "unit": "file",
+  "source_sha256": "926778bc9beb791572e7aad4242ef92c0a61640f1c96a9439553cb2228a82816",
+  "rubric": "readable-proof-simplification"
+}

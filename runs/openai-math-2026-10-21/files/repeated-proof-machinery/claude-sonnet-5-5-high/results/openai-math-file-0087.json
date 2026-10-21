@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0087",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (69 lines). I then grepped the Falconer tree for the same proof skeleton and read FiniteWeightedShell.lean, FiniteSquareIntegrable.lean and FiniteShellSum.lean in full. I checked the signature of Mathlib's Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul. The rest of the target looks fine for this rubric. In shellEnergy_weighted_sum_le the integrability term `(shell_energy_integrable (τ i) N).const_mul _` appears twice, but within one proof, so that is only a local-binding matter. The other lemmas are short wrappers. Other files in the repo, such as ControlledMatrices.lean, ClassicalON/SquareEstimates.lean and MRTPrimeProducts.lean, have their own copies of norm_sum_sq_le_card. I did not rely on them, and I did not check whether their types match the proposed lemma. The proposed lemma and the rewrites are untested, because I cannot run Lean here. The `h` side goals are small and should be dischargeable by `simp`, `norm_smul` and `mul_pow`, but this is unverified.",
+  "findings": [
+    {
+      "declaration": "OAI.PlanarFalconer.norm_weighted_sum_sq_le",
+      "start_line": 13,
+      "end_line": 23,
+      "excerpt": "have hs := Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul s",
+      "problem": "Several proofs repeat one argument. First, the triangle inequality `norm_sum_le` is squared with `pow_le_pow_left₀`. Then Mathlib's `Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul` is applied to the norms. This gives `‖∑ f i‖^2 ≤ (∑ w i) * (∑ g i)` from `‖f i‖^2 ≤ w i * g i`. Here the lemma is spread over `hn`, `hs`, `hsq` and a final `nlinarith`. The same skeleton appears in `finite_weighted_shell_square` (FiniteWeightedShell.lean, `hpoint`, lines 35-36), in `finite_sum_square_integrable` (FiniteSquareIntegrable.lean, lines 20-23), and in the private `norm_sum_sq_le_card` (FiniteShellSum.lean, lines 17-19). Each copy re-derives the step with different weights: `c`, `w`, `1`, `1`. A fix to the setup, such as an instance or lemma-name change, must be repeated in four places. Here the weights make the bookkeeping harder to read, because the `hn` step and the `nlinarith` calls hide the use of Cauchy–Schwarz.",
+      "proposed_change": "Add one lemma in the `Shells` import chain, upstream of FiniteWeightedShell.lean, ShellMixtures.lean and FiniteShellSum.lean. FiniteSquareIntegrable.lean imports FiniteWeightedShell, so it sees it transitively.\n\n```lean\ntheorem norm_sum_sq_le_sum_mul_sum {ι E : Type*} [SeminormedAddCommGroup E]\n    (s : Finset ι) {f : ι → E} {w g : ι → ℝ}\n    (hw : ∀ i ∈ s, 0 ≤ w i) (hg : ∀ i ∈ s, 0 ≤ g i)\n    (h : ∀ i ∈ s, ‖f i‖^2 ≤ w i * g i) :\n    ‖∑ i ∈ s, f i‖^2 ≤ (∑ i ∈ s, w i) * ∑ i ∈ s, g i :=\n  (pow_le_pow_left₀ (norm_nonneg _) (norm_sum_le s f) 2).trans\n    (Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul s hw hg h)\n```\n\nRewrite the target with `f i = (c i : ℝ) • z i`, `w i = c i` and `g i = c i * ‖z i‖^2`:\n\n```lean\ntheorem norm_weighted_sum_sq_le ... := by\n  have h := norm_sum_sq_le_sum_mul_sum s (f := fun i => (c i : ℝ) • z i)\n    (w := fun i => (c i : ℝ)) (g := fun i => (c i : ℝ) * ‖z i‖^2)\n    (fun _ _ => NNReal.coe_nonneg _) (fun _ _ => by positivity)\n    (fun i _ => by rw [norm_smul, mul_pow, Real.norm_eq_abs, sq_abs]; nlinarith [...])\n  exact h.trans (mul_le_of_le_one_left\n    (Finset.sum_nonneg fun _ _ => by positivity) hc)\n```\n\nThe `h` side goal is the small identity `(c * ‖z‖)^2 = c * (c * ‖z‖^2)`. It is closed by `mul_pow`, `sq_abs` or `ring`, and `nlinarith` is not needed.\n\nThe other three sites reduce to one application each:\n- `finite_weighted_shell_square`: `hpoint` becomes `norm_sum_sq_le_sum_mul_sum s hw (fun i his => div_nonneg (sq_nonneg _) (hw i his)) (...)`, keeping the `by_cases hwi` side goal.\n- `finite_sum_square_integrable`: use `w = 1`, `g = ‖F i r‖^2`, with side goal `by simp`.\n- `norm_sum_sq_le_card`: use `w = 1`, `g = ‖f i‖^2`, then `Finset.sum_const` and `nsmul_eq_mul`.",
+      "benefit": "The Cauchy–Schwarz step on norms of finite sums is proved once, with its hypotheses stated, instead of four times. Each call site then shows only its own choice of weights `w`, `g` and the pointwise side goal. The target loses the `hn`/`hs`/`hsq` chain and two `nlinarith` calls. A future change to the Mathlib lemma, such as a deprecation or a signature change, is fixed in one place. A reader can see at once that these bounds are all the same weighted square-sum inequality.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Shells/FiniteWeightedShell.lean",
+          "declaration": "OAI.PlanarFalconer.finite_weighted_shell_square",
+          "excerpt": "apply (pow_le_pow_left₀ (norm_nonneg _) (norm_sum_le s _) 2).trans\n    apply Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul s hw"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Estimates/FiniteSquareIntegrable.lean",
+          "declaration": "OAI.PlanarFalconer.finite_sum_square_integrable",
+          "excerpt": "apply (pow_le_pow_left₀ (norm_nonneg _) (norm_sum_le s _) 2).trans\n  exact Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul s"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Shells/FiniteShellSum.lean",
+          "declaration": "OAI.Falconer.norm_sum_sq_le_card",
+          "excerpt": "apply (pow_le_pow_left₀ (norm_nonneg _) (norm_sum_le S f) 2).trans"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/BigOperators/Ring/Finset.lean",
+          "declaration": "Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul",
+          "excerpt": "(ht : ∀ i ∈ s, r i ^ 2 ≤ f i * g i) : (∑ i ∈ s, r i) ^ 2 ≤ (∑ i ∈ s, f i) * ∑ i ∈ s, g i"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 34584,
+    "cache_read_input_tokens": 132975,
+    "output_tokens": 6614,
+    "output_tokens_details": {
+      "thinking_tokens": 2333
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 34584,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4108,
+        "cache_read_input_tokens": 34291,
+        "cache_creation_input_tokens": 4222,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4222
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.21779749999999998,
+  "duration_ms": 47413,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T14:05:20",
+  "unit": "file",
+  "source_sha256": "058cb3e0948bfa719fe48593a5c15d4f8abafe93d0a553132fd6a478b4076745",
+  "rubric": "repeated-proof-machinery"
+}

@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0051",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–110). It has one nontrivial proof, `isC1SelfMap_translateCoordinate`. The other two theorems are short wrappers.\n\nI compared that proof with the local-extension machinery in sibling files:\n- Embedding.lean: `continuous_of_local_contDiff_extension` and `IsC1SelfMap.comp`.\n- C1Coordinates.lean: `HasLocalC1Extension` and its `prodMk`, `pi`, `of_contDiffOn` and `comp_contDiff`.\n- C1Conjugacy.lean: `HasLocalC1Extension.comp`.\n- AmbientRetraction.lean: `isC1SelfMap_fromAmbient`.\n- SphereTranslation.lean: `domain`, `isOpen_domain`, `contDiffOn_ambient` and `denom_pos`.\n\nOne argument is repeated: take a local extension F on an open set U, shrink the set to U ∩ F ⁻¹' S using `isOpen_inter_preimage`, and compose with a function that is C¹ on the open set S using `comp_inter`. It is written out by hand in the target and again in `AmbientRetraction.isC1SelfMap_fromAmbient`. A pointwise version also appears in `Embedding.IsC1SelfMap.comp` and in `C1Conjugacy.HasLocalC1Extension.comp`.\n\nThe target also re-proves `HasLocalC1Extension.prodMk` inline (the U ∩ V step). Its `HasLocalExtension` is, by its definition, the same as `HasLocalC1Extension (standardEmbedding q)`.\n\nUncertainty: I could not compile anything. The rewritten proofs are sketches. The last step of the target rewrite will need a small `funext`/`ite` congruence argument, and the target and AmbientRetraction.lean would each need to import C1Coordinates. As far as I can tell from the imports, that creates no cycle: C1Coordinates imports only Embedding.",
+  "findings": [
+    {
+      "declaration": "isC1SelfMap_translateCoordinate",
+      "start_line": 39,
+      "end_line": 69,
+      "excerpt": "    let O := W ∩ H ⁻¹' SphereTranslation.domain\n    have hO : IsOpen O :=\n      hH.continuousOn.isOpen_inter_preimage (hU.inter hV) SphereTranslation.isOpen_domain",
+      "problem": "Lines 39–69 rebuild by hand two arguments the project already uses. (1) Lines 41–46 intersect the extension sets of `f` and `C` and pair the extensions. This is exactly `HasLocalC1Extension.prodMk` in C1Coordinates.lean, and `HasLocalExtension q C` is, by definition, `HasLocalC1Extension (standardEmbedding q) C`. (2) Lines 49–56 and 62 shrink the set to `W ∩ H ⁻¹' domain` with `isOpen_inter_preimage`, prove that the base point lies in it by rewriting through the commutation equations, and compose with a function that is C¹ on an open set using `comp_inter`. `AmbientRetraction.isC1SelfMap_fromAmbient` repeats this composition step with `project q` on `domain q` (lines 260–266), and `Embedding.IsC1SelfMap.comp` and `C1Conjugacy.HasLocalC1Extension.comp` contain pointwise versions of it. No shared lemma covers composing with a function that is C¹ only on an open set, so each proof restates the whole ∃-U/∃-F package. In the target, that package is lines 33–38 plus 30 lines of proof.",
+      "proposed_change": "Add this lemma to C1Coordinates.lean, inside `namespace HasLocalC1Extension`:\n```\ntheorem comp_contDiffOn (hf : HasLocalC1Extension e f) {g : F → G} {S : Set F}\n    (hS : IsOpen S) (hg : ContDiffOn ℝ 1 g S) (hmem : ∀ x, f x ∈ S) :\n    HasLocalC1Extension e (g ∘ f) := by\n  intro x\n  obtain ⟨U, hU, hxU, F, hF, hc⟩ := hf x\n  refine ⟨U ∩ F ⁻¹' S, hF.continuousOn.isOpen_inter_preimage hU hS,\n    ⟨hxU, hc x hxU ▸ hmem x⟩, g ∘ F, hg.comp_inter hF, fun y hy => ?_⟩\n  simp only [Function.comp_apply, hc y hy.1]\n```\nTarget, after importing C1Coordinates (sketch):\n```\n  have hfe : HasLocalC1Extension (standardEmbedding q) (standardEmbedding q ∘ f) := hf.2\n  have hpair := (show HasLocalC1Extension (standardEmbedding q) C from hC).prodMk\n    (hfe.comp_contDiff (g := fun a : CounterexampleAmbient q => a.2 i) (by fun_prop))\n  have htr := hpair.comp_contDiffOn SphereTranslation.isOpen_domain\n    (SphereTranslation.contDiffOn_ambient 1)\n    (fun y => ne_of_gt (SphereTranslation.denom_pos (C y) ((f y).2 i)))\n  refine isC1SelfMap_iff_hasLocalC1Extension.mpr ?_\n  -- combine `hfe` and `htr` via `prodMk` and `comp_contDiff` with the smooth map\n  -- (a, v) ↦ (a.1, fun j => if j = i then v else a.2 j), then close by funext/ite\n```\nAmbientRetraction, after importing C1Coordinates:\n```\ntheorem isC1SelfMap_fromAmbient ... : IsC1SelfMap q (fromAmbient F hF) :=\n  isC1SelfMap_iff_hasLocalC1Extension.mpr\n    ((HasLocalC1Extension.of_contDiffOn hU hmem F hsmooth (fun _ => rfl)).comp_contDiffOn\n      (isOpen_domain q) (contDiffOn_project q 1) hF)\n```\nThe AmbientRetraction rewrite relies on `standardEmbedding_fromAmbient`, which is proved by `rfl`.",
+      "benefit": "The open-set shrinking and the base-point membership argument would live in one lemma instead of being restated in each proof that builds a C¹ self-map. The translation proof would shrink to three short steps: pair the extensions, compose with the sphere translation, and reassemble the coordinate. The ∃-U/∃-F statement no longer has to be copied into a local `have`. `isC1SelfMap_fromAmbient` would become a one-line term. Later changes to `HasLocalC1Extension` (for example, a change of smoothness order) would only need to be made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/AmbientRetraction.lean",
+          "declaration": "isC1SelfMap_fromAmbient",
+          "excerpt": "    refine ⟨U ∩ F ⁻¹' domain q,\n      hsmooth.continuousOn.isOpen_inter_preimage hU (isOpen_domain q),\n      ⟨hmem x, hF x⟩, project q ∘ F, ?_, ?_⟩\n    · exact (contDiffOn_project q 1).comp_inter hsmooth"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/C1Coordinates.lean",
+          "declaration": "HasLocalC1Extension.prodMk",
+          "excerpt": "  refine ⟨U ∩ V, hU.inter hV, ⟨hxU, hxV⟩, fun z => (F z, G z),\n    (hF.mono Set.inter_subset_left).prodMk (hG.mono Set.inter_subset_right), ?_⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/C1Coordinates.lean",
+          "declaration": "isC1SelfMap_iff_hasLocalC1Extension",
+          "excerpt": "    IsC1SelfMap q f ↔\n      HasLocalC1Extension (standardEmbedding q) (standardEmbedding q ∘ f) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/Embedding.lean",
+          "declaration": "IsC1SelfMap.comp",
+          "excerpt": "  refine ⟨U ∩ F ⁻¹' V, hF.continuousOn.isOpen_inter_preimage hU hV, ?_,\n    G ∘ F, hG.comp_inter hF, ?_⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/EntropyCounterexample/SphereTranslation.lean",
+          "declaration": "contDiffOn_ambient",
+          "excerpt": "    ContDiffOn ℝ n (fun p : ℂ × SphereAmbient => ambient p.1 p.2) domain := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 24374,
+    "cache_read_input_tokens": 93539,
+    "output_tokens": 8009,
+    "output_tokens_details": {
+      "thinking_tokens": 3325
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24374,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4777,
+        "cache_read_input_tokens": 24668,
+        "cache_creation_input_tokens": 3635,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3635
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.37392780000000003,
+  "duration_ms": 70367,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-21T13:41:45",
+  "unit": "file",
+  "source_sha256": "8dddc4f047a1fbbd5d13dbd696e559c35c015c0d79716611c77f8f2ae0d10bd0",
+  "rubric": "repeated-proof-machinery"
+}

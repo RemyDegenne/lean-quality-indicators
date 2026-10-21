@@ -1,0 +1,106 @@
+{
+  "id": "openai-math-file-0045",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 76 lines of the target file. I also read the definitions and lemmas it depends on: `diagonalTwoUnitary` and `diagonalTwoUnitary_relative` (RelativeTwoDiagonal.lean), `mapTwoUnitary`, `mapTwoUnitary_diagonal`/`_one`/`_conjugate` and `conjugatedTwoUnitary` (RelativeTwoConjugation.lean), and `partialIsometryDilationPath_start`/`_finish` (PartialIsometryDilation.lean). I compared the proofs with the sibling files IsometryUnitary.lean and RelativeIsometry.lean, which repeat the same patterns.\n\nThe target file declares only two theorems. Both have many hypotheses, so neither is a sensible simp lemma, and the file sets no simp attributes. The real problem is that its proofs have to work around gaps in the simp interface of the definitions it uses: they unfold `diagonalTwoUnitary` and `conjugatedTwoUnitary` with `simp [...]` because no canonical simp lemma exists. The fixes belong in the upstream files, but this file's proofs (and the sibling files') are where the cost shows, so I attach the findings to the target declarations.\n\nOther simp uses look fine. `simp only [map_one]`, `simp only [h0, h1] at h` and the `rw` chain with `relativeTwoClass_diagonal` are appropriate, and `mapTwoUnitary_diagonal`/`_one` are already `@[simp]`. Making `mapTwoUnitary_conjugate` a simp lemma would be a reasonable push-forward rule, but this file only uses it once through `rw`, so I don't report it. I could not run Lean, so the proposed lemmas and simplified proofs have not been compiled.",
+  "findings": [
+    {
+      "declaration": "partialIsometryDilation_conjugates_unitary",
+      "start_line": 24,
+      "end_line": 29,
+      "excerpt": "fin_cases i <;> fin_cases j <;> simp [diagonalTwoUnitary, Matrix.diagonal]",
+      "problem": "No simp lemma gives the underlying matrix of `diagonalTwoUnitary u v`. To learn anything about it, every proof has to unfold the bundled definition (`diagonalTwoUnitary`, whose underlying matrix is `Matrix.diagonal (fun i => if i = 0 then u else v)`), unfold `Matrix.diagonal`, and then decide `if i = 0` for each entry. Here this costs a separate `have hd` with a 4-case `fin_cases` just to restate `(diagonalTwoUnitary u 1).val` as a `!![…]` matrix. The final step unfolds the same definition again. The identical pattern recurs in IsometryUnitary.lean (`hleft`, lines 74–82) and four times in `diagonalTwoUnitary_relative`.",
+      "proposed_change": "In RelativeTwoDiagonal.lean, add a canonical coercion lemma right after the definition: `@[simp] theorem coe_diagonalTwoUnitary (u v : unitary R) : ((diagonalTwoUnitary u v : unitary _) : Matrix (Fin 2) (Fin 2) R) = !![(u : R), 0; 0, (v : R)]`. It can be proved by `ext i j; fin_cases i <;> fin_cases j <;> simp [diagonalTwoUnitary, Matrix.diagonal]`. Then in this file, `hd` becomes `by rw [coe_diagonalTwoUnitary, add_sub_cancel]` (or `by simp`), and the last line becomes `fin_cases i <;> fin_cases j <;> simp [hv]`, without unfolding `diagonalTwoUnitary` or `Matrix.diagonal`.",
+      "benefit": "The `!![a, 0; 0, b]` form is exactly what downstream proofs rewrite into (`hd` here, `hleft` in IsometryUnitary). Mathlib's existing `!![…]` entry lemmas then work directly. The lemma only rewrites the coercion of this one definition, so it cannot loop, and it removes repeated unfolding of a bundled `unitary` definition from at least three files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeTwoDiagonal.lean",
+          "declaration": "diagonalTwoUnitary",
+          "excerpt": "refine ⟨Matrix.diagonal (fun i => if i = 0 then (u : R) else (v : R)), ?_, ?_⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/IsometryUnitary.lean",
+          "declaration": "isometryDilation_conjugates_unitary",
+          "excerpt": "simp [OperatorKTheory.diagonalTwoUnitary, Matrix.diagonal]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeTwoDiagonal.lean",
+          "declaration": "diagonalTwoUnitary_relative",
+          "excerpt": "· simpa [diagonalTwoUnitary, Matrix.diagonal] using hu"
+        }
+      ]
+    },
+    {
+      "declaration": "relativeClass_partialIsometry",
+      "start_line": 46,
+      "end_line": 50,
+      "excerpt": "rw [partialIsometryDilationPath_start, mapTwoUnitary_one]\n    simp [conjugatedTwoUnitary]",
+      "problem": "After `mapTwoUnitary_one` (already `@[simp]`) rewrites the start of the path to `1`, the goal is `conjugatedTwoUnitary 1 (diagonalTwoUnitary u' 1) = diagonalTwoUnitary u' 1`. Since there is no simp lemma for conjugating by `1`, the proof has to unfold the definition `conjugatedTwoUnitary w u := w * u * star w`. RelativeIsometry.lean does the same thing (`simp [conjugatedTwoUnitary]`, line 44). As a result, `simp` cannot close this goal on its own, and the start-of-path step needs a `change`, a `rw` and an unfolding `simp`.",
+      "proposed_change": "In RelativeTwoConjugation.lean, add `@[simp] theorem conjugatedTwoUnitary_one_left (u : unitary (Matrix (Fin 2) (Fin 2) R)) : conjugatedTwoUnitary 1 u = u := by simp [conjugatedTwoUnitary]`. Then `h0` can become `by simp [W]` (using the existing simp lemmas `partialIsometryDilationPath_start` and `mapTwoUnitary_one`), or at least `simp` without unfolding the definition. The same change applies in RelativeIsometry.lean.",
+      "benefit": "Together with the existing simp lemmas `partialIsometryDilationPath_start` and `mapTwoUnitary_one`, this completes a natural simp chain: the path start becomes `1` and conjugation by `1` disappears. The definition then stays folded. The rule removes a constant `1` from a fixed position, so it cannot loop, and it helps every 'conjugation path at start' argument in these files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeTwoConjugation.lean",
+          "declaration": "conjugatedTwoUnitary",
+          "excerpt": "unitary (Matrix (Fin 2) (Fin 2) R) := w * u * star w"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeTwoConjugation.lean",
+          "declaration": "mapTwoUnitary_one",
+          "excerpt": "@[simp] theorem mapTwoUnitary_one (φ : A →⋆ₐ[ℂ] R) : mapTwoUnitary φ 1 = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Topology/CoarseAssembly/RelativeIsometry.lean",
+          "declaration": "relativeClass_isometry",
+          "excerpt": "rw [isometryDilationPath_start, mapTwoUnitary_one]\n    simp [conjugatedTwoUnitary]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 17126,
+    "cache_read_input_tokens": 49661,
+    "output_tokens": 5774,
+    "output_tokens_details": {
+      "thinking_tokens": 1747
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17126,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4048,
+        "cache_read_input_tokens": 17840,
+        "cache_creation_input_tokens": 3299,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3299
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2624522,
+  "duration_ms": 56759,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T13:07:57",
+  "unit": "file",
+  "source_sha256": "e8c0422f1bd340609ff651991560060b024fe6e3cc82e91604c950c4eab821d4",
+  "rubric": "simp-interface"
+}

@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0023",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 151 lines of the target file. I also read `MatrixDiagonal.lean` (for `diagonalMatrixHom`), the `TracialState` structure in `Traces/TracialStates.lean`, `linearMap_tracial_of_star_mul` and `additiveLinear`, and the downstream file `States/FiniteFamilyMatrixTrace.lean`.\n\n**Finding: the matrix-trace lemmas need only linearity and traciality.** `trace_single_offDiagonal`, `trace_single_diagonal_eq`, `trace_matrix_eq_sum_diagonal` and `trace_scalarMatrix` never use positivity or normalisation of a `TracialState`. The downstream file shows the cost: it rewrites the bodies of `trace_single_offDiagonal` and `trace_matrix_eq_sum_diagonal` for a tracial `L : _ →ₗ[ℂ] ℂ` built from a quasitrace. It does this because the target lemmas only accept a `TracialState`.\n\n**Checked and left alone:**\n- `comap`, `matrixTrace_comap_scale`, `matrixTracialState_comap`, `comap_matrixTracialState` and `matrix_tracialState_nonempty_iff` really do concern states.\n- `TracialState.ext` is already stated at the right generality.\n- The `singleMatrix` lemmas could possibly be stated over weaker ring classes than `CStarAlgebra`. I did not check what instances `CStarMatrix` needs for that, and every user I saw works with a C*-algebra, so I am not reporting it.\n\n**Remaining uncertainty:** I did not compile the proposed statements. I expect the proofs to carry over line by line, because they use only the traciality hypothesis, `map_zero`, `map_sum`, the `singleMatrix` product lemmas and `Finset` sum lemmas.",
+  "findings": [
+    {
+      "declaration": "trace_single_offDiagonal / trace_single_diagonal_eq / trace_matrix_eq_sum_diagonal / trace_scalarMatrix",
+      "start_line": 64,
+      "end_line": 102,
+      "excerpt": "lemma trace_single_offDiagonal (ρ : TracialState (CStarMatrix ι ι A))\n    (i j : ι) (hij : i ≠ j) (a : A) : ρ.functional (singleMatrix i j a) = 0 := by\n  have ht := ρ.tracial (singleMatrix i i 1) (singleMatrix i j a)",
+      "problem": "These four lemmas take a full `TracialState`, which bundles positivity, normalisation and traciality. Their proofs use only traciality (`ρ.tracial`) and additivity (`map_zero`, `map_sum`, `Finset.mul_sum`). As a result, the lemmas cannot be applied to unnormalised or non-positive tracial functionals. The downstream file `States/FiniteFamilyMatrixTrace.lean` has a tracial `L : CStarMatrix ι ι A →ₗ[ℂ] ℂ` that comes from an additive quasitrace. It therefore has to repeat the off-diagonal argument (`hoff`) and the whole `nth_rw 1 [matrix_eq_sum_single M] ... Finset.sum_eq_single i` proof of `trace_matrix_eq_sum_diagonal`, and re-derive `trace_single_diagonal_eq` inline. The `TracialState` hypothesis also forces the binders `[PartialOrder A] [StarOrderedRing A]` onto these lemmas.",
+      "proposed_change": "State the lemmas for any tracial ℂ-linear functional, and keep the `TracialState` versions as one-line corollaries. For example:\n\n```\nomit [PartialOrder A] [StarOrderedRing A] in\nlemma trace_single_offDiagonal_of_tracial (f : CStarMatrix ι ι A →ₗ[ℂ] ℂ)\n    (hf : ∀ X Y, f (X * Y) = f (Y * X)) (i j : ι) (hij : i ≠ j) (a : A) :\n    f (singleMatrix i j a) = 0\nlemma trace_single_diagonal_eq_of_tracial (f ...) (hf ...) (i j : ι) (a : A) :\n    f (singleMatrix i i a) = f (singleMatrix j j a)\nlemma trace_matrix_eq_sum_diagonal_of_tracial (f ...) (hf ...) (M : CStarMatrix ι ι A) :\n    f M = ∑ i, f (singleMatrix i i (M i i))\nlemma trace_scalarMatrix_of_tracial (f ...) (hf ...) (a : A) (i : ι) :\n    f (scalarMatrixHom a) = (Fintype.card ι : ℂ) * f (singleMatrix i i a)\n```\n\nThe proofs are the current ones with `ρ.tracial` replaced by `hf` and `ρ.functional` by `f`. They need only `singleMatrix_mul_same`, `singleMatrix_mul_ne`, `matrix_eq_sum_single`, `scalarMatrix_eq_sum_single`, `map_zero`, `map_sum` and the `Finset` lemmas already used, none of which needs the order instances. The existing names become `trace_single_offDiagonal ρ = trace_single_offDiagonal_of_tracial ρ.functional.toLinearMap ρ.tracial`, and similarly for the others. Degenerate cases are unchanged: if `ι` is empty, the sums are empty and `Fintype.card ι = 0`, exactly as now. The first three statements could even use an `AddMonoidHom` into any additive commutative monoid. The ℂ-linear form shown matches the existing downstream `L`.",
+      "benefit": "`ComplexQuasitrace.matrix_diagonal_eq_of_additive` and `matrix_eq_sum_diagonal_of_additive` in `FiniteFamilyMatrixTrace.lean` could call the general lemmas directly instead of repeating their proofs. The same applies to any later work with unnormalised traces, such as `matrixTrace` itself or lower-semicontinuous traces. The statements also lose the unused order-instance requirements, which shows that the matrix trace decomposition is purely algebraic.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/States/FiniteFamilyMatrixTrace.lean",
+          "declaration": "ComplexQuasitrace.matrix_eq_sum_diagonal_of_additive",
+          "excerpt": "have hoff (i j : ι) (hij : i ≠ j) (a : A) : L (singleMatrix i j a)=0 := by\n    have h := hcyc (singleMatrix i i 1) (singleMatrix i j a)\n    rw [singleMatrix_mul_same,one_mul,singleMatrix_mul_ne i j i i hij.symm,_root_.map_zero] at h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/States/FiniteFamilyMatrixTrace.lean",
+          "declaration": "ComplexQuasitrace.matrix_diagonal_eq_of_additive",
+          "excerpt": "have h := hcyc (singleMatrix i j a) (singleMatrix j i 1)\n  simpa only [singleMatrix_mul_same,mul_one,one_mul,L,additiveLinear_apply] using h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Operators/SelfCommutatorTrace.lean",
+          "declaration": "linearMap_tracial_of_star_mul",
+          "excerpt": "theorem linearMap_tracial_of_star_mul (f : A →ₗ[ℂ] ℂ)\n    (h : ∀ a : A, f (star a * a) = f (a * star a)) :\n    ∀ a b : A, f (a * b) = f (b * a) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Traces/TracialStates.lean",
+          "declaration": "TracialState",
+          "excerpt": "structure TracialState (A : Type*) [CStarAlgebra A] [PartialOrder A] where\n  functional : A →ₚ[ℂ] ℂ\n  normalized : functional 1 = 1\n  tracial : ∀ a b : A, functional (a * b) = functional (b * a)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 32257,
+    "cache_read_input_tokens": 164564,
+    "output_tokens": 6470,
+    "output_tokens_details": {
+      "thinking_tokens": 1869
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32257,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3171,
+        "cache_read_input_tokens": 34060,
+        "cache_creation_input_tokens": 2221,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2221
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.42043279999999994,
+  "duration_ms": 56042,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T11:13:56",
+  "unit": "file",
+  "source_sha256": "1cb4377537c01fa788040dc0565bbb719118e7a745ae00cdda590ad75803d60a",
+  "rubric": "statement-generality"
+}

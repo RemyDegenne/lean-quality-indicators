@@ -1,0 +1,64 @@
+{
+  "id": "openai-math-file-0068",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Inspected all 792 lines, the imported box-amplification and germ-congruence API, and downstream uses in ThreeExceptional.lean. One substantial repeated argument merits extraction; smaller repeated calculations and wrappers do not meet this rubric. The proposed refactoring has not been checked with Lean.",
+  "findings": [
+    {
+      "declaration": "exists_three_global_profile_family and exists_three_robust_global_profile_family",
+      "excerpt": "  have heoff (y : NormalWaveSpace) (hy : y ∉ normalWaveEquiv '' Box.Icc I) :\n      ψ =ᶠ[𝓝 y] φ := by\n    apply profile_eq_germ_of_not_tsupport\n    exact fun hs => hy ((image_mono I.Ioo_subset_Icc) (hψs hs))",
+      "problem": "Lines 422–462 and 747–787 repeat the same substantial envelope-amplification/globalization argument: combine compact supports, control total support, recover equality of germs away from the box, preserve strictness throughout the larger ball and the exterior envelope inequality, and glue the amplified function onto the manifold. Only the metric and inner/outer radii change. Maintaining these arguments separately risks divergence in boundary handling or envelope guarantees.",
+      "proposed_change": "Introduce the following shared lemma before the first family theorem, under its existing imports and local instances:\n\nlemma exists_three_glued_amplified_profile\n    (g : SmoothMetric NormalWaveSpace NormalWaveSpace) (I : Box (Fin 3))\n    {C R a b δ : ℝ} {φ : NormalWaveSpace → ℝ}\n    (hδ : 0 < δ) (hφ : ContDiff ℝ ∞ φ)\n    (hc : HasCompactSupport (fun y => φ y-C))\n    (hs : tsupport (fun y => φ y-C) ⊆ closedBall 0 (3*R/4))\n    (hI : normalWaveEquiv '' Box.Icc I ⊆ closedBall 0 a)\n    (hab : a ≤ b) (haS : a ≤ 3*R/4)\n    (hstrict : ∀ y ∈ closedBall 0 b,\n      coordinateMetricGradient g φ y ≠ 0 ∧ actualProfileStrict g φ y)\n    (hin : ∀ y ∈ closedBall 0 a,\n      φ y = threeGlobalLog (threeNormalInv y)+δ)\n    (hout : ∀ y ∉ closedBall 0 b,\n      φ y ≤ threeGlobalLog (threeNormalInv y)-δ)\n    (hmin : ∀ p, C ≤ threeGlobalLog p-δ) (T : ℝ) :\n    ∃ Φ : ThreeManifold → ℝ,\n      ContMDiff 𝓘(ℝ,ThreeModel) 𝓘(ℝ,ℝ) ∞ Φ ∧\n      ContDiff ℝ ∞ (Φ ∘ threeNormalInv) ∧\n      tsupport (fun p => Φ p-C) ⊆ threeNormalInv '' closedBall 0 (3*R/4) ∧\n      (∀ y ∈ closedBall 0 b,\n        coordinateMetricGradient g (Φ ∘ threeNormalInv) y ≠ 0 ∧\n        actualProfileStrict g (Φ ∘ threeNormalInv) y) ∧\n      (∀ y ∈ closedBall 0 a,\n        threeGlobalLog (threeNormalInv y)+δ/2 < Φ (threeNormalInv y)) ∧\n      (∀ p ∉ threeNormalInv '' closedBall 0 b, Φ p ≤ threeGlobalLog p-δ) ∧\n      T < ∫ x in Box.Icc I,\n        profileFrequencyScale g (Φ ∘ threeNormalInv) (normalWaveEquiv x)\n\nProof sketch: apply exists_box_amplified_profile with tolerance δ/2 and strictness restricted using hI and hab. Add the perturbation support to the original support using haS. Outside the closed box, use profile_eq_germ_of_not_tsupport and actualJet_eventuallyEq; inside it, use the amplifier's strictness conclusion. This preserves strictness on the whole closed outer ball and preserves hout outside it. The uniform closeness bound and hin yield the lower gap on the entire inner ball. Finally apply threeNormalGlue_chart, threeNormalGlue_smooth, threeNormalGlue_tsupport, and threeNormalGlue_exterior.\n\nKeep each theorem's existing box selection. After `intro T`, replace the first repeated block with:\n\nobtain ⟨Φ,hΦ,hchart,hsp,hstrict',hin',hout',hmass⟩ :=\n  exists_three_glued_amplified_profile threeNormalMetric I\n    hδ hφ hφc hφs hIs (by linarith) (by linarith)\n    hstrict hin hout hmin T\nexact ⟨Φ,hΦ,hchart,hsp,hstrict',\n  fun y hy => hin' y (hIs hy),hout',hmass⟩\n\nReplace the second block with:\n\nexact exists_three_glued_amplified_profile (threeNormalMetricOf g) I\n  hδ hφ hφc hφs hIs hab.le (by linarith)\n  hstrict hin hout hmin T\n\nThe first call specializes a=R/8 and b=R/3; its radius inequalities follow from hR. The second uses the actual hypotheses 0<a, a<b, b<R/2, and hR. Retain hδ: tolerance zero is not allowed. Retain hmin for points outside the chart, and use germ equality rather than pointwise equality when transferring derivatives. No additional imports are required.",
+      "benefit": "Both family theorems become short applications of one meaningful envelope-preserving amplification theorem. Support, derivative-locality, chart-exterior behavior, and gap estimates are proved once, while the robust theorem retains its stronger lower bound on the entire inner ball.",
+      "start_line": 422,
+      "end_line": 462,
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "exists_three_global_profile_family",
+          "excerpt": "    by_cases hz : y ∈ normalWaveEquiv '' Box.Icc I\n    · exact hinside y hz\n    · have hj := actualJet_eventuallyEq threeNormalMetric (heoff y hz)\n      rw [hj.1,hj.2.2.1]\n      exact hstrict y hy"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "exists_three_robust_global_profile_family (repeated block: lines 747–787)",
+          "excerpt": "    by_cases hz : y ∈ normalWaveEquiv '' Box.Icc I\n    · exact hinside y hz\n    · have hj := actualJet_eventuallyEq (threeNormalMetricOf g) (heoff y hz)\n      rw [hj.1,hj.2.2.1]\n      exact hstrict y hy"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/NodalMeasure/CompactRegularLevelIntrinsicFinite.lean",
+          "declaration": "exists_box_amplified_profile",
+          "excerpt": "      tsupport (fun x => ψ x-φ x) ⊆ normalWaveEquiv '' Box.Ioo I ∧\n      (∀ x, |ψ x-φ x| < η) ∧\n      (∀ x ∈ normalWaveEquiv '' Box.Icc I,\n        coordinateMetricGradient g ψ x ≠ 0 ∧ actualProfileStrict g ψ x) ∧"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/Geometry/ExistsGlobalBoxAmplifiedProfile.lean",
+          "declaration": "profile_eq_germ_of_not_tsupport",
+          "excerpt": "lemma profile_eq_germ_of_not_tsupport {φ ψ : E → ℝ} {x : E}\n    (hx : x ∉ tsupport (fun y => ψ y - φ y)) : ψ =ᶠ[𝓝 x] φ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SmoothYau/SphereMetric/ThreeRobustProfileNormedSpace.lean",
+          "declaration": "threeNormalGlue_exterior",
+          "excerpt": "    (heL : l=L ∘ threeNormalInv) (hmin : ∀ p, C≤L p-δ)\n    (hext : ∀ y ∉ K, f y≤l y-δ) :\n    ∀ p ∉ threeNormalInv '' K, threeNormalGlue C f p≤L p-δ := by"
+        }
+      ]
+    }
+  ],
+  "backend": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "cost_usd": null,
+  "duration_ms": 133101,
+  "turns": 1,
+  "attempts": 1,
+  "usage": {
+    "input_tokens": 257128,
+    "cached_input_tokens": 205568,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 5002,
+    "reasoning_output_tokens": 2253
+  },
+  "prompt_sha256": "cf99def8a55561be27db8448e2cb724eae959d5f6c22eb72acdf2f5d8d58919d",
+  "judged": "2026-10-21T11:06:15+00:00",
+  "unit": "file",
+  "source_sha256": "c98829553c1f2682a6edfe8cfabaf39534886cebd85890d1132dccb21960c16c",
+  "rubric": "repeated-proof-machinery"
+}

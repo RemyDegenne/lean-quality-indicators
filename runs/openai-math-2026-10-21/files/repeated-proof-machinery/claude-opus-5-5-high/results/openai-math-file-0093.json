@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0093",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 320 lines and checked how `norm_cubicSymbol_of_isCoprime` is used across `lean/OAI`. I found one case that fits the rubric: the step \"strip a unit factor off the upper argument and cancel\" is written out twice in `cubicSupplementaryPeriodicity_proved`. Both copies end with the same nonvanishing argument, which `symbol_three_aux` also repeats and `CubicThetaKubotaProduct.lean` repeats again.\n\nI looked at other repeats and left them out:\n- In `cubicSymbol_omega_norm` and `cubicSymbol_omega_periodic`, the `zpow_mul`/`omega ^ 3 = 1`/`one_zpow` collapse and the `(3*k+1-1)/3 = k` step by `omega` are short calculations.\n- The `hsa`/`hsb` pair and the two-sided calc in `cubicSymbol_lambda_periodic` are symmetric pieces of a single proof.\n- The coordinate bounds in `unit_eq_signed_omega` are also repeated inside one proof.\n\nUncertainty: I cannot compile, so the proposed helper and the rewritten branches have not been checked by Lean. They use only lemmas and argument orders that appear in the current file, applied under the same hypotheses.",
+  "findings": [
+    {
+      "declaration": "cubicSupplementaryPeriodicity_proved (both `mul` sub-branches), together with symbol_three_aux",
+      "start_line": 282,
+      "end_line": 309,
+      "excerpt": "rw [cubicSymbol_mul_upper ha,cubicSymbol_mul_upper hb,hunit] at he\n          apply mul_right_cancel₀ _ he\n          intro hz\n          have hnorm := norm_cubicSymbol_of_isCoprime hb (unit_coprime_right b u.isUnit)\n          rw [hz,norm_zero] at hnorm\n          norm_num at hnorm",
+      "problem": "In the inductive `mul` step, both the coprime-to-3 branch (lines 282-291) and the ramified branch (lines 304-309) reason the same way. Each first proves `cubicSymbol a (p*u) = cubicSymbol b (p*u)` for a unit `u`. It then splits off the unit with `cubicSymbol_mul_upper`, rewrites the unit factor with `cubicSymbol_unit_periodic ... h9`, and cancels it with `mul_right_cancel₀`. That cancellation needs `cubicSymbol b u ≠ 0`, which each branch proves again with the same four-line norm argument (`norm_cubicSymbol_of_isCoprime`, `rw [hz,norm_zero]`, `norm_num`). `symbol_three_aux` (lines 35-39) repeats that nonvanishing argument a third time. The mathematical point, that periodicity at `p*u` gives periodicity at `p` once units are known to be periodic, is never stated on its own.",
+      "proposed_change": "Add two lemmas after `unit_coprime_right` (line 224):\n\n```lean\nprivate lemma cubicSymbol_ne_zero_of_isCoprime {b v : Eisenstein} (hb : primary b)\n    (hv : IsCoprime b v) : cubicSymbol b v ≠ 0 := by\n  intro hz\n  have hh := norm_cubicSymbol_of_isCoprime hb hv\n  rw [hz, norm_zero] at hh\n  norm_num at hh\n\n/-- Periodicity at `p * u` for a unit `u` descends to periodicity at `p`. -/\nprivate lemma cubicSymbol_eq_of_eq_mul_unit {a b p u : Eisenstein}\n    (ha : primary a) (hb : primary b) (hu : IsUnit u) (h9 : (9 : Eisenstein) ∣ a-b)\n    (h : cubicSymbol a (p*u) = cubicSymbol b (p*u)) : cubicSymbol a p = cubicSymbol b p := by\n  rw [cubicSymbol_mul_upper ha, cubicSymbol_mul_upper hb,\n    cubicSymbol_unit_periodic ha hb hu h9] at h\n  exact mul_right_cancel₀ (cubicSymbol_ne_zero_of_isCoprime hb (unit_coprime_right b hu)) h\n```\n\nThe first lemma only needs `norm_cubicSymbol_of_isCoprime`, so it could go before `symbol_three_aux`, or in `SquarefreeGauss.lean`. In `symbol_three_aux`, `hn` then becomes `cubicSymbol_ne_zero_of_isCoprime hr hrx`.\n\nThe coprime branch becomes:\n```lean\n· obtain ⟨u,hu,hprim⟩ := unit_lift_mod_three (residue_isUnit_of_isCoprime hp3.symm)\n  have hpv : p ∣ a-b := (dvd_mul_right p v).trans ((dvd_mul_left (p*v) 9).trans hab)\n  have hpu : p*u ∣ a-b := (associated_mul_unit_right p u hu).dvd_iff_dvd_left.mp hpv\n  have heq := cubicSymbol_congr (b := p*u) (residue_eq_of_dvd_sub hpu)\n  rw [← cubic_reciprocity ha hprim, ← cubic_reciprocity hb hprim] at heq\n  exact cubicSymbol_eq_of_eq_mul_unit ha hb hu h9 heq\n```\n\nAfter `obtain ⟨u,hu⟩ := hpunit`, the ramified branch ends with:\n```lean\n  exact cubicSymbol_eq_of_eq_mul_unit ha hb u.isUnit h9\n    (by simpa only [hu] using cubicSymbol_lambda_periodic ha hb h9)\n```\nThis removes `hunit`, `he`, and the two inline norm arguments.",
+      "benefit": "Each branch then shows only what is specific to it: reciprocity against a primary associate in one case, the λ-supplement in the other. The shared unit-cancellation step gets a name and a statement. The nonvanishing fact, currently written out three times in this file and again in `CubicThetaKubotaProduct.lean`, lives in one lemma, so a change to `cubicSymbol_mul_upper` or the norm API needs fixing in one place. The `mul` case gets shorter, and the induction is easier to compare with the argument in the paper.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/CubicSupplementaryPeriodicityProof.lean",
+          "declaration": "cubicSupplementaryPeriodicity_proved",
+          "excerpt": "rw [← heA,← heB,huu] at heq\n          apply mul_right_cancel₀ _ heq\n          intro hz\n          have hnorm := norm_cubicSymbol_of_isCoprime hb\n            (show IsCoprime b u from unit_coprime_right b hu)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/CubicSupplementaryPeriodicityProof.lean",
+          "declaration": "symbol_three_aux",
+          "excerpt": "have hn : cubicSymbol r x ≠ 0 := by\n    intro hz\n    have hh := norm_cubicSymbol_of_isCoprime hr hrx\n    rw [hz, norm_zero] at hh\n    norm_num at hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicGram/SquarefreeGauss.lean",
+          "declaration": "norm_cubicSymbol_of_isCoprime",
+          "excerpt": "lemma norm_cubicSymbol_of_isCoprime {b v : Eisenstein} (hb : primary b)\n    (hv : IsCoprime b v) : ‖cubicSymbol b v‖ = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaKubotaProduct.lean",
+          "declaration": "(proof using nonvanishing of cubicSymbol, line 55)",
+          "excerpt": "have h := norm_cubicSymbol_of_isCoprime ha haf\n    rw [hz,norm_zero] at h\n    norm_num at h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 30803,
+    "cache_read_input_tokens": 84297,
+    "output_tokens": 6130,
+    "output_tokens_details": {
+      "thinking_tokens": 2331
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30803,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3272,
+        "cache_read_input_tokens": 32483,
+        "cache_creation_input_tokens": 2249,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2249
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3859154,
+  "duration_ms": 53664,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T17:07:32",
+  "unit": "file",
+  "source_sha256": "1a8c463254738f4873471eed721bd8a41b93585e368459327e4935023756ed31",
+  "rubric": "repeated-proof-machinery"
+}

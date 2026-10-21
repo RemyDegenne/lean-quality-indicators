@@ -1,0 +1,112 @@
+{
+  "id": "openai-math-file-0023",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 151 lines of the target file. I also checked the related definitions: `TracialState` in Traces/TracialStates.lean, and `matrixTrace`, `matrixTrace_apply` and `matrixTracialState` in MatrixTraces.lean. From Mathlib I checked `Matrix.single_mul_single_of_ne`, `Matrix.single_mul_single_same` and `inv_mul_cancel_left₀`.\n\nI found three changes that make proofs simpler without making them harder to read:\n1. Two proofs cancel `n⁻¹ * (n * x)` by hand; Mathlib's `inv_mul_cancel_left₀` does this in one step.\n2. `singleMatrix_mul_ne` restates a Mathlib lemma in a `have ... := by exact` block before using it.\n3. `TracialState.ext` relies on `congr` silently closing the remaining goal with a hypothesis.\n\nI considered and rejected several other candidates:\n- Rewriting the `calc` in `matrixTrace_comap_scale` as a `rw` plus `Finset.sum_congr`. The `calc` shows the intermediate sum explicitly, so the change would be a matter of taste.\n- Turning `matrix_tracialState_nonempty_iff` into an anonymous-constructor term. Also taste.\n- Collapsing `trace_single_offDiagonal`'s `rw ... at ht; exact ht` into `simpa`. Too small to matter.\n\nNone of the replacements has been compiled. The `by exact_mod_cast Fintype.card_ne_zero` side-goal argument is passed exactly as the current code already passes it to `inv_mul_cancel₀`.",
+  "findings": [
+    {
+      "declaration": "matrixTracialState_comap, comap_matrixTracialState",
+      "start_line": 128,
+      "end_line": 140,
+      "excerpt": "rw [heq, ← mul_assoc, inv_mul_cancel₀ (by exact_mod_cast Fintype.card_ne_zero), one_mul]",
+      "problem": "Both theorems end by cancelling `(card ι)⁻¹ * ((card ι) * x)` by hand, in three rewrite steps: `← mul_assoc`, `inv_mul_cancel₀ _`, `one_mul`. Mathlib's `inv_mul_cancel_left₀` states exactly this cancellation as one named lemma.",
+      "proposed_change": "In `matrixTracialState_comap` (lines 128–129), use:\n  rw [matrixTrace_comap_scale, inv_mul_cancel_left₀ (by exact_mod_cast Fintype.card_ne_zero)]\nIn `comap_matrixTracialState` (line 140), use:\n  rw [heq, inv_mul_cancel_left₀ (by exact_mod_cast Fintype.card_ne_zero)]",
+      "benefit": "The lemma's name says what happens: the normalising factor `n⁻¹` cancels the `n` produced by `matrixTrace_comap_scale` or `heq`. The reader no longer has to follow a reassociation and a `one_mul` cleanup. Only the non-zero side condition is left, and it is passed the same way as now.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/GroupWithZero/Basic.lean",
+          "declaration": "inv_mul_cancel_left₀",
+          "excerpt": "theorem inv_mul_cancel_left₀ (h : a ≠ 0) (b : G₀) : a⁻¹ * (a * b) = b :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixTraceCorrespondence.lean",
+          "declaration": "matrixTracialState_comap",
+          "excerpt": "rw [matrixTrace_comap_scale, ← mul_assoc,\n    inv_mul_cancel₀ (by exact_mod_cast Fintype.card_ne_zero), one_mul]"
+        }
+      ]
+    },
+    {
+      "declaration": "singleMatrix_mul_ne",
+      "start_line": 51,
+      "end_line": 54,
+      "excerpt": "  have hzero : Matrix.single i j a * Matrix.single k l b = 0 := by\n    exact Matrix.single_mul_single_of_ne a i j k hjk b\n  rw [hzero, map_zero]",
+      "problem": "The `have hzero ... := by exact <lemma>` block restates the Mathlib lemma `Matrix.single_mul_single_of_ne` word for word and then rewrites with the copy. The intermediate name and the `by exact` wrapper add nothing. The sibling lemma `singleMatrix_mul_same` (line 44) rewrites with its Mathlib lemma directly.",
+      "proposed_change": "Replace lines 51–54 with:\n  rw [← map_mul, Matrix.single_mul_single_of_ne a i j k hjk b, map_zero]",
+      "benefit": "The proof reads as one line: pull the product inside the equivalence, apply Mathlib's vanishing lemma for mismatched single-entry matrices, and use that the map sends 0 to 0. It now matches the proof of `singleMatrix_mul_same`, so readers see the same pattern in both lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Matrix/Basis.lean",
+          "declaration": "Matrix.single_mul_single_of_ne",
+          "excerpt": "theorem single_mul_single_of_ne (i : l) (j k : m) {l : n} (h : j ≠ k) (d : α) :\n    single i j c * single k l d = 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixTraceCorrespondence.lean",
+          "declaration": "singleMatrix_mul_same",
+          "excerpt": "rw [← map_mul, Matrix.single_mul_single_same]"
+        }
+      ]
+    },
+    {
+      "declaration": "TracialState.ext",
+      "start_line": 118,
+      "end_line": 121,
+      "excerpt": "  have heq : τ.functional = ρ.functional := PositiveLinearMap.ext h\n  cases τ\n  cases ρ\n  congr",
+      "problem": "The hypothesis `heq` is never referred to by name. The proof only works because `congr` quietly closes the leftover `functional` goal by `assumption` after `cases` has rewritten `heq`. A reader has to know about that hidden `assumption` step to see where `heq` is used. The other two fields, `normalized` and `tracial`, are propositions, so only the `functional` field needs an argument.",
+      "proposed_change": "  cases τ\n  cases ρ\n  congr 1\n  exact PositiveLinearMap.ext h",
+      "benefit": "The extra hypothesis goes away, and the one real step is now explicit: two tracial states are equal once their positive functionals are equal, which follows from `PositiveLinearMap.ext h`. Readers no longer depend on `congr` closing a goal by assumption.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Traces/TracialStates.lean",
+          "declaration": "TracialState",
+          "excerpt": "  functional : A →ₚ[ℂ] ℂ\n  normalized : functional 1 = 1\n  tracial : ∀ a b : A, functional (a * b) = functional (b * a)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 20180,
+    "cache_read_input_tokens": 78181,
+    "output_tokens": 6982,
+    "output_tokens_details": {
+      "thinking_tokens": 3212
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20180,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4438,
+        "cache_read_input_tokens": 22255,
+        "cache_creation_input_tokens": 1968,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1968
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3167562,
+  "duration_ms": 61495,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T11:23:29",
+  "unit": "file",
+  "source_sha256": "1cb4377537c01fa788040dc0565bbb719118e7a745ae00cdda590ad75803d60a",
+  "rubric": "readable-proof-simplification"
+}

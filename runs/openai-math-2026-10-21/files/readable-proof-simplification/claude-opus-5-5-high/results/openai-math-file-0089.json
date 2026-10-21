@@ -1,0 +1,80 @@
+{
+  "id": "openai-math-file-0089",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 118 lines of the file. I also read `zeroPoint_ne_generic` and `euler_difference_eq_sum_zero_orders` in CurveSectionDegree.lean, `finite_subscheme_of_curve` in FiniteCurveZeros.lean, and the Mathlib lemmas `Finset.mem_map` and `Finset.mem_map_of_mem`.\n\nThe main simplification opportunity is an argument that appears twice almost word for word: a point with nonzero order lies in the support of the zero ideal, so it lies in the range of `zeroPointEmbedding`. One copy is in `orderAt_finite_support` and the other is in the `hDT` step of `divisor_degree_eq_euler_difference`. Moving it into one named lemma would shorten both proofs and make each one easier to follow.\n\nI considered two other changes and did not report them:\n- The ending `apply Finset.sum_congr rfl; intro y _; rfl` (lines 110–112) could probably be a single `rfl`, because the two sides should agree up to proof irrelevance. I could not confirm this without running Lean, and the explicit `sum_congr` makes the termwise comparison clear to a reader.\n- In `orderAt_eq_zero_of_not_mem`, the `not_not.mp (... .not.mp hx)` step and the `unfold`/`rw`/`rfl` ending are already short. Any rewrite would come down to personal preference.\n\nNone of the proposed code has been compiled. In particular, `exact` may need a small coercion adjustment, because membership in the `Closeds` support and membership in its coercion to `Set X` are definitionally equal but written differently.",
+  "findings": [
+    {
+      "declaration": "orderAt_finite_support / divisor_degree_eq_euler_difference",
+      "start_line": 56,
+      "end_line": 105,
+      "excerpt": "  have hmem : x.1 ∈ (SectionZeroIdeal.zeroIdeal L s).support := by\n    by_contra hn\n    exact hx (orderAt_eq_zero_of_not_mem hDVR L s x hn)\n  change x.1 ∈ ((SectionZeroIdeal.zeroIdeal L s).support : Set X) at hmem\n  rw [← (SectionZeroIdeal.zeroIdeal L s).range_subschemeι] at hmem\n  obtain ⟨y, hy⟩ := hmem\n  exact ⟨y, Subtype.ext hy⟩",
+      "problem": "The same four-step argument appears twice: lines 58–64 in `orderAt_finite_support` and lines 99–105 inside `hDT` in `divisor_degree_eq_euler_difference`. It runs `by_contra` with `orderAt_eq_zero_of_not_mem`, then `change` to a `Set`, then rewrites with `range_subschemeι`, then uses `obtain`/`Subtype.ext`. It shows that a point of nonzero order is a zero point, meaning it lies in the range of `zeroPointEmbedding`. Because the argument is repeated inline, the second proof hides its main step (the support of `D` lies inside the image of the zero subscheme) under bookkeeping already done in the first proof.",
+      "proposed_change": "Prove the fact once, right after `zeroPointEmbedding`:\n```lean\ntheorem mem_range_zeroPointEmbedding_of_orderAt_ne_zero\n    (hDVR : ∀ x : X, x ≠ genericPoint X → IsDiscreteValuationRing (X.presheaf.stalk x))\n    (L : LineBundle X) (s : GlobalSections X L.sheaf) (hs : s ≠ 0) (x : CurvePoint X)\n    (hx : orderAt hDVR L s x ≠ 0) : x ∈ Set.range (zeroPointEmbedding L s hs) := by\n  have hmem : x.1 ∈ ((SectionZeroIdeal.zeroIdeal L s).support : Set X) := by\n    by_contra hn\n    exact hx (orderAt_eq_zero_of_not_mem hDVR L s x hn)\n  rw [← (SectionZeroIdeal.zeroIdeal L s).range_subschemeι] at hmem\n  obtain ⟨y, hy⟩ := hmem\n  exact ⟨y, Subtype.ext hy⟩\n```\nThen `orderAt_finite_support` becomes\n```lean\n  let : Finite (SectionZeroIdeal.zeroIdeal L s).subscheme :=\n    finite_subscheme_of_curve p hd _ (SectionZeroIdeal.zeroIdeal_ne_bot L s hs)\n  exact (Set.finite_range (zeroPointEmbedding L s hs)).subset fun x hx =>\n    mem_range_zeroPointEmbedding_of_orderAt_ne_zero hDVR L s hs x hx\n```\nand `hDT` becomes\n```lean\n  have hDT : D.support ⊆ T := by\n    intro x hx\n    have hn : orderAt hDVR L s x ≠ 0 := by simpa [D] using Finsupp.mem_support_iff.mp hx\n    obtain ⟨y, rfl⟩ := mem_range_zeroPointEmbedding_of_orderAt_ne_zero hDVR L s hs x hn\n    exact Finset.mem_map_of_mem _ (Finset.mem_univ y)\n```\nThis also lets you drop the separate `change` step, because the `have` states the `Set` coercion directly.",
+      "benefit": "About seven duplicated lines are removed. Both proofs then read as their mathematical outline: the support of the order function lies in the finite image of the zero subscheme, so it is finite, and the divisor sum is a sum over that image. The lemma name states the key fact (a nonzero order means a zero point) where it is used. If the support or range API changes later, only one place needs updating.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/SectionOrderDivisor.lean",
+          "declaration": "divisor_degree_eq_euler_difference",
+          "excerpt": "    have hm : x.1 ∈ I.support := by\n      by_contra hh\n      exact hn (orderAt_eq_zero_of_not_mem hDVR L s x hh)\n    change x.1 ∈ (I.support : Set X) at hm\n    rw [← I.range_subschemeι] at hm\n    obtain ⟨y, hy⟩ := hm\n    exact Finset.mem_map.mpr ⟨y, Finset.mem_univ y, Subtype.ext hy⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/Geometry/SectionOrderDivisor.lean",
+          "declaration": "zeroPointEmbedding",
+          "excerpt": "  toFun y := ⟨(SectionZeroIdeal.zeroIdeal L s).subschemeι y, zeroPoint_ne_generic L s hs y⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Finset/Image.lean",
+          "declaration": "Finset.mem_map_of_mem",
+          "excerpt": "theorem mem_map_of_mem (f : α ↪ β) {a} {s : Finset α} : a ∈ s → f a ∈ s.map f :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18614,
+    "cache_read_input_tokens": 56448,
+    "output_tokens": 6103,
+    "output_tokens_details": {
+      "thinking_tokens": 2802
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18614,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3502,
+        "cache_read_input_tokens": 22100,
+        "cache_creation_input_tokens": 557,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 557
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2822936,
+  "duration_ms": 51413,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T16:49:48",
+  "unit": "file",
+  "source_sha256": "9f1fc9587fa75c722b5e239c365748e1f23f8fe71072be77ee5e11dd2f715191",
+  "rubric": "readable-proof-simplification"
+}

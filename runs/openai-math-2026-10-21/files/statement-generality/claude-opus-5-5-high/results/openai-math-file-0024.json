@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0024",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole 65-line target file. I also read Mathlib's `Functor.mapBiprod` / `mapBiprod_hom` (Mathlib/CategoryTheory/Limits/Preserves/Shapes/Biproducts.lean) and the section variables they rely on, plus a near-identical public lemma in OAI/Algebra/Finitistic/Rectification/BiprodEvaluationSquare.lean.\n\n- **`completedOddDoubleImageIso` and `completed_oddDouble_corner_square`:** both are stated in the project's fixed setting (`Field k`, `Relations k d t`, `Representation P Y`). That setting is set by the upstream `completedDerivedEvaluation`, `completedSummandImageIso` and related definitions. I found no useful generalisation of these two declarations that stays local to this file.\n- **The finding:** the private categorical helper `mapBiprod_square` assumes more than it uses. It assumes global preadditive structure, all binary biproducts, additivity, and preservation of all binary biproducts. Mathlib's `Functor.mapBiprod` only needs zero morphisms, the specific biproducts `A ⊞ B` and `X ⊞ Y`, `PreservesZeroMorphisms F` and `PreservesBinaryBiproduct A B F`.\n- **Caveat:** I could not compile the weakened statement. The claim that the same proof script goes through is based on reading the lemmas involved; all of them only need `HasBinaryBiproduct` and `HasZeroMorphisms`.\n- **Benefit:** this is modest, because the lemma is private and used once. It becomes real if the lemma is made public or merged with the duplicate in BiprodEvaluationSquare.lean, which carries the same over-strong hypotheses. That duplication belongs to a different rubric; I mention it only as context for the benefit.",
+  "findings": [
+    {
+      "declaration": "mapBiprod_square",
+      "start_line": 11,
+      "end_line": 27,
+      "excerpt": "[Preadditive C] [Preadditive D] [HasBinaryBiproducts C] [HasBinaryBiproducts D]\n    (F : C ⥤ D) [F.Additive] [PreservesBinaryBiproducts F]",
+      "problem": "This helper is a purely formal naturality fact for the comparison iso `F.mapBiprod A B` followed by `biprod.mapIso e f`. Its assumptions are much stronger than the constructions in its statement need. Mathlib defines `Functor.mapBiprod` with only `[HasZeroMorphisms C] [HasZeroMorphisms D]`, `[HasBinaryBiproduct X Y]`, `[PreservesZeroMorphisms F]` and `[PreservesBinaryBiproduct X Y F]`. `biprod.map x y` and `biprod.hom_ext` only need the single biproduct `X ⊞ Y` to exist. The global `Preadditive`, `HasBinaryBiproducts`, `F.Additive` and `PreservesBinaryBiproducts F` assumptions are not needed, so the lemma does not apply to functors that only preserve zero morphisms or only preserve this one biproduct.",
+      "proposed_change": "Weaken the binders to what `mapBiprod` actually needs:\n```lean\nprivate theorem mapBiprod_square {C D : Type*} [Category C] [Category D]\n    [HasZeroMorphisms C] [HasZeroMorphisms D]\n    (F : C ⥤ D) [PreservesZeroMorphisms F]\n    {A B : C} {X Y : D} [HasBinaryBiproduct A B] [HasBinaryBiproduct X Y]\n    [PreservesBinaryBiproduct A B F]\n    (a : A ⟶ A) (b : B ⟶ B) (x : X ⟶ X) (y : Y ⟶ Y)\n    (e : F.obj A ≅ X) (f : F.obj B ≅ Y)\n    (ha : F.map a ≫ e.hom = e.hom ≫ x) (hb : F.map b ≫ f.hom = f.hom ≫ y) :\n    F.map (biprod.map a b) ≫ (F.mapBiprod A B ≪≫ biprod.mapIso e f).hom =\n      (F.mapBiprod A B ≪≫ biprod.mapIso e f).hom ≫ biprod.map x y\n```\nThe existing proof should carry over unchanged. `biprod.hom_ext` splits the goal into its `fst` and `snd` components. `Functor.mapBiprod_hom` (which holds by `rfl`) rewrites the comparison as `biprod.lift (F.map biprod.fst) (F.map biprod.snd)`. The `biprod.map_fst` / `biprod.lift_fst_assoc` simp lemmas and `Functor.map_comp` only need `HasBinaryBiproduct` and zero morphisms. The instance `HasBinaryBiproduct (F.obj A) (F.obj B)` needed by `biprod.mapIso e f` comes from Mathlib's `hasBinaryBiproduct_of_preserves`. This is the same instance that appears in the codomain of `mapBiprod`. At the single call site (line 58), `PreservesZeroMorphisms` follows from additivity of `completedDerivedEvaluation X`, and `PreservesBinaryBiproduct` follows from the local `PreservesBinaryBiproducts` instance. So the call site would elaborate as before. I have not compiled this.",
+      "benefit": "The lemma would state exactly what it depends on: a zero-morphism functor preserving one particular binary biproduct. It could then be reused for functors that are not additive or that preserve only some biproducts. It could also replace the equally over-specialised public twin `BiprodEvaluationSquare.square`, giving one general lemma instead of two narrow copies.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/CategoryTheory/Limits/Preserves/Shapes/Biproducts.lean",
+          "declaration": "CategoryTheory.Functor.mapBiprod",
+          "excerpt": "variable [PreservesZeroMorphisms F] [PreservesBinaryBiproduct X Y F]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/CategoryTheory/Limits/Preserves/Shapes/Biproducts.lean",
+          "declaration": "CategoryTheory.Functor.mapBiprod_hom",
+          "excerpt": "theorem mapBiprod_hom : (mapBiprod F X Y).hom = biprod.lift (F.map biprod.fst) (F.map biprod.snd) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/CategoryTheory/Limits/Preserves/Shapes/Biproducts.lean",
+          "declaration": "CategoryTheory.Functor.hasBinaryBiproduct_of_preserves",
+          "excerpt": "instance hasBinaryBiproduct_of_preserves : HasBinaryBiproduct (F.obj X) (F.obj Y) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Finitistic/Rectification/BiprodEvaluationSquare.lean",
+          "declaration": "OAI.LittleFinitistic.BiprodEvaluationSquare.square",
+          "excerpt": "variable (F : C ⥤ D) [F.Additive] [PreservesBinaryBiproducts F]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 13545,
+    "cache_read_input_tokens": 71495,
+    "output_tokens": 5724,
+    "output_tokens_details": {
+      "thinking_tokens": 2034
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13545,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3657,
+        "cache_read_input_tokens": 15961,
+        "cache_creation_input_tokens": 1608,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1608
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.23718700000000004,
+  "duration_ms": 86883,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T11:25:57",
+  "unit": "file",
+  "source_sha256": "66b11912b373e6131c8ef7e878540061ba305fe566ae2f2c8328c5aa6ed37e09",
+  "rubric": "statement-generality"
+}

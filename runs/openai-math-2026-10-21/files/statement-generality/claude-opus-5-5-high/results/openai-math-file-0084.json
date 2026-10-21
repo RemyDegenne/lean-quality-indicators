@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0084",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all three declarations in the file. For `lpNorm_complex_prod_L2_Linf` I also read the helper it uses, `lpNorm_complex_finite_prod`, in ComplexJetProduct.lean. That helper is stated for any `{Y : Type*} [MeasurableSpace Y] {μ : Measure Y}`. The file's lemma, however, only works on an inner-product space `E` with Lebesgue measure `volume`. Its proof never uses anything about `E` beyond what the helper needs, so I report this as the one finding.\n\nI chose not to report `monoEval_tame_zero` or `monoRemainder_uniform_bound`. Both are tied to the project's jet machinery (`initialJet`, `familyJetNorm`, `cjet_lpNorm_le`, `monoEval_tame_positive`), which is stated on `E` with `volume`. Generalising them would mean generalising those definitions too, which is substantial work outside this file. In `monoRemainder_uniform_bound`, `h2` asks for a bound for every `j ≤ ws.length-2` but is only used at one `m`. Narrowing it to that index would expose the derived quantity `∑ i, (trimWord (s i)).length` in the statement. That is a judgement call rather than a clear improvement.\n\nThe `_hA` binder is unused, but removing unused binders belongs to a separate experiment, so I did not report it. I have not compiled the proposed generalisation.",
+  "findings": [
+    {
+      "declaration": "OAI.TameInterpolation.lpNorm_complex_prod_L2_Linf",
+      "start_line": 20,
+      "end_line": 49,
+      "excerpt": "lemma lpNorm_complex_prod_L2_Linf (f : κ → E → ℂ) (i : κ)\n    (hf2 : MemLp (f i) 2 volume) (hfi : ∀ j, MemLp (f j) ∞ volume)",
+      "problem": "This lemma is a pure Hölder-type estimate: an L² function times finitely many L^∞ functions has L² norm at most ‖f i‖₂ · A^(card κ − 1). Because of the section variables, though, its domain must be a finite-dimensional real inner-product space `E` with `[MeasurableSpace E] [BorelSpace E]`, and the measure must be `volume`. These instances are only there so that `volume` makes sense. The proof uses nothing about `E`: the only measure-theoretic step is `lpNorm_complex_finite_prod (μ:=volume) ...`, and that lemma holds for any measure on any measurable space. The exponent 2 is also not essential. With p j = q at j = i and ∞ elsewhere, the computation `(∑ j, (p j)⁻¹)⁻¹ = (q⁻¹ + 0)⁻¹ = q` works for every q : ℝ≥0∞.",
+      "proposed_change": "Move the lemma above the `variable {E ...}` block, or into ComplexJetProduct.lean next to `lpNorm_complex_finite_prod`, and state it for a general measure and exponent:\n\nlemma lpNorm_complex_prod_Lp_Linf {Y : Type*} [MeasurableSpace Y] {μ : Measure Y}\n    {κ : Type*} [Fintype κ] [DecidableEq κ] (f : κ → Y → ℂ) (i : κ) {q : ℝ≥0∞}\n    (hfq : MemLp (f i) q μ) (hfi : ∀ j, MemLp (f j) ∞ μ)\n    {A B : ℝ} (hB : 0 ≤ B)\n    (hfa : ∀ j, lpNorm (f j) ∞ μ ≤ A) (hfb : lpNorm (f i) q μ ≤ B) :\n    lpNorm (fun x => ∏ j, f j x) q μ ≤ B * A ^ (Fintype.card κ - 1)\n\nThe proof should carry over with `volume` replaced by `μ` and `2` by `q`. Set `p j := if j = i then q else ∞`. Prove `hs` as before; the final `simp [he, p]` reduces `(q⁻¹ + 0)⁻¹` to `q` by `inv_inv`. Then apply `lpNorm_complex_finite_prod (μ := μ)` and use the same `Finset.mul_prod_erase` / `Finset.prod_le_prod₀` argument. The only call site, `monoEval_tame_zero`, uses `apply`, so `μ := volume` and `q := 2` are found by unification and that call should need no changes. If μ = 0, both sides behave as in `lpNorm_complex_finite_prod`, which already handles that case. Since `i : κ` is given, card κ ≥ 1, so the subtraction `card κ - 1` does not truncate.",
+      "benefit": "The lemma becomes a reusable L^q × L^∞ product bound for any measure space. Callers working with other measures (restricted, weighted or counting measures) or other exponents could then use it without supplying irrelevant instances such as `InnerProductSpace ℝ E` and `FiniteDimensional ℝ E`. It would also sit naturally next to `lpNorm_complex_finite_prod`, which already has this generality.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedRicci/ComplexJetProduct.lean",
+          "declaration": "OAI.TameInterpolation.lpNorm_complex_finite_prod",
+          "excerpt": "lemma lpNorm_complex_finite_prod {ι : Type*} (s : Finset ι) (f : ι → Y → ℂ) (p : ι → ℝ≥0∞)\n    (hf : ∀ i ∈ s, MemLp (f i) (p i) μ) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedRicci/ComplexJetProduct.lean",
+          "declaration": "OAI.TameInterpolation (section variables)",
+          "excerpt": "variable {Y : Type*} [MeasurableSpace Y] {μ : Measure Y}"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedRicci/JetRemainderBound.lean",
+          "declaration": "OAI.TameInterpolation.lpNorm_complex_prod_L2_Linf",
+          "excerpt": "have hh := lpNorm_complex_finite_prod (μ:=volume) Finset.univ f p (fun j _ => hp j)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedRicci/JetRemainderBound.lean",
+          "declaration": "OAI.TameInterpolation.monoEval_tame_zero",
+          "excerpt": "apply lpNorm_complex_prod_L2_Linf (fun i => g (a i)) i"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 13110,
+    "cache_read_input_tokens": 44781,
+    "output_tokens": 4279,
+    "output_tokens_details": {
+      "thinking_tokens": 1290
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13110,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2739,
+        "cache_read_input_tokens": 15068,
+        "cache_creation_input_tokens": 2066,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2066
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1994482,
+  "duration_ms": 40385,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T16:20:39",
+  "unit": "file",
+  "source_sha256": "c3ad1c7f08b2467c11e16bd16223ba775e626fbfca73c223fdcebb033eed9143",
+  "rubric": "statement-generality"
+}

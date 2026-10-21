@@ -1,0 +1,112 @@
+{
+  "id": "openai-math-file-0087",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all four theorems in the file (lines 1–69). I read the definitions of `shellEnergy`, `dyadicShell` and `shell_energy_integrable` in Shells.lean. I also checked the signatures of the Mathlib lemmas I relied on: `Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul`, `mul_le_of_le_one_left`, `integral_finsetSum`, `integrable_finsetSum`, `integral_finsetSum_measure` and `integral_smul_nnreal_measure`.\n\nTwo closing `nlinarith` calls only prove an inequality of the form `a * b ≤ b` from `0 ≤ b` and `a ≤ 1`. The Mathlib lemma `mul_le_of_le_one_left` states exactly this. In `shellEnergy_weighted_sum_le`, the same per-term integrability proof is written out twice.\n\n`charFun_weighted_sum` could be compressed by turning its `intro`/`exact` steps into terms. That is a matter of taste, so I did not report it. The `by nlinarith` on line 20 proves an algebraic identity, so `le_of_eq (by ring)` would also work there. I mention it inside the first finding only as optional.\n\nNone of the replacements has been compiled. Elaboration of `mul_le_of_le_one_left hg hc` against `hs`'s right-hand side `(∑ c i) * ∑ (c i * ‖z i‖^2)` should match syntactically, but this is not verified.",
+  "findings": [
+    {
+      "declaration": "norm_weighted_sum_sq_le",
+      "start_line": 21,
+      "end_line": 24,
+      "excerpt": "  have hsq : ‖∑ i ∈ s, (c i : ℝ) • z i‖^2 ≤ (∑ i ∈ s, (c i : ℝ)*‖z i‖)^2 := by\n    exact pow_le_pow_left₀ (norm_nonneg _) hn 2\n  exact hsq.trans (hs.trans (by nlinarith))",
+      "problem": "The last step proves `(∑ c i) * (∑ c i * ‖z i‖^2) ≤ ∑ c i * ‖z i‖^2` from `hc : ∑ c i ≤ 1` and `hg : 0 ≤ ∑ c i * ‖z i‖^2`. It does this with an unguided `nlinarith`, so the reader cannot see which facts are used or that the step is just 'a weight sum ≤ 1 shrinks a nonnegative quantity'. Separately, `hsq` is a `by exact` wrapper around a single term.",
+      "proposed_change": "Replace lines 22–24 with:\n```lean\n  have hsq : ‖∑ i ∈ s, (c i : ℝ) • z i‖^2 ≤ (∑ i ∈ s, (c i : ℝ)*‖z i‖)^2 :=\n    pow_le_pow_left₀ (norm_nonneg _) hn 2\n  exact hsq.trans (hs.trans (mul_le_of_le_one_left hg hc))\n```\nOptionally, line 20's `(fun _ _ => by nlinarith)` can become `(fun _ _ => le_of_eq (by ring))`, because `(c*‖z‖)^2 = c*(c*‖z‖^2)` is an identity.",
+      "benefit": "The proof now reads as three named steps: the triangle inequality, Cauchy–Schwarz, and 'multiply by a factor ≤ 1'. The final step names its two hypotheses, `hg` and `hc`, instead of leaving a nonlinear arithmetic search to find them. Removing `by exact` takes away a layer that does no work.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/GroupWithZero/Basic.lean",
+          "declaration": "mul_le_of_le_one_left",
+          "excerpt": "theorem mul_le_of_le_one_left [MulPosMono α] (hb : 0 ≤ b) (h : a ≤ 1) : a * b ≤ b := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/BigOperators/Ring/Finset.lean",
+          "declaration": "Finset.sum_sq_le_sum_mul_sum_of_sq_le_mul",
+          "excerpt": "(ht : ∀ i ∈ s, r i ^ 2 ≤ f i * g i) : (∑ i ∈ s, r i) ^ 2 ≤ (∑ i ∈ s, f i) * ∑ i ∈ s, g i := by"
+        }
+      ]
+    },
+    {
+      "declaration": "shellEnergy_weighted_sum_uniform",
+      "start_line": 64,
+      "end_line": 65,
+      "excerpt": "    _ = (∑ i ∈ s, (c i : ℝ))*C := (Finset.sum_mul ..).symm\n    _ ≤ C := by nlinarith",
+      "problem": "The last calc step `(∑ c i) * C ≤ C` follows directly from `hc : ∑ c i ≤ 1` and `hC : 0 ≤ C`. It is closed by `nlinarith`, which hides that these are the only two facts used. It also hides why the hypothesis `hC` is needed at all.",
+      "proposed_change": "Replace `_ ≤ C := by nlinarith` with `_ ≤ C := mul_le_of_le_one_left hC hc`.",
+      "benefit": "The named lemma states the mathematical reason directly: total weight ≤ 1 times a nonnegative bound stays below the bound. It also shows explicitly where `hC` is used, which makes the role of the nonnegativity assumption clear. It removes a search-based tactic from a one-line step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/GroupWithZero/Basic.lean",
+          "declaration": "mul_le_of_le_one_left",
+          "excerpt": "theorem mul_le_of_le_one_left [MulPosMono α] (hb : 0 ≤ b) (h : a ≤ 1) : a * b ≤ b := by"
+        }
+      ]
+    },
+    {
+      "declaration": "shellEnergy_weighted_sum_le",
+      "start_line": 41,
+      "end_line": 53,
+      "excerpt": "    integrable_finsetSum s (fun i _ => (shell_energy_integrable (τ i) N).const_mul _)",
+      "problem": "The per-term integrability family `fun i _ => (shell_energy_integrable (τ i) N).const_mul _` is written twice: once on line 42 to build `hi`, and again inside the `rw [integral_finsetSum s (...)]` on line 52. The reader has to check that the two copies are the same argument.",
+      "proposed_change": "Name the family once and reuse it:\n```lean\n  have hterm : ∀ i ∈ s, IntegrableOn (fun r => (c i : ℝ)*‖charFun (τ i) r‖^2) (dyadicShell N) volume :=\n    fun i _ => (shell_energy_integrable (τ i) N).const_mul _\n  have hi := integrable_finsetSum s hterm\n  ...\n    _ = _ := by\n      rw [integral_finsetSum s hterm]\n      simp_rw [integral_const_mul]\n```",
+      "benefit": "The integrability fact for each weighted term is stated once with an explicit type. Both uses then point to it by name. The calc block becomes shorter and makes clear that the same integrability fact justifies both the monotonicity step and swapping the sum with the integral.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Integral/Bochner/Basic.lean",
+          "declaration": "MeasureTheory.integral_finsetSum",
+          "excerpt": "theorem integral_finsetSum {ι} (s : Finset ι) {f : ι → α → G} (hf : ∀ i ∈ s, Integrable (f i) μ) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/MeasureTheory/Function/L1Space/Integrable.lean",
+          "declaration": "MeasureTheory.integrable_finsetSum",
+          "excerpt": "(hf : ∀ i ∈ s, Integrable (f i) μ) : Integrable (fun a => ∑ i ∈ s, f i a) μ := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 20483,
+    "cache_read_input_tokens": 87959,
+    "output_tokens": 6199,
+    "output_tokens_details": {
+      "thinking_tokens": 1985
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20483,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3245,
+        "cache_read_input_tokens": 21604,
+        "cache_creation_input_tokens": 2922,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2922
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.30548379999999997,
+  "duration_ms": 51921,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-21T16:38:42",
+  "unit": "file",
+  "source_sha256": "058cb3e0948bfa719fe48593a5c15d4f8abafe93d0a553132fd6a478b4076745",
+  "rubric": "readable-proof-simplification"
+}

@@ -1,0 +1,116 @@
+{
+  "id": "openai-math-file-0074",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all three declarations in the target (lines 1–177): `rnDeriv_le_of_le_smul`, `endpointCoupling_couples` and `CurvatureDimension.reroute_finite_subplan`. I then searched the OAI WeakHessian tree for proofs that repeat the same reasoning. The main proof, lines 79–170, is reproduced almost line for line in `CurvatureDimension.reroute_finite_subplan_short` in Transport/RerouteFiniteSubplanShort.lean. The only real difference is where the path-length bound `hlen` comes from. The step that rescales an optimal plan back to the mass of θ, matching its endpoint marginals and its cost bound (lines 137–160), also appears a third time in `OptimalPlansShort.subplan` in Transport/OptimalPlansShort.lean. Both downstream files use `endpointCoupling_couples` and `rnDeriv_le_of_le_smul` from the target, so they depend on it. Any shared helper therefore has to live in the target file or below it, and it cannot use the later `OptimalPlansShort` definition; I wrote the helper's length hypothesis out in full for that reason. I did not count the timeZero/timeOne mirror blocks inside the single proof (hd0/hd1, hb0/hb1, hπ0/hπ1) as separate findings. I also skipped the repeated measurability fact for `(γ timeZero, γ timeOne)`, because it is a one-line routine fact. I could not compile anything, so the proposed rewrites and proof sketches are untested. One open question is whether `simp`/`change` steps will need small adjustments once the code moves into a lemma with explicit `q`.",
+  "findings": [
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan",
+      "start_line": 79,
+      "end_line": 170,
+      "excerpt": "  let q := θ univ\n  have hqt : q ≠ ∞ := measure_ne_top _ _\n  let θ' : Measure (Curve X) := q⁻¹ • θ",
+      "problem": "Nearly all of this proof is copied verbatim in `CurvatureDimension.reroute_finite_subplan_short` (RerouteFiniteSubplanShort.lean, lines 68–144). Both proofs normalise θ to a probability measure θ', transfer the density bounds hd0/hd1 and the absolute-continuity facts hac0/hac1, push the ball bound down to the marginals (hb0/hb1), call `hcd`, rescale by q, prove the cost inequality with the local `hs`, and finish with `cd_midpoint_support_lower`. The only real difference is how `hlen` is obtained. Here it comes from hπ0/hπ1 and the triangle inequality (lines 122–136), giving the bound 2*R. In the short version it comes from `hshort π hπ hgeo hopt`, giving D. As a result, a 90-line argument has to be maintained in two places.",
+      "proposed_change": "Add a general lemma in this file, with a length parameter, that takes the plan-length bound as a hypothesis:\n\nlemma CurvatureDimension.reroute_finite_subplan_of_len {m : Measure X} [SigmaFinite m] {K N : ℝ} (hN : 1 < N) (hcd : CurvatureDimension m K N) (θ : Measure (Curve X)) [IsFiniteMeasure θ] (hq : θ univ ≠ 0) (o : X) {R : ℝ} (hb : ∀ᵐ γ ∂θ, dist (γ timeZero) o ≤ R ∧ dist (γ timeOne) o ≤ R) {L : ℝ} (hL : 0 ≤ L) (hlenAll : ∀ π : Measure (Curve X), IsProbabilityMeasure π → (∀ᵐ γ ∂π, IsGeodesic γ) → IsOptimalCoupling (endpointCoupling π) (interpolation ((θ univ)⁻¹ • θ) timeZero) (interpolation ((θ univ)⁻¹ • θ) timeOne) → ∀ᵐ γ ∂π, dist (γ timeZero) (γ timeOne) ≤ L) {C : ℝ≥0∞} (hd₀ : interpolation θ timeZero ≤ C • m) (hd₁ : interpolation θ timeOne ≤ C • m) : ∃ ξ, … (same conclusion with `midpointTauLower K N L`).\n\nProof: the current lines 79–121 and 137–170. Replace lines 122–136 with `have hlen := hlenAll π hπ hgeo hopt`, and use `hL` in place of `(by linarith)`.\n\nRewritten uses:\n(1) `reroute_finite_subplan` becomes `hcd.reroute_finite_subplan_of_len hN θ hq o hb (by linarith : (0:ℝ) ≤ 2*R) ?_ hd₀ hd₁`. The remaining goal is discharged by `intro π hπ _ hopt` followed by the existing hπ0/hπ1/triangle argument (lines 122–136), applied to the θ'-marginal bounds recomputed as in lines 108–117.\n(2) In RerouteFiniteSubplanShort.lean, the body of `reroute_finite_subplan_short` becomes `hcd.reroute_finite_subplan_of_len hN θ hq o hb D.property hshort hd₀ hd₁`. This works because `OptimalPlansShort … D` unfolds to exactly the `hlenAll` shape, with D coerced to ℝ.",
+      "benefit": "The normalise/apply-CD/rescale/midpoint-lower-bound argument would be written once, and each version would state only how its length bound is obtained. That is the only mathematical difference between them. Future fixes, for example to the cost-scaling step or to the `cd_midpoint_support_lower` call, would then be made in one place, and the relationship between the 2R version and the D version becomes visible from the statements.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/RerouteFiniteSubplanShort.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan_short",
+          "excerpt": "  have hlen : ∀ᵐ γ ∂π, dist (γ timeZero) (γ timeOne) ≤ D := hshort π hπ hgeo hopt"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/RerouteFiniteSubplanShort.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan_short",
+          "excerpt": "    apply cd_midpoint_support_lower hN D.property hopt.1\n      (hac0.ae_le (rnDeriv_le_of_le_smul hd0))\n      (hac1.ae_le (rnDeriv_le_of_le_smul hd1)) hlen ?_ hB hs'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/OptimalPlansShort.lean",
+          "declaration": "OptimalPlansShort",
+          "excerpt": "def OptimalPlansShort (μ₀ μ₁ : Measure X) (D : ℝ) : Prop :=\n  ∀ π : Measure (Curve X), IsProbabilityMeasure π →"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/LocalBounds/TimeHalf.lean",
+          "declaration": "cd_midpoint_support_lower",
+          "excerpt": "    [IsProbabilityMeasure π] {K N D : ℝ} (hN : 1 < N) (hD : 0 ≤ D)"
+        }
+      ]
+    },
+    {
+      "declaration": "CurvatureDimension.reroute_finite_subplan",
+      "start_line": 140,
+      "end_line": 160,
+      "excerpt": "  have hξend (t : Time) (ht : interpolation π t = interpolation θ' t) :\n      interpolation ξ t = interpolation θ t := by",
+      "problem": "Three proofs repeat the same step: after scaling an optimal plan η for the normalised measure q⁻¹ • θ back by q, they show that q • η has the same endpoint marginals as θ and an endpoint-coupling cost no larger than θ's. Each proof does this with a local `hξend` (map_smul / `change` / `hcanc`) and a local `hs` that pulls the scalar out of `QuadraticTransportCost (endpointCoupling (q • η))`, then combines them with `mul_le_mul'` and `hopt.2 … (endpointCoupling_couples θ')`. The copies are here (lines 140–160), in `reroute_finite_subplan_short` (lines 115–134) and in `OptimalPlansShort.subplan` (lines 253–272). The third copy is in a separate lemma, so it remains even if the first finding is adopted.",
+      "proposed_change": "Add the following lemma to this file, after `endpointCoupling_couples`:\n\nlemma IsOptimalCoupling.smul_rescale {θ η : Measure (Curve X)} {q : ℝ≥0∞} (hq : q ≠ 0) (hqt : q ≠ ∞) (hopt : IsOptimalCoupling (endpointCoupling η) (interpolation (q⁻¹ • θ) timeZero) (interpolation (q⁻¹ • θ) timeOne)) : interpolation (q • η) timeZero = interpolation θ timeZero ∧ interpolation (q • η) timeOne = interpolation θ timeOne ∧ QuadraticTransportCost (endpointCoupling (q • η)) ≤ QuadraticTransportCost (endpointCoupling θ)\n\nProof sketch: `hcanc : q • (q⁻¹ • θ) = θ` by `smul_smul`, `ENNReal.mul_inv_cancel hq hqt` and `one_smul`. The endpoint equalities follow from `Measure.map_smul` together with `hopt.1.interpolation_endpoints` (the current `hξend` body). For the cost, use the scalar-extraction identity (the current `hs`, via `Measure.map_smul` and `lintegral_smul_measure`) and `mul_le_mul' le_rfl (hopt.2 _ (endpointCoupling_couples (q⁻¹ • θ)))`, then rewrite with `hcanc`.\n\nRewritten uses:\n- Here: `obtain ⟨hξ0, hξ1, hcost⟩ := hopt.smul_rescale (θ := θ) hq hqt`. Then `refine ⟨ξ, hξfin, hξmass, …, hξ0, hξ1, hcost, ?_⟩`, which removes lines 140–147 and 150–160.\n- In `OptimalPlansShort.subplan`: `obtain ⟨hξ0, hξ1, hcost⟩ := hoη.smul_rescale hq hqt`, which replaces lines 253–272. The hypotheses `hq : θ univ ≠ 0` and `hqt` are already in scope there, and θ' is definitionally `q⁻¹ • θ`.",
+      "benefit": "The rescaling step is a single mathematical fact: scaling an optimal plan for a normalised sub-plan back by q gives a competitor plan with the same endpoints and no larger cost. A named lemma states that fact once and removes about twenty lines of `change`/`map_smul` work from each of three proofs. It also leaves one place to update if the definitions of `interpolation` or `endpointCoupling` change.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/OptimalPlansShort.lean",
+          "declaration": "OptimalPlansShort.subplan",
+          "excerpt": "  have hξend (t : Time) (h : interpolation η t = interpolation θ' t) :\n      interpolation ξ t = interpolation θ t := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/OptimalPlansShort.lean",
+          "declaration": "OptimalPlansShort.subplan",
+          "excerpt": "    have H := mul_le_mul' (le_refl q) (hoη.2 _ (endpointCoupling_couples θ'))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/RerouteFiniteSubplanShort.lean",
+          "declaration": "CurvatureDimension.reroute_finite_subplan_short",
+          "excerpt": "    have hs (η : Measure (Curve X)) : QuadraticTransportCost (endpointCoupling (q • η)) =\n        q*QuadraticTransportCost (endpointCoupling η) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/WeakHessian/Transport/CouplingCostBound.lean",
+          "declaration": "IsCoupling.interpolation_endpoints",
+          "excerpt": "    interpolation π timeZero = μ₀ ∧ interpolation π timeOne = μ₁ := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 45365,
+    "cache_read_input_tokens": 199625,
+    "output_tokens": 9354,
+    "output_tokens_details": {
+      "thinking_tokens": 3103
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 45365,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5078,
+        "cache_read_input_tokens": 45108,
+        "cache_creation_input_tokens": 4186,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4186
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.589981,
+  "duration_ms": 82990,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T15:30:06",
+  "unit": "file",
+  "source_sha256": "659acbb3a82e0e7548787ca860f4814b3dd1940c61d717d0b3b39fece39b5163",
+  "rubric": "repeated-proof-machinery"
+}

@@ -1,0 +1,122 @@
+{
+  "id": "openai-math-file-0086",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definitions it depends on: LimitLaws in CriticalLimits.lean, scaleLaw_translate in ScaleLaws.lean, and multiLaw/terminalLaw/initialLaw and the exponent_tendsto lemmas in CriticalLaws.lean. I compared the dilation analogue in LimitBalance.lean. The multi/terminal pairs in this file differ only in the sequence of laws (multiLaw vs terminalLaw), the limit measure and its convergence field, and the exponent sequence. They are therefore genuine repeated proofs, and a generic lemma is feasible. The rewrites below are untested. They assume NeBot for the ultrafilter L.filter, the IsFiniteMeasure instances for S.multiLaw and S.terminalLaw, and the Regular instances at lines 31–32, all of which are already used by the existing proofs. Unification details (for example the coercion of L.filter to a Filter) may need small adjustments. I did not report the near-duplicate arrayTestExtend_translate/arrayTestExtend_dilate pair (lines 11–20), because it is short and the two cases need different API.",
+  "findings": [
+    {
+      "declaration": "multi_integral_translate / terminal_integral_translate",
+      "start_line": 45,
+      "end_line": 60,
+      "excerpt": "filter_upwards [L.refines (S.multiLaw_translate_eventually r)] with i hi",
+      "problem": "The two lemmas have the same nontrivial argument. It compares the integrals of g∘T and of g against the approximating laws using integral_translate_nonaffine. It then identifies the limits by tendsto_nhds_unique, using the convergence field on both g and g.comp T. They differ only in the sequence of laws (multiLaw vs terminalLaw), the limit measure, and the corresponding converges/eventually-invariance lemma. The ~8-line proof is copy-pasted. Nothing in it depends on the multi/terminal structure.",
+      "proposed_change": "Add one generic lemma before `namespace CriticalScaleSequence`:\n\nlemma integral_translate_of_vague_limit {l : Filter ℕ} [l.NeBot] (μ : ℕ → Measure DistanceArray) [∀ i, IsFiniteMeasure (μ i)] (ν : Measure NonAffineArray) (r : DyadicTime)\n  (hconv : ∀ g : C_c(NonAffineArray,ℝ), Tendsto (fun i => ∫ d,g d ∂nonaffinePart (μ i)) l (𝓝 (∫ d,g d ∂ν)))\n  (hinv : ∀ᶠ i in l, (μ i).map (arrayTranslate r) = μ i) (g : C_c(NonAffineArray,ℝ)) :\n  (∫ d,g (nonaffineTranslation r d) ∂ν) = ∫ d,g d ∂ν\n\nProof sketch: build `hh : (fun i => ∫ d,(g.comp (nonaffineTranslation r).toCocompactMap) d ∂nonaffinePart (μ i)) =ᶠ[l] (fun i => ∫ d,g d ∂nonaffinePart (μ i))` by `filter_upwards [hinv] with i hi; exact integral_translate_nonaffine (μ i) r hi g`. Then `exact tendsto_nhds_unique (hconv (g.comp (nonaffineTranslation r).toCocompactMap)) ((hconv g).congr' hh.symm)`. This is the current body with S.multiLaw replaced by μ and L.filter by l.\n\nThen `multi_integral_translate` becomes `integral_translate_of_vague_limit S.multiLaw L.multi r L.multi_converges (L.refines (S.multiLaw_translate_eventually r)) g`. `terminal_integral_translate` becomes the same call with S.terminalLaw, L.terminal, L.terminal_converges and S.terminalLaw_translate_eventually. The Ultrafilter L.filter supplies NeBot.",
+      "benefit": "The argument is stated and maintained once. Each of the two lemmas is a one-line instantiation, so a fix to the limit-identification step cannot be applied to only one copy. A reader sees that the invariance follows from the abstract fact 'eventual invariance plus vague convergence implies invariance of the limit'.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/LimitActions.lean",
+          "declaration": "terminal_integral_translate",
+          "excerpt": "exact tendsto_nhds_unique (L.terminal_converges (g.comp (nonaffineTranslation r).toCocompactMap))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/CriticalLimits.lean",
+          "declaration": "LimitLaws.multi_converges",
+          "excerpt": "multi_converges : ∀ g : C_c(NonAffineArray,ℝ),"
+        }
+      ]
+    },
+    {
+      "declaration": "multi_translate / terminal_translate",
+      "start_line": 61,
+      "end_line": 72,
+      "excerpt": "apply Measure.ext_of_integral_eq_on_compactlySupported",
+      "problem": "Both lemmas repeat the same reduction: obtain a Regular instance for the pushforward, apply Measure.ext_of_integral_eq_on_compactlySupported, and rewrite with integral_map. They then close with the integral-invariance lemma. Only the measure and the invariance lemma differ. The integral_map side-conditions (measurability and a.e.-strong measurability of g) are repeated verbatim. The same reduction recurs for dilation in LimitBalance.lean (dilation_balance).",
+      "proposed_change": "Add a lemma for any regular measure ν on NonAffineArray and any dyadic r:\n\nlemma map_nonaffineTranslation_eq_of_integral (ν : Measure NonAffineArray) [ν.Regular] (r : DyadicTime)\n  (h : ∀ g : C_c(NonAffineArray,ℝ), (∫ d,g (nonaffineTranslation r d) ∂ν) = ∫ d,g d ∂ν) :\n  ν.map (nonaffineTranslation r) = ν := by\n  let := Measure.Regular.map (μ := ν) (nonaffineTranslation r)\n  apply Measure.ext_of_integral_eq_on_compactlySupported\n  intro g\n  rw [integral_map (f := fun d => g d) (nonaffineTranslation r).continuous.measurable.aemeasurable g.continuous.aestronglyMeasurable]\n  exact h g\n\nThen `multi_translate r := map_nonaffineTranslation_eq_of_integral L.multi r (S.multi_integral_translate L r)`, and `terminal_translate r := map_nonaffineTranslation_eq_of_integral L.terminal r (S.terminal_integral_translate L r)`. The Regular instances from lines 31–32 are used. Combined with the previous finding, the whole multi/terminal pair reduces to two short applications of generic lemmas.",
+      "benefit": "The measure-theoretic uniqueness argument and the `integral_map` side-conditions are written once instead of twice. The multi/terminal lemmas state only what is specific to them. The generic lemma also makes the repeated pattern visible and reusable for sibling files such as the dilation balance.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/LimitActions.lean",
+          "declaration": "terminal_translate",
+          "excerpt": "let := Measure.Regular.map (μ := L.terminal) (nonaffineTranslation r)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/LimitBalance.lean",
+          "declaration": "dilation_balance",
+          "excerpt": "rw [integral_map (f := fun d => g d) continuous_nonaffineDilate.measurable.aemeasurable g.continuous.aestronglyMeasurable,"
+        }
+      ]
+    },
+    {
+      "declaration": "multiLaw_translate_eventually / terminalLaw_translate_eventually",
+      "start_line": 33,
+      "end_line": 44,
+      "excerpt": "filter_upwards [S.lowerExponent_tendsto.eventually_ge_atTop p] with i hi",
+      "problem": "The two proofs are identical except for the exponent sequence driving the filter (criticalLowerExponent S.offset vs S.exponent). Each obtains the alignment threshold p from dyadic_aligned_eventually, waits until the exponent exceeds p, extracts the integer a, and applies scaleLaw_translate. The reasoning, 'once the scale exponent is large enough, the scaleLaw is translation invariant', does not depend on multi/terminal. It holds for any sequence of scaleLaws with exponents tending to infinity.",
+      "proposed_change": "Prove it once for general parameters (placed before `namespace CriticalScaleSequence`):\n\nlemma scaleLaw_translate_eventually (r : DyadicTime) {p : ℕ → ℕ} (hp : Tendsto p atTop atTop) (k : ℕ → ℝ) (hk : ∀ i, 0 ≤ k i) (l : ℕ → ℕ) (ε : ℕ → ℝ) :\n  ∀ᶠ i in atTop, (scaleLaw (k i) (hk i) (p i) (l i) (ε i)).map (arrayTranslate r) = scaleLaw (k i) (hk i) (p i) (l i) (ε i) := by\n  obtain ⟨q,hq⟩ := dyadic_aligned_eventually r\n  filter_upwards [hp.eventually_ge_atTop q] with i hi\n  obtain ⟨a,ha⟩ := hq _ hi\n  exact scaleLaw_translate _ _ _ _ _ r a ha\n\nThen `multiLaw_translate_eventually r := scaleLaw_translate_eventually r S.lowerExponent_tendsto _ (fun i => (S.positive i).le) _ _`, and the terminal version uses `S.exponent_tendsto` with the same remaining arguments. Both are unfolded definitionally from multiLaw/terminalLaw. The exact `p` type follows dyadic_aligned_eventually and may need a cast adjustment.",
+      "benefit": "The alignment argument is stated once. A change to the dyadic alignment API or to scaleLaw_translate needs a single edit, and the multi/terminal lemmas become one-liners that show how they differ (which exponent sequence is used).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/LimitActions.lean",
+          "declaration": "terminalLaw_translate_eventually",
+          "excerpt": "filter_upwards [S.exponent_tendsto.eventually_ge_atTop p] with i hi"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/ScaleLaws.lean",
+          "declaration": "scaleLaw_translate",
+          "excerpt": "(a : ℤ) (ha : ((2^p:ℕ):ℝ)*(r:ℝ)=(a:ℝ)) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/StandardMap/CriticalLaws.lean",
+          "declaration": "multiLaw",
+          "excerpt": "scaleLaw (S.parameter i) (S.positive i).le (criticalLowerExponent S.offset i)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 24062,
+    "cache_read_input_tokens": 80106,
+    "output_tokens": 8357,
+    "output_tokens_details": {
+      "thinking_tokens": 3052
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24062,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 6271,
+        "cache_read_input_tokens": 24803,
+        "cache_creation_input_tokens": 3188,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3188
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1878486,
+  "duration_ms": 71156,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T14:01:40",
+  "unit": "file",
+  "source_sha256": "1e9e39c521763e17514a77e70b82c46cba8befa27bac857bd6fb3f1dc5125d98",
+  "rubric": "repeated-proof-machinery"
+}

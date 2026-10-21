@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0080",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 85 lines of the file. I also read `unitRadial` and `unitRadial_norm` in UnitRadial.lean, plus the Mathlib lemmas the proofs rely on: `ContDiff.norm` and `contDiff_norm_sq` (InnerProductSpace/Calculus.lean, where `n : WithTop ℕ∞`), `ContDiff.inv` and `ContDiff.smul` (ContDiff/Operations.lean, where `n : ℕ∞ω`), and `LinearIsometry.contDiff` (ContDiff/Basic.lean). I checked how other files use the lemmas, in ChartRegular.lean, RegularBase.lean, SphereParity.lean and RegularPatch.lean.\n\nI considered two other changes and did not report them:\n- Weakening `hw : ‖w‖ = 1` to `w ≠ 0` in `hemisphere_add_ne_zero`, `hemisphereChart_norm`, `hemisphereChart_contDiff` and `hemisphereChart_inner_pos`. The mathematics allows it, but every caller works with unit vectors, and `hemisphereChart_inverse` really needs the unit norm. The gain is small.\n- Widening the set in `hemisphereInverse_continuousOn` from `{u | 0 < ⟪w,u⟫}` to `{u | ⟪w,u⟫ ≠ 0}`. This is valid, but SphereParity.lean:53 and RegularPatch.lean:59 pair the lemma with an open set of exactly the current shape via `isOpen_inter_preimage`. The change would create work for callers with little practical gain.\n\nThe adjoint lemmas need `CompleteSpace`, because `ContinuousLinearMap.adjoint` requires it. The hypotheses of `frame_decomposition` and `hemisphereChart_inverse` are what the mathematics needs, so I found nothing to generalise there.\n\nRemaining uncertainty: I could not compile the proposed change. I am inferring that the unchanged proof works for any `n` from the lemma signatures I read.",
+  "findings": [
+    {
+      "declaration": "OAI.BorsukNine.hemisphereChart_contDiff",
+      "start_line": 42,
+      "end_line": 47,
+      "excerpt": "lemma hemisphereChart_contDiff (hw : ‖w‖ = 1) (he : ∀ v, ⟪w,e v⟫ = 0) :\n    ContDiff ℝ (⊤ : ℕ∞) (hemisphereChart w e) := by",
+      "problem": "The lemma is fixed at smoothness order `(⊤ : ℕ∞)`, but every lemma its proof uses (`contDiff_const`, `LinearIsometry.contDiff`, `ContDiff.norm`, `ContDiff.inv`, `ContDiff.smul`) works for an arbitrary order `n : ℕ∞ω`. That includes `ω`, i.e. analyticity. So the fixed exponent is narrower than the proof requires, and analyticity of the chart, a natural fact, cannot be obtained from this lemma.",
+      "proposed_change": "Generalise the order and keep the same proof:\n```lean\nomit [CompleteSpace E] [CompleteSpace W] in\nlemma hemisphereChart_contDiff {n : ℕ∞ω} (hw : ‖w‖ = 1) (he : ∀ v, ⟪w,e v⟫ = 0) :\n    ContDiff ℝ n (hemisphereChart w e) := by\n  have hc : ContDiff ℝ n (fun v => w + e v) := contDiff_const.add e.contDiff\n  exact (hc.norm ℝ (hemisphere_add_ne_zero w e hw he)).inv\n    (fun v => norm_ne_zero_iff.mpr (hemisphere_add_ne_zero w e hw he v)) |>.smul hc\n```\nThe proof uses the same chain: `ContDiff.norm` needs `hf : ContDiff ℝ n f` and `∀ x, f x ≠ 0`; `ContDiff.inv` needs `ContDiff 𝕜 n f` and `∀ x, f x ≠ 0`; `ContDiff.smul` combines the two `ContDiff 𝕜 n` facts. All three are stated for general `n`. The nonvanishing input still comes from `hemisphere_add_ne_zero`. The degenerate case `n = 0` (continuity) is covered too.\n\nOne caller needs attention. Most callers fix `n` by unification: `hf.comp (...)` against a `ContDiff ℝ (⊤ : ℕ∞)` hypothesis at ChartRegular.lean:65 and RegularBase.lean:28, and the expected `ContDiffAt ℝ (⊤ : ℕ∞)` type at ChartRegular.lean:36–41. But ChartRegular.lean:43 uses `(hemisphereChart_contDiff c d hc hd).continuous`, which does not determine `n`. That call would need an explicit order, e.g. `(hemisphereChart_contDiff (n := 0) c d hc hd).continuous`.",
+      "benefit": "With one lemma, users get every finite order and analyticity (`n = ω`) of the hemisphere chart directly, without `ContDiff.of_le` or a separate analyticity proof. This matches how Mathlib states the building blocks the proof uses. The mathematical content and the hypotheses stay the same.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/InnerProductSpace/Calculus.lean",
+          "declaration": "ContDiff.norm",
+          "excerpt": "theorem ContDiff.norm (hf : ContDiff ℝ n f) (h0 : ∀ x, f x ≠ 0) : ContDiff ℝ n fun y => ‖f y‖ :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/ContDiff/Operations.lean",
+          "declaration": "ContDiff.inv",
+          "excerpt": "theorem ContDiff.inv {f : E → 𝕜'} (hf : ContDiff 𝕜 n f) (h : ∀ x, f x ≠ 0) :\n    ContDiff 𝕜 n f⁻¹ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/ContDiff/Operations.lean",
+          "declaration": "ContDiff.smul",
+          "excerpt": "theorem ContDiff.smul {f : E → 𝕜'} {g : E → F} (hf : ContDiff 𝕜 n f) (hg : ContDiff 𝕜 n g) :\n    ContDiff 𝕜 n (f • g) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Calculus/ContDiff/Basic.lean",
+          "declaration": "LinearIsometry.contDiff",
+          "excerpt": "theorem LinearIsometry.contDiff (f : E →ₗᵢ[𝕜] F) : ContDiff 𝕜 n f :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/LocalParity/ChartRegular.lean",
+          "declaration": "hemisphere_transition_regular",
+          "excerpt": "(continuous_const.inner (hemisphereChart_contDiff c d hc hd).continuous).continuousAt"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 22383,
+    "cache_read_input_tokens": 116345,
+    "output_tokens": 7433,
+    "output_tokens_details": {
+      "thinking_tokens": 2811
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22383,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3392,
+        "cache_read_input_tokens": 23745,
+        "cache_creation_input_tokens": 2662,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2662
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.351049,
+  "duration_ms": 78318,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-21T15:59:03",
+  "unit": "file",
+  "source_sha256": "0df4b120b3f4abb3cb225117d383cfc1d6b31727e4cee5b97a8d099e84ca9668",
+  "rubric": "statement-generality"
+}

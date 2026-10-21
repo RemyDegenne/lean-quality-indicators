@@ -1,0 +1,85 @@
+{
+  "id": "openai-math-file-0075",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 512 lines and checked them for proof reasoning that is repeated across declarations. I also looked up `Localization.awayLift_mk` in Mathlib (`RingTheory/Localization/Away/Basic.lean`) and searched the sibling NumericalDimension files for other uses of `projectiveChartRingHom_mk` and `homogeneousFieldEval`.\n\nOnly one duplication looks worth extracting. `projectiveChartRingHom` and `homogeneousFieldEval` have the same definition, and their `_mk` lemmas repeat the same unfolding to `Localization.mk` followed by `awayLift_mk`. The first is a special case of the second, except that the base ring is general and the unit proof differs.\n\nOther candidates I rejected under the rubric:\n- `germ_scalar` and `germ_X` both apply `congr_fun A.germ_poly` and then `simpa`; this is short and routine.\n- `homogeneousFieldEval_awayMap` and `projectiveFieldMap_scaling` end with the same calc that cancels `u^n * u⁻¹^n`, but it is a short calculation.\n- The two surjectivity bullets in `exists_projectiveCurveCoordinates` already share the helper `polynomial_eval_surjective_of_contains`.\n- Several proofs repeat the `← Spec.map_comp; congr 1; hom_ext` pattern, which is routine categorical plumbing.\n\nThis finding is moderate in size: the shared lemma is a thin layer over `awayLift_mk`. What it removes is the repeated definition and the `change`-based unfolding of `Away.mk`. I could not compile the proposed replacement.",
+  "findings": [
+    {
+      "declaration": "projectiveChartRingHom / projectiveChartRingHom_mk (and homogeneousFieldEval / homogeneousFieldEval_mk, lines 360-369)",
+      "start_line": 213,
+      "end_line": 234,
+      "excerpt": "  change (Localization.awayLift (MvPolynomial.eval₂Hom c x) (MvPolynomial.X i)\n    (by simpa only [MvPolynomial.eval₂Hom_X', hi] using (isUnit_one : IsUnit (1 : R))))\n    (Localization.mk p ⟨MvPolynomial.X i ^ n, n, rfl⟩) = _",
+      "problem": "Two blocks repeat the same definition and computation lemma. `projectiveChartRingHom` (lines 213-219) and `homogeneousFieldEval` (lines 360-363) are both defined as `(Localization.awayLift h f _).comp (algebraMap _ (Localization.Away f))`. Their `_mk` lemmas (lines 225-234 and 364-369) both `change` `Away.mk` into `Localization.mk a ⟨f^n,n,rfl⟩` and then call `Localization.awayLift_mk`. The only differences are the codomain (any `CommRing R` with `h f = 1`, versus a field with `h f ≠ 0`) and the inverse passed to `awayLift_mk` (`1` versus `(h f)⁻¹`). Because the two are separate definitions, `projectiveFieldMap_eq_affine` (lines 446-451) has to relate them with `unfold … ; congr 2`, which relies on definitional unfolding.",
+      "proposed_change": "Add one general evaluation map and one computation lemma, before line 213 or in place of the block at line 360:\n\n```lean\nnoncomputable def homogeneousAwayEval (h : A →+* R) (f : A) (hf : IsUnit (h f)) :\n    HomogeneousLocalization.Away 𝒜 f →+* R :=\n  (Localization.awayLift h f hf).comp (algebraMap _ (Localization.Away f))\n\nlemma homogeneousAwayEval_mk (h : A →+* R) (f : A) (hf : IsUnit (h f))\n    {d : ℕ} (hfd : f ∈ 𝒜 d) (n : ℕ) (a : A) (ha : a ∈ 𝒜 (n • d))\n    (v : R) (hv : h f * v = 1) :\n    homogeneousAwayEval 𝒜 h f hf (Away.mk 𝒜 hfd n a ha) = h a * v ^ n := by\n  change (Localization.awayLift h f hf) (Localization.mk a ⟨f^n,n,rfl⟩) = _\n  exact Localization.awayLift_mk h f a v hv n\n```\n\nThe `exact` step uses proof irrelevance for the `IsUnit` argument, as both current proofs already do.\n\nThen rewrite the two uses:\n- `homogeneousFieldEval 𝒜 h f hf := homogeneousAwayEval 𝒜 h f (isUnit_iff_ne_zero.mpr hf)`, with `homogeneousFieldEval_mk … := homogeneousAwayEval_mk 𝒜 h f _ hfd n a ha (h f)⁻¹ (mul_inv_cancel₀ hf)`.\n- `projectiveChartRingHom c x i hi := homogeneousAwayEval (MvPolynomial.homogeneousSubmodule σ k) (MvPolynomial.eval₂Hom c x) (MvPolynomial.X i) (by simp [hi])`, with `projectiveChartRingHom_mk` proved by `simpa using homogeneousAwayEval_mk _ _ _ _ (MvPolynomial.isHomogeneous_X k i) n p hp 1 (by simp [hi])`.\n\nThe local `gradedAlgebra` instance already supplies the `GradedRing` hypothesis for the MvPolynomial grading. The callers in this file and in SurfaceSquare, CompleteIntersections and ProjectiveCoordinates keep their current statements.",
+      "benefit": "The localization-unfolding `change` and the `awayLift_mk` call would appear once instead of twice. Readers would see directly that the affine chart map and the field-valued map are the same construction with different unit witnesses. `projectiveFieldMap_eq_affine` would reduce to proof irrelevance on the unit argument instead of an `unfold`/`congr 2` that depends on definitional unfolding. Any later change to how `Away` is unfolded would need to be made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.homogeneousFieldEval_mk",
+          "excerpt": "  change (Localization.awayLift h f (isUnit_iff_ne_zero.mpr hf))\n    (Localization.mk a ⟨f^n,n,rfl⟩) = _\n  exact Localization.awayLift_mk h f a (h f)⁻¹ (mul_inv_cancel₀ hf) n"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.homogeneousFieldEval",
+          "excerpt": "  (Localization.awayLift h f (isUnit_iff_ne_zero.mpr hf)).comp\n    (algebraMap _ (Localization.Away f))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/Localization/Away/Basic.lean",
+          "declaration": "Localization.awayLift_mk",
+          "excerpt": "    (a : R) (v : A) (hv : f r * v = 1) (j : ℕ) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/NumericalDimension/CurveCoordinates.lean",
+          "declaration": "OAI.NumericalDimensionOne.projectiveFieldMap_eq_affine",
+          "excerpt": "  unfold projectiveFieldMap projectiveAffineMap\n  congr 2"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 29704,
+    "cache_read_input_tokens": 87507,
+    "output_tokens": 6180,
+    "output_tokens_details": {
+      "thinking_tokens": 2382
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29704,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3788,
+        "cache_read_input_tokens": 32347,
+        "cache_creation_input_tokens": 1286,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1286
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.37876540000000003,
+  "duration_ms": 55808,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-21T15:38:58",
+  "unit": "file",
+  "source_sha256": "bc944b38a7f78265930c550938f48cc2a0be622227f457149e460cfb09aa6713",
+  "rubric": "repeated-proof-machinery"
+}
