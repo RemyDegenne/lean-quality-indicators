@@ -1,5 +1,40 @@
 # Findings
 
+### concept-reinvention: [Mathlib/Data/DFinsupp/Interval.lean](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/Data/DFinsupp/Interval.lean#L83-L86)
+
+Declaration: `DFinsupp.singleton`
+
+`singleton` is the pointwise postcomposition of `f` with `Finset.singleton`. It rebuilds the support data by hand (`support'.map ...`). That is exactly what `DFinsupp.mapRange` already does for any family of maps `β₁ i → β₂ i` that preserve zero. Here the zero-preservation is `{0} = 0` in `Finset`, which holds under the `Pointwise` scope the file opens.
+
+Proposed change:
+
+Define `singleton f := DFinsupp.mapRange (fun i (a : α i) => ({a} : Finset (α i))) (fun i => singleton_zero) f`, or `Finset.singleton_zero` if that is the actual name. Then derive `mem_singleton_apply_iff` from `mapRange_apply`, which is `rfl`. The manual support proof goes away. You could also drop the bespoke definition. It is only used by the one lemma that follows it, which is unused elsewhere in Mathlib.
+
+Benefit: This removes a hand-written `support'` proof and ties `singleton` to the standard API (`mapRange_apply`, `mapRange` lemmas). A reader no longer has to re-verify the support argument.
+
+Source evidence:
+
+- `DFinsupp.mapRange` in `/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/DFinsupp/Defs.lean`: def mapRange (f : ∀ i, β₁ i → β₂ i) (hf : ∀ i, f i 0 = 0) (x : Π₀ i, β₁ i) : Π₀ i, β₂ i :=
+- `Finset.singleton_one (additive: singleton_zero)` in `/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Group/Pointwise/Finset/Basic.lean`: theorem singleton_one : ({1} : Finset α) = 1 :=
+
+### concept-reinvention: [Mathlib/Data/DFinsupp/Interval.lean](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/Data/DFinsupp/Interval.lean#L98-L110)
+
+Declaration: `DFinsupp.rangeIcc`
+
+`rangeIcc f g` is the pointwise binary combination `i ↦ Icc (f i) (g i)` of two `DFinsupp`s. `DFinsupp.zipWith` already provides this, including the support proof (`xs + ys` with the `bind`/`map` structure). The file re-proves that construction by hand with `Multiset.notMem_mono` and `le_add_left/right`. The only side condition is `Icc 0 0 = 0`, i.e. `Icc_self 0` and the pointwise `{0} = 0` for `Finset`. The file's own proof already ends with `Icc_self _`.
+
+Proposed change:
+
+Define `rangeIcc f g := DFinsupp.zipWith (fun i (a b : α i) => Icc a b) (fun i => by simpa using Icc_self (0 : α i)) f g` (or a proof using `Icc_self` and `Finset.singleton_zero`). `rangeIcc_apply` stays `rfl` via `zipWith_apply`. The explicit multiset support proof can then be deleted.
+
+Benefit: This is about 10 fewer lines of low-level `Multiset` reasoning. It reuses the standard `zipWith` construction and API. The `rangeIcc` definition now reads like its `Finsupp` counterpart, which is also a pointwise `Icc`.
+
+Source evidence:
+
+- `DFinsupp.zipWith` in `/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/DFinsupp/Defs.lean`: def zipWith (f : ∀ i, β₁ i → β₂ i → β i) (hf : ∀ i, f i 0 0 = 0) (x : Π₀ i, β₁ i) (y : Π₀ i, β₂ i) :
+- `DFinsupp.zipWith_apply` in `/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/DFinsupp/Defs.lean`: mapRange f hf g i = f i (g i)
+- `DFinsupp.zipWith_apply` in `/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/DFinsupp/Defs.lean`: zipWith f hf g₁ g₂ i = f i (g₁ i) (g₂ i) :=
+
 ### vacuity-and-misstatement: [Mathlib/Data/Finsupp/PWO.lean](https://github.com/leanprover-community/mathlib4/blob/e3e75e86143b43849829fdcd44a39a6b0fe35234/Mathlib/Data/Finsupp/PWO.lean#L20-L21)
 
 Declaration: `module docstring (Main statements) vs Finsupp.wellQuasiOrderedLE`
@@ -33,3 +68,20 @@ Source evidence:
 
 - `TauCeti.smulGradedDimension_gradedIdempotentHead` in `/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Category/GradedModuleCat/Idempotent/Head.lean`: (gradedPositiveMulQuotient 𝒜 (he₀ i)).smulGradedDimension (e j) = if j = i then 1 else 0
 - `TauCeti.gradedSimpleClassBasis` in `/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Category/GradedModuleCat/CartanMap/SimpleBasis.lean`: (hne : Pairwise fun i j => (S j).obj.smulGradedDimension (e i) = 0)
+
+### readable-proof-simplification: [TauCeti/Algebra/Category/GradedModuleCat/CartanMap/Idempotent/Head.lean](https://github.com/TauCetiProject/TauCeti/blob/e8b7b600c36c975615413059bc967ec218cfefe0/TauCeti/Algebra/Category/GradedModuleCat/CartanMap/Idempotent/Head.lean#L69-L79)
+
+Declaration: `TauCeti.gradedIdempotentHeadBasis_apply and TauCeti.gradedIdempotentHeadBasis_repr_apply`
+
+Each of the two lemmas has a proof that is just `by exact <term>`. The `by exact` wrapper adds a tactic block around what is already a complete term proof. The upstream lemmas `gradedSimpleClassBasis_apply` and `gradedSimpleClassBasis_repr_apply` are themselves stated as term proofs or plain rewrites, so the wrapper adds nothing.
+
+Proposed change:
+
+Write the proofs as terms. For the first lemma, replace `:= by\n  exact gradedSimpleClassBasis_apply _ _ _ _ _ _ i` with `:=\n  gradedSimpleClassBasis_apply _ _ _ _ _ _ i`. For the second lemma, replace `:= by\n  exact gradedSimpleClassBasis_repr_apply _ _ _ _ _ _ x i` with `:=\n  gradedSimpleClassBasis_repr_apply _ _ _ _ _ _ x i`.
+
+Benefit: The proofs read directly as "this is the general lemma specialised to the head family". There is no tactic-mode noise, and the style matches the term-mode proof of the upstream lemma `gradedSimpleClassBasis_apply`.
+
+Source evidence:
+
+- `TauCeti.gradedSimpleClassBasis_apply` in `/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Category/GradedModuleCat/CartanMap/SimpleBasis.lean`:   Module.Basis.mk_apply _ _ i
+- `TauCeti.gradedSimpleClassBasis_repr_apply` in `/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Category/GradedModuleCat/CartanMap/SimpleBasis.lean`: gradedIdempotentCoordinate (he i) (he₀ i) x := by
