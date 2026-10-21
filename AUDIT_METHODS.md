@@ -78,10 +78,11 @@ join the first pass in the comparison reports; they are not repeat judgments.
 All 42 dependencies are pinned to the source manifest and available as read-only sources.
 
 The DeepSeek pilot uses DeepSeek V4.1 Flash through OpenRouter, pinned to
-DeepInfra FP8 with fallbacks disabled. Costs are the billed `usage.cost` returned for every
+InferenceNet FP8 with fallbacks disabled. The first five accepted judgments used
+DeepInfra FP8; one resumed judgment spans both providers, recorded per generation. Costs are the billed `usage.cost` returned for every
 request, including failed judgment attempts. One worker selects 100 theorems per library
 for each theorem audit and 10 files per library for each file audit (1,440 judgments).
-The endpoint has flat rates below DeepSeek’s own off-peak prices, so no off-peak wait is needed.
+The endpoint has flat rates, so no off-peak wait is needed.
 A persistent $20 inference budget reserves conservative peak-rate input and maximum
 output costs before each request; uncertain requests retain their reservation.
 
@@ -91,3 +92,12 @@ gets at most three attempts. Resuming a worker preserves previous attempt transc
 and their expenditure. Invalid file evidence never becomes an accepted judgment:
 missing evidence files are retryable validation failures, and targets that exhaust
 validation retries remain unanswered while the worker continues other targets.
+
+After diagnosing DeepInfra shared-pool overloads, the pilot moved to InferenceNet FP8.
+The harness now resumes the same paid session after interruption, including its exact
+source-tool outputs. It preserves one representation of the model's reasoning context,
+supplies the actual source working directory, and reserves a final JSON phase after
+32 source-inspection turns, with at most three finalization/validation attempts.
+These are recorded harness changes; the audit rubrics and selected targets are unchanged.
+Twenty successful API requests halve elevated spacing back toward the ten-second floor.
+Unsettled requests retain their conservative budget reservation and are not called spend.

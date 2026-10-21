@@ -49,7 +49,7 @@ def selection():
     return sorted(tasks, key=lambda task: task["order"])
 
 
-def prepare():
+def prepare(accept_harness_update=False):
     BASE.mkdir(parents=True, exist_ok=True)
     tasks = selection()
     checked = set()
@@ -82,10 +82,20 @@ def prepare():
                     "artifacts": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in ind.iterdir() if p.is_file()},
                     "source_runs": sorted({task["run"] for task in selected}),
                     "max_output_tokens_per_request": backend.MAX_OUTPUT,
-                    "max_turns_per_judgment": 80, "judgment_admission_limit_usd": .50}
+                    "max_tool_turns_per_judgment": backend.MAX_TOOL_TURNS,
+                    "max_final_attempts": backend.MAX_FINAL_ATTEMPTS,
+                    "resumable_sessions": True, "judgment_admission_limit_usd": .50}
         manifest = directory / "judge.json"
         if manifest.exists() and json.loads(manifest.read_text())["protocol"] != protocol:
-            raise ValueError("Saved pilot protocol changed; use --update-runner-only for plumbing changes")
+            if not accept_harness_update:
+                raise ValueError("Saved pilot protocol changed; inspect and explicitly accept the harness update")
+            value = json.loads(manifest.read_text())
+            value.setdefault("protocol_history", []).append({"protocol": value["protocol"],
+                "accepted_ids": sorted(p.stem for p in (directory / "results").glob("*.json") if p.stem.rsplit("-", 1)[-1].isdigit()),
+                "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "reason": "Repair DeepSeek harness: switch overloaded DeepInfra FP8 to InferenceNet FP8, resume paid tool sessions, supply working directory, reserve final JSON phase after 32 source turns, and repair invalid JSON/evidence. Audit prompts, source snapshots and selected targets unchanged."})
+            value["protocol"] = protocol
+            backend.write_json(manifest, value)
         if not manifest.exists():
             backend.write_json(manifest, {"protocol": protocol})
     return tasks
@@ -157,11 +167,12 @@ def main():
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--update-runner-only", action="store_true")
     parser.add_argument("--budget", default="20")
+    parser.add_argument("--accept-harness-update", action="store_true")
     args = parser.parse_args()
     if args.update_runner_only:
         update_runner()
         return
-    tasks = prepare()
+    tasks = prepare(args.accept_harness_update)
     budget = backend.Budget(BASE / "budget.json", args.budget)
     if args.prepare_only:
         status("prepared", tasks, budget)
@@ -175,7 +186,8 @@ def main():
         for task in tasks:
             if (ROOT / task["output"] / "results" / f"{task['row']['id']}.json").exists():
                 continue
-            done = status("running", tasks, budget, failures=failures)
+            done = status("running", tasks, budget, failures=failures,
+                          current_audit=task["audit"], current_id=task["row"]["id"])
             while backend.PROVIDER == "DeepSeek" and (done >= 36 or float(budget.read()["billed_usd"]) >= 1) and not off_peak(datetime.datetime.now(datetime.timezone.utc)):
                 status("waiting-for-off-peak", tasks, budget, failures=failures, resume_utc_hour=10)
                 time.sleep(30)
@@ -194,10 +206,13 @@ def main():
                 failures.append({"audit": task["audit"], "id": task["row"]["id"], "error": str(error)})
                 print(json.dumps({"failed": failures[-1]}), flush=True)
                 status("failed", tasks, budget, failures=failures)
-                return  # Inspect a failed calibration before spending more.
+                backend.write_json(ROOT / task["output"] / "results" / f"{task['row']['id']}.failure.json", failures[-1])
+                continue  # Preserve rejection and let other selected targets complete.
+            (ROOT / task["output"] / "results" / f"{task['row']['id']}.failure.json").unlink(missing_ok=True)
             status("running", tasks, budget, failures=failures)
             time.sleep(10)
-        status("complete", tasks, budget, failures=failures)
+        done = status("running", tasks, budget, failures=failures)
+        status("complete" if done == len(tasks) else "incomplete", tasks, budget, failures=failures)
 
 
 if __name__ == "__main__":

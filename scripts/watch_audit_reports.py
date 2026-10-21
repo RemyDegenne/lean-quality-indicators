@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def save(path, value):
-    temporary = path.with_suffix(".tmp")
+    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
     temporary.write_text(json.dumps(value, indent=2) + "\n")
     temporary.replace(path)
 
@@ -53,6 +53,31 @@ def supervise(info, status_path, command, log_path):
     return True
 
 
+def deepseek_health(base):
+    """A live status snapshot from the request ledger, even within a long judgment."""
+    status_path = base / "status.json"
+    budget_path = base / "budget.json"
+    if not status_path.exists() or not budget_path.exists():
+        return
+    status = json.loads(status_path.read_text())
+    budget = json.loads(budget_path.read_text())
+    requests = budget.get("requests", [])
+    status.update(billed_usd=budget["billed_usd"],
+                  request_spacing_seconds=budget.get("request_spacing_seconds", 10),
+                  rate_limit_count=budget.get("rate_limit_count", 0),
+                  request_count=len(requests),
+                  unsettled_reservation_usd=sum(float(r["reserved_usd"]) for r in requests if r["billed_usd"] is None),
+                  health_checked_epoch=time.time())
+    if requests:
+        status["latest_request_utc"] = requests[-1]["utc"]
+        status["latest_request_target"] = requests[-1]["target"]
+    if budget.get("not_before", 0) > time.time():
+        status["cooldown_until_epoch"] = budget["not_before"]
+    else:
+        status.pop("cooldown_until_epoch", None)
+    save(status_path, status)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--interval", type=int, default=300)
@@ -80,6 +105,7 @@ def main():
                 active |= supervise(info, deepseek / "status.json",
                     [sys.executable, "-u", "scripts/deepseek_pilot.py"], deepseek / "worker.log")
                 save(deepseek / "launch.json", info)
+                deepseek_health(deepseek)
             if not active:
                 return
             time.sleep(args.interval)

@@ -9,12 +9,15 @@ import shlex
 import time
 import urllib.error
 import urllib.request
+import subprocess
 
 from source_tools import Sources, tools
 
 MODEL = "deepseek/deepseek-v4.1-flash-1017"
-PROVIDER = "DeepInfra"
-PROVIDER_SLUG = "deepinfra/fp8"
+PROVIDER = "InferenceNet"
+PROVIDER_SLUG = "inference-net/fp8"
+MAX_TOOL_TURNS = 32
+MAX_FINAL_ATTEMPTS = 3
 MAX_OUTPUT = 32768
 PEAK_INPUT = Decimal("0.30") / 1_000_000
 PEAK_OUTPUT = Decimal("1.20") / 1_000_000
@@ -30,7 +33,7 @@ class RateLimited(RuntimeError):
 
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
+    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
     temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
     temporary.replace(path)
 
@@ -96,9 +99,21 @@ class Budget:
             fcntl.flock(lock, fcntl.LOCK_EX)
             state = self.read()
             count = state.get("rate_limit_count", 0) + 1
-            state.update(rate_limit_count=count,
+            level = state.get("backoff_level", 0) + 1
+            state.update(rate_limit_count=count, success_streak=0, backoff_level=level,
                 request_spacing_seconds=min(120, state.get("request_spacing_seconds", 10) * 2),
-                not_before=time.time() + min(1800, 300 * 2 ** min(count - 1, 3)))
+                not_before=time.time() + min(1800, 300 * 2 ** min(level - 1, 3)))
+            write_json(self.path, state)
+
+    def succeeded(self):
+        with self.path.with_suffix(".lock.log").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            state = self.read()
+            state["success_streak"] = state.get("success_streak", 0) + 1
+            if state["success_streak"] >= 20:
+                state["request_spacing_seconds"] = max(10, state.get("request_spacing_seconds", 10) / 2)
+                state["success_streak"] = 0
+                state["backoff_level"] = 0
             write_json(self.path, state)
 
     def settle(self, number, response):
@@ -143,6 +158,7 @@ def request_once(payload, key, budget, target, transcript):
     transcript.write(json.dumps({"type": "api_response", "budget_request": number, "response": response}) + "\n")
     transcript.flush()
     amount = budget.settle(number, response)
+    budget.succeeded()
     if response.get("provider", "").casefold() != PROVIDER.casefold():
         raise RuntimeError("Unexpected provider; judgment discarded")
     if response.get("error"):
@@ -171,6 +187,67 @@ def parse_verdict(text):
         raise
 
 
+def assistant_message(message):
+    # OpenRouter accepts either reasoning_details or reasoning, not duplicated copies.
+    result = {k: v for k, v in message.items() if k in ["role", "content", "tool_calls"]}
+    if message.get("reasoning_details"):
+        result["reasoning_details"] = message["reasoning_details"]
+    elif message.get("reasoning") or message.get("reasoning_content"):
+        result["reasoning"] = message.get("reasoning") or message["reasoning_content"]
+    return result
+
+
+def restore_session(path, messages, sources, budget=None):
+    """Replay already-billed responses and saved tool outputs; never repeat inference."""
+    pending = []
+    responses = []
+    final_attempts = 0
+    events = []
+    if path.exists():
+        lines = path.read_text().splitlines(keepends=True)
+        for index, line in enumerate(lines):
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                if index != len(lines) - 1 or line.endswith("\n"):
+                    raise ValueError("Corrupt session transcript; refusing to discard billed history")
+                # A process can die halfway through the last JSONL write.
+                path.write_text("".join(lines[:index]))
+    for event in events:
+        if event.get("type") == "api_response":
+            response = event["response"]
+            if budget is not None and event.get("budget_request") is not None:
+                number = event["budget_request"]
+                if budget.read()["requests"][number]["billed_usd"] is None:
+                    budget.settle(number, response)
+            if response.get("error") or not response.get("choices"):
+                continue
+            assistant = response["choices"][0]["message"]
+            messages.append(assistant_message(assistant))
+            pending = list(assistant.get("tool_calls") or [])
+            responses.append(response)
+        elif event.get("type") == "source_tool" and pending:
+            call = pending.pop(0)
+            messages.append({"role": "tool", "tool_call_id": call["id"], "content": event["result"]})
+        elif event.get("type") == "harness_message":
+            messages.append(event["message"])
+            final_attempts += int(event.get("finalization", False))
+    return responses, pending, final_attempts
+
+
+def run_tools(calls, sources, messages, transcript):
+    for call in calls:
+        function = call["function"]
+        try:
+            value = sources.call(function["name"], json.loads(function["arguments"]))
+        except (ValueError, OSError, KeyError, subprocess.TimeoutExpired) as error:
+            value = "Source tool error: " + str(error)
+        transcript.write(json.dumps({"type": "source_tool", "name": function["name"],
+            "arguments": function["arguments"], "tool_call_id": call["id"], "result": value}) + "\n")
+        transcript.flush()
+        messages.append({"role": "tool", "tool_call_id": call["id"], "content": value})
+
+
 def judge(row, ind, cwd, dirs, message, out, key, budget, validate):
     schema = json.loads((ind / "schema.json").read_text())
     messages = [{"role": "system", "content": (ind / "prompt.md").read_text()},
@@ -178,55 +255,86 @@ def judge(row, ind, cwd, dirs, message, out, key, budget, validate):
     available = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
                   "parameters": t["inputSchema"]}} for t in tools()]
     sources = Sources([cwd, *dirs.values()])
-    billed = Decimal(0)
-    usage = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "reasoning_output_tokens": 0}
     started = time.monotonic()
     out.mkdir(parents=True, exist_ok=True)
     attempt = 1
-    while (out / f"{row['id']}.attempt-{attempt}.transcript.jsonl").exists():
+    while (out / f"{row['id']}.attempt-{attempt + 1}.transcript.jsonl").exists():
         attempt += 1
-    generations = []
-    with (out / f"{row['id']}.attempt-{attempt}.transcript.jsonl").open("a") as transcript:
-        for turn in range(80):
+    path = out / f"{row['id']}.attempt-{attempt}.transcript.jsonl"
+    if path.exists() and any('"type": "judgment_failure"' in line for line in path.read_text().splitlines()):
+        attempt += 1
+        path = out / f"{row['id']}.attempt-{attempt}.transcript.jsonl"
+    responses, pending, final_attempts = restore_session(path, messages, sources, budget)
+    restored_answer = responses[-1] if responses and messages[-1].get("role") == "assistant" and not responses[-1]["choices"][0]["message"].get("tool_calls") else None
+    with path.open("a") as transcript:
+        run_tools(pending, sources, messages, transcript)
+        # Supply the working-directory information CLI harnesses provide implicitly.
+        if not responses:
+            value = {"role": "user", "content": f"The source working directory is {cwd}. Relative tool paths resolve there."}
+            messages.append(value)
+            transcript.write(json.dumps({"type": "harness_message", "message": value}) + "\n")
+            transcript.flush()
+        while True:
+            billed = sum((Decimal(str(r["usage"]["cost"])) for r in responses), Decimal(0))
             if billed >= Decimal("0.50"):
+                transcript.write(json.dumps({"type": "judgment_failure", "reason": "judgment cost admission limit"}) + "\n")
+                transcript.flush()
                 raise RuntimeError("Judgment reached its $0.50 admission limit without a valid verdict")
+            final = len(responses) >= MAX_TOOL_TURNS or final_attempts > 0
+            if final and final_attempts == 0 and restored_answer is None:
+                value = {"role": "user", "content": "The source-inspection allowance is exhausted. Return your final JSON judgment now using the evidence already collected. Apply the rubric's standard of evidence; do not invent findings."}
+                messages.append(value)
+                transcript.write(json.dumps({"type": "harness_message", "message": value, "finalization": True}) + "\n")
+                transcript.flush()
+                final_attempts = 1
             payload = {"model": MODEL, "provider": {"only": [PROVIDER_SLUG], "allow_fallbacks": False,
-                       "require_parameters": True, "max_price": {"prompt": .098, "completion": .294}},
-                       "messages": messages, "tools": available, "tool_choice": "auto",
+                       "require_parameters": True, "max_price": {"prompt": .08, "completion": .50}},
+                       "messages": messages, "tools": available, "tool_choice": "none" if final else "auto",
                        "reasoning": {"effort": "high"}, "max_tokens": MAX_OUTPUT,
                        "response_format": {"type": "json_object"}, "stream": False}
-            response, cost = request(payload, key, budget, row["id"], transcript)
-            billed += cost
-            generations.append(response["id"])
-            u = response["usage"]
-            usage["input_tokens"] += u.get("prompt_tokens", 0)
-            usage["cached_input_tokens"] += u.get("prompt_tokens_details", {}).get("cached_tokens", 0)
-            usage["output_tokens"] += u.get("completion_tokens", 0)
-            usage["reasoning_output_tokens"] += u.get("completion_tokens_details", {}).get("reasoning_tokens", 0)
-            choice = response["choices"][0]
-            assistant = choice["message"]
-            # Preserve provider reasoning fields across tool turns.
-            messages.append({k: v for k, v in assistant.items() if k in
-                ["role", "content", "tool_calls", "reasoning", "reasoning_content", "reasoning_details"]})
+            if restored_answer is None:
+                response, cost = request(payload, key, budget, row["id"], transcript)
+                responses.append(response)
+                assistant = response["choices"][0]["message"]
+                messages.append(assistant_message(assistant))
+            else:
+                response, restored_answer = restored_answer, None
+                assistant = response["choices"][0]["message"]
             calls = assistant.get("tool_calls") or []
-            if not calls:
-                if choice.get("finish_reason") == "length":
-                    raise RuntimeError("Output token allowance exhausted; no judgment saved")
+            if calls and not final:
+                run_tools(calls, sources, messages, transcript)
+                continue
+            try:
+                if calls:
+                    raise ValueError("Provider returned tools when tool_choice was none")
+                if response["choices"][0].get("finish_reason") == "length":
+                    raise ValueError("Output allowance exhausted before final JSON")
                 verdict = parse_verdict(assistant.get("content") or "")
                 validate(verdict, ind)
-                return {"id": row["id"], "lib": row["lib"], **verdict, "backend": "openrouter",
-                        "model": MODEL, "provider": PROVIDER, "effort": "high", "usage": usage,
-                        "cost_usd": float(billed), "generation_ids": generations, "attempts": attempt,
-                        "turns": turn + 1, "duration_ms": round((time.monotonic() - started) * 1000),
-                        "judged": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
-            for call in calls:
-                function = call["function"]
-                try:
-                    value = sources.call(function["name"], json.loads(function["arguments"]))
-                except (ValueError, OSError, KeyError) as error:
-                    value = "Source tool error: " + str(error)
-                transcript.write(json.dumps({"type": "source_tool", "name": function["name"],
-                                               "arguments": function["arguments"], "result": value}) + "\n")
+            except (ValueError, KeyError, TypeError) as error:
+                if final_attempts >= MAX_FINAL_ATTEMPTS:
+                    transcript.write(json.dumps({"type": "judgment_failure", "reason": str(error)}) + "\n")
+                    transcript.flush()
+                    raise RuntimeError(f"Invalid verdict after repair attempts: {error}") from error
+                # Keep the original judgment and its sources; ask the model to repair invalid evidence.
+                value = {"role": "user", "content": f"The proposed JSON failed validation: {error}. Return corrected final JSON using only verified evidence. Do not fabricate quotations, line numbers or source paths."}
+                messages.append(value)
+                transcript.write(json.dumps({"type": "harness_message", "message": value, "finalization": True}) + "\n")
                 transcript.flush()
-                messages.append({"role": "tool", "tool_call_id": call["id"], "content": value})
-    raise RuntimeError("Judgment exhausted its tool-turn allowance; no judgment saved")
+                final_attempts += 1
+                continue
+            usage = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "reasoning_output_tokens": 0}
+            for r in responses:
+                u = r["usage"]
+                usage["input_tokens"] += u.get("prompt_tokens", 0)
+                usage["cached_input_tokens"] += u.get("prompt_tokens_details", {}).get("cached_tokens", 0)
+                usage["output_tokens"] += u.get("completion_tokens", 0)
+                usage["reasoning_output_tokens"] += u.get("completion_tokens_details", {}).get("reasoning_tokens", 0)
+            providers = sorted({r.get("provider", PROVIDER) for r in responses})
+            return {"id": row["id"], "lib": row["lib"], **verdict, "backend": "openrouter",
+                    "model": MODEL, "provider": PROVIDER, "providers": providers, "effort": "high", "usage": usage,
+                    "cost_usd": float(sum((Decimal(str(r["usage"]["cost"])) for r in responses), Decimal(0))),
+                    "generation_ids": [r["id"] for r in responses], "attempts": attempt,
+                    "harness_version": 2, "max_tool_turns": MAX_TOOL_TURNS,
+                    "turns": len(responses), "duration_ms": round((time.monotonic() - started) * 1000),
+                    "judged": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
