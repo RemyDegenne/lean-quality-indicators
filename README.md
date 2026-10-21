@@ -151,6 +151,14 @@ Opus has no Mathlib baseline. Because the prompt adds self-match and circularity
 this is an explicitly modified replication. A success marker is written only when every
 selected judgment and report is complete. Resuming skips saved verdicts.
 
+### Small pilot of eight file quality audits
+
+The [file quality suite](audits/file-quality-v1/README.md) reviews the same ten complete
+files each from Mathlib, Tau Ceti and Lean Pool against eight separate rubrics. The initial
+judge is Sonnet 5.5 at high effort, with two sessions total (240 independent judgments).
+Samples, protocol snapshots and model results are separated so coverage and models can
+be expanded without replacing the pilot data.
+
 ## Results so far: unnecessary hypotheses
 
 400 theorems per library:
