@@ -216,17 +216,20 @@ def main():
     args = parser.parse_args()
     if args.resamples < 100:
         parser.error("Use at least 100 bootstrap resamples")
-    links = []
+    sections = []
     for audit, is_file in [("unnecessary-hypotheses", False), ("duplicates-mathlib-inclusive", False), *[(r, True) for r in RUBRICS]]:
         run = FILES if is_file else MAIN
         samples = {s["id"]: s for s in map(json.loads, (run / "samples.jsonl").read_text().splitlines())}
         path = make_report(audit, run / audit, samples, is_file, args.resamples)
-        links.append(f"- [{audit}]({path.relative_to(ROOT).as_posix()})")
+        section = path.read_text().split("## All libraries\n", 1)[1].split("\n## ", 1)[0].strip()
+        note = ("Opus uses the earlier prompt on four libraries, without Mathlib targets.\n\n"
+                if audit == "duplicates-mathlib-inclusive" else "")
+        sections.append(f"## {audit}\n\n[Library breakdowns]({path.relative_to(ROOT).as_posix()})\n\n" + note + section)
         print(path.relative_to(ROOT), flush=True)
-    (ROOT / "AUDIT_RESULTS.md").write_text("# Audit results\n\nCoverage, passes, flag counts, API-equivalent expenditure / full-pass estimates, "
-        "and correlation matrices, with per-library breakdowns and 95% intervals. "
-        "Run `python3 scripts/audit_dashboard.py` to refresh from accepted judgments.\n\n" + "\n".join(links) +
-        "\n\n[Methods and notation](AUDIT_METHODS.md) · [API-equivalent costs](runs/main/api-equivalent-costs.md).\n")
+    (ROOT / "AUDIT_RESULTS.md").write_text("# Audit results\n\n" +
+        f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · " +
+        "[Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).\n\n" +
+        "All eight audits, each combining its libraries.\n\n" + "\n\n".join(sections) + "\n")
 
 
 if __name__ == "__main__":

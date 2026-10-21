@@ -1,6 +1,6 @@
 # readable-proof-simplification
 
-Generated 2026-10-21T05:24:41+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-21T05:27:13+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## All libraries
 
@@ -9,15 +9,15 @@ Full-pass reference: **30 targets**.
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Sonnet | 30 | 1/1 | 30/30 | 24 | 24 | 80.0% [62.7%, 90.5%] | $3.52 / $3.52 |
-| Luna | 30 | 0/1 | 23/30 | 8 | 8 | 34.8% [18.8%, 55.1%] | $0.10 / $0.13 |
+| Luna | 30 | 0/1 | 24/30 | 9 | 9 | 37.5% [21.2%, 57.3%] | $0.10 / $0.12 |
 | GLM | 30 | 0/1 | 0/30 | 0 | 0 | — | $0.00 / — |
 
 ### Correlation matrix
 
 | Model | Sonnet | Luna | GLM |
 |---|---:|---:|---:|
-| Sonnet | — | 0.38 [0.18, 0.59]; n=23 | — |
-| Luna | 0.38 [0.18, 0.59]; n=23 | — | — |
+| Sonnet | — | 0.40 [0.19, 0.61]; n=24 | — |
+| Luna | 0.40 [0.19, 0.61]; n=24 | — | — |
 | GLM | — | — | — |
 
 Coverage annotations: Sonnet: 0 partial, 0 not applicable; Luna: 0 partial, 0 not applicable; GLM: 0 partial, 0 not applicable.
@@ -69,15 +69,15 @@ Full-pass reference: **10 targets**.
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Sonnet | 10 | 1/1 | 10/10 | 9 | 9 | 90.0% [59.6%, 98.2%] | $1.54 / $1.54 |
-| Luna | 10 | 0/1 | 7/10 | 4 | 4 | 57.1% [25.0%, 84.2%] | $0.04 / $0.06 |
+| Luna | 10 | 0/1 | 8/10 | 5 | 5 | 62.5% [30.6%, 86.3%] | $0.04 / $0.05 |
 | GLM | 10 | 0/1 | 0/10 | 0 | 0 | — | $0.00 / — |
 
 ### Correlation matrix
 
 | Model | Sonnet | Luna | GLM |
 |---|---:|---:|---:|
-| Sonnet | — | 0.47 [—]; n=7 | — |
-| Luna | 0.47 [—]; n=7 | — | — |
+| Sonnet | — | 0.49 [—]; n=8 | — |
+| Luna | 0.49 [—]; n=8 | — | — |
 | GLM | — | — | — |
 
 Coverage annotations: Sonnet: 0 partial, 0 not applicable; Luna: 0 partial, 0 not applicable; GLM: 0 partial, 0 not applicable.

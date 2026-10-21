@@ -20,7 +20,7 @@ def main():
     with (ROOT / "runs/main/audit-reports-lock.log").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         while True:
-            for script in ["audit_dashboard.py", "api_costs.py"]:
+            for script in ["audit_dashboard.py", "api_costs.py", "order_model_tables.py"]:
                 subprocess.run([sys.executable, str(ROOT / "scripts" / script)], cwd=ROOT, check=True)
             glm = json.loads((ROOT / "runs/main/pi-glm-pilot/status.json").read_text())
             luna = json.loads((ROOT / "runs/file-quality-pilot-2026-10-21/reports/gpt-6-luna-high/status.json").read_text())

@@ -2,13 +2,13 @@
 
 Same first sampled theorems; one blind high-effort pass per model. Cells show positive judgments / completed judgments. No missing judgment is counted as negative.
 
-| Library | Sol | Luna | Sonnet | GLM |
-|---|---:|---:|---:|---:|
-| Mathlib | 0/10 | 0/10 | 0/10 | 0/1 |
-| Tau Ceti | 3/10 | 3/10 | 1/10 | 0/1 |
-| Lean Pool | 2/10 | 3/10 | 1/10 | 1/1 |
-| FLT (Anthropic) | 2/10 | 0/10 | 1/10 | 0/1 |
-| Formal Frontier | 1/10 | 1/10 | 1/10 | 0/0 |
+| Library | Sol | Sonnet | Luna | GLM |
+| --- | ---: | ---: | ---: | ---: |
+| Mathlib | 0/10 | 0/10 | 0/10 | 0/2 |
+| Tau Ceti | 3/10 | 1/10 | 3/10 | 0/1 |
+| Lean Pool | 2/10 | 1/10 | 3/10 | 1/1 |
+| FLT (Anthropic) | 2/10 | 1/10 | 0/10 | 0/1 |
+| Formal Frontier | 1/10 | 1/10 | 1/10 | 0/1 |
 
 ## Pairwise agreement
 
@@ -28,29 +28,29 @@ Pairs use only IDs completed by both models in the fixed pilot selection. Hypoth
 | Sol | Sonnet | FLT (Anthropic) | 10 | 90.0% | 1 | 1/1 | 0.615 |
 | Sol | Sonnet | Formal Frontier | 10 | 100.0% | 1 | 1/1 | 1.000 |
 | Sol | Sonnet | All | 50 | 92.0% | 4 | 4/4 | 0.627 |
-| Sol | GLM | Mathlib | 1 | 100.0% | 0 | 0/0 | — |
+| Sol | GLM | Mathlib | 2 | 100.0% | 0 | 0/0 | — |
 | Sol | GLM | Tau Ceti | 1 | 100.0% | 0 | 0/0 | — |
 | Sol | GLM | Lean Pool | 1 | 100.0% | 1 | 1/1 | — |
 | Sol | GLM | FLT (Anthropic) | 1 | 100.0% | 0 | 0/0 | — |
-| Sol | GLM | Formal Frontier | 0 | — | 0 | 0/0 | — |
-| Sol | GLM | All | 4 | 100.0% | 1 | 1/1 | 1.000 |
+| Sol | GLM | Formal Frontier | 1 | 100.0% | 0 | 0/0 | — |
+| Sol | GLM | All | 6 | 100.0% | 1 | 1/1 | 1.000 |
 | Luna | Sonnet | Mathlib | 10 | 100.0% | 0 | 0/0 | — |
 | Luna | Sonnet | Tau Ceti | 10 | 80.0% | 1 | 1/1 | 0.412 |
 | Luna | Sonnet | Lean Pool | 10 | 80.0% | 1 | 1/1 | 0.412 |
 | Luna | Sonnet | FLT (Anthropic) | 10 | 90.0% | 0 | 0/0 | 0.000 |
 | Luna | Sonnet | Formal Frontier | 10 | 100.0% | 1 | 1/1 | 1.000 |
 | Luna | Sonnet | All | 50 | 90.0% | 3 | 3/3 | 0.494 |
-| Luna | GLM | Mathlib | 1 | 100.0% | 0 | 0/0 | — |
+| Luna | GLM | Mathlib | 2 | 100.0% | 0 | 0/0 | — |
 | Luna | GLM | Tau Ceti | 1 | 100.0% | 0 | 0/0 | — |
 | Luna | GLM | Lean Pool | 1 | 100.0% | 1 | 1/1 | — |
 | Luna | GLM | FLT (Anthropic) | 1 | 100.0% | 0 | 0/0 | — |
-| Luna | GLM | Formal Frontier | 0 | — | 0 | 0/0 | — |
-| Luna | GLM | All | 4 | 100.0% | 1 | 1/1 | 1.000 |
-| Sonnet | GLM | Mathlib | 1 | 100.0% | 0 | 0/0 | — |
+| Luna | GLM | Formal Frontier | 1 | 100.0% | 0 | 0/0 | — |
+| Luna | GLM | All | 6 | 100.0% | 1 | 1/1 | 1.000 |
+| Sonnet | GLM | Mathlib | 2 | 100.0% | 0 | 0/0 | — |
 | Sonnet | GLM | Tau Ceti | 1 | 100.0% | 0 | 0/0 | — |
 | Sonnet | GLM | Lean Pool | 1 | 100.0% | 1 | 1/1 | — |
 | Sonnet | GLM | FLT (Anthropic) | 1 | 100.0% | 0 | 0/0 | — |
-| Sonnet | GLM | Formal Frontier | 0 | — | 0 | 0/0 | — |
-| Sonnet | GLM | All | 4 | 100.0% | 1 | 1/1 | 1.000 |
+| Sonnet | GLM | Formal Frontier | 1 | 100.0% | 0 | 0/0 | — |
+| Sonnet | GLM | All | 6 | 100.0% | 1 | 1/1 | 1.000 |
 
 Flags and replacement arguments are model judgments. This small pilot has substantial sampling uncertainty.
