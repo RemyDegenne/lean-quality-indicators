@@ -168,10 +168,19 @@ use the same file sample.
 Every positive has an [individual source review](runs/file-quality-pilot-2026-10-21/reviews/repeated-machinery-2026-10-21.md).
 Luna is reproducing all six audits on the same thirty files in 180 blind sessions, one at
 a time. Concept reinvention and repeated machinery are queued after its original four
-audits. A [pi SDK backend](audits/file-quality-v1/README.md) is prepared for GLM-5.3 on
-the same six audits; its model run awaits provider credentials.
+audits. GLM-5.3 is queued through OpenRouter using the [pi SDK backend](audits/file-quality-v1/README.md)
+on the same six audits, also at high effort with one session at a time. Its queue first
+judges ten theorems per library on each of the two original audits and publishes pairwise
+agreement with Sol, Luna and Sonnet. It waits when OpenRouter credits are exhausted.
 
 ## Results so far: unnecessary hypotheses
+
+[Current reports for all eight audits](AUDIT_RESULTS.md) give target/pass counts, flag
+rates with Wilson 95% intervals, matched-target Pearson correlation matrices with paired
+bootstrap intervals, and API-equivalent expenditure / estimated cost of one pass at the
+largest completed model's scale. [Cost details](runs/main/api-equivalent-costs.md) include
+rates, retained retry expenditure and early GLM projections. Local reports refresh every
+five minutes while the Luna and GLM runs finish; the committed reports are snapshots.
 
 400 theorems per library:
 

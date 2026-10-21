@@ -3,6 +3,7 @@
 import datetime
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -12,6 +13,34 @@ from codex_judge import run_process
 
 ROOT = Path(__file__).resolve().parent.parent
 SESSION = ROOT / "tools/pi/session.mjs"
+
+
+def parse_verdict(text):
+    """Extract one unambiguous JSON object without interpreting its contents."""
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        blocks = re.findall(r"```json\s*\n(.*?)\n```", text, flags=re.DOTALL)
+        if len(blocks) == 1:
+            return json.loads(blocks[0])
+        if blocks:
+            raise ValueError("Multiple JSON blocks")
+        decoder = json.JSONDecoder()
+        candidates = []
+        end = -1
+        for match in re.finditer(r"\{", text):
+            if match.start() < end:
+                continue
+            try:
+                value, length = decoder.raw_decode(text[match.start():])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                candidates.append(value)
+                end = match.start() + length
+        if len(candidates) != 1:
+            raise ValueError("Expected exactly one JSON object")
+        return candidates[0]
 
 
 def preflight(args):
@@ -48,10 +77,7 @@ def judge(sample, ind, out, args, cwd, dirs, message):
         if result is None:
             raise RuntimeError("Pi produced no final verdict")
         try:
-            text = result["text"].strip()
-            if text.startswith("```json\n") and text.endswith("```"):
-                text = text[8:-3].strip()
-            verdict = json.loads(text)
+            verdict = parse_verdict(result["text"])
             validate_verdict(verdict, ind)
         except (ValueError, KeyError, TypeError, OSError) as exc:
             last_error = f"Invalid verdict: {exc}"

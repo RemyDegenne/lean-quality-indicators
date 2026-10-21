@@ -12,6 +12,17 @@ import pi_judge
 
 
 class PiJudgeTests(unittest.TestCase):
+    def test_json_response_and_single_fenced_verdict(self):
+        verdict = {"verdict": "none_found", "hypotheses": []}
+        text = json.dumps(verdict)
+        self.assertEqual(pi_judge.parse_verdict(text), verdict)
+        self.assertEqual(pi_judge.parse_verdict("Explanation\n```json\n" + text + "\n```"), verdict)
+        self.assertEqual(pi_judge.parse_verdict("Explanation with {a : EReal}.\n" + text), verdict)
+        with self.assertRaises(ValueError):
+            pi_judge.parse_verdict("```json\n{}\n```\n```json\n{}\n```")
+        with self.assertRaises(ValueError):
+            pi_judge.parse_verdict('{"verdict":"none_found"}\n{"verdict":"found"}')
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
