@@ -1,0 +1,96 @@
+{
+  "id": "lean-pool-file-0001",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the relevant definitions in Defs.lean (IsApproxAdditive, distToAdditive, additiveFunction, DualCertificate). I also checked the uses in Lemmas.lean. The core lemmas zero_mem_convexHull_of_best_approx and dual_cert_from_convexHull are already stated for an arbitrary M. The specialisation to `distToAdditive f` happens only in the wrappers dual_cert_zero_case, dual_cert_pos_case and the main theorem. I did not compile any replacement. The proposed proofs only reuse steps already present in the file. The second finding is minor and optional. I considered but did not report the unused `_hf` binders and the unused `clm_decompose`, because deleting unused hypotheses is out of scope.",
+  "findings": [
+    {
+      "declaration": "KaltonRoberts.dual_certificate_exists_proof (with dual_cert_zero_case, dual_cert_pos_case, distToAdditive_nonneg)",
+      "start_line": 497,
+      "end_line": 507,
+      "excerpt": "    (hM : ∀ S : Finset U, |f S| ≤ distToAdditive f)\n    (hbest : ∀ a : U → ℝ, ∃ S : Finset U,\n      |f S - additiveFunction a S| ≥ distToAdditive f) :\n    Nonempty (DualCertificate f (distToAdditive f)) := by",
+      "problem": "The theorem and its case wrappers are stated only for the specific value `distToAdditive f`. The proof never uses any property of that value. The hypotheses `hM` and `hbest` are phrased purely in terms of the number `M`. The core lemmas `zero_mem_convexHull_of_best_approx` and `dual_cert_from_convexHull` already take an arbitrary `M`. The wrappers `dual_cert_zero_case` (line 82) and `dual_cert_pos_case` (line 478) re-specialise to `distToAdditive f`. This hides a general fact: whenever `M` bounds `|f|` and no additive function approximates `f` uniformly within `M`, a dual certificate for `M` exists. The `hf : IsApproxAdditive f 1` hypothesis is also only used for `f ∅ = 0`. That is not needed for `0 ≤ M`, because `hM ∅` already gives `0 ≤ |f ∅| ≤ M`.",
+      "proposed_change": "State the theorem for an arbitrary real `M`:\n\ntheorem dual_certificate_exists_of_bound (f : Finset U → ℝ) (M : ℝ)\n    (hM : ∀ S : Finset U, |f S| ≤ M)\n    (hbest : ∀ a : U → ℝ, ∃ S : Finset U, |f S - additiveFunction a S| ≥ M) :\n    Nonempty (DualCertificate f M)\n\nProof sketch: `0 ≤ M` follows from `(abs_nonneg _).trans (hM ∅)`. If `M = 0`, run the existing zero-case argument with `hM` giving `f S = 0` for all `S`. Otherwise `0 < M`, and `dual_cert_from_convexHull f M` combined with `zero_mem_convexHull_of_best_approx f M` applies directly. Restate `dual_cert_zero_case` with `(M) (hM0 : M = 0)`. Then `dual_certificate_exists_proof` becomes the instance `M := distToAdditive f`, and `hf` is no longer needed in the proof chain.",
+      "benefit": "Users get the Hahn–Banach duality statement for any `M`, for example a candidate bound they have computed, without first identifying it with the infimum `distToAdditive f`. The `IsApproxAdditive` hypothesis and the dependence on `iInf`/`iSup` no longer appear in the proof chain. The statement also shows exactly which properties are used. The existing theorem in Lemmas.lean (line 316) follows by a one-line specialisation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "dual_cert_from_convexHull",
+          "excerpt": "lemma dual_cert_from_convexHull\n    (f : Finset U → ℝ) (M : ℝ) (hM_pos : 0 < M)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Lemmas.lean",
+          "declaration": "dual_certificate_exists",
+          "excerpt": "    Nonempty (DualCertificate f (distToAdditive f)) :=\n  dual_certificate_exists_proof f _hf _hM _hbest"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Defs.lean",
+          "declaration": "DualCertificate",
+          "excerpt": "structure DualCertificate {U : Type*} [DecidableEq U] [Fintype U]\n    (f : Finset U → ℝ) (M : ℝ) where"
+        }
+      ]
+    },
+    {
+      "declaration": "KaltonRoberts.clm_indicator'_eq_additiveFunction (and clm_decompose)",
+      "start_line": 65,
+      "end_line": 71,
+      "excerpt": "lemma clm_indicator'_eq_additiveFunction (Λ : (U → ℝ) →L[ℝ] ℝ) (S : Finset U) :",
+      "problem": "The statement quantifies over continuous linear maps `(U → ℝ) →L[ℝ] ℝ`, but the proof only uses `map_sum`, that is additivity. Continuity plays no role. `clm_decompose` (line 53) likewise only uses `map_smul` and `map_sum`. The restriction to continuity is unnecessary. It forces a caller holding an additive or linear map to build a CLM first.",
+      "proposed_change": "Generalise to any additive-map class, for example `{F : Type*} [FunLike F (U → ℝ) ℝ] [AddMonoidHomClass F (U → ℝ) ℝ] (Λ : F)`. Alternatively use `(U → ℝ) →ₗ[ℝ] ℝ`. The proof is unchanged: rewrite `S.indicator'` as a sum of `Function.update 0 i 1`, then use `map_sum`. The existing call in `zero_mem_convexHull_of_best_approx` still works, since `(U → ℝ) →L[ℝ] ℝ` has these instances. `clm_decompose` could similarly take `LinearMapClass`.",
+      "benefit": "The lemma becomes usable for plain linear or additive functionals, for example on finite-dimensional spaces where continuity is automatic. It states more precisely what the proof relies on, and the name can drop the `clm_` prefix.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "clm_indicator'_eq_additiveFunction",
+          "excerpt": "  rw [this, map_sum]; rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 17906,
+    "cache_read_input_tokens": 59986,
+    "output_tokens": 5504,
+    "output_tokens_details": {
+      "thinking_tokens": 2391
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17906,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3168,
+        "cache_read_input_tokens": 21039,
+        "cache_creation_input_tokens": 891,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 891
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.13267859999999998,
+  "duration_ms": 38750,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-21T01:29:46",
+  "unit": "file",
+  "source_sha256": "e2e71e39360264ce01321d98a643b9e96aaf725b7e4ab6d8a568aee859dd9e03",
+  "rubric": "statement-generality"
+}

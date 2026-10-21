@@ -1,0 +1,127 @@
+{
+  "id": "lean-pool-file-0002",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definitions of `realPartValue` and `realPartValueLinear` in FourierRealification.lean, `WeakTestFunction` in Foundation/Sobolev/TestFunction.lean, and where `realPartValueLinear` is unfolded in other files. I checked Mathlib for the `SchwartzMap` apply lemmas. Nothing was compiled. The proposed replacements are untested. The main uncertainty is whether the suggested simp-lemma sets close each goal without small adjustments. The Fourier/Plancherel parts use public API and looked robust.",
+  "findings": [
+    {
+      "declaration": "realPart_isWeakDivFree_of_fourierOrthogonal (hpoint)",
+      "start_line": 299,
+      "end_line": 300,
+      "excerpt": "simp only [realPartValue, realPartValueLinear, LinearMap.mkContinuous_apply,\n      LinearMap.coe_mk, AddHom.coe_mk, weakTestGradientSchwartz_apply,",
+      "problem": "The `simp only` set reaches inside how `realPartValue` is built. It unfolds `realPartValue` and `realPartValueLinear`, then peels the `mkContinuous` wrapper and the `LinearMap.mk`/`AddHom.mk` structure projections to reach the coordinate `(z i).re`. The proof therefore depends on `realPartValue` being a `mkContinuous` of a hand-built `LinearMap` with `toFun z := WithLp.toLp 2 (fun i => (z i).re)`. Changing how the continuous linear map is built would break it. The same unfolding is repeated in ForcePressureOrthogonality.lean, FourierMildInitialTrace.lean and ForcedRegMomentumSlicePressure.lean. FourierRealification.lean provides no public apply lemma for `realPartValue`.",
+      "proposed_change": "Next to the definition of `realPartValue`, add a `@[simp]` lemma such as `realPartValue_apply (z : ComplexVec3) (i : Fin 3) : realPartValue z i = (z i).re`, proved once by `rfl` or `simp [realPartValue, realPartValueLinear]`. Then use it in `hpoint` by replacing the unfolding and structure-projection lemmas with `realPartValue_apply`. The other call sites that unfold `realPartValueLinear` can use it too.",
+      "benefit": "Changes to how `realPartValue` is constructed would only touch one lemma, not every downstream `simp` call. The proof would also show the mathematical step (real part of the coordinate) instead of the `mkContinuous` plumbing.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierRealification.lean",
+          "declaration": "realPartValue",
+          "excerpt": "realPartValueLinear.mkContinuous 1 (by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierRealification.lean",
+          "declaration": "realPartValueLinear",
+          "excerpt": "toFun z := WithLp.toLp 2 (fun i => (z i).re)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/ForcePressureOrthogonality.lean",
+          "declaration": "forcePressure_inner_realPartValue",
+          "excerpt": "simp [realPartValue, realPartValueLinear, complexifyValue, complexifyValueLinear,"
+        }
+      ]
+    },
+    {
+      "declaration": "weakTestGradientSchwartz_apply",
+      "start_line": 173,
+      "end_line": 189,
+      "excerpt": "change (fderiv ℝ ((Complex.ofRealCLM : ℝ →L[ℝ] ℂ) ∘\n      (fun z : L2Vec3 => weakTestSchwartz (ψ := ψ) z)) x) (l2BasisVec i) = _",
+      "problem": "This proof is a long sequence of `change` steps. They rely on definitional unfolding of `weakTestGradientSchwartz`, `fderivCLM`, `postcompCLM`, `compCLMOfContinuousLinearEquiv`, `toSchwartzMap` and `ψ.toFun`, with a closing bare `rfl`. The `change` terms spell out the elaborated form of the coercions (`fun z => weakTestSchwartz z`, `ψ.toFun ∘ l2Vec3Equiv`, `(l2Vec3Equiv : L2Vec3 → Vec3)`). They will stop matching if any of these definitions is made irreducible or restructured, for example if the Schwartz-map coercion or `toSchwartzMap` is reworked. A later `Complex.ofRealCLM` or coercion form change in Mathlib would also break them. Mathlib already has public apply lemmas for each wrapper, so the proof does not need to depend on how the wrappers are defined.",
+      "proposed_change": "Rewrite with the public apply lemmas instead of `change`. First rewrite `SchwartzMap.postcompCLM_apply` and `SchwartzMap.fderivCLM_apply` to get `gradientOfCovector (fderiv ℝ (⇑(weakTestComplexSchwartz ψ)) x) i`. Then use the `@[simp]` lemma `SchwartzMap.compCLMOfContinuousLinearEquiv_apply` to evaluate `weakTestSchwartz ψ z` as `ψ (l2Vec3Equiv z)`. Finish with the chain rule: `HasFDerivAt.comp` with `l2Vec3Equiv.hasFDerivAt` and `Complex.ofRealCLM.hasFDerivAt`. It would also help to add small `@[simp]` apply lemmas for `weakTestSourceSchwartz`, `weakTestSchwartz` and `weakTestComplexSchwartz`, so the unfolding happens in one place.",
+      "benefit": "The proof would depend on the stated API of Schwartz maps rather than on how the intermediate maps were built. A routine refactor would then not require re-deriving which `change` form to write, and the chain-rule reasoning would be visible.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Distribution/SchwartzSpace/Basic.lean",
+          "declaration": "SchwartzMap.postcompCLM_apply",
+          "excerpt": "theorem postcompCLM_apply (L : F →L[𝕜] G) (f : 𝓢(E, F)) (x : E) : f.postcompCLM L x = L (f x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Distribution/SchwartzSpace/Deriv.lean",
+          "declaration": "SchwartzMap.fderivCLM_apply",
+          "excerpt": "theorem fderivCLM_apply (f : 𝓢(E, F)) (x : E) : fderivCLM 𝕜 E F f x = fderiv ℝ f x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Distribution/SchwartzSpace/Basic.lean",
+          "declaration": "SchwartzMap.compCLMOfContinuousLinearEquiv_apply",
+          "excerpt": "@[simp] lemma compCLMOfContinuousLinearEquiv_apply (g : D ≃L[ℝ] E) (f : 𝓢(E, F)) :"
+        }
+      ]
+    },
+    {
+      "declaration": "realPart_isWeakDivFree_of_fourierOrthogonal (pointwise comparison step)",
+      "start_line": 320,
+      "end_line": 325,
+      "excerpt": "change (∑ i : Fin 3,\n          (realPartValue (v (WithLp.toLp 2 x))).ofLp i *\n            ψ.partialDeriv i x) =",
+      "problem": "The step restates `hp` with a `change ... at hp` that exposes the raw `.ofLp` projection. It then closes with `simpa [F, realPartVectorL2Representative, l2Vec3Equiv] using hp`, whose simp set unfolds the definition of `l2Vec3Equiv`. This depends on the exact elaborated shape of the `PiLp` coercion and on the unfolding of `l2Vec3Equiv` (`PiLp.continuousLinearEquiv`). The name `ofLp` and the shape of the coercion are a `WithLp` implementation detail that has changed before. The proof would break if `WithLp` coercions were redesigned or `l2Vec3Equiv` were defined differently. `hpoint` also states the conclusion in terms of `realPartValue (v x) i` and `l2Vec3Equiv x`, so a lemma about `realPartVectorL2Representative` coordinates would remove the mismatch.",
+      "proposed_change": "Add a small public lemma, for example `realPartVectorL2Representative_apply (v) (x : Vec3) (i : Fin 3) : realPartVectorL2Representative v x i = realPartValue (v (WithLp.toLp 2 x)) i`. A similar lemma for `l2Vec3Equiv` would also be needed: `l2Vec3Equiv x i = x.ofLp i`, a `PiLp.continuousLinearEquiv` apply lemma. Prove both once with `rfl` or `simp`, then close this step with `simpa [realPartVectorL2Representative_apply] using hpoint (WithLp.toLp 2 x)` without the `change`.",
+      "benefit": "The coordinate-level unfolding is isolated in two named lemmas. The main calculation no longer depends on the internal `ofLp` form or on unfolding the equivalence `l2Vec3Equiv`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "l2Vec3Equiv",
+          "excerpt": "PiLp.continuousLinearEquiv 2 ℝ (fun _ : Fin 3 => ℝ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "realPartVectorL2Representative",
+          "excerpt": "fun x => l2Vec3Equiv\n    (realPartValue (v (WithLp.toLp 2 x)))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 26282,
+    "cache_read_input_tokens": 118963,
+    "output_tokens": 6142,
+    "output_tokens_details": {
+      "thinking_tokens": 831
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26282,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4232,
+        "cache_read_input_tokens": 29558,
+        "cache_creation_input_tokens": 699,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 699
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17846829999999997,
+  "duration_ms": 45941,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-21T01:37:56",
+  "unit": "file",
+  "source_sha256": "b8ef72c373bf6ce6441335c9b87f592a65fa1e978b9b2de2240636ba3850ed17",
+  "rubric": "fragile-proofs"
+}

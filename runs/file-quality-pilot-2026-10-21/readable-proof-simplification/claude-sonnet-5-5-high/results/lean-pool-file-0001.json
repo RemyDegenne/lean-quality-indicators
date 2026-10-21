@@ -1,0 +1,128 @@
+{
+  "id": "lean-pool-file-0001",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, the relevant definitions in Defs.lean (additiveFunction, DualCertificate, distToAdditive), and the Mathlib lemmas cited below. I did not report the following, to keep to clear gains:\n- The duplicated positive/negative branches in h_active. Merging them would be a larger refactor.\n- The hsum calc near the end. It is verbose but readable.\n- The unused lemma clm_decompose. Its proof could be shortened, but it is dead code, which falls outside this rubric.\n\nI cannot compile anything. All replacements are untested sketches. Finding 3 is the riskiest: the later steps that use positive weights (the `le_of_lt` nonnegativity step and the `simp_all`/`grind` calls) would need to be re-checked against the nonnegative weights from the Mathlib lemma.",
+  "findings": [
+    {
+      "declaration": "zero_mem_convexHull_of_best_approx (Hahn–Banach separation step)",
+      "start_line": 130,
+      "end_line": 137,
+      "excerpt": "have := @geometric_hahn_banach_closed_point;",
+      "problem": "The separation hypotheses are bundled into a conjunction `h_closed_convex` and then projected back out. The lemma is stated through `@` and applied with `convert`, which is unnecessary because the result type already matches the `obtain` statement (`StrongDual ℝ E` is `E →L[ℝ] ℝ`). The whole block only needs convexity, closedness and `x ∉ s`.",
+      "proposed_change": "Apply the lemma directly:\n```lean\nobtain ⟨Λ, u, hΛ, hu⟩ := geometric_hahn_banach_closed_point\n  (convex_convexHull ℝ _)\n  (Set.Finite.isClosed_convexHull ℝ (activeGenerators_finite f M)) h_contra\n```\nThe explicit type ascription on the `obtain` can then be dropped, or kept as `: ∃ Λ : (U → ℝ) →L[ℝ] ℝ, ...` if preferred.",
+      "benefit": "This replaces about 8 lines of conjunction building, `@`, and `convert` with one self-explanatory call. A reader sees exactly the three hypotheses of the Hahn–Banach separation theorem: convex, closed, and the point is not in the set. It also removes the risk of `convert` producing side goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/LocallyConvex/Separation.lean",
+          "declaration": "geometric_hahn_banach_closed_point",
+          "excerpt": "theorem geometric_hahn_banach_closed_point (hs₁ : Convex ℝ s) (hs₂ : IsClosed s) (disj : x ∉ s) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Convex/Topology.lean",
+          "declaration": "Set.Finite.isClosed_convexHull",
+          "excerpt": "theorem Set.Finite.isClosed_convexHull [T2Space E] {s : Set E} (hs : s.Finite) :"
+        }
+      ]
+    },
+    {
+      "declaration": "zero_mem_convexHull_of_best_approx (choice of a uniform ε)",
+      "start_line": 252,
+      "end_line": 262,
+      "excerpt": "by_cases h_empty : Finset.Nonempty (Finset.univ : Finset (Finset U));",
+      "problem": "The minimum of the finitely many ε S is built by hand. The code splits on whether `Finset.univ : Finset (Finset U)` is nonempty, which is always true because `∅` is a finset. It then builds an image finset with `min'`, and the empty branch is discharged by `simp_all`. This is an unnecessary case split and a manual `min'` construction.",
+      "proposed_change": "Use `Finite.exists_min` on the finite, nonempty type `Finset U`:\n```lean\nobtain ⟨S₀, hS₀⟩ := Finite.exists_min ε\nexact ⟨ε S₀ / 2, half_pos (hε_pos S₀), fun S =>\n  hε S (ε S₀ / 2) ⟨half_pos (hε_pos S₀), by linarith [hS₀ S, hε_pos S₀]⟩⟩\n```\nThis also removes the intermediate `ε_min` statement.",
+      "benefit": "The argument becomes: take the index where the positive function ε is smallest, then use half of its value. This is the intended mathematics. It removes the vacuous empty-case branch and the `simp_all +decide` calls, and it is easier to follow.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Fintype/Lattice.lean",
+          "declaration": "Finite.exists_min",
+          "excerpt": "theorem Finite.exists_min [Finite α] [Nonempty α] [LinearOrder β] (f : α → β) :"
+        }
+      ]
+    },
+    {
+      "declaration": "dual_cert_from_convexHull (extraction of positive weights, first `obtain`)",
+      "start_line": 285,
+      "end_line": 312,
+      "excerpt": "rw [ mem_convexHull_iff_exists_fintype ] at h0;",
+      "problem": "The code starts from the indexed-family characterisation of the convex hull. It then re-indexes by images of `z` over the filter `w i ≠ 0`, proves positivity and sums via `sum_image'`, `sum_filter_of_ne` and `simp_all`, all to obtain a finset of vectors with weights. Mathlib already states the convex hull of a finite set directly as weights on the finset. The generator set is known to be finite (`activeGenerators_finite`), so the re-indexing is avoidable.",
+      "proposed_change": "Use the finite-set characterisation instead:\n```lean\nhave hfin := activeGenerators_finite f M\nrw [hfin.convexHull_eq] at h0\nobtain ⟨w, hw_nonneg, hw_sum, hw_cm⟩ := h0\n-- c := hfin.toFinset, membership from `hfin.mem_toFinset`,\n-- and `Finset.centerMass_eq_of_sum_1` turns centerMass into ∑ w v • v\n```\nAlternatively, rewrite `hfin.coe_toFinset` and use `Finset.mem_convexHull'`, which gives `∑ y ∈ s, w y • y = x` directly. The weights are only nonnegative rather than strictly positive. The downstream use of positivity (`le_of_lt` for `lam_pos` nonnegativity, and membership via `hw_pos`) must be adapted to use `hw_nonneg`. Strict positivity is not needed for the support conditions, which come from membership in `c`.",
+      "benefit": "This removes about 28 lines of image/filter bookkeeping. The statement that `0` is a convex combination of finitely many generators is then read directly from the Mathlib lemma. Fewer `simp_all` calls and explicit `sum_image'` arguments means less fragile proof text.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Convex/Combination.lean",
+          "declaration": "Finset.mem_convexHull'",
+          "excerpt": "∃ w : E → R, (∀ y ∈ s, 0 ≤ w y) ∧ ∑ y ∈ s, w y = 1 ∧ ∑ y ∈ s, w y • y = x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Convex/Combination.lean",
+          "declaration": "Set.Finite.convexHull_eq",
+          "excerpt": "theorem Set.Finite.convexHull_eq {s : Set E} (hs : s.Finite) : convexHull R s ="
+        }
+      ]
+    },
+    {
+      "declaration": "zero_mem_convexHull_of_best_approx (h_inactive)",
+      "start_line": 179,
+      "end_line": 185,
+      "excerpt": "have := Metric.tendsto_nhdsWithin_nhds.mp h_cont ( M - |f S| ) ( sub_pos.mpr hS );",
+      "problem": "The existential obtained from the limit statement is kept as an anonymous `this`. It is then taken apart three times with `this.choose` and `this.choose_spec`, which makes the final term hard to read and gives it non-obvious dependencies on choice.",
+      "proposed_change": "Destructure once:\n```lean\nobtain ⟨δ, hδ, h⟩ := Metric.tendsto_nhdsWithin_nhds.mp h_cont (M - |f S|) (sub_pos.mpr hS)\nrefine ⟨δ, hδ, fun ε' hε' => ?_⟩\nlinarith [abs_lt.mp (h hε'.1 (by simpa [abs_of_pos hε'.1] using hε'.2))]\n```\nThis keeps the same inner argument, which is unchanged from the original.",
+      "benefit": "Named `δ`, `hδ` and `h` make the ε–δ argument readable. They also remove the repeated `.choose` / `.choose_spec` projections and the large anonymous-constructor term.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "zero_mem_convexHull_of_best_approx",
+          "excerpt": "⟨this.choose, this.choose_spec.1, fun ε' hε' => by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 22,
+    "cache_creation_input_tokens": 39456,
+    "cache_read_input_tokens": 291437,
+    "output_tokens": 11201,
+    "output_tokens_details": {
+      "thinking_tokens": 4794
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 39456,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4377,
+        "cache_read_input_tokens": 39514,
+        "cache_creation_input_tokens": 3985,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3985
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2990217,
+  "duration_ms": 84641,
+  "turns": 18,
+  "attempts": 1,
+  "judged": "2026-10-21T01:35:20",
+  "unit": "file",
+  "source_sha256": "e2e71e39360264ce01321d98a643b9e96aaf725b7e4ab6d8a568aee859dd9e03",
+  "rubric": "readable-proof-simplification"
+}

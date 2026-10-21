@@ -1,0 +1,106 @@
+{
+  "id": "lean-pool-file-0001",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and Defs.lean's `additiveFunction` and `DualCertificate`. I looked for repeated arguments inside `zero_mem_convexHull_of_best_approx` and `dual_cert_from_convexHull`. I did not search Mathlib for an existing lemma that gives the \"small ε keeps |x − ε y| < M\" statement. A search of the KaltonRoberts folder for one would be the first step before adding a new lemma. The proposed helpers have not been compiled, so the exact hypotheses may need adjusting. I did not report the near-duplicate pair `hΛ_gen` / `hΛ_gen_neg` and `h_additiveFunction_a_pos` / `h_additiveFunction_a_neg`. They are short, and they would shrink automatically if the sign-uniform helper were adopted.",
+  "findings": [
+    {
+      "declaration": "zero_mem_convexHull_of_best_approx (h_inactive / h_active inside the ε-selection)",
+      "start_line": 171,
+      "end_line": 248,
+      "excerpt": "by_cases hS_pos : f S = M;",
+      "problem": "The proof shows that a small ε > 0 keeps |f S − ε·a(S)| < M for each S. It does this three times with the same shape: `h_inactive`, and the `f S = M` and `f S = -M` branches of `h_active`. The two active branches are mirror images. Each runs two long `simp_all +decide only [...]` calls with almost the same lemma lists (they differ only in `abs_neg` and `abs_eq_self`). Each then gives an explicit witness `M / (∓∑ Λ …)` and closes two `nlinarith` goals. All of this is the one-dimensional fact that for x, y with |x| = M and x·y > 0, there is δ > 0 such that |x − ε·y| < M for all 0 < ε < δ. The work is repeated per sign, and `h_inactive` uses a separate continuity argument for the strict case.",
+      "proposed_change": "Add one scalar helper, for example `exists_delta_abs_sub_mul_lt {x y M : ℝ} (hM : 0 < M) (hx : |x| ≤ M) (hxy : |x| = M → 0 < x * y) : ∃ δ > 0, ∀ ε ∈ Set.Ioo 0 δ, |x − ε * y| < M`. The active case takes δ = |x| / |y|. The inactive case takes δ from continuity, or from an explicit bound. State a second helper rewriting `additiveFunction (fun i => ε * a i) S = ε * additiveFunction a S` (via `Finset.mul_sum`). Then, for the positive and negative active sets, `x = f S` and `y = additiveFunction a S`, and the hypothesis is `0 < f S * additiveFunction a S`. That hypothesis follows from `h_additiveFunction_a_pos` (f S = M) or `h_additiveFunction_a_neg` (f S = −M). `h_inactive`, and the two branches of `h_active`, become a single `obtain ⟨δ, hδ, h⟩ := helper hM_pos (hMbound S) …` per S.",
+      "benefit": "This removes about 75 lines of sign-specific `simp_all`/`nlinarith` scripts, which break easily. The new lemma is a natural, reusable statement about moving off a boundary point of the interval [−M, M] in an inward direction. The Hahn–Banach proof then reads as: pick a, then choose ε by the helper.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "zero_mem_convexHull_of_best_approx, h_active negative branch",
+          "excerpt": "⟨M / (∑ i ∈ S, Λ (Function.update 0 i 1)),"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "zero_mem_convexHull_of_best_approx, h_active positive branch",
+          "excerpt": "⟨M / (-∑ i ∈ S, Λ (Function.update 0 i 1)),"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "zero_mem_convexHull_of_best_approx, h_inactive",
+          "excerpt": "have h_inactive : ∀ S : Finset U, |f S| < M → ∃ ε > 0, ∀ ε' ∈ Set.Ioo 0 ε, |f S -"
+        }
+      ]
+    },
+    {
+      "declaration": "dual_cert_from_convexHull (h_sum_eq: positive and negative generator cases)",
+      "start_line": 396,
+      "end_line": 435,
+      "excerpt": "· rw [Finset.sum_eq_zero, Finset.sum_eq_single S] <;>",
+      "problem": "The claim that a generator v is the sum over the two filtered families of `if v = ±S.indicator' then v else 0` is proved twice. The `rcases` branches differ only in the sign. Each branch rewrites with `sum_eq_single S` and `sum_eq_zero`, runs a long `simp +contextual only` list that is the same up to `neg_zero`/`zero_add`/`neg_inj`, and then closes the same side goal: if `T.indicator' = -S.indicator'` or `-T.indicator' = S.indicator'` then T = S. That side goal is proved by two near-identical `congr_fun`/`split_ifs`/`norm_num` blocks. The side goal is simply that `indicator' S` and `-indicator' T` are never equal when `M > 0` and one of them is a nonzero active generator. The same fact is reproved with `grind` and `aesop` in the disjointness step near lines 365–380.",
+      "proposed_change": "Prove one lemma next to `indicator'_injective`, for example `indicator'_ne_neg_indicator' {S T : Finset U} (h : S ≠ ∅ ∨ T ≠ ∅) : S.indicator' ≠ -T.indicator'`. Equivalently, `S.indicator' = -T.indicator' → S = ∅ ∧ T = ∅`. Use it in both `sum_eq_single` branches. It also covers the disjointness proof of the images (lines ~365–380), where the case `∅` is handled by hand using `hMbound ∅` and `hM_pos`. Alternatively, define the weight directly as `∑ v ∈ c, if v = S.indicator' …` and avoid the case split by proving `activeGenerators` is the disjoint union of two injective images. Either way, the pos/neg branches shrink to a few lines each.",
+      "benefit": "One reusable fact about indicator vectors replaces three ad hoc `congr_fun`/`split_ifs` arguments. The two mirror-image 20-line blocks collapse. The disjointness of positive and negative generators becomes an explicit, nameable property instead of being implicit in `grind`/`aesop` calls.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "dual_cert_from_convexHull, positive-generator branch",
+          "excerpt": "· rw [Finset.sum_eq_single S, Finset.sum_eq_zero] <;>"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "dual_cert_from_convexHull, negative-generator branch",
+          "excerpt": "split_ifs at this <;> simp_all +decide [Finset.indicator']"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
+          "declaration": "dual_cert_from_convexHull, disjointness of positive and negative images",
+          "excerpt": "have h_empty : S₁ = ∅ := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 20514,
+    "cache_read_input_tokens": 63883,
+    "output_tokens": 4161,
+    "output_tokens_details": {
+      "thinking_tokens": 671
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20514,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2968,
+        "cache_read_input_tokens": 22332,
+        "cache_creation_input_tokens": 2162,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2162
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1300703,
+  "duration_ms": 31638,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T01:33:22",
+  "unit": "file",
+  "source_sha256": "e2e71e39360264ce01321d98a643b9e96aaf725b7e4ab6d8a568aee859dd9e03",
+  "rubric": "repeated-proof-machinery"
+}
