@@ -305,20 +305,20 @@ def combined_summary(bundles, resamples):
     models = list(union)
     units = list(dict.fromkeys(bundle["unit"] for bundle in bundles))
     data = {"audits": [bundle["audit"] for bundle in bundles], "libraries": {}, "models": {},
-            "correlations": {}}
+            "correlations": {}, "audits_by_unit": {unit: [b["audit"] for b in bundles if b["unit"] == unit]
+                                                      for unit in units}}
     lines = ["## Combined summary", "",
              f"Union across **{len(bundles)} audits**: a target counts once per model if any audit flags it. "
              "First passes only; theorem and file samples are counted separately. "
              "Unfinished coverage contributes the judgments available so far. "
-             "[Aggregation details](AUDIT_METHODS.md#combined-summary).", "",
-             "### Library comparison", "",
-             "| Library | Target | " + " | ".join(models) + " |",
-             "|---|---|" + "---:|" * len(models)]
-    for lib in ordered_libraries({s["lib"] for s in samples.values()}):
-        data["libraries"][lib] = {}
-        for unit in units:
-            if not any(s["lib"] == lib and s["unit"] == unit for s in samples.values()):
-                continue
+             "[Aggregation details](AUDIT_METHODS.md#combined-summary).", ""]
+    for unit in units:
+        contributing = data["audits_by_unit"][unit]
+        lines += [f"### {unit.title()} audits: library comparison", "",
+                  "Contributing audits: " + ", ".join(f"[{a}](#{a})" for a in contributing) + ".", "",
+                  "| Library | " + " | ".join(models) + " |", "|---|" + "---:|" * len(models)]
+        for lib in ordered_libraries({s["lib"] for s in samples.values() if s["unit"] == unit}):
+            data["libraries"].setdefault(lib, {})
             rows = {model: union_counts(entries, samples, lib, unit) for model, entries in union.items()}
             data["libraries"][lib][unit] = rows
             cells = []
@@ -330,9 +330,12 @@ def combined_summary(bundles, resamples):
                 lo, hi = row["ci95"]
                 pending = "*" if row["all_selected_audits_completed"] < n else ""
                 cells.append(f"{flags}/{n}{pending}<br>{flags/n:.1%} [{lo:.1%}, {hi:.1%}]")
-            lines.append(f"| {names.get(lib, lib)} | {unit.title()} | " + " | ".join(cells) + " |")
-    lines += ["", r"\* Some targets still await selected audits; their union flags can increase.", "",
-              "### Model comparison", "",
+            lines.append(f"| {names.get(lib, lib)} | " + " | ".join(cells) + " |")
+        lines.append("")
+    if any(row["all_selected_audits_completed"] < row["completed"]
+           for library in data["libraries"].values() for rows in library.values() for row in rows.values()):
+        lines += [r"\* Some targets still await selected audits; their union flags can increase.", ""]
+    lines += ["### Model comparison", "",
               "| Model | Audits with results | Theorems selected | Files selected | Audit passes done/planned | Theorems flagged / reviewed | Files flagged / reviewed | Judgments done/planned | API expenditure / full-pass estimate |",
               "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for model, entries in union.items():

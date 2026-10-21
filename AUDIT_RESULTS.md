@@ -1,25 +1,32 @@
 # Audit results
 
-Generated 2026-10-21T05:40:19+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
+Generated 2026-10-21T05:43:31+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
 
 ## Combined summary
 
 Union across **8 audits**: a target counts once per model if any audit flags it. First passes only; theorem and file samples are counted separately. Unfinished coverage contributes the judgments available so far. [Aggregation details](AUDIT_METHODS.md#combined-summary).
 
-### Library comparison
+### Theorem audits: library comparison
 
-| Library | Target | Opus | Sol | Sonnet | Luna | GLM |
-|---|---|---:|---:|---:|---:|---:|
-| Mathlib | Theorem | 15/400<br>3.8% [2.3%, 6.1%] | 694/1000<br>69.4% [66.5%, 72.2%] | 268/1000<br>26.8% [24.1%, 29.6%] | 601/1000<br>60.1% [57.0%, 63.1%] | 2/2<br>100.0% [34.2%, 100.0%] |
-| Mathlib | File | — | — | 10/10<br>100.0% [72.2%, 100.0%] | 8/10<br>80.0% [49.0%, 94.3%] | — |
-| Tau Ceti | Theorem | 73/1000<br>7.3% [5.8%, 9.1%] | 161/1000<br>16.1% [14.0%, 18.5%] | 47/1000<br>4.7% [3.6%, 6.2%] | 168/1000<br>16.8% [14.6%, 19.2%] | 1/2<br>50.0% [9.5%, 90.5%] |
-| Tau Ceti | File | — | — | 9/10<br>90.0% [59.6%, 98.2%] | 4/10<br>40.0% [16.8%, 68.7%] | — |
-| Formal Frontier | Theorem | 62/1000<br>6.2% [4.9%, 7.9%] | 228/1000<br>22.8% [20.3%, 25.5%] | 57/1000<br>5.7% [4.4%, 7.3%] | 242/1000<br>24.2% [21.6%, 27.0%] | 0/1<br>0.0% [0.0%, 79.3%] |
-| Lean Pool | Theorem | 129/1000<br>12.9% [11.0%, 15.1%] | 207/1000<br>20.7% [18.3%, 23.3%] | 97/1000<br>9.7% [8.0%, 11.7%] | 194/1000<br>19.4% [17.1%, 22.0%] | 2/2<br>100.0% [34.2%, 100.0%] |
-| Lean Pool | File | — | — | 9/10<br>90.0% [59.6%, 98.2%] | 8/10<br>80.0% [49.0%, 94.3%] | — |
-| FLT (Anthropic) | Theorem | 210/1000<br>21.0% [18.6%, 23.6%] | 322/1000<br>32.2% [29.4%, 35.2%] | 163/1000<br>16.3% [14.1%, 18.7%] | 277/1000<br>27.7% [25.0%, 30.6%] | 1/1<br>100.0% [20.7%, 100.0%] |
+Contributing audits: [unnecessary-hypotheses](#unnecessary-hypotheses), [duplicates-mathlib-inclusive](#duplicates-mathlib-inclusive).
 
-\* Some targets still await selected audits; their union flags can increase.
+| Library | Opus | Sol | Sonnet | Luna | GLM |
+|---|---:|---:|---:|---:|---:|
+| Mathlib | 15/400<br>3.8% [2.3%, 6.1%] | 694/1000<br>69.4% [66.5%, 72.2%] | 268/1000<br>26.8% [24.1%, 29.6%] | 601/1000<br>60.1% [57.0%, 63.1%] | 2/2<br>100.0% [34.2%, 100.0%] |
+| Tau Ceti | 73/1000<br>7.3% [5.8%, 9.1%] | 161/1000<br>16.1% [14.0%, 18.5%] | 47/1000<br>4.7% [3.6%, 6.2%] | 168/1000<br>16.8% [14.6%, 19.2%] | 1/2<br>50.0% [9.5%, 90.5%] |
+| Formal Frontier | 62/1000<br>6.2% [4.9%, 7.9%] | 228/1000<br>22.8% [20.3%, 25.5%] | 57/1000<br>5.7% [4.4%, 7.3%] | 242/1000<br>24.2% [21.6%, 27.0%] | 0/1<br>0.0% [0.0%, 79.3%] |
+| Lean Pool | 129/1000<br>12.9% [11.0%, 15.1%] | 207/1000<br>20.7% [18.3%, 23.3%] | 97/1000<br>9.7% [8.0%, 11.7%] | 194/1000<br>19.4% [17.1%, 22.0%] | 2/2<br>100.0% [34.2%, 100.0%] |
+| FLT (Anthropic) | 210/1000<br>21.0% [18.6%, 23.6%] | 322/1000<br>32.2% [29.4%, 35.2%] | 163/1000<br>16.3% [14.1%, 18.7%] | 277/1000<br>27.7% [25.0%, 30.6%] | 1/1<br>100.0% [20.7%, 100.0%] |
+
+### File audits: library comparison
+
+Contributing audits: [concept-reinvention](#concept-reinvention), [statement-generality](#statement-generality), [vacuity-and-misstatement](#vacuity-and-misstatement), [simp-interface](#simp-interface), [repeated-proof-machinery](#repeated-proof-machinery), [readable-proof-simplification](#readable-proof-simplification).
+
+| Library | Opus | Sol | Sonnet | Luna | GLM |
+|---|---:|---:|---:|---:|---:|
+| Mathlib | — | — | 10/10<br>100.0% [72.2%, 100.0%] | 8/10<br>80.0% [49.0%, 94.3%] | — |
+| Tau Ceti | — | — | 9/10<br>90.0% [59.6%, 98.2%] | 4/10<br>40.0% [16.8%, 68.7%] | — |
+| Lean Pool | — | — | 9/10<br>90.0% [59.6%, 98.2%] | 8/10<br>80.0% [49.0%, 94.3%] | — |
 
 ### Model comparison
 
