@@ -1,0 +1,140 @@
+{
+  "id": "lean-pool-file-0002",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 426 lines of the target and inspected the relevant imported definitions and downstream uses in FourierRealification, FourierLeray, JSpace, FourierCoordinateL2Bridge, ForcePressureGradientClosure, FourierMildJSpace, JSpaceFourierPotential, ForcedRegularisedFourierGradient, and ForcedRegMomentumTransport. I checked existing simp attributes for SchwartzMap.postcompCLM and PiLp.continuousLinearEquiv. I did not find a rewrite cycle or observed simp failure; the findings concern missing canonical normal-form lemmas/attributes. Proposed declarations and proof terms were not compiled because Lean execution was unavailable.",
+  "findings": [
+    {
+      "declaration": "l2Vec3Equiv",
+      "start_line": 32,
+      "end_line": 36,
+      "excerpt": "/-- The canonical continuous linear equivalence between coordinate triples and the Hilbert `L²`\nvector. -/\n@[expose]\ndef l2Vec3Equiv : L2Vec3 ≃L[ℝ] Vec3 :=\n  PiLp.continuousLinearEquiv 2 ℝ (fun _ : Fin 3 => ℝ)",
+      "problem": "The public carrier equivalence `l2Vec3Equiv` wraps `PiLp.continuousLinearEquiv`, but its evaluation rules are not exposed as simp lemmas. Users therefore have to unfold both the wrapper and the `PiLp` equivalence, as in the `simp [l2BasisVec, l2Vec3Equiv, ...]` proof at lines 186-188, and downstream code repeats `change l2Vec3Equiv ...` instead of rewriting by a canonical rule. The intended normal forms are `l2Vec3Equiv x = WithLp.ofLp x` and `l2Vec3Equiv.symm x = WithLp.toLp 2 x`, consistent with the generated simp API for `PiLp.continuousLinearEquiv`.",
+      "proposed_change": "Add evaluation lemmas immediately after `l2Vec3Equiv`, for example:\n\n```lean\n@[simp] theorem l2Vec3Equiv_apply (x : L2Vec3) :\n    l2Vec3Equiv x = WithLp.ofLp x := by\n  rfl\n\n@[simp] theorem l2Vec3Equiv_symm_apply (x : Vec3) :\n    l2Vec3Equiv.symm x = WithLp.toLp 2 x := by\n  rfl\n```\n\nIf `rfl` does not close the goals after unfolding, use a short `simp [l2Vec3Equiv]` proof. These rules have no reverse simp rule.",
+      "benefit": "This gives the wrapper the same canonical simplification behavior as its underlying continuous linear equivalence. Proofs can use `simp` or `rw [l2Vec3Equiv_apply]` without explicitly unfolding `l2Vec3Equiv`, `PiLp.continuousLinearEquiv`, and `WithLp`, and downstream proofs become less brittle if the implementation of the wrapper changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "weakTestGradientSchwartz_apply",
+          "excerpt": "  rw [show (l2Vec3Equiv : L2Vec3 → Vec3) (l2BasisVec i) = CKN.basisVec i by\n    ext j\n    simp [l2BasisVec, l2Vec3Equiv, CKN.basisVec, Pi.single_apply]]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierMildJSpace.lean",
+          "declaration": "realVectorL2Representative_add_ae",
+          "excerpt": "  change l2Vec3Equiv ((u + v) (WithLp.toLp 2 x)) =\n    l2Vec3Equiv (u (WithLp.toLp 2 x)) + l2Vec3Equiv (v (WithLp.toLp 2 x))"
+        }
+      ]
+    },
+    {
+      "declaration": "realVectorL2Representative",
+      "start_line": 38,
+      "end_line": 41,
+      "excerpt": "/-- The coordinate representative on Vec3 of a real spatial `L²` field. -/\n@[expose]\ndef realVectorL2Representative (f : RealVectorL2) : Vec3 → Vec3 :=\n  fun x => l2Vec3Equiv (f (WithLp.toLp 2 x))",
+      "problem": "The public definition `realVectorL2Representative` has no evaluation lemma in the module where it is defined, and the only local proof that uses its pointwise behavior has to unfold it with `simp [realVectorL2Representative, realPartVectorL2Representative, hx]` at line 360. A downstream file already contains exactly the needed theorem, `realVectorL2Representative_apply`, but that file imports the target, so the lemma is unavailable here; additionally, the downstream theorem is not tagged `simp`. The canonical normal form should be `realVectorL2Representative u x = WithLp.ofLp (u (WithLp.toLp 2 x))`.",
+      "proposed_change": "Move the existing downstream theorem into this file next to `realVectorL2Representative` and register it as simp:\n\n```lean\n@[simp] theorem realVectorL2Representative_apply\n    (u : RealVectorL2) (x : Vec3) :\n    realVectorL2Representative u x =\n      WithLp.ofLp (u (WithLp.toLp 2 x)) := by\n  rfl\n```\n\nThen delete or replace the duplicate theorem at `ForcePressureGradientClosure.lean:71-73` so the name is not declared twice.",
+      "benefit": "The definition becomes usable pointwise without unfolding the `l2Vec3Equiv` wrapper, the current target proof at line 360 can simplify with the dedicated evaluation rule, and downstream files get a canonical simp lemma rather than the non-simp local theorem they currently define.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "realPartVectorL2Representative_eq_ae",
+          "excerpt": "  filter_upwards [hcomp'] with x hx\n  simp [realVectorL2Representative, realPartVectorL2Representative, hx]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/ForcePressureGradientClosure.lean",
+          "declaration": "realVectorL2Representative_apply",
+          "excerpt": "theorem realVectorL2Representative_apply (u : RealVectorL2) (x : Vec3) :\n    realVectorL2Representative u x = WithLp.ofLp (u (WithLp.toLp 2 x)) :=\n  rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "fourier_postcompCLM",
+      "start_line": 94,
+      "end_line": 99,
+      "excerpt": "/-- The Fourier transform commutes with bounded complex linear postcomposition. -/\ntheorem fourier_postcompCLM\n    {F G : Type*} [NormedAddCommGroup F] [NormedSpace ℂ F] [CompleteSpace F]\n    [NormedAddCommGroup G] [NormedSpace ℂ G] [CompleteSpace G]\n    (L : F →L[ℂ] G) (f : SchwartzMap L2Vec3 F) :\n    𝓕 (f.postcompCLM L) = (𝓕 f).postcompCLM L := by",
+      "problem": "`fourier_postcompCLM` is the canonical push-through rule for Fourier transforms of postcompositions, but it is not registered as a simp lemma. Every visible use is an explicit `rw [fourier_postcompCLM]` (in this file and in downstream Fourier-gradient proofs). Since `SchwartzMap.postcompCLM_apply` is already a simp lemma, the desired normal form is to push `𝓕` past `postcompCLM` and then evaluate coordinates with the existing simp rules. There is no reverse simp rule, so this orientation is safe.",
+      "proposed_change": "Change the declaration to `@[simp] theorem fourier_postcompCLM ...` while keeping the statement and proof unchanged. No additional rewrite lemma is needed.",
+      "benefit": "The composite expression `𝓕 (f.postcompCLM L)` can be normalized by `simp` together with `SchwartzMap.postcompCLM_apply`. Downstream proofs that currently write `rw [fourier_postcompCLM, SchwartzMap.postcompCLM_apply, ...]` can use plain simplification, and the mathematical push-through is available consistently to all users.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "weakTestGradientSchwartz_fourier",
+          "excerpt": "  have hpost := fourier_postcompCLM gradientOfCovector\n    (SchwartzMap.fderivCLM ℂ L2Vec3 ℂ (weakTestComplexSchwartz (ψ := ψ)))\n  rw [weakTestGradientSchwartz, hpost, SchwartzMap.fourier_fderivCLM_eq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/ForcedRegularisedFourierGradient.lean",
+          "declaration": "fourier_vecSlot_lineDeriv",
+          "excerpt": "  rw [fourier_postcompCLM, SchwartzMap.postcompCLM_apply, SchwartzMap.fourier_lineDerivOp_eq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/ForcedRegMomentumTransport.lean",
+          "declaration": "fourier_gradTestSchwartz",
+          "excerpt": "    rw [SchwartzMap.fourierTransformCLM_apply, fourier_postcompCLM]"
+        }
+      ]
+    },
+    {
+      "declaration": "realPartVectorL2Representative",
+      "start_line": 245,
+      "end_line": 250,
+      "excerpt": "/-- The real coordinate representative of a complex Euclidean `L²` field,\nused for the weak-divergence conclusion in `lem:reg-multiplier-bounds`. -/\n@[expose]\ndef realPartVectorL2Representative (v : ComplexVectorL2) : Vec3 → Vec3 :=\n  fun x => l2Vec3Equiv\n    (realPartValue (v (WithLp.toLp 2 x)))",
+      "problem": "`realPartVectorL2Representative` is a public coordinate representative, but it has no evaluation lemma. Consequently the main proof has to `change` the representative into `(realPartValue ...).ofLp i` and then unfold with `simpa [F, realPartVectorL2Representative, l2Vec3Equiv]` at lines 320-325. The natural pointwise normal form is the coordinate real part of the underlying field: `realPartVectorL2Representative v x = fun i => (v (WithLp.toLp 2 x) i).re`, or equivalently the coordinate rule `realPartVectorL2Representative v x i = (v (WithLp.toLp 2 x) i).re`.",
+      "proposed_change": "Add an evaluation lemma next to the definition, preferably stated at coordinate level and tagged simp:\n\n```lean\n@[simp] theorem realPartVectorL2Representative_apply\n    (v : ComplexVectorL2) (x : Vec3) :\n    realPartVectorL2Representative v x =\n      fun i => (v (WithLp.toLp 2 x) i).re := by\n  rfl\n```\n\nIf a separate coordinate lemma is preferable, also add:\n\n```lean\n@[simp] theorem realPartVectorL2Representative_apply_coord\n    (v : ComplexVectorL2) (x : Vec3) (i : Fin 3) :\n    realPartVectorL2Representative v x i =\n      (v (WithLp.toLp 2 x) i).re := by\n  rfl\n```\n\nUse `simp [realPartVectorL2Representative, l2Vec3Equiv, realPartValue]` in the proof if `rfl` needs help after unfolding.",
+      "benefit": "This gives the real-part representative the same evaluation interface as `realVectorL2Representative` and avoids manual `change`/definition unfolding in weak-divergence sums. It also exposes a stable coordinate normal form for downstream computations involving `realPartVectorL2Representative`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "realPart_isWeakDivFree_of_fourierOrthogonal",
+          "excerpt": "        change (∑ i : Fin 3,\n          (realPartValue (v (WithLp.toLp 2 x))).ofLp i *\n            ψ.partialDeriv i x) =\n          Complex.re (inner ℂ (v (WithLp.toLp 2 x))\n            (gS (WithLp.toLp 2 x))) at hp\n        simpa [F, realPartVectorL2Representative, l2Vec3Equiv] using hp"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1346150,
+    "cached_input_tokens": 1192832,
+    "output_tokens": 33584,
+    "reasoning_output_tokens": 25677
+  },
+  "cost_usd": 0.038600096,
+  "generation_ids": [
+    "gen-1792623282-XX5DV0T5obmeSn6SxGvf",
+    "gen-1792623286-3IPiDZLVeURaz0l47asL",
+    "gen-1792623296-VeaiL1hbrqHKKxfpghFo",
+    "gen-1792623302-J3H6TYLDQhr6LWVgawzR",
+    "gen-1792623308-HzN0lMiYkXVUjwfG6WIh",
+    "gen-1792623320-0KBTJyQ6ufyUrcmJPN1Q",
+    "gen-1792623328-4nst7Lfks5J9JFihYQVe",
+    "gen-1792623332-asizt3n8MENBMO0VlXUc",
+    "gen-1792623340-GohNi7YdK9e0cPlWiaam",
+    "gen-1792623346-QO9mHUkXbd8IuG17yNeT",
+    "gen-1792623352-kbz0RHzY9hEW7JbxZSHN",
+    "gen-1792623364-CZT8yHxbsOYG5OvUjk60",
+    "gen-1792623402-mDxk7O8LO4IhBLCHfI79",
+    "gen-1792623418-2MFaZQIkjDYO4iMBOp9p",
+    "gen-1792623432-PJ1JOfqWhl2BUpiOqA5p",
+    "gen-1792623444-CqtvGlyeAhMA1QXj14tU",
+    "gen-1792623452-rfEmRNs0GFESWFfsMtiL",
+    "gen-1792623458-2j8gu1jmx4L5P5dJAIso",
+    "gen-1792623482-AuSuYF8uN87dRAdemp2Q",
+    "gen-1792623498-nXnobxz9YPDo4oQVmBZd",
+    "gen-1792623531-DG0fcEJctDPWvBmHWIAz",
+    "gen-1792623584-Khs95AAZ1y2SsLm3yMwQ"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 22,
+  "duration_ms": 355351,
+  "judged": "2026-10-21T23:00:32+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "b8ef72c373bf6ce6441335c9b87f592a65fa1e978b9b2de2240636ba3850ed17"
+}

@@ -1,0 +1,125 @@
+{
+  "id": "openai-math-file-0002",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole 58-line target, plus PlanarAlgebra.lean (planarCharacter/planarCos/planarEnergy definitions), TorusDouble.lean (PlanarAngle, planarReference, its probability/add-Haar instances), PlanarGinibre.lean and PositiveKernel.lean (planarMean, inputs to edgeMean_nonneg), FerromagneticMean.lean (edgeMean_nonneg signature), AmplitudeLaw.lean (external use of planar_reference_mean_nonneg at line 99) and mathlib's Mathlib/Analysis/SpecialFunctions/Complex/Circle.lean (toCircle, homeomorphCircle, homeomorphCircle_apply). During this inspection I also noticed that the proof body of planar_reference_mean_nonneg (lines 39-42) essentially re-derives an additive translation-invariance/negation argument of the kind packaged by mathlib's integral_eq_zero_of_mul_left_eq_neg; that is a proof-length remark rather than an in-scope specialisation finding, but it confirms the heart of the result is generic translation invariance, not something specific to planarReference. Uncertainty: I could not execute Lean, so the replacement statements below are argued from the lemmas I read (Homeomorph.apply_symm_apply together with homeomorphCircle_apply; the identical `simp only [Function.update_of_ne ...]; abel` step) but were not compiled. The remaining two theorems in the file, planarCos_add_antipode (line 19, already quantified over an arbitrary t) and planar_edge_mean_nonneg (line 46, already quantified over arbitrary nonnegative weights b), have appropriately general hypotheses and were not reported.",
+  "findings": [
+    {
+      "declaration": "planar_antipode_exists",
+      "start_line": 11,
+      "end_line": 17,
+      "excerpt": "theorem planar_antipode_exists : ∃ t : PlanarAngle,planarCharacter t= -1 := by\n  let h := AddCircle.homeomorphCircle (T := (1 : ℝ)) one_ne_zero",
+      "problem": "The statement is hard-coded to the particular circle T = 1: it unfolds PlanarAngle = UnitAddCircle = AddCircle 1 and planarCharacter = AddCircle.toCircle (PlanarAlgebra.lean:12), and the proof even carries the specific proof term `one_ne_zero`. But existence of a preimage of -1 under AddCircle.toCircle holds for every nonzero period T, because mathlib provides AddCircle.homeomorphCircle (hT : T ≠ 0) : AddCircle T ≃ₜ Circle and its computation lemma homeomorphCircle_apply (hT) (x) : homeomorphCircle hT x = toCircle x. Nothing in the result is special to the period 1.",
+      "proposed_change": "State the general lemma, e.g.\n\n  theorem exists_toCircle_eq_neg_one {T : ℝ} (hT : T ≠ 0) :\n      ∃ t : AddCircle T, AddCircle.toCircle t = -1 := by\n    refine ⟨(AddCircle.homeomorphCircle hT).symm (-1), ?_⟩\n    rw [← AddCircle.homeomorphCircle_apply hT]\n    exact (AddCircle.homeomorphCircle hT).apply_symm_apply _\n\nand keep the current fact as a one-line corollary such as `planar_antipode_exists := by simpa [PlanarAngle, planarCharacter] using exists_toCircle_eq_neg_one (T := 1) one_ne_zero`. (The hypothesis hT : T ≠ 0 is genuinely needed: as documented in mathlib, AddCircle.toCircle is the constant function 1 when T = 0, so in the degenerate case no t maps to -1.)",
+      "benefit": "Users working with angles of any period (e.g. AddCircle (2 * π), or AddCircle T arising from a general torus) get the antipode fact directly instead of re-proving it, and the dependence on the concrete period 1 disappears from the API; the file's own planar development then only applies the corollary once (line 30).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/SpecialFunctions/Complex/Circle.lean",
+          "declaration": "AddCircle.homeomorphCircle",
+          "excerpt": "noncomputable def homeomorphCircle (hT : T ≠ 0) : AddCircle T ≃ₜ Circle :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/SpecialFunctions/Complex/Circle.lean",
+          "declaration": "AddCircle.homeomorphCircle_apply",
+          "excerpt": "theorem homeomorphCircle_apply (hT : T ≠ 0) (x : AddCircle T) :\n    homeomorphCircle hT x = toCircle x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/SpecialFunctions/Complex/Circle.lean",
+          "declaration": "AddCircle.toCircle",
+          "excerpt": "noncomputable def toCircle : AddCircle T → Circle :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/PlanarAlgebra.lean",
+          "declaration": "planarCharacter",
+          "excerpt": "def planarCharacter (t : PlanarAngle) : ℂ := AddCircle.toCircle t"
+        }
+      ]
+    },
+    {
+      "declaration": "planar_reference_mean_nonneg",
+      "start_line": 25,
+      "end_line": 42,
+      "excerpt": "theorem planar_reference_mean_nonneg (left right : E → V) (e : E) :\n    0≤∫ θ : V → PlanarAngle,planarEnergy left right e θ ∂planarReference := by",
+      "problem": "The integral examined depends on `left right e` only through the single ordered pair of vertices (left e, right e): by definition planarEnergy left right e θ = planarCos (θ (left e) - θ (right e)) (PlanarAlgebra.lean:48-49). Yet the theorem is stated with a whole edge type `E`, maps `left right : E → V` and an edge `e`, and it is vacuous whenever `E` is empty even if `V` has several elements. The proof body (lines 28-42) likewise only mentions `left e` and `right e`, via `by_cases h : left e = right e` and `Function.update (fun _ => 0) (left e) t`.",
+      "proposed_change": "State the pairwise version, e.g. in a section with only `{V : Type uV} [Fintype V]`:\n\n  theorem planar_pair_reference_mean_nonneg (a b : V) :\n      0 ≤ ∫ θ : V → PlanarAngle, planarCos (θ a - θ b) ∂planarReference\n\nwith the identical proof (`by_cases h : a = b`, `obtain ⟨t, ht⟩ := planar_antipode_exists`, `let v : V → PlanarAngle := Function.update (fun _ => 0) a t`, then the same `simp only [Pi.add_apply, v, Function.update_self, Function.update_of_ne (Ne.symm h), zero_add]` + `abel`, `planarCos_add_antipode ht`, and the same integral_add_left_eq_self / integral_neg / linarith finish), and recover the current lemma by `simpa [planarEnergy] using planar_pair_reference_mean_nonneg (left e) (right e)`. Degenerate cases stay correct: a = b is the by_cases branch, where the integrand is constantly planarCos 0 = 1, so the mean is 1 ≥ 0 — which is exactly why the pair form cannot be replaced by a bare existence of a negation witness `∃ v, ∀ θ, f (v + θ) = -f θ`.",
+      "benefit": "The mean-nonnegativity result becomes usable for any two vertices, independently of whether they come from some edge index and of whether the edge type `E` is even inhabited, while the existing planarEnergy-indexed lemma and its callers (planar_edge_mean_nonneg line 51, AmplitudeLaw.lean line 99) remain available as one-line corollaries.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/PlanarAlgebra.lean",
+          "declaration": "planarEnergy",
+          "excerpt": "  planarCos (θ (left e)-θ (right e))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/PlanarPositive.lean",
+          "declaration": "planar_reference_mean_nonneg",
+          "excerpt": "  let v : V → PlanarAngle := Function.update (fun _ => 0) (left e) t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ClassicalON/AmplitudeLaw.lean",
+          "declaration": "planarAmplitudePartition_logSupermodular",
+          "excerpt": "    (planar_reference_mean_nonneg left right) hb"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1478315,
+    "cached_input_tokens": 1357312,
+    "output_tokens": 39953,
+    "reasoning_output_tokens": 31792
+  },
+  "cost_usd": 0.040515236,
+  "generation_ids": [
+    "gen-1792623013-fEmF33dsmgkUKGqJWygM",
+    "gen-1792623059-x1LCa4Pb62Jjp6k2PhHd",
+    "gen-1792623067-h3fFtdT6Spa35w49tvfV",
+    "gen-1792623075-32QbDLsmzu8KsZSY8wnb",
+    "gen-1792623106-Qaq9pD0a0OUjmpdyvUk6",
+    "gen-1792623112-n1Ml7VVmJb8CCItlp81R",
+    "gen-1792623144-oJCw0FYrqCm9wLhDwECb",
+    "gen-1792623172-dZjWnIcKyK4wxdhXCy9b",
+    "gen-1792623176-6LUKqDONmM6HJgVw6pa1",
+    "gen-1792623180-BZGdfuDthRjrHX6420VQ",
+    "gen-1792623184-23c8awCgDhu6Dt0CYLay",
+    "gen-1792623192-PZY1nakxP8pe7Kt9OGuL",
+    "gen-1792623198-5hWZoM5JrCbOo1lkniJW",
+    "gen-1792623204-NCE56vnw3IwvuFMzUmYY",
+    "gen-1792623234-rUYcow51QCPfS9o8Cz8p",
+    "gen-1792623242-2HdPgN5Wvas8CfWaZ3NK",
+    "gen-1792623246-Pz8coWrsd5YgC9LF7Lus",
+    "gen-1792623268-JRMiereRsa9QsDX6ofPV",
+    "gen-1792623276-wZu74nV9rEBqtzS8QuFx",
+    "gen-1792623290-q0PPjS5orReGpRLkIDu5",
+    "gen-1792623298-ka1y3KCdCBP9efWlaIQG",
+    "gen-1792623326-6iyTnGcNUNSaRfMC47ho",
+    "gen-1792623350-FbeZRWZ107bHfLahUKQF",
+    "gen-1792623363-J3z3cctLMyp2ai0jsM2g",
+    "gen-1792623368-L0MKH3n5bMy7ETgjLOmD",
+    "gen-1792623372-0ssLs4u5vlQcNM82du4W",
+    "gen-1792623380-FpSJR0GYCECzEcgeSWgQ",
+    "gen-1792623388-Ki5ukvHI7RhaWTi94p3W",
+    "gen-1792623522-ml0IRPWfXKNwC3QcQT8J",
+    "gen-1792623524-yHMnX6LI64vpLrY50y34",
+    "gen-1792623525-HwvwtlTeFEodyJW9DuyC",
+    "gen-1792623528-wQ739OYnOa1wAMFIETlX",
+    "gen-1792623533-sc5jbwHnKKi2PBZxMaEH",
+    "gen-1792623596-Lyb9kDCNtN4ocYWOmePf"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 34,
+  "duration_ms": 620467,
+  "judged": "2026-10-21T23:00:15+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "3b0baa35da869b1e5462101f7a26264d6f6b041a5f2b3d471aba4350c2c1be22"
+}
