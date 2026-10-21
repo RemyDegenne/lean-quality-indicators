@@ -1,6 +1,6 @@
 # vacuity-and-misstatement
 
-Generated 2026-10-21T23:02:00+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-21T23:15:41+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## Library comparison
 
@@ -21,7 +21,7 @@ Full-pass reference: **130 targets**.
 | Sol | 100 | 1/1 | 100/100 | 0 | 0 | 0.0% [0.0%, 3.7%] | $9.89 / $12.85 |
 | Sonnet | 130 | 1/1 | 130/130 | 8 | 8 | 6.2% [3.2%, 11.7%] | $12.33 / $12.33 |
 | Luna | 130 | 1/1 | 130/130 | 5 | 5 | 3.8% [1.7%, 8.7%] | $0.58 / $0.58 |
-| DeepSeek | 40 | 0/1 | 12/40 | 4 | 4 | 33.3% [13.8%, 60.9%] | $0.35 / $3.79 |
+| DeepSeek | 40 | 0/1 | 12/40 | 4 | 4 | 33.3% [13.8%, 60.9%] | $0.35 / $3.82 |
 
 ### Correlation matrix
 
@@ -93,7 +93,7 @@ Full-pass reference: **10 targets**.
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sonnet | 10 | 1/1 | 10/10 | 2 | 2 | 20.0% [5.7%, 51.0%] | $1.14 / $1.14 |
 | Luna | 10 | 1/1 | 10/10 | 0 | 0 | 0.0% [0.0%, 27.8%] | $0.05 / $0.05 |
-| DeepSeek | 10 | 0/1 | 3/10 | 1 | 1 | 33.3% [6.1%, 79.2%] | $0.06 / $0.20 |
+| DeepSeek | 10 | 0/1 | 3/10 | 1 | 1 | 33.3% [6.1%, 79.2%] | $0.06 / $0.21 |
 
 ### Correlation matrix
 

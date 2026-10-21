@@ -1,0 +1,79 @@
+{
+  "id": "lean-pool-file-0002",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 426 lines of the target and inspected the relevant definitions and divergence-free API in FourierLeray.lean and FourierRealification.lean. I found the substantive repeated proof machinery in the Leray and Stokes representative theorems: both unfold a Fourier multiplier operator, transfer the transform equality to an a.e. equality, and combine it with the corresponding divergence-free multiplier lemma. I did not report the similar five-line realification wrappers at 384-390 and 417-424 separately because they are thin applications of `realPartVectorL2Representative_eq_ae` and `isWeakDivFree_congr_ae`, below the rubric's nontriviality threshold. Exact elaboration of the proposed helper was not tested; its typeclass arguments may need routine adjustment.",
+  "findings": [
+    {
+      "declaration": "realLerayProjectionRepresentative_isWeakDivFree and realStokesOperatorRepresentative_isWeakDivFree",
+      "start_line": 368,
+      "end_line": 413,
+      "excerpt": "  let ℱ := MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 ComplexVec3\n  have htransform :\n      ℱ (lerayProjectionL2 (complexifyVectorL2 f)) =\n        lerayFourierMultiplier (ℱ (complexifyVectorL2 f)) := by\n    change ℱ (ℱ.symm (lerayFourierMultiplier (ℱ (complexifyVectorL2 f)))) = _\n    exact ℱ.apply_symm_apply _",
+      "problem": "The two proofs at 368-380 and 399-413 perform the same frequency-to-physical transfer. In each case the proof unfolds the physical operator as `ℱV.symm (M (ℱX v))`, proves its `ℱV`-transform is `M (ℱX v)` by `apply_symm_apply`, turns that equality into an a.e. equality with `Lp.ext_iff`, and feeds the already-proved divergence-free range of the multiplier to `realPart_isWeakDivFree_of_fourierOrthogonal`. The Leray and Stokes cases differ only by `X = ComplexVec3` versus `ComplexTensor3` and by the multiplier. This repeated bridge is the main content of both proofs, not just notation, and another multiplier will have to copy the same four steps again.",
+      "proposed_change": "Introduce one helper immediately before these theorems, using only the already imported Lp/Fourier API:\n\n```lean\nprivate theorem realPartVectorL2Representative_isWeakDivFree_of_fourierSymmMultiplier\n    {X : Type*} [NormedAddCommGroup X] [InnerProductSpace ℂ X] [CompleteSpace X]\n    (T : Lp (α := L2Vec3) X 2 → ComplexVectorL2)\n    (M : Lp (α := L2Vec3) X 2 → ComplexVectorL2)\n    (v : Lp (α := L2Vec3) X 2)\n    (hT : T v =\n      (MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 ComplexVec3).symm\n        (M ((MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 X) v)))\n    (hM : ∀ᵐ ξ ∂volume,\n      inner ℂ (complexifyFrequency ξ)\n        (M ((MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 X) v) ξ) = 0) :\n    CKN.IsWeakDivFreeL2 (realPartVectorL2Representative (T v)) := by\n  have hFourier : ∀ᵐ ξ ∂volume,\n      inner ℂ (complexifyFrequency ξ)\n        ((MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 ComplexVec3) (T v) ξ) = 0 := by\n    let ℱV := MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 ComplexVec3\n    let ℱX := MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 X\n    have h : ℱV (ℱV.symm (M (ℱX v))) = M (ℱX v) := ℱV.apply_symm_apply _\n    rw [hT]\n    filter_upwards [(Lp.ext_iff).mp h, hM] with ξ hξ hMξ\n    rw [hξ]\n    exact hMξ\n  exact realPart_isWeakDivFree_of_fourierOrthogonal (T v) hFourier\n```\n\nThe Leray proof then becomes `exact realPartVectorL2Representative_isWeakDivFree_of_fourierSymmMultiplier (T := lerayProjectionL2) (M := lerayFourierMultiplier) (v := complexifyVectorL2 f) (by rfl) (lerayFourierMultiplier_divergence_free_ae _)`, and the Stokes proof becomes the same call with `T := stokesL2Operator ht`, `M := stokesFourierMultiplier ht`, `v := complexifyTensorL2 F`, and `stokesFourierMultiplier_divergence_free_ae ht _`. The existing hypotheses are preserved: Leray remains unconditional in `f`, while Stokes keeps `ht : 0 < t` and `F : RealTensorL2`; the `t = 0` case is still excluded exactly as before.",
+      "benefit": "The common Fourier-transform and a.e.-orthogonality argument is proved once, so the two public theorems state only their multiplier-specific data. A reader can see immediately that the only differences are the domain `ComplexVec3` or `ComplexTensor3` and the chosen Fourier multiplier. Future multiplier cases can reuse the same theorem, and the explicit `hT` and `hM` parameters make the required transform identity and frequency-orthogonality hypothesis visible and harder to mix up.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "realLerayProjectionRepresentative_isWeakDivFree",
+          "excerpt": "  let ℱ := MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 ComplexVec3\n  have htransform :\n      ℱ (lerayProjectionL2 (complexifyVectorL2 f)) =\n        lerayFourierMultiplier (ℱ (complexifyVectorL2 f)) := by\n    change ℱ (ℱ.symm (lerayFourierMultiplier (ℱ (complexifyVectorL2 f)))) = _\n    exact ℱ.apply_symm_apply _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "realStokesOperatorRepresentative_isWeakDivFree",
+          "excerpt": "  have htransform :\n      ℱV (stokesL2Operator ht (complexifyTensorL2 F)) =\n        stokesFourierMultiplier ht (ℱT (complexifyTensorL2 F)) := by\n    change ℱV (ℱV.symm\n      (stokesFourierMultiplier ht (ℱT (complexifyTensorL2 F)))) = _\n    exact ℱV.apply_symm_apply _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierLeray.lean",
+          "declaration": "lerayFourierMultiplier_divergence_free_ae",
+          "excerpt": "theorem lerayFourierMultiplier_divergence_free_ae\n    (v : Lp (α := L2Vec3) ComplexVec3 2) :\n    ∀ᵐ ξ ∂volume,\n      inner ℂ (complexifyFrequency ξ) (lerayFourierMultiplier v ξ) = 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierLeray.lean",
+          "declaration": "stokesFourierMultiplier_divergence_free_ae",
+          "excerpt": "theorem stokesFourierMultiplier_divergence_free_ae {t : ℝ} (ht : 0 < t)\n    (F : Lp (α := L2Vec3) ComplexTensor3 2) :\n    ∀ᵐ ξ ∂volume,\n      inner ℂ (complexifyFrequency ξ) (stokesFourierMultiplier ht F ξ) = 0 := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 608590,
+    "cached_input_tokens": 560256,
+    "output_tokens": 29678,
+    "reasoning_output_tokens": 25762
+  },
+  "cost_usd": 0.023187768,
+  "generation_ids": [
+    "gen-1792623605-d1g2MVmu27blnHoECYXM",
+    "gen-1792623609-0iK241P7HVLDw6QbldLp",
+    "gen-1792623623-t5YXEM45ZuVRO1eBszNw",
+    "gen-1792623626-DVnPF0x3lS8vZkALrcsn",
+    "gen-1792623639-PoAjZrmFZkmKdD6MxfFK",
+    "gen-1792623656-SM1fVXg9tIVfC4g3y0tG",
+    "gen-1792623663-oYo49eh0U1h1LFU2iuhi",
+    "gen-1792623666-r0zd3XgwRrQ2w5zWqdFm",
+    "gen-1792623669-0R6CVR5esivZT5VxyQbq",
+    "gen-1792623686-M5RiLxvg3ICQysYIu0eO",
+    "gen-1792623707-BqRf1tlTFA0QvwEGqW9j",
+    "gen-1792623710-8MlkRbpc2CJm5KmUaD8s",
+    "gen-1792623732-DM0BtOnbwca9qTD3ts2z",
+    "gen-1792623813-AladzjVvrZGY0773Qh9p"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 14,
+  "duration_ms": 310429,
+  "judged": "2026-10-21T23:05:15+00:00",
+  "unit": "file",
+  "rubric": "repeated-proof-machinery",
+  "source_sha256": "b8ef72c373bf6ce6441335c9b87f592a65fa1e978b9b2de2240636ba3850ed17"
+}
