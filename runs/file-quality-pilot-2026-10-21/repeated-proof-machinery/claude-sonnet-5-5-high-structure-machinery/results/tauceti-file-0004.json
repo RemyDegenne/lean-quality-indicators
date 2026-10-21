@@ -3,36 +3,26 @@
   "lib": "tauceti",
   "verdict": "findings_found",
   "coverage": "complete",
-  "review_notes": "Read the whole target file, Edge.lean's two existence lemmas, and grepped all uses in the repo. Four theorems here (continuousOn_schwarzChristoffelBoundary, schwarzChristoffelBoundary_sub_eq, schwarzChristoffelBoundary_injOn, collinear_schwarzChristoffelBoundary_image) repeat the same bridge: get L with pointwise limits from an Edge lemma, then rewrite the boundary map to L with schwarzChristoffelBoundary_eq_of_tendsto. The repetition is small per site, so this is a modest finding. I found no other substantial repeated arguments. The exponent-sum-zero argument in sum_filter_eq_zero_of_mem_Ioo is used once. I did not check whether the proposed helper compiles.",
+  "review_notes": "I read the whole target file and the Edge.lean statements of `exists_tendsto_schwarzChristoffelPrimitive_sub_eq` and `exists_tendsto_schwarzChristoffelPrimitive_injOn_collinear`. The only repeated machinery is the transfer of the interval-wise limit function `L` to `schwarzChristoffelBoundary`. The other proofs (the `hasDerivAt` proof, the Icc continuity proof, and the `exists_tendsto…boundary` proof) differ substantially from each other and show no repeated nontrivial reasoning. The finding is modest, because each repeated step is short. I did not compile the proposed rewrite. It uses only the existing lemmas `Set.EqOn`, `ContinuousOn.congr`, `Set.InjOn.congr` and `Set.EqOn.image_eq`, and I did not check their exact signatures.",
   "findings": [
     {
-      "declaration": "TauCeti.schwarzChristoffelBoundary_injOn (also collinear_schwarzChristoffelBoundary_image, schwarzChristoffelBoundary_sub_eq, continuousOn_schwarzChristoffelBoundary)",
-      "start_line": 225,
-      "end_line": 233,
+      "declaration": "continuousOn_schwarzChristoffelBoundary / schwarzChristoffelBoundary_sub_eq / schwarzChristoffelBoundary_injOn / collinear_schwarzChristoffelBoundary_image",
+      "start_line": 199,
+      "end_line": 259,
       "excerpt": "rwa [schwarzChristoffelBoundary_eq_of_tendsto a e z₀ x (hL x hx),\n    schwarzChristoffelBoundary_eq_of_tendsto a e z₀ y (hL y hy)] at hxy",
-      "problem": "Four theorems on a prevertex-free interval share one bridge. Each obtains an auxiliary L from an Edge lemma (`exists_tendsto_schwarzChristoffelPrimitive_sub_eq` or `..._injOn_collinear`). Each then converts L's pointwise limit property into an equality `schwarzChristoffelBoundary a e z₀ x = L x` via `schwarzChristoffelBoundary_eq_of_tendsto`, re-doing the conversion at x and y or via a hand-written `ext`/`rintro` set-image argument. The Edge lemmas bundle the facts about L with an unconstrained L, so every consumer has to transfer them to the boundary map by hand. `collinear_schwarzChristoffelBoundary_image` spends about ten lines on this, using `convert` and a two-direction `ext`. The same `obtain` plus limit-to-equality step also appears in Infinity/Basic.lean, with `limUnder_eq`.",
-      "proposed_change": "Add one private (or public) lemma stating that on `Ioo p q` the boundary map has the same limit data as the Edge lemmas. A simple form is `∀ x ∈ Ioo p q, Tendsto (schwarzChristoffelPrimitive a e z₀) (𝓝[upperHalfPlaneSet] (x:ℂ)) (𝓝 (schwarzChristoffelBoundary a e z₀ x))`. This follows from `tendsto_schwarzChristoffelPrimitive_boundary` with the exponent sum `0 > -1` given by `sum_filter_eq_zero_of_mem_Ioo`. A stronger form is `∃ L, EqOn (schwarzChristoffelBoundary a e z₀) L (Ioo p q) ∧ <the Edge conclusions about L>`. Then `injOn`, `collinear` and `continuousOn` follow from `EqOn.injOn_iff`, `Set.image_congr` and `ContinuousOn.congr`, with no manual `ext`. `sub_eq` becomes a rewrite with `EqOn`. A simpler alternative is to restate the Edge lemmas directly for the boundary map and drop the existential L.",
-      "benefit": "The limit-to-equality step is proved once and each call site becomes a short transfer through EqOn or Set.image_congr. The `collinear` proof loses its manual two-direction `ext`. Future edge results on the boundary map will not need to re-open the `∃ L` statements.",
+      "problem": "Four theorems each obtain `L` from an Edge lemma together with `hL : ∀ x ∈ Ioo p q, Tendsto … (𝓝 (L x))`. Each then re-applies `schwarzChristoffelBoundary_eq_of_tendsto … (hL x hx)` pointwise to replace the boundary map by `L`. The collinear proof does this twice, once in each direction of a hand-written `ext z` set-equality. The repeated step is 'the boundary map equals `L` on the interval, so transfer continuity, injectivity, increments and image collinearity'. It is rederived in each proof, with ad hoc `rw`/`convert`/`ext`.",
+      "proposed_change": "Add one lemma next to `schwarzChristoffelBoundary_eq_of_tendsto`:\n\ntheorem schwarzChristoffelBoundary_eqOn_of_tendsto (a e : ι → ℝ) (z₀ : UpperHalfPlane) {s : Set ℝ} {L : ℝ → ℂ} (hL : ∀ x ∈ s, Tendsto (schwarzChristoffelPrimitive a e z₀) (𝓝[upperHalfPlaneSet] (x : ℂ)) (𝓝 (L x))) : EqOn (schwarzChristoffelBoundary a e z₀) L s := fun x hx => schwarzChristoffelBoundary_eq_of_tendsto a e z₀ x (hL x hx)\n\nThe proof is one line from the existing lemma. Then rewrite each use with `h := schwarzChristoffelBoundary_eqOn_of_tendsto a e z₀ hL`:\n- `continuousOn_schwarzChristoffelBoundary`: `hLcont.congr h`.\n- `schwarzChristoffelBoundary_injOn`: `hLinj.congr h.symm`. This needs `Set.InjOn.congr` with the right direction of `EqOn`.\n- `collinear_schwarzChristoffelBoundary_image`: `rwa [h.image_eq]`, or `h.image_eq ▸ hLcol`, replacing the `convert`/`ext`/`constructor` block.\n- `schwarzChristoffelBoundary_sub_eq`: `rw [h hx, h hy]; exact hsub x hx y hy`.\n\nThe hypotheses and imports are unchanged. `hL` has exactly the shape the two Edge lemmas return.",
+      "benefit": "The collinear proof loses its manual set-extensionality argument, and the injectivity and continuity proofs lose their per-point rewriting. All four proofs then use a single statement of the identification 'boundary = L on the edge'. A change to how the boundary is identified with the edge limit function would then be made in one place.",
       "evidence": [
         {
           "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean",
-          "declaration": "TauCeti.collinear_schwarzChristoffelBoundary_image",
-          "excerpt": "convert hLcol using 1\n  ext z"
+          "declaration": "collinear_schwarzChristoffelBoundary_image",
+          "excerpt": "  · rintro ⟨x, hx, rfl⟩\n    exact ⟨x, hx, (schwarzChristoffelBoundary_eq_of_tendsto a e z₀ x (hL x hx)).symm⟩"
         },
         {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean",
-          "declaration": "TauCeti.schwarzChristoffelBoundary_sub_eq",
-          "excerpt": "rw [schwarzChristoffelBoundary_eq_of_tendsto a e z₀ x (hL x hx),\n    schwarzChristoffelBoundary_eq_of_tendsto a e z₀ y (hL y hy)]"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean",
-          "declaration": "TauCeti.continuousOn_schwarzChristoffelBoundary",
-          "excerpt": "refine hLcont.congr fun x hx => ?_\n  exact schwarzChristoffelBoundary_eq_of_tendsto a e z₀ x (hL x hx)"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Infinity/Basic.lean",
-          "declaration": "limUnder lemma after exists_tendsto_schwarzChristoffelPrimitive_sub_eq",
-          "excerpt": "obtain ⟨L, hL, -, -⟩ := exists_tendsto_schwarzChristoffelPrimitive_sub_eq a e z₀"
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Edge.lean",
+          "declaration": "exists_tendsto_schwarzChristoffelPrimitive_injOn_collinear",
+          "excerpt": "InjOn L (Ioo p q) ∧ Collinear ℝ (L '' Ioo p q)"
         }
       ]
     }
@@ -42,11 +32,11 @@
   "backend": "claude",
   "usage": {
     "input_tokens": 4,
-    "cache_creation_input_tokens": 16006,
-    "cache_read_input_tokens": 16200,
-    "output_tokens": 3056,
+    "cache_creation_input_tokens": 12674,
+    "cache_read_input_tokens": 16112,
+    "output_tokens": 2757,
     "output_tokens_details": {
-      "thinking_tokens": 756
+      "thinking_tokens": 630
     },
     "server_tool_use": {
       "web_search_requests": 0,
@@ -54,19 +44,19 @@
     },
     "service_tier": "standard",
     "cache_creation": {
-      "ephemeral_1h_input_tokens": 16006,
+      "ephemeral_1h_input_tokens": 12674,
       "ephemeral_5m_input_tokens": 0
     },
     "inference_geo": "global",
     "iterations": [
       {
         "input_tokens": 2,
-        "output_tokens": 2665,
-        "cache_read_input_tokens": 12227,
-        "cache_creation_input_tokens": 7752,
+        "output_tokens": 2179,
+        "cache_read_input_tokens": 12183,
+        "cache_creation_input_tokens": 4420,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
-          "ephemeral_1h_input_tokens": 7752
+          "ephemeral_1h_input_tokens": 4420
         },
         "type": "message"
       }
@@ -74,11 +64,11 @@
     "speed": "standard",
     "fallback_credit": null
   },
-  "cost_usd": 0.09621199999999999,
-  "duration_ms": 20922,
+  "cost_usd": 0.07988519999999999,
+  "duration_ms": 19655,
   "turns": 3,
   "attempts": 1,
-  "judged": "2026-10-21T03:08:32",
+  "judged": "2026-10-21T04:28:14",
   "unit": "file",
   "source_sha256": "30437bcec435f1274e5a08244d562e275214f72055eaf976b49eefc79ddd4b64",
   "rubric": "repeated-proof-machinery"

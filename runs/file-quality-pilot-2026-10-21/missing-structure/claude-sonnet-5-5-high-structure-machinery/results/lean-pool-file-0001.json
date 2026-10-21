@@ -3,16 +3,16 @@
   "lib": "lean-pool",
   "verdict": "findings_found",
   "coverage": "complete",
-  "review_notes": "I read the whole target file, `additiveFunction` and `distToAdditive` in Defs.lean, and the other KaltonRoberts files that use `additiveFunction` (Pipeline, Lemmas, MainTheorem, PipelineEps). I also checked Mathlib's `LinearMap.proj` and `LinearMap.pi_apply_eq_sum_univ`. I found no existing linear-map or AddMonoidHom bundle for `additiveFunction`. The main structural gap is that it is linear in the weight vector `a` and additive in the set, and this is exposed only by unfolding. `clm_decompose` is unused, and it duplicates Mathlib's `pi_apply_eq_sum_univ`. That is a duplication issue, so I did not report it under this rubric. I am unsure how much the bundle would shorten the file's `simp_all` proofs. I have not compiled the proposed definition.",
+  "review_notes": "I read the whole file and the Defs definitions (`additiveFunction`, `distToAdditive`, `DualCertificate`). I grepped for uses of the helper lemmas and for `additiveFunction` across KaltonRoberts. `clm_decompose` has no use anywhere, which is a dead-code issue and outside this rubric. The `DualCertificate` structure is already bundled. The large `dual_cert_from_convexHull` proof splits generators by sign. I did not find a clearly better bundle there, and a signed-index reparametrisation would be a restructuring, so I did not report it. The one finding is moderate. A set of `additiveFunction` linearity lemmas would also fix it, and I did not check whether the linear-map form causes elaboration or coercion friction.",
   "findings": [
     {
-      "declaration": "clm_indicator'_eq_additiveFunction / zero_mem_convexHull_of_best_approx (use of additiveFunction a S under negation and scaling by ε)",
-      "start_line": 152,
+      "declaration": "zero_mem_convexHull_of_best_approx (use of additiveFunction inside the ε-perturbation step)",
+      "start_line": 170,
       "end_line": 178,
-      "excerpt": "have h_additiveFunction_a_neg : additiveFunction a S = -Λ (S.indicator') := by",
-      "problem": "`additiveFunction a S = ∑ i ∈ S, a i` is linear in the weight vector `a`. It is also additive over disjoint sets and vanishes at ∅, which is the \"additive signed measure\" structure from Defs. None of this is exposed as a bundled object, so every proof unfolds the sum and redoes the algebra. In this file the proof unfolds `additiveFunction` to see that negating `a` negates the value (lines 162–164). It also unfolds it to see that `additiveFunction (fun i => ε' * a i) S` scales by `ε'` (the `simp only [additiveFunction]` at line 176 and the `← Finset.mul_sum` rewrites in `h_active`). The same unfolding appears in Pipeline.lean for `distToAdditive_sub_additive` and `distToAdditive_neg`, with `Finset.sum_sub_distrib`, `Finset.sum_add_distrib` and `Finset.sum_neg_distrib`. The `fun i => ε * a i` and `fun i => -a i` arguments are also scalar multiples and negations of `a`, but they appear only as opaque lambdas.",
-      "proposed_change": "Expose the linearity in `a` as a bundled map `(U → ℝ) →ₗ[ℝ] (Finset U → ℝ)`, or equivalently a family `S ↦ ∑ i ∈ S, LinearMap.proj i : (U → ℝ) →ₗ[ℝ] ℝ`. Its fields follow from `Finset.sum_add_distrib` for `map_add'` and `Finset.mul_sum` for `map_smul'`. Keep `additiveFunction a S` as the named operation, with a simp lemma stating that it equals the bundled map applied to `a`. State the weight scalings as `ε • a` and `-a`, so the algebra in the ε-perturbation step and in Pipeline.lean's `distToAdditive_neg` and `distToAdditive_sub_additive` becomes `map_smul`, `map_neg` and `map_sub`. In `h_additiveFunction_a_neg`, it would be `map_neg` plus the `clm_indicator'` lemma. The ε-perturbation could then be written as `|f S - ε * additiveFunction a S|`, which is continuous in `ε` by `fun_prop`, so the `continuity` call at line 177 is not needed.",
-      "benefit": "The sum-unfolding proofs in this file and in Pipeline.lean's `distToAdditive_neg` and `distToAdditive_sub_additive` shrink to `map_*` rewrites. The structure the docstring in Defs describes (additive measures identified with weight functions) becomes visible in the API. The cost is one small definition and one coercion lemma.",
+      "excerpt": "simp +decide only [additiveFunction]",
+      "problem": "`additiveFunction a : Finset U → ℝ` is linear in `a`, but this is not exposed. It is a bare `def` of a sum, with no `LinearMap` or linearity API. To show that scaling the vector `a` by `ε'` scales the value, the proof unfolds the definition and rewrites sums by hand: `simp +decide only [additiveFunction]` at the continuity step, and the long `simp_all ... ← Finset.mul_sum ...` calls in `h_active`. The positive and negative active cases each repeat this. `clm_indicator'_eq_additiveFunction` is another hand-built bridge between the same objects. Pipeline.lean repeats the unfolding for negation and subtraction. These proofs are brittle and obscure the fact that the perturbed term is `f S - ε' * additiveFunction a S`.",
+      "proposed_change": "Bundle the map as `additiveFunctionₗ : (U → ℝ) →ₗ[ℝ] (Finset U → ℝ)` and keep `additiveFunction a` as the named operation, with a `@[simp]` lemma `additiveFunctionₗ a S = additiveFunction a S`. Construct it from `fun a S => ∑ i ∈ S, a i`, with `map_add'` from `Finset.sum_add_distrib` and `map_smul'` from `Finset.mul_sum`. If Mathlib's `Finset.sum` pi-linearity API is awkward here, bundle the map explicitly instead. Then `additiveFunction (fun i => ε' * a i) S` becomes `ε' * additiveFunction a S` by `map_smul`. The `h_cont` step reduces to continuity of `ε' ↦ |f S - ε' * c|`, and `h_active` needs no `simp_all` with `← Finset.mul_sum`. The same lemmas would serve the neg/sub cases in Pipeline.lean.",
+      "benefit": "The scaling, negation and subtraction steps in this file and in Pipeline.lean stop being repeated unfold-and-simp rewrites. The perturbation argument shows its structure, and the fragile `simp_all` blocks become short rewrites with `map_smul` and `map_neg`.",
       "evidence": [
         {
           "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Defs.lean",
@@ -21,39 +21,13 @@
         },
         {
           "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Pipeline.lean",
-          "declaration": "distToAdditive_neg",
+          "declaration": "key (negation of a in distToAdditive neg lemma)",
           "excerpt": "simp only [additiveFunction, Finset.sum_neg_distrib]"
         },
         {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/Pipeline.lean",
-          "declaration": "distToAdditive_sub_additive",
-          "excerpt": "simp +decide [ additiveFunction, Finset.sum_sub_distrib ]"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/LinearAlgebra/Pi.lean",
-          "declaration": "LinearMap.proj",
-          "excerpt": "def proj (i : ι) : ((i : ι) → φ i) →ₗ[R] φ i where"
-        }
-      ]
-    },
-    {
-      "declaration": "clm_indicator'_eq_additiveFunction",
-      "start_line": 70,
-      "end_line": 75,
-      "excerpt": "Λ S.indicator' = additiveFunction (fun i => Λ (Function.update 0 i 1)) S",
-      "problem": "The correspondence between a functional `Λ : (U → ℝ) →L[ℝ] ℝ` and its weight vector `fun i => Λ (Function.update 0 i 1)` is an anonymous lambda, repeated at lines 72, 152 and 155. The lemma is stated pointwise as a `Λ`-versus-`additiveFunction` identity. The weight map `Λ ↦ (i ↦ Λ (Pi.single i 1))` is itself linear, and `S.indicator'` is the sum of the basis vectors over `S`. This structure appears only as one-off lemmas, so the later negation step has to be rebuilt by unfolding `additiveFunction`.",
-      "proposed_change": "Name the weight vector once, as a definition (for example `weights Λ : U → ℝ := fun i => Λ (Pi.single i 1)`). If the linearity-in-`a` bundle from the first finding exists, restate the lemma as `Λ S.indicator' = additiveFunction (weights Λ) S`, with `weights` a linear map or function in `Λ`. Then `weights (-Λ) = -weights Λ` and `weights` applied to `Λ` give the sign flip at lines 152–165 directly. This is optional and depends on the first finding.",
-      "benefit": "One named object replaces the inline lambda and its repeated `convert` and `simp_all` rewriting at lines 155–157. The sign and negation facts can then be stated once, with `Λ` and `-Λ` handled by `map_neg`.",
-      "evidence": [
-        {
           "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KaltonRoberts/DualCert.lean",
           "declaration": "zero_mem_convexHull_of_best_approx",
-          "excerpt": "set a : U → ℝ := fun i => -(Λ (Function.update 0 i 1)) with ha_def;"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/LinearAlgebra/Pi.lean",
-          "declaration": "LinearMap.pi_apply_eq_sum_univ",
-          "excerpt": "f x = ∑ i, x i • f fun j => if i = j then 1 else 0"
+          "excerpt": "← Finset.mul_sum _ _ _,"
         }
       ]
     }
@@ -62,12 +36,12 @@
   "effort": "high",
   "backend": "claude",
   "usage": {
-    "input_tokens": 16,
-    "cache_creation_input_tokens": 33100,
-    "cache_read_input_tokens": 201599,
-    "output_tokens": 6559,
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 21837,
+    "cache_read_input_tokens": 87979,
+    "output_tokens": 3950,
     "output_tokens_details": {
-      "thinking_tokens": 2016
+      "thinking_tokens": 1337
     },
     "server_tool_use": {
       "web_search_requests": 0,
@@ -75,19 +49,19 @@
     },
     "service_tier": "standard",
     "cache_creation": {
-      "ephemeral_1h_input_tokens": 33100,
+      "ephemeral_1h_input_tokens": 21837,
       "ephemeral_5m_input_tokens": 0
     },
     "inference_geo": "global",
     "iterations": [
       {
         "input_tokens": 2,
-        "output_tokens": 2821,
-        "cache_read_input_tokens": 36366,
-        "cache_creation_input_tokens": 716,
+        "output_tokens": 1629,
+        "cache_read_input_tokens": 24527,
+        "cache_creation_input_tokens": 1252,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
-          "ephemeral_1h_input_tokens": 716
+          "ephemeral_1h_input_tokens": 1252
         },
         "type": "message"
       }
@@ -95,11 +69,11 @@
     "speed": "standard",
     "fallback_credit": null
   },
-  "cost_usd": 0.21818189999999998,
-  "duration_ms": 45189,
-  "turns": 12,
+  "cost_usd": 0.1356659,
+  "duration_ms": 31325,
+  "turns": 8,
   "attempts": 1,
-  "judged": "2026-10-21T03:05:12",
+  "judged": "2026-10-21T04:24:12",
   "unit": "file",
   "source_sha256": "e2e71e39360264ce01321d98a643b9e96aaf725b7e4ab6d8a568aee859dd9e03",
   "rubric": "missing-structure"

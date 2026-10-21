@@ -3,83 +3,42 @@
   "lib": "lean-pool",
   "verdict": "findings_found",
   "coverage": "complete",
-  "review_notes": "I read the whole target file. For comparison I read the dyadic-shell code in Kernel.lean (exists_shell_of_pos_lt, pairwise_disjoint_parabolicRieszShells, negativeShell_pairwise) and in Hedberg.lean (nearShell_cover, farShell_cover, ennreal_mul_rpow_of_ne_zero_of_ne_top). I also looked at the pairwise-disjointness proof in SubordinatedBase.lean and at Mathlib's Int.log and ENNReal.mul_rpow lemmas. Findings 1 and 3 give a single shared helper only for the parabolic cases. The Euclidean Hedberg copies would need a version stated over a general dist or radius function, and I did not check how that generalises. I did not examine the remaining repeated-calculation patterns in the target, such as the ofReal/rpow bookkeeping in positive_shell_scale_identity, because they are too routine to meet the rubric. I could not compile any replacement, so the proposed lemma statements are untested.",
+  "review_notes": "Read the full Tail.lean and compared it to Kernel.lean, which Tail imports and which contains the negative-shell counterparts. I found two repeated blocks: the floor-of-log dyadic shell location, and the pairwise disjointness of shells. I did not look closely at whether `ennreal_mul_rpow` duplicates a Mathlib lemma, because that is not repeated machinery within proofs. The routine hbreal/ha/hb coercion rewriting is short and I did not flag it. I could not compile anything, so the proposed lemma statements are untested. The sign-of-k argument and the extra hypotheses in the shared lemmas still need to be written out.",
   "findings": [
     {
       "declaration": "exists_positive_shell",
       "start_line": 93,
-      "end_line": 128,
-      "excerpt": "let k : ℤ := ⌊Real.log x / L⌋",
-      "problem": "This is the same dyadic-index argument that appears in Kernel.lean as exists_shell_of_pos_lt, and twice more in Hedberg.lean as nearShell_cover and farShell_cover. In each copy it sets x = ρ/R and k = ⌊log x / log 2⌋. It proves 2^k ≤ x < 2^(k+1) by applying strict monotonicity of log, Real.log_rpow and field_simp. It then turns that into 2^k R ≤ ρ < 2^(k+1) R. Only the final step differs: showing k ≥ 0, showing k < 0, or converting k to ℕ. Roughly 30 lines are copied each time. Mathlib already has Int.zpow_log_le_self and Int.lt_zpow_succ_log_self (in Mathlib/Data/Int/Log.lean), which give this two-sided dyadic bound directly.",
-      "proposed_change": "Add one shared lemma in Kernel.lean, next to mem_parabolicRieszShell. For 0 < R and R ≤ ρ (or 0 < ρ in general), it would return ∃ k : ℤ, (2:ℝ)^(k:ℝ) * R ≤ ρ ∧ ρ < (2:ℝ)^((k:ℝ)+1) * R. Prove it from Int.log 2 (ρ/R), Int.zpow_log_le_self, Int.lt_zpow_succ_log_self and Real.rpow_intCast. Equivalently, state it as ∀ w, 0 < ρ(z,w) → ∃ k : ℤ, w ∈ parabolicRieszShell R k z. Then redo exists_positive_shell and exists_shell_of_pos_lt as short wrappers. The wrappers only add the sign facts k ≥ 0 (from 1 ≤ ρ/R) or k < 0 (from ρ/R < 1) and, for the positive case, the toNat conversion. Hedberg.lean's farShell_cover and nearShell_cover could use the same pattern.",
-      "benefit": "This removes three or four near-identical 30-line log/floor proofs and leaves one short proof of the dyadic bound. Each caller then states only its own sign condition. The log/floor case analysis is easier to audit once than in four copies.",
+      "end_line": 127,
+      "excerpt": "  have hpowlo : (2 : ℝ) ^ (k : ℝ) ≤ x := by\n    apply (Real.strictMonoOn_log.le_iff_le",
+      "problem": "The proof locates a dyadic index with `k = ⌊log x / log 2⌋`. It proves `2^k ≤ x < 2^(k+1)` through the two log/rpow monotonicity calculations `hpowlo` and `hpowhi`, then multiplies back by `R`. `exists_shell_of_pos_lt` in Kernel.lean (lines 178–215), which Tail already imports, repeats this reasoning almost line for line. The setup `x`, `L`, `k`, `hL`, `hklo`, `hkhi` is the same, and so are `hpowlo`, `hpowhi`, `hinner`, `houter`. Only the sign argument for `k` differs (`0 ≤ k` here, `k < 0` there). The two copies are about 30 lines each and must be maintained in parallel.",
+      "proposed_change": "Add one lemma in Kernel.lean before `exists_shell_of_pos_lt`, for example `exists_int_shell {z w} {R} (hR : 0 < R) (hρ : 0 < parabolicRho₂ z w) : ∃ k : ℤ, w ∈ parabolicRieszShell R k z`. Its proof is the shared floor-log argument (`hpowlo`, `hpowhi`, `hinner`, `houter`, `mem_parabolicRieszShell`). Alternatively, use Mathlib's `Int.log` and `zpow_log_le_self`/`lt_zpow_succ_log_self`, after converting the rpow with an integer exponent to `zpow`. Then add a sign lemma: `w ∈ parabolicRieszShell R k z → parabolicRho₂ z w < R → k < 0`, using `2^k * R ≤ ρ < R`. Add a second sign lemma: `w ∈ parabolicRieszShell R k z → R ≤ parabolicRho₂ z w → 0 ≤ k`, using `R ≤ ρ < 2^(k+1) R`. Both come from strict monotonicity of `2 ^ ·`. Then `exists_shell_of_pos_lt` becomes `obtain ⟨k, hmem⟩ := exists_int_shell hR hρ; exact ⟨k, neg_lemma hmem hρR, hmem⟩`. `exists_positive_shell` becomes `obtain ⟨k, hmem⟩ := exists_int_shell hR (hR.trans_le hRρ); exact ⟨k.toNat, by simpa [Int.toNat_of_nonneg (nonneg_lemma hmem hRρ)] using hmem⟩`. Here `hR.trans_le hRρ : 0 < parabolicRho₂ z w`, which supplies the positivity the shared lemma needs. The degenerate case `ρ = 0` is excluded in both uses. Positive shells have `ρ ≥ R > 0`, and negative shells assume `0 < ρ`.",
+      "benefit": "The floor/log/rpow argument exists in one place. Both existence lemmas shrink to a short sign argument. Any change to the shell definition, such as a different base, is then made once.",
       "evidence": [
         {
           "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
-          "declaration": "CKN.Foundation.Parabolic.Morrey.exists_shell_of_pos_lt",
-          "excerpt": "let k : ℤ := ⌊Real.log x / L⌋"
+          "declaration": "exists_shell_of_pos_lt",
+          "excerpt": "  have hpowlo : (2 : ℝ) ^ (k : ℝ) ≤ x := by\n    apply (Real.strictMonoOn_log.le_iff_le"
         },
         {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Euclidean/Hedberg.lean",
-          "declaration": "farShell_cover",
-          "excerpt": "have hkhi : Real.log x / L < (k : ℝ) + 1 := Int.lt_floor_add_one _"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Euclidean/Hedberg.lean",
-          "declaration": "nearShell_cover",
-          "excerpt": "have hkneg : k < 0 := by"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Int/Log.lean",
-          "declaration": "Int.lt_zpow_succ_log_self",
-          "excerpt": "theorem lt_zpow_succ_log_self {b : ℕ} (hb : 1 < b) (r : R) : r < (b : R) ^ (log b r + 1)"
-        }
-      ]
-    },
-    {
-      "declaration": "ennreal_mul_rpow",
-      "start_line": 168,
-      "end_line": 190,
-      "excerpt": "private lemma ennreal_mul_rpow {x y : ℝ≥0∞} {e : ℝ} (hx0 : x ≠ 0) (hxtop : x ≠ ∞)",
-      "problem": "This repeats a roughly 20-line proof, which is identical to the one in Hedberg.lean (ennreal_mul_rpow_of_ne_zero_of_ne_top). Both reprove (x*y)^e = x^e*y^e for any real e by splitting on the sign of e and inverting. Mathlib already has ENNReal.mul_rpow_of_ne_zero (hx : x ≠ 0) (hy : y ≠ 0) (z : ℝ), and ENNReal.mul_rpow_of_ne_top for the finite case. Here the hypotheses (hxtop, hy0, hytop) are not needed, and hy0 and hytop are bound to `_`.",
-      "proposed_change": "Delete ennreal_mul_rpow. In positive_shell_scale_identity, use ENNReal.mul_rpow_of_ne_zero hSn0 hT0 _ and ENNReal.mul_rpow_of_ne_zero hSn2_0 hT0 _, or ENNReal.mul_rpow_of_ne_top hSnTop hTTop _. Then the hSnTop and hSn2_Top facts can be dropped if the ne_zero version is used. Delete the Hedberg copy in the same way.",
-      "benefit": "This removes about 23 lines of proof here and about as many in Hedberg.lean. It also removes a private lemma with unused hypotheses, and the call sites then rely on a recognised library lemma.",
-      "evidence": [
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Pow/NNReal.lean",
-          "declaration": "ENNReal.mul_rpow_of_ne_zero",
-          "excerpt": "theorem mul_rpow_of_ne_zero {x y : ℝ≥0∞} (hx : x ≠ 0) (hy : y ≠ 0) (z : ℝ) :\n    (x * y) ^ z = x ^ z * y ^ z"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Euclidean/Hedberg.lean",
-          "declaration": "ennreal_mul_rpow_of_ne_zero_of_ne_top",
-          "excerpt": "private lemma ennreal_mul_rpow_of_ne_zero_of_ne_top"
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "parabolicRieszShell",
+          "excerpt": "  {w | (2 : ℝ) ^ (k : ℝ) * R ≤ parabolicRho₂ z w ∧"
         }
       ]
     },
     {
       "declaration": "positiveShell_pairwise",
       "start_line": 138,
-      "end_line": 160,
-      "excerpt": "exact (not_lt_of_ge (hrad.trans hwm.1)) hwn.2",
-      "problem": "The disjointness of parabolic Riesz shells is proved separately three times. The proofs are in positiveShell_pairwise here, in negativeShell_pairwise and pairwise_disjoint_parabolicRieszShells in Kernel.lean, and in heatPotential_far_shells_pairwise_disjoint in SubordinatedBase.lean. Each proves the same fact: for integers k < l, the shells are disjoint because 2^(k+1) R ≤ 2^l R. Each does this with two nearly mirrored branches: it casts k+1 ≤ l to ℝ, applies rpow_le_rpow_of_exponent_le, multiplies by R, and contradicts the upper bound of one shell with the lower bound of the other. Only the index arithmetic (ℕ, Int.negSucc, j+6, subtype) differs.",
-      "proposed_change": "Prove one lemma in Kernel.lean next to parabolicRieszShell, say for 0 < R and k < l : ℤ, Disjoint (parabolicRieszShell R k z) (parabolicRieszShell R l z). Derive both orderings from it with Disjoint.symm. Then positiveShell_pairwise becomes `Pairwise.mono`-style or `fun n m h => ...`, using Nat.cast_lt and Int.negSucc ordering by omega. Similar one-line wrappers cover the other three proofs.",
-      "benefit": "This replaces four sets of mirrored branches, each about 20 lines, with one shared lemma plus short index-translation wrappers. The shell geometry is stated once, and each caller only handles its own indexing.",
+      "end_line": 161,
+      "excerpt": "  rcases lt_or_gt_of_ne hnm with hlt | hgt",
+      "problem": "Pairwise disjointness of dyadic shells is proved here for ℕ indices. Kernel.lean's private `pairwise_disjoint_parabolicRieszShells` proves it for negative ℤ indices, again with two symmetric branches. Each branch derives `2^(a+1) ≤ 2^b` from `a < b`, multiplies by `R`, and contradicts `hw.2 : ρ < 2^(a+1) R` with `hw.1 : 2^b R ≤ ρ`. The nontrivial step is that shells with distinct integer indices are disjoint. It is proved twice, and the ℕ copy has extra casts through ℤ and ℝ.",
+      "proposed_change": "Prove once in Kernel.lean a public lemma `parabolicRieszShell_disjoint {R} (hR : 0 < R) {k l : ℤ} (hkl : k < l) (z) : Disjoint (parabolicRieszShell R k z) (parabolicRieszShell R l z)`. The proof is the first branch, using `Int.add_one_le_iff.mpr hkl`. Then use `Disjoint.symm` for the other order. Both pairwise statements reduce to it. `pairwise_disjoint_parabolicRieszShells` becomes `intro k l hkl; rcases lt_or_gt_of_ne hkl with h | h; exacts [disj hR h z, (disj hR h z).symm]`, with `h` first converted by `Subtype.coe_lt_coe`. `positiveShell_pairwise` becomes the same with `Nat.cast_lt` and `Nat.cast_injective`. Exact coercion lemma names are not checked. There are no new hypotheses: `0 < R` is already in both statements.",
+      "benefit": "The two copies, with different cast plumbing, reduce to a single disjointness fact. This is clearer because the Tail file then only handles the ℕ→ℤ index cast.",
       "evidence": [
         {
           "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
-          "declaration": "negativeShell_pairwise",
-          "excerpt": "exact (not_lt_of_ge (hrad.trans hwn.1)) hwm.2"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
           "declaration": "pairwise_disjoint_parabolicRieszShells",
-          "excerpt": "exact (not_lt_of_ge ((mul_le_mul_of_nonneg_right hpow hR.le).trans"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/HeatPotential/SubordinatedBase.lean",
-          "declaration": "heatPotential_far_shells_pairwise_disjoint",
-          "excerpt": "exact (not_lt_of_ge (hrad.trans hwk.1)) hwj.2"
+          "excerpt": "exact (not_lt_of_ge ((mul_le_mul_of_nonneg_right hpow hR.le).trans\n      hwl.1)) hwk.2"
         }
       ]
     }
@@ -88,12 +47,12 @@
   "effort": "high",
   "backend": "claude",
   "usage": {
-    "input_tokens": 14,
-    "cache_creation_input_tokens": 32365,
-    "cache_read_input_tokens": 169167,
-    "output_tokens": 6956,
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 21286,
+    "cache_read_input_tokens": 87833,
+    "output_tokens": 4483,
     "output_tokens_details": {
-      "thinking_tokens": 1079
+      "thinking_tokens": 832
     },
     "server_tool_use": {
       "web_search_requests": 0,
@@ -101,19 +60,19 @@
     },
     "service_tier": "standard",
     "cache_creation": {
-      "ephemeral_1h_input_tokens": 32365,
+      "ephemeral_1h_input_tokens": 21286,
       "ephemeral_5m_input_tokens": 0
     },
     "inference_geo": "global",
     "iterations": [
       {
         "input_tokens": 2,
-        "output_tokens": 3850,
-        "cache_read_input_tokens": 35455,
-        "cache_creation_input_tokens": 883,
+        "output_tokens": 2699,
+        "cache_read_input_tokens": 24719,
+        "cache_creation_input_tokens": 496,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
-          "ephemeral_1h_input_tokens": 883
+          "ephemeral_1h_input_tokens": 496
         },
         "type": "message"
       }
@@ -121,11 +80,11 @@
     "speed": "standard",
     "fallback_credit": null
   },
-  "cost_usd": 0.21596469999999998,
-  "duration_ms": 48741,
-  "turns": 12,
+  "cost_usd": 0.1387773,
+  "duration_ms": 44141,
+  "turns": 7,
   "attempts": 1,
-  "judged": "2026-10-21T03:10:02",
+  "judged": "2026-10-21T04:29:24",
   "unit": "file",
   "source_sha256": "d887bac2a8cb1a61b5f7a93914422e13484394d7568dcb01574bd1e1ce9e6d64",
   "rubric": "repeated-proof-machinery"

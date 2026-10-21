@@ -1,11 +1,8 @@
 # Failure to expose mathematical structure
 
-Find a function or construction whose useful homomorphism, continuity, equivalence or
-action structure is exposed only as separate facts. Identify a standard bundle in the
-allowed sources, show how its fields follow under the actual assumptions, and cite an
-existing consumer that becomes clearer or gains useful API.
-
-Do not flag structure already exposed by a public object, implementation reuse via a
-generic combinator, or bundling with only hypothetical uses. Preserve useful named
-operations. Explain why adding the bundle improves the complete interface after
-accounting for its construction, assumptions and coercions.
+Find missing bundled mathematical structure that materially simplifies an existing
+consumer. Give the bundle's type, explain its construction, and show the rewritten
+consumer. Check whether an equivalent public interface already exists and whether the
+proposed construction introduces circular dependencies. Preserve useful named operations.
+Report only a clear improvement after accounting for the bundle, supporting lemmas and
+coercions; hypothetical uses and optional packaging are insufficient.

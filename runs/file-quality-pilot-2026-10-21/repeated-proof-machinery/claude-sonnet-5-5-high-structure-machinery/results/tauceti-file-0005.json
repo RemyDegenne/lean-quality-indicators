@@ -3,26 +3,57 @@
   "lib": "tauceti",
   "verdict": "findings_found",
   "coverage": "complete",
-  "review_notes": "I read the whole target file and its neighbours in StructureConstant: Symmetry.lean (cyclic symmetry, `structureConstant_neg_neg_of_hom`), Basic.lean (skew), and Normalization.lean. Normalization.lean is the only other place that repeats the core step. It does so in `structureConstant_neg_add_mul_killingForm_eq`, which uses the same cyclic and skew inputs on the same triple (γ, -α, β) with the same auxiliary root-sum proofs. I did not compile anything, so the proposed helper name and exact signature are untested. I treated the closing algebra (cancelling the Killing pairing at γ, and the top·(p+1) ratio calculation) as too short to flag. I found no other repeated machinery in the file. The second theorem's proof is short and has no counterpart elsewhere.",
+  "review_notes": "I read the whole target file, and the neighbouring Symmetry.lean and Normalization.lean. I grepped the TauCeti tree for the repeated cyclic/skew and nonvanishing-Killing blocks. I did not check the proposed lemmas in Lean. The `rw [Weight.coe_neg …]; abel` side-goal proofs repeat, but they are short routine steps, so I did not report them. The two theorems inside this file share only `hmul` and no nontrivial reasoning, so the findings concern repetition between this file and Normalization.lean.",
   "findings": [
     {
       "declaration": "TauCeti.IsSl2System.structureConstant_mul_structureConstant_neg_neg",
-      "start_line": 96,
+      "start_line": 91,
       "end_line": 102,
-      "excerpt": "have hskew := hx.structureConstant_skew (-α) γ β hβ hβγ\n  have hcyc := hx.structureConstant_mul_killingForm_eq γ (-α) β hβ hγα hγ",
-      "problem": "The proof applies the cyclic Killing-form symmetry to the triple (γ, -α, β) and then skew-symmetry. This gives the Chevalley-free identity N(-α,-β)·B(xγ,x(-γ)) = -N(-α,γ)·B(xβ,x(-β)). Normalization.lean (`structureConstant_neg_add_mul_killingForm_eq`) repeats the same step. It builds the same two root-sum equations (`hγα` and `hαγ`/`hβγ`, each proved by `rw [Weight.coe_neg, hαβ]; abel`). It calls `structureConstant_mul_killingForm_eq γ (-α) β hβ hγα hγ` and `structureConstant_skew (-α) γ β hβ _`. It then rewrites with both, and only afterwards uses `structureConstant_neg_neg_of_hom` to turn N(-α,-β) into -N(α,β). Both files re-derive the same intermediate fact, along with the `Weight.coe_neg`/`abel` side conditions. The calc in the target also repeats this relation inline, in the steps `rw [hcyc]` and `rw [hskew]`.",
-      "proposed_change": "Add one lemma in Symmetry.lean, which both files already import. It takes the same hypotheses as the target: hx, hβ, hγ and hαβ. It states `hx.structureConstant (-α) (-β) (-γ) hγ.neg _ * killingForm K L (x γ) (x (-γ)) = -(hx.structureConstant (-α) γ β hβ _ * killingForm K L (x β) (x (-β)))`. The root-sum equations are proved once, inside it. The target's calc then starts from this lemma, so `hcyc`, `hskew`, `hβγ` and `hγα` disappear and the two `rw` steps collapse into one. In Normalization.lean, `structureConstant_neg_add_mul_killingForm_eq` becomes: rewrite the helper with `hneg` and finish with `neg_mul`/`neg_inj`.",
-      "benefit": "The cyclic-then-skew derivation and its root-sum bookkeeping live in one place. Both consumers drop their copies of the setup. The Chevalley-free relation is stated explicitly, which makes it clear what Normalization.lean adds (only `hneg`) and what the target adds (only the root-length ratio).",
+      "excerpt": "have hcyc := hx.structureConstant_mul_killingForm_eq γ (-α) β hβ hγα hγ",
+      "problem": "The proof builds the hypotheses `hβγ`/`hγα` for the triple (γ, -α, β), applies the cyclic Killing-form symmetry to it, and then applies skew-symmetry `N(γ,-α) = -N(-α,γ)`. `structureConstant_neg_add_mul_killingForm_eq` in Normalization.lean (lines 103-113) repeats this exact derivation: the same two coordinate equations, the same `structureConstant_mul_killingForm_eq γ (-α) β` call, and the same `structureConstant_skew (-α) γ β`. That lemma only adds the Chevalley-involution rewrite `hneg`. The unconditional core is `N(-α,-β)·B(γ) = -N(-α,γ)·B(β)`. It is proved twice, once with and once without the involution hypothesis, and the Chevalley version re-derives it instead of reusing it.",
+      "proposed_change": "Add one lemma to Symmetry.lean, where `structureConstant_mul_killingForm_eq` and `structureConstant_skew` are already available. Its statement: `hx.structureConstant (-α) (-β) (-γ) hγ.neg _ * killingForm K L (x γ) (x (-γ)) = -(hx.structureConstant (-α) γ β hβ _ * killingForm K L (x β) (x (-β)))`, under `hβ hγ hαβ`. Proof: introduce `hγα` and `hαγ` by `rw [Weight.coe_neg, hαβ]; abel`, then `have := hx.structureConstant_mul_killingForm_eq γ (-α) β hβ hγα hγ; rw [hx.structureConstant_skew (-α) γ β hβ hαγ] at this; linarith`, with `neg_mul` used to normalise. In Opposite.lean, replace `hβγ/hγα/hcyc/hskew` and the `rw [hcyc]`/`rw [hskew]` calc steps by this lemma. The chain becomes `N·(N'·Bγ) = N·(-(N(-α,γ)·Bβ)) = -(N·N(-α,γ))·Bβ`, followed by the existing `hprod`. In Normalization.lean, `structureConstant_neg_add_mul_killingForm_eq` reduces to `have h := <new lemma>; rw [hneg] at h; simpa only [neg_mul, neg_inj] using h`.",
+      "benefit": "The cyclic-plus-skew reduction is proved once as an unconditional fact. Each caller states only what it adds: the product formula here, the involution rewrite there. A change to the weight-equation bookkeeping or to the shape of the cyclic lemma then needs one edit instead of two parallel ones. The Chevalley version shows plainly that it specialises the unconditional identity.",
       "evidence": [
         {
           "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/Weights/StructureConstant/Normalization.lean",
           "declaration": "TauCeti.IsSl2System.structureConstant_neg_add_mul_killingForm_eq",
-          "excerpt": "have hcyclic := hx.structureConstant_mul_killingForm_eq γ (-α) β hβ hγα hγ\n  have hskew := hx.structureConstant_skew (-α) γ β hβ hαγ"
+          "excerpt": "have hcyclic := hx.structureConstant_mul_killingForm_eq γ (-α) β hβ hγα hγ"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/Weights/StructureConstant/Normalization.lean",
+          "declaration": "TauCeti.IsSl2System.structureConstant_neg_add_mul_killingForm_eq",
+          "excerpt": "have hskew := hx.structureConstant_skew (-α) γ β hβ hαγ"
         },
         {
           "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/Weights/StructureConstant/Symmetry.lean",
           "declaration": "TauCeti.IsSl2System.structureConstant_mul_killingForm_eq",
-          "excerpt": "hx.structureConstant α β γ hγ hαβ * killingForm K L (x γ) (x (-γ)) ="
+          "excerpt": "hx.structureConstant α β γ hγ hαβ * killingForm K L (x γ) (x (-γ)) =\n      hx.structureConstant β (-γ) (-α) hα.neg"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.IsSl2System.structureConstant_mul_structureConstant_neg_neg",
+      "start_line": 103,
+      "end_line": 108,
+      "excerpt": "have hkill : killingForm K L (x γ) (x (-γ)) ≠ 0 :=\n    killingForm_ne_zero_of_mem_rootSpace hγ (hx.mem_rootSpace γ) (hx.ne_zero γ hγ)\n      (hx.mem_rootSpace (-γ)) (hx.ne_zero (-γ) hγ.neg)\n  apply mul_right_cancel₀ hkill",
+      "problem": "This proof and `structureConstant_sq_eq_natCast_sq_of_killingForm_ratio` (Normalization.lean 163-179) share the same final stage. Each proves `B(γ, -γ) ≠ 0` with the same four-argument call to `killingForm_ne_zero_of_mem_rootSpace`, and each cancels it with `mul_right_cancel₀`. Each then moves the factor `(q·(p+1) : ℕ)·B(β)` through the length-ratio hypothesis to `(p+1)²·B(γ)`, by `push_cast; ring`, then `rw [hlength]`, then `ring`. The same non-vanishing proof is also repeated in FourTerm.lean and Involution.lean. Here the ratio step is written out as the calc steps at lines 124-131. The ratio computation is the nontrivial part: `q·B(β) = (p+1)·B(γ)` implies `q(p+1)·B(β) = (p+1)²·B(γ)`.",
+      "proposed_change": "Add two small lemmas next to the Killing-form API in Symmetry.lean. First, `killingForm_root_neg_ne_zero (hx) (γ) (hγ) : killingForm K L (x γ) (x (-γ)) ≠ 0`, with the existing `killingForm_ne_zero_of_mem_rootSpace` proof as its body. Second, `chainTopCoeff_mul_chainBotCoeff_succ_mul_killingForm_eq`, giving `((q * (p+1) : ℕ) : K) * B(β) = ((p+1 : ℕ) : K)^2 * B(γ)` from `hlen`. Its proof is `push_cast; linear_combination (↑(p+1)) * hlen`, with the cast shape adjusted to fit. Opposite.lean then needs only `apply mul_right_cancel₀ (hx.killingForm_root_neg_ne_zero γ hγ)` and one rewrite with the second lemma. The ratio-specific calc steps (`push_cast; ring`, `rw [hlen]`, `ring`) are removed. Normalization.lean's `…_of_killingForm_ratio` is shortened the same way.",
+      "benefit": "The conclusion `…·B(γ) = -(p+1)²·B(γ)` follows from `hprod` and one named lemma, so the root-length step is no longer buried in an eight-line calc. The same lemma serves both the product identity and the Chevalley square identity. The non-vanishing proof stops being copied across four files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/Weights/StructureConstant/Normalization.lean",
+          "declaration": "TauCeti.IsSl2System.structureConstant_sq_eq_natCast_sq_of_killingForm_ratio",
+          "excerpt": "killingForm_ne_zero_of_mem_rootSpace hγ (hx.mem_rootSpace γ) (hx.ne_zero γ hγ)\n      (hx.mem_rootSpace (-γ)) (hx.ne_zero (-γ) hγ.neg)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/Weights/StructureConstant/Normalization.lean",
+          "declaration": "TauCeti.IsSl2System.structureConstant_sq_eq_natCast_sq_of_killingForm_ratio",
+          "excerpt": "((chainBotCoeff α β + 1 : ℕ) : K) *\n        ((chainTopCoeff α β : K) * killingForm K L (x β) (x (-β))) := by\n          push_cast\n          ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/Weights/StructureConstant/FourTerm.lean",
+          "declaration": "(FourTerm.lean, nonvanishing step)",
+          "excerpt": "killingForm_ne_zero_of_mem_rootSpace hμ (hx.mem_rootSpace μ) (hx.ne_zero μ hμ)"
         }
       ]
     }
@@ -32,11 +63,11 @@
   "backend": "claude",
   "usage": {
     "input_tokens": 8,
-    "cache_creation_input_tokens": 13358,
-    "cache_read_input_tokens": 35353,
-    "output_tokens": 3823,
+    "cache_creation_input_tokens": 12696,
+    "cache_read_input_tokens": 37029,
+    "output_tokens": 5273,
     "output_tokens_details": {
-      "thinking_tokens": 1481
+      "thinking_tokens": 1149
     },
     "server_tool_use": {
       "web_search_requests": 0,
@@ -44,19 +75,19 @@
     },
     "service_tier": "standard",
     "cache_creation": {
-      "ephemeral_1h_input_tokens": 13358,
+      "ephemeral_1h_input_tokens": 12696,
       "ephemeral_5m_input_tokens": 0
     },
     "inference_geo": "global",
     "iterations": [
       {
         "input_tokens": 2,
-        "output_tokens": 2346,
-        "cache_read_input_tokens": 13331,
-        "cache_creation_input_tokens": 4000,
+        "output_tokens": 3531,
+        "cache_read_input_tokens": 14872,
+        "cache_creation_input_tokens": 1753,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
-          "ephemeral_1h_input_tokens": 4000
+          "ephemeral_1h_input_tokens": 1753
         },
         "type": "message"
       }
@@ -64,11 +95,11 @@
     "speed": "standard",
     "fallback_credit": null
   },
-  "cost_usd": 0.0952133,
-  "duration_ms": 27631,
+  "cost_usd": 0.10723289999999999,
+  "duration_ms": 35756,
   "turns": 6,
   "attempts": 1,
-  "judged": "2026-10-21T03:09:28",
+  "judged": "2026-10-21T04:29:14",
   "unit": "file",
   "source_sha256": "268f1308dd2892ba0d2e1e318d456a8c359cfbd7d59d6bbc5a5b9b9c8b380b99",
   "rubric": "repeated-proof-machinery"

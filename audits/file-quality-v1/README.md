@@ -10,8 +10,8 @@ python3 -u scripts/reinvention_audit.py --run file-quality-pilot-2026-10-21 \
   --label claude-sonnet-5-5-high-concept --jobs 2
 ```
 
-The structured-interface and repeated-machinery rubrics require concrete consumers and
-an overall improvement including the proposed abstraction and its uses. Run these two
+The structured-interface and repeated-machinery rubrics require concrete constructions,
+proof sketches and rewritten existing uses showing an overall improvement. Run these two
 on the same sample, with a separate sixty-review report:
 
 ```sh

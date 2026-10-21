@@ -6,8 +6,8 @@ Cells: files with findings / completed reviews (number of findings). The same fi
 
 | Rubric | Mathlib | Tau Ceti | Lean Pool |
 |---|---:|---:|---:|
-| missing-structure | 2/10 (2) | 2/10 (2); 3 N/A | 3/10 (5) |
-| repeated-proof-machinery | 3/10 (3) | 5/10 (6) | 9/10 (20) |
+| missing-structure | 1/10 (1) | 2/10 (3) | 6/10 (6) |
+| repeated-proof-machinery | 2/10 (4); 1 N/A | 2/10 (3) | 6/10 (10) |
 
 Completed judgments: 60/60.
 

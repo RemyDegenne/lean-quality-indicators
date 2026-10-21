@@ -1,20 +1,47 @@
 {
   "id": "lean-pool-file-0007",
   "lib": "lean-pool",
-  "verdict": "none_found",
+  "verdict": "findings_found",
   "coverage": "complete",
-  "review_notes": "I read the whole file and checked how scalarTorusRepresentative and smoothPeriodicTestL2 are used in ScalarRepresentative.lean. I found no construction that qualifies under this rubric.\n\n- scalarTorusRepresentative f is defined from the coercion `f x` of an Lp class. That coercion is linear only almost everywhere, not pointwise. So there is no honest linear-map or linear-isometry bundle into `Vec 2 → ℝ`. Its isometry property is already exposed by scalarTorusRepresentative_l2NormSq, which is stated in terms of l2NormSq, a separate norm.\n- smoothPeriodicTestL2 takes ψ together with proof arguments (smoothness and periodicity). A bundled map would need a subtype or submodule of smooth periodic functions, and no existing consumer needs one.\n- weakPathRepresentative is a plain pointwise definition. Its continuity of test pairings is already proved as a theorem about a given u, and it holds only for `u` that satisfies `hweakContinuous`.\n\nI found no consumer that would become clearer with a bundled version.",
-  "findings": [],
+  "review_notes": "Read the whole target file and checked downstream consumers of smoothPeriodicTestL2 (ScalarRepresentative, ScalarFourierDerivative, ProductWeakSlices, ProductWeakGradient). The unbundled (ψ, hψ, hperiodic) triple is threaded through about 22 theorem signatures in the FourierGalerkin directory. Two files re-prove the same coeFn lemma. I did not search exhaustively for an existing smooth-periodic-test structure in the repo, only grepped for the relevant names. I did not check whether a bundle would create import cycles. The base file already hosts all the needed ingredients, so a cycle looks unlikely. I found no other clear bundling issue. Packaging weakPathRepresentative or scalarTorusRepresentative as linear maps looked optional rather than a clear gain.",
+  "findings": [
+    {
+      "declaration": "smoothPeriodicTestL2",
+      "start_line": 64,
+      "end_line": 68,
+      "excerpt": "noncomputable def smoothPeriodicTestL2 {ψ : Vec 2 → ℝ}\n    (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) (_hperiodic : AVenhance.IsZ2Periodic ψ) : ScalarTorusL2 :=",
+      "problem": "A smooth periodic test function is passed around as three loose arguments: the function ψ, a smoothness proof hψ, and a periodicity proof hperiodic. Here the periodicity proof is not even used, so it is an unused underscore argument. No bundled object is exposed. Every consumer repeats the pair of hypotheses, and the L² class is applied to the triple. Downstream files each re-prove the same fact about the class (its coeFn is a.e. equal to periodicToTorus ψ): ProductWeakGradient.smoothPeriodicTestL2_coeFn and ScalarFourierDerivative.smoothPeriodicTestL2_ae_periodicToTorus. Each also re-proves its own copy of the smooth-memL2On lemma, using different closed-cell constants. About 22 signatures in the FourierGalerkin directory repeat `(hperiodic : AVenhance.IsZ2Periodic ψ)`.",
+      "proposed_change": "Introduce `structure SmoothPeriodicTest where toFun : Vec 2 → ℝ; contDiff : ContDiff ℝ (⊤ : ℕ∞) toFun; periodic : AVenhance.IsZ2Periodic toFun`, with a `CoeFun` instance. It could use `ContDiff ℝ ∞` as the existing code does. Define `SmoothPeriodicTest.toL2 (ψ : SmoothPeriodicTest) : ScalarTorusL2` by the existing `toLp` construction, with `smoothPeriodicTestL2 hψ hperiodic := (⟨ψ, hψ, hperiodic⟩ : SmoothPeriodicTest).toL2` kept as a named wrapper. State `SmoothPeriodicTest.coeFn_toL2 : (fun x : Torus => ψ.toL2 x) =ᵐ[volume] periodicToTorus ψ` once in this file. The consumers then read `weakPathRepresentative_pairing_eq_inner u t (ψ : SmoothPeriodicTest) : ∫ x in unitCube, weakPathRepresentative u t x * ψ x = inner ℝ (u t) ψ.toL2`. `FrozenDriftProblem.initial_pairing_eq_cell_integral` and `weakPathRepresentative_testPairing_continuous` take a single `ψ` too. The `htest`/`hψT` blocks in the proofs are replaced by `ψ.coeFn_toL2`. The bundle could later get a gradient/coordinate-derivative operation, so `productWeakGradient_coord_contDiff` also becomes a constructor.",
+      "benefit": "Signatures lose two arguments each, and the repeated hψ/hperiodic pairs disappear. The coeFn lemma is stated once instead of being re-proved in ProductWeakGradient and ScalarFourierDerivative. The unused-periodicity oddity of the definition becomes a documented field. Derivatives and coordinate maps of test functions can then be built as operations on the bundle.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ProductWeakGradient.lean",
+          "declaration": "ProductWeakGradient.smoothPeriodicTestL2_coeFn",
+          "excerpt": "theorem ProductWeakGradient.smoothPeriodicTestL2_coeFn {ψ : Vec 2 → ℝ}\n    (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) (hperiodic : AVenhance.IsZ2Periodic ψ) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ScalarFourierDerivative.lean",
+          "declaration": "ScalarFourierDerivative.smoothPeriodicTestL2_ae_periodicToTorus",
+          "excerpt": "theorem ScalarFourierDerivative.smoothPeriodicTestL2_ae_periodicToTorus {ψ : Vec 2 → ℝ}\n    (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) (hperiodic : AVenhance.IsZ2Periodic ψ) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "weakPathRepresentative_pairing_eq_inner",
+          "excerpt": "inner ℝ (u t) (smoothPeriodicTestL2 hψ hperiodic) := by\n  let ψT : ScalarTorusL2 := smoothPeriodicTestL2 hψ hperiodic"
+        }
+      ]
+    }
+  ],
   "model": "claude-sonnet-5-5",
   "effort": "high",
   "backend": "claude",
   "usage": {
-    "input_tokens": 6,
-    "cache_creation_input_tokens": 10133,
-    "cache_read_input_tokens": 29888,
-    "output_tokens": 1248,
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 16491,
+    "cache_read_input_tokens": 66793,
+    "output_tokens": 4028,
     "output_tokens_details": {
-      "thinking_tokens": 364
+      "thinking_tokens": 643
     },
     "server_tool_use": {
       "web_search_requests": 0,
@@ -22,19 +49,19 @@
     },
     "service_tier": "standard",
     "cache_creation": {
-      "ephemeral_1h_input_tokens": 10133,
+      "ephemeral_1h_input_tokens": 16491,
       "ephemeral_5m_input_tokens": 0
     },
     "inference_geo": "global",
     "iterations": [
       {
         "input_tokens": 2,
-        "output_tokens": 497,
-        "cache_read_input_tokens": 13404,
-        "cache_creation_input_tokens": 711,
+        "output_tokens": 2298,
+        "cache_read_input_tokens": 19760,
+        "cache_creation_input_tokens": 673,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
-          "ephemeral_1h_input_tokens": 711
+          "ephemeral_1h_input_tokens": 673
         },
         "type": "message"
       }
@@ -42,11 +69,11 @@
     "speed": "standard",
     "fallback_credit": null
   },
-  "cost_usd": 0.0560128,
-  "duration_ms": 11579,
-  "turns": 4,
+  "cost_usd": 0.11294329999999998,
+  "duration_ms": 28929,
+  "turns": 8,
   "attempts": 1,
-  "judged": "2026-10-21T03:11:22",
+  "judged": "2026-10-21T04:30:49",
   "unit": "file",
   "source_sha256": "7481faf851369321065137087beecc63fb712c22b0a32549754de4bb8da821cd",
   "rubric": "missing-structure"

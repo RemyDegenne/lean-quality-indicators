@@ -3,47 +3,36 @@
   "lib": "lean-pool",
   "verdict": "findings_found",
   "coverage": "complete",
-  "review_notes": "I read the whole target file and grepped the repo for uses of the main declarations. The repeated pattern is the step from \"real-part representative is weakly div-free\" to \"`realVectorL2Representative (realPartVectorL2 z)` is weakly div-free\". It appears twice in the target and in at least two other files (FourierHeatDivergence, ForcedRegularisedSolutionJ). The second pattern is the `ℱ (op v) = multiplier (ℱ v)` identity via `apply_symm_apply`, which is proved inline in several files. I did not find an existing shared lemma for either pattern. The proposed statements are untested. I did not flag the gradient or Schwartz plumbing, because I saw no repeated substantial argument there. The `realLerayProjection` and `realStokesOperator` pair is small, so I only mention it as part of the first finding.",
+  "review_notes": "I read the whole file and checked the definitions of lerayProjectionL2, stokesL2Operator, realLerayProjection and realStokesOperator in FourierLeray.lean and FourierRealification.lean. The Schwartz and Fourier lemmas (gradientOfCovector, weakTestGradientSchwartz_apply and _fourier, the Plancherel pairing lemma) are each used once, so they are not repeated machinery. The only repetition I found is in the two Leray/Stokes theorem pairs at the end of the file. It is a modest amount of reasoning (about 10 lines per copy), so the finding is of limited strength. I did not check that the proposed helpers compile.",
   "findings": [
     {
-      "declaration": "realLerayProjection_isWeakDivFree / realStokesOperator_isWeakDivFree (and the same pattern in other files)",
-      "start_line": 384,
-      "end_line": 424,
-      "excerpt": "change CKN.IsWeakDivFreeL2 (realVectorL2Representative (realPartVectorL2 z))\n  exact isWeakDivFree_congr_ae hAE.symm hRange",
-      "problem": "Both theorems repeat the same conversion from a weakly divergence-free `realPartVectorL2Representative z` to a weakly divergence-free `realVectorL2Representative (realPartVectorL2 z)`. It uses `realPartVectorL2Representative_eq_ae` and `isWeakDivFree_congr_ae`, and goes through a `change` that unfolds the definitions of `realLerayProjection` and `realStokesOperator`. The same conversion is also written out in `realHeatOperator_isInJ_of_fourierOrthogonal` and in `forcedMildCurve_mildJData`. So the argument appears in at least four places, two of them in this file. The file proves `realPart_isWeakDivFree_of_fourierOrthogonal` for the representative that is awkward to use, and each caller then has to transport the result by hand.",
-      "proposed_change": "Directly after `realPartVectorL2Representative_eq_ae`, add one lemma stating `∀ (v : ComplexVectorL2), (∀ᵐ ξ ∂volume, inner ℂ (complexifyFrequency ξ) ((MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 ComplexVec3) v ξ) = 0) → CKN.IsWeakDivFreeL2 (realVectorL2Representative (realPartVectorL2 v))`. Prove it with `isWeakDivFree_congr_ae (realPartVectorL2Representative_eq_ae v).symm (realPart_isWeakDivFree_of_fourierOrthogonal v hv)`. The two `realXxx_isWeakDivFree` theorems then reduce to this lemma plus their Fourier-orthogonality `filter_upwards` argument. The heat and forced-solution call sites can use it too. Alternatively, restate `realPart_isWeakDivFree_of_fourierOrthogonal` for the `realVectorL2Representative (realPartVectorL2 v)` form.",
-      "benefit": "This removes the repeated `change`/`congr_ae` boilerplate at four call sites. It also gives one named statement for the common use, \"Fourier-orthogonal complex field gives a weakly div-free real part\". It also makes the `*Representative_isWeakDivFree` intermediate theorems unnecessary where they exist only to be converted.",
-      "evidence": [
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierHeatDivergence.lean",
-          "declaration": "realHeatOperator_isInJ_of_fourierOrthogonal",
-          "excerpt": "have h := realPartVectorL2Representative_eq_ae sh"
-        },
-        {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/ForcedRegularisedSolutionJ.lean",
-          "declaration": "forcedMildCurve_mildJData",
-          "excerpt": "(isWeakDivFree_congr_ae (realPartVectorL2Representative_eq_ae _).symm hweak)"
-        }
-      ]
-    },
-    {
-      "declaration": "realLerayProjectionRepresentative_isWeakDivFree / realStokesOperatorRepresentative_isWeakDivFree",
-      "start_line": 364,
-      "end_line": 413,
+      "declaration": "realLerayProjectionRepresentative_isWeakDivFree / realStokesOperatorRepresentative_isWeakDivFree (and the wrappers realLerayProjection_isWeakDivFree / realStokesOperator_isWeakDivFree)",
+      "start_line": 368,
+      "end_line": 415,
       "excerpt": "have htransformAE := (Lp.ext_iff).mp htransform\n  filter_upwards [htransformAE,",
-      "problem": "Both proofs run the same argument. They state that the Fourier transform of the operator output equals the multiplier applied to the transformed input, using `change ℱ (ℱ.symm …) = _` and `apply_symm_apply`. They then take `Lp.ext_iff` to get an a.e. identity, and `filter_upwards` against the multiplier's a.e. divergence-free lemma, then `rw [hξ]; exact hrange`. The same `ℱ (ℱ.symm m) = m` computation for Leray and Stokes is repeated in other files, for Stokes in `RegularisedBesselStokesPhysical` and for the heat semigroup in `FourierHeatDivergence`. It is also redone for Leray inside `ForcePressureOrthogonality`.",
-      "proposed_change": "Add the two small named identities `fourier_lerayProjectionL2 (v) : ℱ (lerayProjectionL2 v) = lerayFourierMultiplier (ℱ v)` and `fourier_stokesL2Operator ht F : ℱV (stokesL2Operator ht F) = stokesFourierMultiplier ht (ℱT F)`. Put them next to the definitions in `FourierLeray.lean`. Each is `ℱ.apply_symm_apply _`. Then add a single lemma, \"if `ℱ v =ᵐ g` and `g` is a.e. frequency-orthogonal, then `v` is\". Both theorems here reduce to it, and the other files can rewrite with the two identities.",
-      "benefit": "The Fourier-side bookkeeping is stated and proved once, where the operators are defined. The two theorems here become short. The other call sites also lose their local `change`/`apply_symm_apply` blocks.",
+      "problem": "The two *Representative theorems repeat the same argument. Each one applies realPart_isWeakDivFree_of_fourierOrthogonal. Each one then rewrites ℱ(ℱ.symm (multiplier …)) back to the multiplier with apply_symm_apply. Each one turns the equality in Lp into an a.e. equality with Lp.ext_iff. Finally each runs filter_upwards [htransformAE, <multiplier>_divergence_free_ae …] and closes with rw [hξ]; exact hrange. The two wrapper theorems (realLerayProjection_isWeakDivFree and realStokesOperator_isWeakDivFree) repeat a second argument. Both set z, obtain hRange and hAE := realPartVectorL2Representative_eq_ae z, change the goal to the realPartVectorL2 form, and apply isWeakDivFree_congr_ae hAE.symm hRange. Only the operator differs.",
+      "proposed_change": "Add two helpers before the concrete theorems.\n\n(1) `theorem realPart_isWeakDivFree_of_fourier_eq_ae (v w : ComplexVectorL2) (hvw : MeasureTheory.Lp.fourierTransformₗᵢ L2Vec3 ComplexVec3 v = w) (hw : ∀ᵐ ξ ∂volume, inner ℂ (complexifyFrequency ξ) (w ξ) = 0) : CKN.IsWeakDivFreeL2 (realPartVectorL2Representative v)`.\nProof sketch: `apply realPart_isWeakDivFree_of_fourierOrthogonal; filter_upwards [(Lp.ext_iff).mp hvw, hw] with ξ h1 h2; rw [h1]; exact h2`.\n\n(2) `theorem realPartVectorL2_isWeakDivFree_of_representative (z : ComplexVectorL2) (h : CKN.IsWeakDivFreeL2 (realPartVectorL2Representative z)) : CKN.IsWeakDivFreeL2 (realVectorL2Representative (realPartVectorL2 z))`.\nProof sketch: `exact isWeakDivFree_congr_ae (realPartVectorL2Representative_eq_ae z).symm h`.\n\nThe Leray use is then `realPart_isWeakDivFree_of_fourier_eq_ae _ (lerayFourierMultiplier (ℱ (complexifyVectorL2 f))) (ℱ.apply_symm_apply _) (lerayFourierMultiplier_divergence_free_ae _)`. Here ℱ.apply_symm_apply _ is the existing `change ℱ (ℱ.symm …) = _` step. It should unify because lerayProjectionL2 unfolds to ℱ.symm (lerayFourierMultiplier (ℱ v)). The Stokes use has the same shape with stokesFourierMultiplier ht (ℱT …), ℱV.apply_symm_apply _ and stokesFourierMultiplier_divergence_free_ae ht _. The two non-Representative theorems become `realPartVectorL2_isWeakDivFree_of_representative _ (realLerayProjectionRepresentative_isWeakDivFree f)` and the Stokes analogue.",
+      "benefit": "Each concrete theorem shrinks from about 12 lines to a one- or two-line application. A future multiplier with divergence-free range (another Fourier multiplier operator) can reuse the helpers instead of copying the htransform / Lp.ext_iff / filter_upwards pattern. The argument that a Fourier multiplier with orthogonal range gives a weakly divergence-free real part is stated once.",
       "evidence": [
         {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/RegularisedBesselStokesPhysical.lean",
-          "declaration": "hStokesFourier (local have)",
-          "excerpt": "change ℱV (ℱV.symm (stokesFourierMultiplier ht (ℱT G))) = _\n    exact ℱV.apply_symm_apply _"
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierPhysicalRange.lean",
+          "declaration": "realStokesOperatorRepresentative_isWeakDivFree",
+          "excerpt": "stokesFourierMultiplier_divergence_free_ae ht\n      (ℱT (complexifyTensorL2 F))] with ξ hξ hrange\n  rw [hξ]\n  exact hrange"
         },
         {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierHeatDivergence.lean",
-          "declaration": "heatSemigroup_preserves_fourierOrthogonal (local htransform)",
-          "excerpt": "change ℱ (ℱ.symm (heatMultiplier t ht • ℱ v)) = _\n    exact ℱ.apply_symm_apply _"
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierLeray.lean",
+          "declaration": "lerayProjectionL2",
+          "excerpt": "exact ℱ.symm (lerayFourierMultiplier (ℱ v))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierLeray.lean",
+          "declaration": "stokesL2Operator",
+          "excerpt": "exact ℱV.symm (stokesFourierMultiplier ht (ℱT F))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/FourierRealification.lean",
+          "declaration": "realStokesOperator",
+          "excerpt": "fun F => realPartVectorL2 (stokesL2Operator ht (complexifyTensorL2 F))"
         }
       ]
     }
@@ -52,12 +41,12 @@
   "effort": "high",
   "backend": "claude",
   "usage": {
-    "input_tokens": 12,
-    "cache_creation_input_tokens": 35119,
-    "cache_read_input_tokens": 133481,
-    "output_tokens": 4914,
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 14067,
+    "cache_read_input_tokens": 19313,
+    "output_tokens": 3506,
     "output_tokens_details": {
-      "thinking_tokens": 985
+      "thinking_tokens": 968
     },
     "server_tool_use": {
       "web_search_requests": 0,
@@ -65,19 +54,19 @@
     },
     "service_tier": "standard",
     "cache_creation": {
-      "ephemeral_1h_input_tokens": 35119,
+      "ephemeral_1h_input_tokens": 14067,
       "ephemeral_5m_input_tokens": 0
     },
     "inference_geo": "global",
     "iterations": [
       {
         "input_tokens": 2,
-        "output_tokens": 2686,
-        "cache_read_input_tokens": 36719,
-        "cache_creation_input_tokens": 2373,
+        "output_tokens": 2757,
+        "cache_read_input_tokens": 15384,
+        "cache_creation_input_tokens": 2612,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
-          "ephemeral_1h_input_tokens": 2373
+          "ephemeral_1h_input_tokens": 2612
         },
         "type": "message"
       }
@@ -85,11 +74,11 @@
     "speed": "standard",
     "fallback_credit": null
   },
-  "cost_usd": 0.20298810000000003,
-  "duration_ms": 35565,
-  "turns": 9,
+  "cost_usd": 0.0932673,
+  "duration_ms": 22769,
+  "turns": 3,
   "attempts": 1,
-  "judged": "2026-10-21T03:06:35",
+  "judged": "2026-10-21T04:25:07",
   "unit": "file",
   "source_sha256": "b8ef72c373bf6ce6441335c9b87f592a65fa1e978b9b2de2240636ba3850ed17",
   "rubric": "repeated-proof-machinery"

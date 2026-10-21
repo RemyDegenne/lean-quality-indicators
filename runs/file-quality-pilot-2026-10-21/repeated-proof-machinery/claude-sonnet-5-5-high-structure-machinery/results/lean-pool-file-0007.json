@@ -3,37 +3,31 @@
   "lib": "lean-pool",
   "verdict": "findings_found",
   "coverage": "complete",
-  "review_notes": "Read the whole target file and compared it with torus-bridge files (Heat/WeakBridge.lean, Torus/FourierCalculus.lean). Those use similar periodicToTorus/integral_periodicToTorus_eq_unitCell chains, but they are complex-valued Fourier-coefficient or norm statements, not the real L² inner-product pairing. I did not find an existing lemma giving a general real pairing identity. Within the target file, the two pairing theorems repeat the same chain. Uncertainty: I did not check the exact coercion forms (for example `fun x => f x` and `Lp` coeFn) needed for the proposed helper, so it is untested.",
+  "review_notes": "I read the whole file. I also read the Torus/Basic.lean lemmas it uses: integral_unitCell_eq_unitCube, integral_periodicToTorus_eq_unitCell, periodicToTorus and periodicToTorus_fromUnitTorus. The main duplication is the torus-inner-product-to-cell-integral chain, which is written out twice. The repeated `hfun : weakPathRepresentative u t = scalarTorusRepresentative (u t)` blocks, and the long `scalarTorusRepresentative_memL2On` proof, are only routine unfolding. I did not report them under this rubric. I could not compile the proposed lemma. The rewrites are sketches that follow the existing proofs line for line, with the hypotheses abstracted.",
   "findings": [
     {
-      "declaration": "weakPathRepresentative_pairing_eq_inner / FrozenDriftProblem.initial_pairing_eq_cell_integral",
-      "start_line": 188,
+      "declaration": "weakPathRepresentative_pairing_eq_inner and FrozenDriftProblem.initial_pairing_eq_cell_integral",
+      "start_line": 206,
       "end_line": 263,
-      "excerpt": "_ = ∫ x : Torus, inner ℝ (u t x) (ψT x) := by\n      apply integral_congr_ae\n      filter_upwards with x\n      simp [mul_comm]",
-      "problem": "Two long proofs carry out the same argument. First, the unit-cube integral of a product φ·ψ is rewritten to the unit-cell integral and then to the torus integral of periodicToTorus (φ·ψ). The periodicToTorus of the product is then identified with the product of the periodicToTorus values, and the two L² classes are replaced by their representatives using a.e. equalities. Finally the integral is converted to `L2.inner_def` using `simp [mul_comm]`. The first theorem runs this chain in reverse with φ = weakPathRepresentative u t and the class u t. The second runs it forward with φ = P.θ₀ and the class P.initialTorusL2. The `show ... from rfl` product-splitting step, the `integral_congr_ae`/`mul_comm` step and the `L2.inner_def` step are duplicated verbatim in shape. The chain exists only as two separate calc blocks.",
-      "proposed_change": "Add one helper in this file. It takes f g : ScalarTorusL2 and φ ψ : Vec 2 → ℝ, with hf : (fun x : Torus => f x) =ᵐ[volume] periodicToTorus φ and hg : (fun x : Torus => g x) =ᵐ[volume] periodicToTorus ψ. It concludes `inner ℝ f g = ∫ x in AVenhance.unitCube, φ x * ψ x`. Prove it once by the existing calc, using `L2.inner_def`, `integral_congr_ae` with `filter_upwards [hf, hg]`, `integral_periodicToTorus_eq_unitCell` and `integral_unitCell_eq_unitCube`. Then `initial_pairing_eq_cell_integral` is the helper applied to the two `coeFn_toLp` facts it already proves, namely hθ and hψT. `weakPathRepresentative_pairing_eq_inner` is the helper (symm) applied to the pointwise identity htheta, turned into an a.e. statement with `Filter.Eventually.of_forall`, and to the `coeFn_toLp` fact htest. Both call sites reduce to establishing the representative equalities. The helper covers both cases, because the first needs only a.e. equality for f and the second gets it from `coeFn_toLp`.",
-      "benefit": "The measure-theoretic bookkeeping (cell versus cube, product of periodicToTorus values, inner product as integral) is proved once. Each theorem then shows only what is specific to it: the weak-path representative, or the datum. A change to the torus transfer lemmas needs one edit instead of two, and the helper statement documents the bridge between torus L² pairing and the unit-cube integral.",
+      "excerpt": "filter_upwards [hθ, hψT] with x hx hψx",
+      "problem": "The two proofs repeat the same argument. A torus L² inner product is rewritten via `L2.inner_def` and `mul_comm` as `∫ x : Torus, f x * ψT x`. The a.e. identifications of `f` and of `ψT` with `periodicToTorus` are then used to rewrite the integrand as `periodicToTorus (fun y => g y * ψ y)`. After that the chain applies `integral_periodicToTorus_eq_unitCell` and then `integral_unitCell_eq_unitCube`. The `htest` and `hψT` blocks, which obtain the a.e. identification of `smoothPeriodicTestL2` via `coeFn_toLp`, are also identical. The two proofs run the chain in opposite directions, so the shared structure is not obvious. Any change to the test-function class, such as new hypotheses on `smoothPeriodicTestL2`, must be made in both places.",
+      "proposed_change": "Add one lemma before `weakPathRepresentative_pairing_eq_inner`:\n\ntheorem torus_inner_smoothPeriodicTestL2_eq_cell_integral (f : ScalarTorusL2) {g ψ : Vec 2 → ℝ} (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) (hperiodic : AVenhance.IsZ2Periodic ψ) (hfg : (fun x : Torus => f x) =ᵐ[volume] AVenhance.Infra.Torus.periodicToTorus g) : inner ℝ f (smoothPeriodicTestL2 hψ hperiodic) = ∫ x in AVenhance.unitCube, g x * ψ x.\n\nProof: this is the body of `initial_pairing_eq_cell_integral`, with `P.initialTorusL2` replaced by `f`, `P.θ₀` by `g`, and `hθ` by `hfg`. That is, `let ψT := smoothPeriodicTestL2 hψ hperiodic`; obtain `hψT` from `coeFn_toLp`; then run the same `calc`: `L2.inner_def`, `mul_comm`, `integral_congr_ae` with `filter_upwards [hfg, hψT]`, `integral_periodicToTorus_eq_unitCell`, `integral_unitCell_eq_unitCube`.\n\nRewritten uses:\n- `FrozenDriftProblem.initial_pairing_eq_cell_integral`: `exact torus_inner_smoothPeriodicTestL2_eq_cell_integral P.initialTorusL2 hψ hperiodic (frozenInitialData_memLp_torus P.initial_memL2).coeFn_toLp`.\n- `weakPathRepresentative_pairing_eq_inner`: keep `htheta` (which is `periodicToTorus (weakPathRepresentative u t) x = u t x`), then `exact (torus_inner_smoothPeriodicTestL2_eq_cell_integral (u t) hψ hperiodic (Filter.Eventually.of_forall fun x => (htheta x).symm)).symm`.\n\nBoth uses keep their actual hypotheses (`hψ`, `hperiodic`, `P.initial_memL2`, `t.property`) and need no new imports.",
+      "benefit": "The Fubini-style torus/cell bookkeeping and the product-of-`periodicToTorus` rewrite live in one place. Each of the two theorems shrinks to the part specific to it: the a.e. identification of the datum, or the pointwise identity `htheta`. The direction mismatch between the two calc chains disappears. Future changes to the pairing, such as a different test class or measure normalization, are made once.",
       "evidence": [
         {
-          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
-          "declaration": "FrozenDriftProblem.initial_pairing_eq_cell_integral",
-          "excerpt": "filter_upwards [hθ, hψT] with x hx hψx"
-        }
-      ]
-    },
-    {
-      "declaration": "weakPathRepresentative_isPeriodic / weakPathRepresentative_memL2On / weakPathRepresentative_l2NormSq / weakPathRepresentative_pairing_eq_inner",
-      "start_line": 168,
-      "end_line": 184,
-      "excerpt": "have hfun : weakPathRepresentative u t = scalarTorusRepresentative (u t) := by\n    funext x\n    simp [weakPathRepresentative, t.property]",
-      "problem": "The same unfolding argument, showing that for t in Icc 0 1 the weak path representative is scalarTorusRepresentative (u ⟨t,_⟩), is reproved inline four times. It appears in the periodicity proof (the `ht` case), in memL2On, in l2NormSq, and as `hrep` inside the pairing theorem. Each time it uses `funext` and `simp [weakPathRepresentative, …]`. It is short, but it is repeated at four call sites and obscures the structure of each proof.",
-      "proposed_change": "Add `theorem weakPathRepresentative_of_mem (u) (t : Icc (0:ℝ) 1) : weakPathRepresentative u t = scalarTorusRepresentative (u t)`, stated for the subtype coercion, and use it in all four places. The periodicity proof's membership case would use it via `⟨t, ht⟩`. memL2On and l2NormSq then become `rw [weakPathRepresentative_of_mem]; exact …`. The pairing theorem's `hrep` is replaced by the lemma.",
-      "benefit": "This removes four duplicated sub-proofs, so the three downstream bridge lemmas become one-liners. It also gives a reusable simp/rw lemma for the later weak-solution assembly mentioned in the module docstring.",
-      "evidence": [
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Torus/Basic.lean",
+          "declaration": "AVenhance.Infra.Torus.integral_periodicToTorus_eq_unitCell",
+          "excerpt": "∫ x : UnitAddTorus (Fin d), periodicToTorus f x = ∫ x in unitCell d, f x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Torus/Basic.lean",
+          "declaration": "AVenhance.Infra.Torus.integral_unitCell_eq_unitCube",
+          "excerpt": "∫ x in unitCell 2, f x = ∫ x in AVenhance.unitCube, f x"
+        },
         {
           "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
           "declaration": "weakPathRepresentative_pairing_eq_inner",
-          "excerpt": "have hrep : weakPathRepresentative u t = scalarTorusRepresentative (u t) := by"
+          "excerpt": "_ = ∫ x : Torus, inner ℝ (u t x) (ψT x) := by"
         }
       ]
     }
@@ -42,12 +36,12 @@
   "effort": "high",
   "backend": "claude",
   "usage": {
-    "input_tokens": 8,
-    "cache_creation_input_tokens": 20458,
-    "cache_read_input_tokens": 51946,
-    "output_tokens": 3879,
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 14933,
+    "cache_read_input_tokens": 16378,
+    "output_tokens": 3907,
     "output_tokens_details": {
-      "thinking_tokens": 894
+      "thinking_tokens": 1308
     },
     "server_tool_use": {
       "web_search_requests": 0,
@@ -55,19 +49,19 @@
     },
     "service_tier": "standard",
     "cache_creation": {
-      "ephemeral_1h_input_tokens": 20458,
+      "ephemeral_1h_input_tokens": 14933,
       "ephemeral_5m_input_tokens": 0
     },
     "inference_geo": "global",
     "iterations": [
       {
         "input_tokens": 2,
-        "output_tokens": 2300,
-        "cache_read_input_tokens": 19784,
-        "cache_creation_input_tokens": 4647,
+        "output_tokens": 3082,
+        "cache_read_input_tokens": 12449,
+        "cache_creation_input_tokens": 6413,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
-          "ephemeral_1h_input_tokens": 4647
+          "ephemeral_1h_input_tokens": 6413
         },
         "type": "message"
       }
@@ -75,11 +69,11 @@
     "speed": "standard",
     "fallback_credit": null
   },
-  "cost_usd": 0.12583260000000002,
-  "duration_ms": 26393,
-  "turns": 6,
+  "cost_usd": 0.1004478,
+  "duration_ms": 26372,
+  "turns": 4,
   "attempts": 1,
-  "judged": "2026-10-21T03:11:49",
+  "judged": "2026-10-21T04:31:16",
   "unit": "file",
   "source_sha256": "7481faf851369321065137087beecc63fb712c22b0a32549754de4bb8da821cd",
   "rubric": "repeated-proof-machinery"
