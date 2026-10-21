@@ -420,6 +420,18 @@ searched) are not in the repository; ask for them if you need them.
   Mathlib and Lean core: for `unnecessary-hypotheses` the pinned Mathlib master commit, for
   `duplicates-mathlib` the Mathlib and Batteries versions each library depends on.
 
+## DeepSeek pilot
+
+The matched eight-audit pilot uses DeepSeek V4.1 Flash via OpenRouter on DeepInfra FP8,
+with one worker and a $20 inference cap. It selects 100 theorems per library for each
+of the two theorem audits and 10 files per library for each of the six file audits:
+1,440 judgments. Selection, launch, status and billed-cost budget are saved under
+`runs/deepseek-pilot-2026-10-21/`; results join the existing audit reports.
+
+Resume with `python3 scripts/deepseek_pilot.py`. The runner verifies the saved protocol
+and stops on errors or HTTP 429. It exposes only Read, Grep and Glob source tools.
+Costs come from each response's billed amount; provider fallbacks are disabled.
+
 ## Costs
 
 The `cost_usd` fields are what the same tokens would cost at API rates, as reported by

@@ -1,0 +1,122 @@
+{
+  "id": "openai-math-file-0027",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I checked the Mathlib lemmas it relies on: the transcendence-basis cardinality lemmas in IsAlgClosed/Classification.lean, the FinitePresentation universe declarations, FaithfulSMul.algebraMap_injective, and MvPolynomial.map_injective. I also checked the downstream uses in Descent.lean and SimultaneousHyperplanes.lean, which all instantiate R, K, A with fields in Type. The findings are modest generalisations, and I did not compile any of them. For the universe finding, the field_embedding_over_countable change needs lift lemmas in the cardinal comparison, so it is less certain than the other two. I did not report the unused-looking CharZero or IsAlgClosed binders, because deleting binders belongs to a different rubric. The Countable/Uncountable pair in field_embedding_over_countable could probably be weakened further, but that needs new cardinal arithmetic, so I left it out.",
+  "findings": [
+    {
+      "declaration": "MaximalSeshadri.BertiniIntegral.hyperplane_injective_descent",
+      "start_line": 217,
+      "end_line": 218,
+      "excerpt": "[Field R] [Field K] [Algebra R K]",
+      "problem": "The proof uses R and K only through `FaithfulSMul.algebraMap_injective R K`. That fact feeds `MvPolynomial.map_injective` and `Polynomial.map_injective`, and the `IsScalarTower R K A` computation uses no field structure. `homogeneousLinearForm` only needs `CommRing`. The `Field` assumptions on R and K are therefore stronger than needed. They exclude the natural integral-model case, where R is a ring such as ℤ or a ring of integers mapping injectively into K. That case is what the 'integral' naming in this file points at.",
+      "proposed_change": "State it for `{R K : Type*} [CommRing R] [CommRing K] [Algebra R K] [FaithfulSMul R K]`. Keep the other binders and the conclusion unchanged. Existing callers with fields get `FaithfulSMul R K` automatically, since the current proof already finds it by instance.",
+      "benefit": "The descent-of-injectivity lemma becomes usable for integral or arithmetic base rings, and the field case is a special instance. The proof is unchanged because it already reduces to an injective `algebraMap R K`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Algebra/Basic.lean",
+          "declaration": "FaithfulSMul.algebraMap_injective",
+          "excerpt": "lemma algebraMap_injective : Injective (algebraMap R A)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/MvPolynomial/Eval.lean",
+          "declaration": "MvPolynomial.map_injective",
+          "excerpt": "theorem map_injective (hf : Function.Injective f) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "hyperplane_injective_descent",
+          "excerpt": "Polynomial.map_injective _ (MvPolynomial.map_injective (algebraMap R K) (FaithfulSMul.algebraMap_injective R K))"
+        }
+      ]
+    },
+    {
+      "declaration": "MaximalSeshadri.BertiniIntegral.countable_model_with_elements (and countable_polynomial_model)",
+      "start_line": 321,
+      "end_line": 322,
+      "excerpt": "theorem countable_model_with_elements {K A : Type} [Field K] [CommRing A]",
+      "problem": "K and A are fixed to `Type`, although nothing in the proof compares cardinalities across universes. The only inputs are `Algebra.FinitePresentation.iff` and `Algebra.FinitePresentation.of_finiteType`. Both are stated for independent universes w₁ and w₂. `Subfield.cardinalMk_closure_le_max` and the polynomial lifting lemmas are not universe-restricted either. The same file states `polynomialQuotientBaseChange` and `hyperplane_injective_descent` with `Type*`, so these two statements are inconsistently specialised. `countable_polynomial_model` has the same restriction at line 283.",
+      "proposed_change": "Change the binders to `{K A : Type*}` in `countable_model_with_elements` and in `countable_polynomial_model`, and keep the proofs. Under the stated assumptions `Countable S` and the polynomial rings over S live in K's universe, so no new cardinal arithmetic is needed. The `Fin k` index could also become a `Finite` index type, but no caller needs that.",
+      "benefit": "The lemmas apply to algebras and fields in arbitrary universes, with no `ULift` workaround. They also become uniform with the neighbouring `Type*` declarations.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/FinitePresentation.lean",
+          "declaration": "Algebra.FinitePresentation (variable declaration)",
+          "excerpt": "variable (R : Type w₁) (A : Type w₂) (B : Type w₃)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/AlgebraicGeometry/Seshadri/Bertini/CountableSpecialization.lean",
+          "declaration": "polynomialQuotientBaseChange",
+          "excerpt": "def polynomialQuotientBaseChange {R K n : Type*} [CommRing R] [CommRing K]"
+        }
+      ]
+    },
+    {
+      "declaration": "MaximalSeshadri.BertiniIntegral.field_embedding_over_countable",
+      "start_line": 12,
+      "end_line": 14,
+      "excerpt": "theorem field_embedding_over_countable {R F K : Type} [Field R] [Countable R]",
+      "problem": "F and K are forced into `Type` and compared by `#F ≤ #K`, which needs the same universe. The Mathlib lemma it relies on, `cardinal_eq_cardinal_transcendence_basis_of_aleph0_lt`, is stated for arbitrary universes with `lift`. The primed version is only the same-universe specialisation. The statement therefore cannot be used for a field F in a different universe than K, and it needs `ULift` and lift bookkeeping when applied to universe-polymorphic fields.",
+      "proposed_change": "Take `{R : Type u} {F : Type v} {K : Type w}` and replace the hypothesis with `hcard : Cardinal.lift.{w} #F ≤ Cardinal.lift.{v} #K`. In the proof, use the unprimed `IsAlgClosed.cardinal_eq_cardinal_transcendence_basis_of_aleph0_lt` to get `lift #K = lift #t`. Compare `s` and `t` with `Cardinal.lift_mk_le'`, then use `Cardinal.lift_mk_le'.mp` to get an injection `s → t`. The rest of the proof is unchanged. When all universes agree, the old statement follows by `lift_id`.",
+      "benefit": "The embedding criterion becomes available for fields in different universes. It also matches the universe-polymorphic form of the Mathlib classification lemmas it rests on, so callers need no universe-lowering workarounds.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/FieldTheory/IsAlgClosed/Classification.lean",
+          "declaration": "IsAlgClosed.cardinal_eq_cardinal_transcendence_basis_of_aleph0_lt",
+          "excerpt": "Cardinal.lift.{w} #K = Cardinal.lift.{v} #ι"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/FieldTheory/IsAlgClosed/Classification.lean",
+          "declaration": "IsAlgClosed.cardinal_eq_cardinal_transcendence_basis_of_aleph0_lt'",
+          "excerpt": "(hv : IsTranscendenceBasis R v') (hR : #R ≤ ℵ₀) (hK : ℵ₀ < #K') : #K' = #ι'"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 41938,
+    "cache_read_input_tokens": 212751,
+    "output_tokens": 9140,
+    "output_tokens_details": {
+      "thinking_tokens": 3705
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 41938,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3041,
+        "cache_read_input_tokens": 45082,
+        "cache_creation_input_tokens": 880,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 880
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2804551,
+  "duration_ms": 66535,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-21T07:20:09",
+  "unit": "file",
+  "source_sha256": "a385fec0279b02bb275f224192cc0e8ba7a096c4bc1e082be18e433746a5ff7e",
+  "rubric": "statement-generality"
+}

@@ -1,0 +1,117 @@
+{
+  "id": "openai-math-file-0023",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the imported MatrixDiagonal, MatrixTraces and RootFunctoriality sources. I also checked the Mathlib lemmas that the replacements rely on: Matrix.single_mul_single_of_ne, StarRingHomClass.instOrderHomClass and PositiveLinearMap.comp. I could not compile anything. The OrderHomClass replacement depends on typeclass inference finding the instance for `A →⋆ₐ[ℂ] B`, and the other replacements use unelaborated terms, so none of them has been tested. I did not flag the `convert heq using 1 <;> rfl` proofs or the `inv_mul_cancel₀` endings of the two correspondence theorems, because I saw no clearly better replacement.",
+  "findings": [
+    {
+      "declaration": "TracialState.comap (monotone' field)",
+      "start_line": 14,
+      "end_line": 20,
+      "excerpt": "apply sub_nonneg.mp\n        rw [← map_sub]\n        exact starAlgHom_positive φ (b - a) (sub_nonneg.mpr hab) }",
+      "problem": "The monotonicity proof re-derives order preservation from positivity by hand. It subtracts, rewrites with map_sub, and then calls the local positivity lemma starAlgHom_positive. Mathlib already makes every non-unital star ring hom between star-ordered rings an OrderHomClass, so `φ` is monotone directly. The hand-written subtraction detour hides a one-line fact.",
+      "proposed_change": "Replace the body of `monotone'` with:\n```\nmonotone' := by\n  intro a b hab\n  change ρ.functional (φ a) ≤ ρ.functional (φ b)\n  exact ρ.functional.monotone (OrderHomClass.mono φ hab)\n```\n`StarRingHomClass.instOrderHomClass` in Mathlib supplies the `OrderHomClass` instance. `OrderHomClass.mono` is used in the same way in Mathlib's `IsSelfAdjoint.map'`. If instance search for `A →⋆ₐ[ℂ] B` fails, `map_rel φ hab` is the fallback.",
+      "benefit": "The proof reads as the mathematical argument: a star homomorphism preserves order and the state is monotone. It drops three tactic steps and the sub_nonneg/map_sub bookkeeping.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/Star/Basic.lean",
+          "declaration": "StarRingHomClass.instOrderHomClass",
+          "excerpt": "instance (priority := 100) StarRingHomClass.instOrderHomClass [FunLike F R S]\n    [NonUnitalRingHomClass F R S] [NonUnitalStarRingHomClass F R S] : OrderHomClass F R S where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Order/Star/Basic.lean",
+          "declaration": "IsSelfAdjoint.map'",
+          "excerpt": "have h₁ := OrderHomClass.mono f hb"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Traces/RootFunctoriality.lean",
+          "declaration": "starAlgHom_positive",
+          "excerpt": "lemma starAlgHom_positive (φ : A →⋆ₐ[ℂ] B) (a : A) (ha : 0 ≤ a) : 0 ≤ φ a := by"
+        }
+      ]
+    },
+    {
+      "declaration": "singleMatrix_mul_ne",
+      "start_line": 52,
+      "end_line": 54,
+      "excerpt": "have hzero : Matrix.single i j a * Matrix.single k l b = 0 := by\n    exact Matrix.single_mul_single_of_ne a i j k hjk b\n  rw [hzero, map_zero]",
+      "problem": "The named intermediate `hzero` is proved by `by exact <term>` and used exactly once, immediately afterwards. It adds three lines and a `by exact` wrapper without adding any information.",
+      "proposed_change": "Rewrite directly with the Mathlib lemma:\n```\nrw [← map_mul, Matrix.single_mul_single_of_ne a i j k hjk b, map_zero]\n```\nThis merges lines 51–54 into one `rw`.",
+      "benefit": "The proof becomes a three-step rewrite: pull the multiplication inside the equivalence, use the matrix-unit orthogonality lemma, and send zero to zero. Nothing is hidden, and the redundant `have ... := by exact` goes away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Matrix/Basis.lean",
+          "declaration": "Matrix.single_mul_single_of_ne",
+          "excerpt": "theorem single_mul_single_of_ne (i : l) (j k : m) {l : n} (h : j ≠ k) (d : α) :\n    single i j c * single k l d = 0 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "matrixTrace_comap_scale",
+      "start_line": 108,
+      "end_line": 113,
+      "excerpt": "calc\n    _ = ∑ i, (Fintype.card ι : ℂ) * ρ.functional (singleMatrix i i (M i i)) := by\n      apply Finset.sum_congr rfl\n      intro i _\n      exact trace_scalarMatrix ρ (M i i) i\n    _ = _ := by rw [← Finset.mul_sum, ← trace_matrix_eq_sum_diagonal]",
+      "problem": "The calc uses `_` for both the start and end of the chain. The reader has to reconstruct the endpoints, and the second step rewrites backwards with `←`. The proof is just: expand the right side with trace_matrix_eq_sum_diagonal, distribute the scalar, and apply trace_scalarMatrix termwise.",
+      "proposed_change": "After the `change` on line 107, use the forward direction:\n```\nrw [trace_matrix_eq_sum_diagonal ρ M, Finset.mul_sum]\nexact Finset.sum_congr rfl fun i _ => trace_scalarMatrix ρ (M i i) i\n```\nThis removes the calc, the intermediate sum and the two `←` rewrites.",
+      "benefit": "The two steps are stated in the order they are used, with no placeholder-only calc chain, so the argument is easier to follow and shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixTraceCorrespondence.lean",
+          "declaration": "trace_matrix_eq_sum_diagonal",
+          "excerpt": "ρ.functional M = ∑ i, ρ.functional (singleMatrix i i (M i i)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixTraceCorrespondence.lean",
+          "declaration": "trace_scalarMatrix",
+          "excerpt": "(Fintype.card ι : ℂ) * ρ.functional (singleMatrix i i a) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 35856,
+    "cache_read_input_tokens": 267929,
+    "output_tokens": 8864,
+    "output_tokens_details": {
+      "thinking_tokens": 3067
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35856,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2677,
+        "cache_read_input_tokens": 38399,
+        "cache_creation_input_tokens": 1500,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1500
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2588969,
+  "duration_ms": 81452,
+  "turns": 18,
+  "attempts": 1,
+  "judged": "2026-10-21T07:10:03",
+  "unit": "file",
+  "source_sha256": "1cb4377537c01fa788040dc0565bbb719118e7a745ae00cdda590ad75803d60a",
+  "rubric": "readable-proof-simplification"
+}

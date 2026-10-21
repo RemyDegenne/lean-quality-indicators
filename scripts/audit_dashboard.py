@@ -18,11 +18,12 @@ FILES = ROOT / "runs/file-quality-pilot-2026-10-21"
 MAIN = ROOT / "runs/main"
 EXTRA = ROOT / "runs/openai-math-2026-10-21"
 MODEL_NAMES = {"claude-opus-5-5": "Opus", "gpt-6.1-sol": "Sol", "claude-sonnet-5-5": "Sonnet",
-               "gpt-6-luna": "Luna"}
+               "gpt-6-luna": "Luna", "deepseek/deepseek-v4.1-flash-1017": "DeepSeek"}
 LIBRARY_ORDER = ["mathlib", "tauceti", "formal-frontier", "lean-pool", "flt-anthropic"]
 LABELS = {"Sol": ["gpt-6.1-sol-high", "gpt-6.1-sol-high-repeat-2"],
           "Sonnet": ["claude-sonnet-5-5-high", "claude-sonnet-5-5-high-repeat-2"],
-          "Luna": ["gpt-6-luna-high", "gpt-6-luna-high-repeat-2"]}
+          "Luna": ["gpt-6-luna-high", "gpt-6-luna-high-repeat-2"],
+          "DeepSeek": ["deepseek-v4.1-flash-1017-openrouter-high"]}
 
 
 def load(directory):

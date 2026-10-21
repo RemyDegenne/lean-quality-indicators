@@ -1,0 +1,133 @@
+{
+  "id": "openai-math-file-0023",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the imported MatrixDiagonal.lean, MatrixTraces.lean and TracialStates.lean. I also checked uses of singleMatrix, scalarMatrixHom and comap elsewhere under Pureness, and Mathlib's Matrix/Basis.lean simp attributes. I could not run Lean, so I make no claim that the proposed lemmas compile or that a simp loop or failure was observed. The `simp_rw [trace_single_diagonal_eq ...]` step in trace_scalarMatrix is a permutation-style rewrite. I did not report it because I found no evidence it misbehaves. I also did not recommend simp on matrix_eq_sum_single (its LHS is a bare variable) or on TracialState.ext.",
+  "findings": [
+    {
+      "declaration": "singleMatrix_mul_same / singleMatrix_mul_ne",
+      "start_line": 39,
+      "end_line": 54,
+      "excerpt": "lemma singleMatrix_mul_same (i j k : ι) (a b : A) :",
+      "problem": "These are the CStarMatrix versions of Mathlib's `Matrix.single_mul_single_same` and `Matrix.single_mul_single_of_ne`, which are both `@[simp]`. They are not tagged `@[simp]` here, so `simp` cannot simplify products of `singleMatrix` terms. Callers have to name the lemma by hand with `simpa only [singleMatrix_mul_same, mul_one, one_mul]`. That happens at line 74 of this file and again in MatrixSimplicity.lean, so a plain `simp` does not normalise these products. `singleMatrix_mul_ne` takes `hjk : j ≠ k`, which simp can discharge from hypotheses or by `decide`. It is used only through manual `rw`.",
+      "proposed_change": "Mark `singleMatrix_mul_same` as `@[simp]` and `singleMatrix_mul_ne` as `@[simp]`, as Mathlib does for the plain-matrix analogues. The LHS `singleMatrix i j a * singleMatrix j k b` is a product of two specific `singleMatrix` terms and the RHS has a single `singleMatrix`, so each rewrite strictly shortens the term. I see no loop risk.",
+      "benefit": "`simp` can then close the matrix-unit computations without a hand-written lemma list. The call sites at line 74 and in MatrixSimplicity's `simpa only [singleMatrix_mul_same, mul_one] using h` can be shortened. `singleMatrix` is a wrapper around `Matrix.single`, so the same product rules that apply to `Matrix.single` would apply to it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Matrix/Basis.lean",
+          "declaration": "Matrix.single_mul_single_same",
+          "excerpt": "theorem single_mul_single_same (i : l) (j : m) (k : n) (d : α) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixSimplicity.lean",
+          "declaration": "hs (inside the matrix simple-ideal proof)",
+          "excerpt": "simpa only [singleMatrix_mul_same, mul_one] using h"
+        }
+      ]
+    },
+    {
+      "declaration": "scalarMatrixHom and singleMatrix (missing entry/apply simp lemmas)",
+      "start_line": 26,
+      "end_line": 36,
+      "excerpt": "toFun a := diagonalMatrixHom (fun _ : ι => a)",
+      "problem": "`diagonalMatrixHom` has `@[simp] diagonalMatrixHom_apply`. The two wrappers `scalarMatrixHom` and `singleMatrix` have no entry-wise simp lemma. A goal such as `scalarMatrixHom a i j` or `singleMatrix i j a k l` can only be simplified by unfolding the definitions. The target file works around this with a `change` that exposes `diagonalMatrixHom` (line 138). FiniteSpectralTwoQuasitrace.lean uses `simp [matrixSuccessor,scalarMatrixHom,diagonalMatrixHom,singleMatrix]`, which unfolds the abstractions into their implementation.",
+      "proposed_change": "Add `@[simp] lemma scalarMatrixHom_apply (a : A) (i j : ι) : scalarMatrixHom a i j = if i = j then a else 0 := rfl`. Also add a `singleMatrix_apply` stating `singleMatrix i j a k l = if i = k ∧ j = l then a else 0`, proved by `rfl` or from `Matrix.single_apply`. This is the same form as `diagonalMatrixHom_apply` and `Matrix.single_apply`. Then `simp` can compute entries, and callers need not unfold `scalarMatrixHom`, `diagonalMatrixHom` or `singleMatrix`.",
+      "benefit": "The `change ... diagonalMatrixHom ...` step in `comap_matrixTracialState` can become a plain `simp`. Entry computations in other files, such as `firstMatrixCorner_eq_single`, would not need to unfold three definitions. The `if` form of `diagonalMatrixHom_apply` is the normal form the rest of the file already relies on.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixDiagonal.lean",
+          "declaration": "diagonalMatrixHom_apply",
+          "excerpt": "@[simp] lemma diagonalMatrixHom_apply (a : ι → A) (i j : ι) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Projections/FiniteSpectralTwoQuasitrace.lean",
+          "declaration": "firstMatrixCorner_eq_single",
+          "excerpt": "simp [matrixSuccessor,scalarMatrixHom,diagonalMatrixHom,singleMatrix]"
+        }
+      ]
+    },
+    {
+      "declaration": "TracialState.comap (missing simp lemma for its functional)",
+      "start_line": 11,
+      "end_line": 24,
+      "excerpt": "noncomputable def TracialState.comap (ρ : TracialState B) (φ : A →⋆ₐ[ℂ] B) : TracialState A where",
+      "problem": "`comap` is defined through anonymous-constructor structure instances. No lemma states `(ρ.comap φ).functional a = ρ.functional (φ a)`, and the same applies to `matrixTracialState` in MatrixTraces.lean. Every consumer therefore uses `change` to see through the structure. The definition itself does this at lines 16, 21 and 23, and the theorems repeat it at lines 107, 127 and 135. A `simp` call cannot rewrite `(ρ.comap φ).functional a`. The rest of the project follows the apply-lemma pattern, for example `ComplexQuasitrace.comap_apply` and `matrixTrace_apply`.",
+      "proposed_change": "After the definition, add `@[simp] lemma TracialState.comap_functional_apply (ρ : TracialState B) (φ : A →⋆ₐ[ℂ] B) (a : A) : (ρ.comap φ).functional a = ρ.functional (φ a) := rfl`. Add a matching lemma for `matrixTracialState` in MatrixTraces.lean, stating `(matrixTracialState τ).functional M = (Fintype.card ι : ℂ)⁻¹ * matrixTrace τ M`, also proved by `rfl`. Then replace the `change` lines in `matrixTrace_comap_scale`, `matrixTracialState_comap` and `comap_matrixTracialState` with `simp only`/`rw` on these lemmas.",
+      "benefit": "This gives a canonical normal form, `ρ.functional (φ a)`, that `simp` reaches without definitional unfolding. The three downstream proofs become robust to changes in how the structure is built. They also no longer need to restate long goals through `change`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Quasitrace/ComplexQuasitracePullback.lean",
+          "declaration": "ComplexQuasitrace.comap_apply",
+          "excerpt": "@[simp] lemma ComplexQuasitrace.comap_apply (T : ComplexQuasitrace E)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixTraceCorrespondence.lean",
+          "declaration": "matrixTrace_comap_scale",
+          "excerpt": "change (∑ i, ρ.functional (scalarMatrixHom (M i i))) = _"
+        }
+      ]
+    },
+    {
+      "declaration": "comap_matrixTracialState (inner `heq`) / trace_scalarMatrix",
+      "start_line": 131,
+      "end_line": 140,
+      "excerpt": "change (∑ i : ι, τ.functional (diagonalMatrixHom (fun _ : ι => a) i i)) = _",
+      "problem": "The computation `matrixTrace τ (scalarMatrixHom a) = card ι * τ.functional a` is proved with a `change` that unfolds `scalarMatrixHom` to `diagonalMatrixHom`. It then relies on `simp [diagonalMatrixHom_apply]` to finish. `matrixTrace_apply` is already a simp lemma, and the only missing step is a simp lemma for `scalarMatrixHom a i i`. The lemma `trace_scalarMatrix` (line 97) computes the same trace through a different route, so the file has two disconnected normal forms for traces of scalar matrices. A separate canonical simp lemma for `matrixTrace τ (scalarMatrixHom a)` is missing.",
+      "proposed_change": "Add `scalarMatrixHom_apply` as in the second finding. Then add `@[simp] lemma matrixTrace_scalarMatrixHom (τ : TracialState A) (a : A) : matrixTrace τ (scalarMatrixHom a : CStarMatrix ι ι A) = (Fintype.card ι : ℂ) * τ.functional a`, proved by `simp`. Use it both in `comap_matrixTracialState` and in `matrixTrace_comap_scale`. Replace the `change`/`heq` block at lines 136–139 with `rw [matrixTrace_scalarMatrixHom]`.",
+      "benefit": "Traces of scalar matrices get one simp-normal form, `card ι * τ.functional a`. The proof no longer depends on the internal representation of `scalarMatrixHom`. The two theorems in the file that need this computation can share one lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixTraces.lean",
+          "declaration": "matrixTrace_apply",
+          "excerpt": "@[simp] lemma matrixTrace_apply (τ : TracialState A) (M : CStarMatrix ι ι A) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 26197,
+    "cache_read_input_tokens": 105248,
+    "output_tokens": 9313,
+    "output_tokens_details": {
+      "thinking_tokens": 3455
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26197,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4653,
+        "cache_read_input_tokens": 27256,
+        "cache_creation_input_tokens": 2954,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2954
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2084668,
+  "duration_ms": 63440,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T07:08:20",
+  "unit": "file",
+  "source_sha256": "1cb4377537c01fa788040dc0565bbb719118e7a745ae00cdda590ad75803d60a",
+  "rubric": "simp-interface"
+}

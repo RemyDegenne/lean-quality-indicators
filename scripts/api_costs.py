@@ -16,6 +16,8 @@ DIRECTORY_CACHE = {}
 
 
 def token_cost(result):
+    if result.get("backend") == "openrouter":
+        return result.get("cost_usd"), "billed API cost"
     rates = RATES["models"].get(result.get("model"))
     usage = result.get("usage")
     if not usage or not rates:
@@ -52,14 +54,21 @@ def directory_expenditure(directory, lib=None):
             if sid in results and attempt == results[sid].get("attempts", 1):
                 continue  # Already costed from the accepted judgment.
             usage, reported = None, None
+            billed_events = []
             for line in transcript.read_text().splitlines():
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if event.get("type") == "api_response":
+                    cost = event.get("response", {}).get("usage", {}).get("cost")
+                    if cost is not None:
+                        billed_events.append(float(cost))
                 if event.get("type") in ["turn.completed", "result"]:
                     usage = event.get("usage")
                     reported = event.get("total_cost_usd", event.get("cost_usd"))
+            if backend == "openrouter" and billed_events:
+                reported = sum(billed_events)
             library = results.get(sid, {}).get("lib") or (
                 sid.split("-file-", 1)[0] if "-file-" in sid else sid.rsplit("-", 1)[0])
             amount, _ = token_cost({"model": model, "backend": backend, "usage": usage, "cost_usd": reported})
@@ -83,7 +92,7 @@ def main():
     groups = defaultdict(lambda: {"completed": 0, "api_usd": 0., "costed": 0, "reported_only": 0})
     largest_pass = defaultdict(int)
     model_names = {"gpt-6.1-sol": "Sol", "gpt-6-luna": "Luna", "claude-sonnet-5-5": "Sonnet",
-                   "claude-opus-5-5": "Opus"}
+                   "claude-opus-5-5": "Opus", "deepseek/deepseek-v4.1-flash-1017": "DeepSeek"}
     selected = []
     for audit in ["unnecessary-hypotheses", "duplicates-mathlib-inclusive", "duplicates-mathlib"]:
         for directory in (MAIN / audit).iterdir():
@@ -135,7 +144,7 @@ def main():
              "| Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |",
              "|---|---|---:|---:|---:|---:|"]
     totals = defaultdict(float)
-    order = {name: i for i, name in enumerate(["Opus", "Sol", "Sonnet", "Luna"])}
+    order = {name: i for i, name in enumerate(["Opus", "Sol", "Sonnet", "Luna", "DeepSeek"])}
     audits = {audit: i for i, audit in enumerate(dict.fromkeys(audit for audit, _ in groups))}
     for (audit, model), row in sorted(groups.items(), key=lambda item: (audits[item[0][0]], order.get(item[0][1], 99))):
         cost = row["api_usd"]

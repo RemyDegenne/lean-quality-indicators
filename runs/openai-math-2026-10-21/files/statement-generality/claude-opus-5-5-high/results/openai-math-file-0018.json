@@ -1,0 +1,116 @@
+{
+  "id": "openai-math-file-0018",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all of AllSmallBoolean.lean (lines 1–101). I also read the supporting definitions and lemmas: mapLaw_deterministicJoint and pointLaw_eq_uniform (FiniteDeterministicJoint.lean), dependentJointLaw_uniform and the dependentJointNonempty instance (FiniteDependentLaw.lean), completionFibre_subsingleton and paperFibre_card_allSmall (AllSmallFibres.lean), PaperStateJoint and the Nonempty instance for PaperFibre (FirstPaperJointLaw.lean), wordWalk, wordWalkLaw and wordWalkLaw_eq (FiniteWordWalk.lean), walkLaw (RationalWalks.lean), uniform_equiv and map_equiv (FiniteFairBits.lean) and gridWordEquiv (DenseBooleanWalk.lean). I compared the target with the parallel file UnitFiniteLaw.lean and with denseBooleanWalkLaw_eq.\n\nI found two lemmas whose proofs are fully generic but whose statements are tied to the contingency-table setting:\n1. `uniform_singleton_joint` assumes the all-small hypothesis `hsmall`, although the proof only uses the fact that each fibre has at most one element.\n2. `flatUnitWalk_law` is stated for `unitBitStep` on `PaperStates`, although the same four-line argument works for any word walk; it is repeated almost verbatim in `flatUnitCodeWalk_law` and inlined in `denseBooleanWalkLaw_eq`.\n\nI did not report the remaining declarations:\n- `unitBitStep`, `unitJointDraw` and `unitJointDraw_law` are definitions or thin wrappers.\n- `unitJointDraw_variation` gets its `[Nonempty I] [Nonempty J]` assumptions and its explicit bound from `unitSmallWalk_variation`, which I did not try to generalise.\n\nUncertainty: I could not compile anything. The proposed proofs are reconstructed from the existing proof scripts, so the exact `simp` arguments may need small adjustments.",
+  "findings": [
+    {
+      "declaration": "uniform_singleton_joint",
+      "start_line": 48,
+      "end_line": 63,
+      "excerpt": "lemma uniform_singleton_joint [Nonempty (PaperStates r c)]\n    (hsmall : ∀ i j,FirstPaperPhysicalMarginal.paperSmall r c i j=true)\n    (fallback : (z : PaperStates r c) → PaperFibre r c z) :",
+      "problem": "The lemma is stated only for `PaperStateJoint r c` and assumes the strong combinatorial hypothesis `hsmall`. The proof uses `hsmall` in only two places: to get `Subsingleton (PaperFibre r c z)` through `completionFibre_subsingleton`, and to get `card = 1` through `paperFibre_card_allSmall`, which itself only uses subsingleton-ness plus nonemptiness. The remaining steps (`mapLaw_deterministicJoint`, `pointLaw_eq_uniform`, `dependentJointLaw_uniform`) all hold for any family of finite types over a finite base. The underlying fact is that pushing the uniform law along a section of a family with subsingleton fibres gives the uniform law on the sigma type. That is a generic probability fact, but here it is hidden behind a contingency-table hypothesis.",
+      "proposed_change": "Add a generic lemma to FiniteDeterministicJoint.lean, next to `pointLaw_eq_uniform`:\n\n```lean\nlemma mapLaw_uniform_sigma_of_subsingleton [Nonempty X] [∀ x, Nonempty (Y x)]\n    [∀ x, Subsingleton (Y x)] (f : (x : X) → Y x) :\n    mapLaw (uniformLaw (α := X)) (fun x => (⟨x, f x⟩ : Sigma Y)) =\n      uniformLaw (α := Sigma Y)\n```\n\nThe file variables `{X} {Y : X → Type*} [Fintype X] [∀ x, Fintype (Y x)]` apply. The proof follows the existing one:\n1. `rw [mapLaw_deterministicJoint]`.\n2. `simp_rw [pointLaw_eq_uniform]`.\n3. `apply dependentJointLaw_uniform`, then `intro x`.\n4. Discharge the mass identity with `Fintype.card (Y x) = 1`, which follows from `Fintype.card_unique` after building `Unique (Y x)` from `f x` and `Subsingleton.elim`, as `pointLaw_eq_uniform` already does.\n\nThe `[∀ x, Nonempty (Y x)]` binder is needed only so that `uniformLaw (α := Sigma Y)` elaborates through `dependentJointNonempty`. `PaperFibre` already has this instance (FirstPaperJointLaw.lean, line 25). The current lemma then becomes a one-line application, after `haveI := fun z => PhysicalCompletionFibres.completionFibre_subsingleton _ _ _ _ _ _ _ hsmall`. Degenerate case: an empty `X` is excluded by `[Nonempty X]`, exactly as `uniformLaw` already requires.",
+      "benefit": "The generic lemma replaces the all-small hypothesis with the weaker condition it actually needs: fibres with at most one element. It sits in the transport layer, where `mapLaw_deterministicJoint` and `pointLaw_eq_uniform` already live, so any other deterministic-completion branch can reuse it without rebuilding the argument. The application at line 95 also makes clear that the all-small case matters only because its fibres are singletons.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Transport/FiniteDeterministicJoint.lean",
+          "declaration": "pointLaw_eq_uniform",
+          "excerpt": "lemma pointLaw_eq_uniform {A : Type*} [Fintype A] [Subsingleton A] [Nonempty A] (a : A) :\n    pointLaw a=uniformLaw (α := A) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Transport/FiniteDeterministicJoint.lean",
+          "declaration": "mapLaw_deterministicJoint",
+          "excerpt": "lemma mapLaw_deterministicJoint (p : RationalLaw X) (f : (x : X) → Y x) :\n    mapLaw p (fun x => (⟨x,f x⟩ : Sigma Y))=\n      dependentJointLaw p (fun x => pointLaw (f x)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Transport/FiniteDependentLaw.lean",
+          "declaration": "dependentJointLaw_uniform",
+          "excerpt": "theorem dependentJointLaw_uniform (p : RationalLaw X)\n    (hp : ∀ x,p.mass x=(Fintype.card (Y x):ℚ)/(∑ z : X,(Fintype.card (Y z):ℚ))) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Sampling/AllSmallFibres.lean",
+          "declaration": "paperFibre_card_allSmall",
+          "excerpt": "let : Subsingleton (PaperFibre r c z) := completionFibre_subsingleton _ _ _ _ _ _ _ hsmall\n  let : Unique (PaperFibre r c z) := ⟨⟨Classical.choice inferInstance⟩,fun x => Subsingleton.elim x _⟩"
+        }
+      ]
+    },
+    {
+      "declaration": "flatUnitWalk_law",
+      "start_line": 39,
+      "end_line": 46,
+      "excerpt": "lemma flatUnitWalk_law (x : PaperStates r c) (n : ℕ) :\n    mapLaw (uniformLaw (α := Fin (n*s) → Bool)) (flatUnitWalk r c x n)=\n      walkLaw (unitSmallStep r c) x n := by",
+      "problem": "The statement is tied to `unitBitStep` and `PaperStates`, but the proof never uses those specifics:\n1. Rewrite along `gridWordEquiv` with `map_equiv` and `uniform_equiv`.\n2. `change` to `wordWalkLaw`.\n3. Apply `wordWalkLaw_eq`.\n4. Substitute the one-step law with `congrArg (fun K => walkLaw K x n) (funext ...)`.\n\nThe only problem-specific input is the step-law identity `unitBitStep_law`. The same script is copied verbatim in `flatUnitCodeWalk_law` (UnitFiniteLaw.lean, lines 45–52), with `unitCodeBitStep_law` in place of `unitBitStep_law`. It is also inlined in `denseBooleanWalkLaw_eq`.",
+      "proposed_change": "State the result once, for an arbitrary step function. A natural place is DenseBooleanWalk.lean, where `gridWordEquiv` is defined and `FiniteWordWalk` is imported:\n\n```lean\ntheorem wordWalk_gridWordEquiv_law {α : Type*} [Fintype α] [DecidableEq α] {k : ℕ}\n    (step : α → (Fin k → Bool) → α) (K : α → RationalLaw α)\n    (hK : ∀ a, mapLaw (uniformLaw (α := Fin k → Bool)) (step a) = K a) (x : α) (n : ℕ) :\n    mapLaw (uniformLaw (α := Fin (n*k) → Bool))\n      (fun bits => wordWalk step x n (gridWordEquiv n k bits)) = walkLaw K x n\n```\n\nThe proof is the existing script with the specific names abstracted:\n\n```lean\nrw [← map_equiv (gridWordEquiv n k), uniform_equiv]\nchange wordWalkLaw step x n = _\nrw [wordWalkLaw_eq]\nexact congrArg (fun K => walkLaw K x n) (funext hK)\n```\n\n`flatUnitWalk_law` then becomes `wordWalk_gridWordEquiv_law _ _ (unitBitStep_law r c) x n`, using the local `Classical.decEq` instance for `DecidableEq`. `flatUnitCodeWalk_law` follows the same way from `unitCodeBitStep_law r c e htotal`. Degenerate cases: `n = 0` or `k = 0` need no special treatment, because `wordWalkLaw_eq` holds for all `n` and `k`.",
+      "benefit": "With this lemma, users only need to prove the one-step law of a new Boolean step. They no longer repeat the reindex, `change` and `wordWalkLaw_eq` boilerplate for each walk. The fact that a flat uniform bit string drives the n-step walk exactly is then stated once, at the right level of generality.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Machines/FiniteWordWalk.lean",
+          "declaration": "wordWalkLaw_eq",
+          "excerpt": "theorem wordWalkLaw_eq {k : ℕ} (step : α → (Fin k → Bool) → α) (a : α) (n : ℕ) :\n    wordWalkLaw step a n = walkLaw (fun s => mapLaw (uniformLaw (α := Fin k → Bool)) (step s)) a n := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Sampling/UnitFiniteLaw.lean",
+          "declaration": "flatUnitCodeWalk_law",
+          "excerpt": "  rw [←map_equiv (GridBoundary.gridWordEquiv n s),uniform_equiv]\n  change wordWalkLaw _ _ _=_\n  rw [wordWalkLaw_eq]\n  exact congrArg (fun K => walkLaw K x n) (funext (unitCodeBitStep_law r c e htotal))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Dense/DenseBooleanWalk.lean",
+          "declaration": "denseBooleanWalkLaw_eq",
+          "excerpt": "  rw [← map_equiv (gridWordEquiv n (denseStepBits d)), uniform_equiv]\n  change wordWalkLaw (denseBitStep R P d e) a n = _\n  rw [wordWalkLaw_eq, hk]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Dense/DenseBooleanWalk.lean",
+          "declaration": "gridWordEquiv",
+          "excerpt": "def gridWordEquiv (n k : ℕ) : (Fin (n * k) → Bool) ≃ (Fin n → Fin k → Bool) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 35331,
+    "cache_read_input_tokens": 181563,
+    "output_tokens": 10215,
+    "output_tokens_details": {
+      "thinking_tokens": 3166
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35331,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5469,
+        "cache_read_input_tokens": 37609,
+        "cache_creation_input_tokens": 1746,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1746
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5233246,
+  "duration_ms": 85607,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-21T07:20:17",
+  "unit": "file",
+  "source_sha256": "aa6e22c179af41d8b68538f59ee4b45efde30e7894ba34e3ebf2c103f4bb2c6e",
+  "rubric": "statement-generality"
+}

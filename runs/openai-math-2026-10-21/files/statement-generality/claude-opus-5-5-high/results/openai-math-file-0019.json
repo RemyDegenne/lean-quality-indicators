@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0019",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of the target file, which has one theorem, and the two results its proof relies on: `NoncollapsedRCD.full_splitting_coordinates` in FullSplittingCoordinates.lean and `NoncollapsedRCD.regular_large_good_sets` in RegularLargeGoodSets.lean. I searched the repository for uses of the target. Nothing applies the theorem. The only reference is an `import` in RegularGoodCoordinateSetsBounded.lean. That file never calls the target. Instead it proves `regular_good_coordinate_sets_bounded` from scratch with almost the same proof, and that statement is strictly stronger than the target's. Its only real change is `t := min ε (min β 1)` in place of `min ε 1`, and `t/(|K|+1)` in place of `ε/(|K|+1)` in the scale cutoff. So the stronger statement needs no new mathematics. Since the bounded file does not depend on the target, it is fair independent evidence that the target is stated too narrowly.\n\nI checked other ways the statement might be generalised. The `2 ≤ n` hypothesis and the `[(hausdorff n X).Regular]` instance are both required by the results the proof uses. The bound `r < R/16` comes from needing `16*r < R` for the good set. The real-valued parameters come from the underlying definitions. I found no other generalisation worth proposing. I could not compile anything, so the proposed merged statement is untested. However, its proof matches the existing, compiling proof of the bounded theorem.",
+  "findings": [
+    {
+      "declaration": "OAI.RegularPointCoordinates.NoncollapsedRCD.regular_good_coordinate_sets",
+      "start_line": 17,
+      "end_line": 61,
+      "excerpt": "∃ t s : ℝ, 0 < t ∧ 0 < s ∧ ∀ R : ℝ, 0 < R → R < s →",
+      "problem": "The statement only says the outer splitting tolerance `t` exists. The proof fixes `t := min ε 1` internally, so callers cannot make `t` small. The statement also does not expose the curvature bound `-t ≤ K*R^2`, even though the proof establishes the equivalent `|K|*R ≤ ε`. A downstream user needed `t ≤ β` and that curvature bound. As a result, RegularGoodCoordinateSetsBounded.lean imports this file but cannot use the theorem. It proves `regular_good_coordinate_sets_bounded` again with a near-copy of this proof. The target is never applied anywhere in the repository.",
+      "proposed_change": "State the theorem with a prescribed tolerance bound, as the bounded file already does:\n\ntheorem NoncollapsedRCD.regular_good_coordinate_sets {K : ℝ} {n : ℕ}\n    (hX : NoncollapsedRCD K n X) [(hausdorff n X).Regular] (hn : 2 ≤ n)\n    (hpublished : LocalAlmostSplittingInput hX) {p : X} (hp : IsRegular n p)\n    {η ζ β : ℝ} (hη : 0 < η) (hζ : 0 < ζ) (hβ : 0 < β) :\n    ∃ t s : ℝ, 0 < t ∧ t ≤ β ∧ 0 < s ∧ ∀ R : ℝ, 0 < R → R < s →\n      ∃ (u : Fin n → SobolevSpace (hausdorff n X) hX.quadratic) (v : X → Euclidean n) (U : Set X),\n        -t ≤ K*R^2 ∧ FirstOrderSplittingOn (hausdorff n X) hX.quadratic p (2*R) t u v ∧ ... (rest unchanged)\n\nThe proof is the current one with two changes. First, take `t := min ε (min β 1)`, which gives `t ≤ ε` and `t ≤ β` from `min_le_left` and `min_le_right`. Second, use `S := min s (min 1 (t/(|K|+1)))`. This gives `|K|*R ≤ t ≤ ε`. From that and `R^2 ≤ R` (since `R ≤ 1`) you get both `-t ≤ K*R^2` and the existing `-ε ≤ K*r^2`. Then call `hcoord` with `mono_error _ _ ht.le htε` as before. This is exactly the compiled proof of `regular_good_coordinate_sets_bounded`. Then either delete the duplicate bounded theorem or keep it as an alias. If the weaker form is still wanted, derive it from the general one with `β := 1`, dropping the extra conjuncts. That case is harmless: the general theorem needs `0 < β`, and `β = 1` recovers the current statement exactly.",
+      "benefit": "With this change, one theorem covers both the current use and the bounded use. A caller can force the outer splitting tolerance below any threshold they need, which the coarse-fine argument in RegularBoundedCoarseFineSets.lean does via `htβ`/`ht1`. Callers also get the curvature-scale bound without re-deriving it. It also removes a duplicated 30-line proof, and with it an unused theorem and a pointless import.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularGoodCoordinateSetsBounded.lean",
+          "declaration": "OAI.RegularPointCoordinates.NoncollapsedRCD.regular_good_coordinate_sets_bounded",
+          "excerpt": "∃ t s : ℝ, 0 < t ∧ t ≤ β ∧ 0 < s ∧ ∀ R : ℝ, 0 < R → R < s →"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularGoodCoordinateSetsBounded.lean",
+          "declaration": "OAI.RegularPointCoordinates.NoncollapsedRCD.regular_good_coordinate_sets_bounded",
+          "excerpt": "let t := min ε (min β 1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularGoodCoordinateSetsBounded.lean",
+          "declaration": "OAI.RegularPointCoordinates.NoncollapsedRCD.regular_good_coordinate_sets_bounded",
+          "excerpt": "let S := min s (min 1 (t/(|K|+1)))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularBoundedCoarseFineSets.lean",
+          "declaration": "(use site of regular_good_coordinate_sets_bounded)",
+          "excerpt": "have htβ : t ≤ β := htsmall.trans (min_le_left _ _)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/RCD/Coordinates/RegularLargeGoodSets.lean",
+          "declaration": "OAI.RegularPointCoordinates.NoncollapsedRCD.regular_large_good_sets",
+          "excerpt": "{p : X} (hp : IsRegular n p) {t ζ : ℝ} (ht : 0 < t) (hζ : 0 < ζ) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 15557,
+    "cache_read_input_tokens": 64898,
+    "output_tokens": 4529,
+    "output_tokens_details": {
+      "thinking_tokens": 1216
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15557,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3048,
+        "cache_read_input_tokens": 18926,
+        "cache_creation_input_tokens": 655,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 655
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22805559999999997,
+  "duration_ms": 46524,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T07:25:03",
+  "unit": "file",
+  "source_sha256": "8c568cc6cf114dff998c0481087545fd6607bf7673c08625ca14b77831fb97d8",
+  "rubric": "statement-generality"
+}

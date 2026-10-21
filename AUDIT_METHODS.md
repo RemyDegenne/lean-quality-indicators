@@ -76,3 +76,11 @@ files from `lean/OAI/`, excluding ComparatorChallenges specifications. Its initi
 judging selects the first 100 in each sample for every model/audit. These selections
 join the first pass in the comparison reports; they are not repeat judgments.
 All 42 dependencies are pinned to the source manifest and available as read-only sources.
+
+The DeepSeek pilot uses DeepSeek V4.1 Flash through OpenRouter, pinned to
+DeepInfra FP8 with fallbacks disabled. Costs are the billed `usage.cost` returned for every
+request, including failed judgment attempts. One worker selects 100 theorems per library
+for each theorem audit and 10 files per library for each file audit (1,440 judgments).
+The endpoint has flat rates below DeepSeek’s own off-peak prices, so no off-peak wait is needed.
+A persistent $20 inference budget reserves conservative peak-rate input and maximum
+output costs before each request; uncertain requests retain their reservation.

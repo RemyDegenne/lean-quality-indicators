@@ -1,0 +1,90 @@
+{
+  "id": "openai-math-file-0014",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed all 51 lines: `multipointConstant`, `multipointConstant_pos` and `RegularSLEPresentation.physical_multipoint_main`. I also read the lemma the main theorem wraps, `Multipoint.capped_physical_radius_multipoint_bound` (MultipointPhysicalProbability.lean), and the definition of `uniformDiscountBudget`. Other inputs I checked were `uniformDiscountBudget_map` and `uniformDiscountBudget_mono` (MultipointBudgetMonotone.lean), the `RegularSLEPresentation` structure and the uses of the target and of `multipointConstant` across the project. One of those uses is `RegularSLEPresentation.physical_multipoint` in GaugeGrowthDischarge.lean, which repeats the same `Fin m` interface.\n\n`multipointConstant` and its positivity lemma already take arbitrary `κ` and `m`, so I see no specialisation problem there. In the main theorem, measuring under `P.comap Subtype.val` instead of `P` is not an avoidable specialisation: the event uses `a.G ω`, which only exists on `a.samples`. The `hb`/`he` positivity conditions are used for the capped product, so they are not over-strong.\n\nThe one finding is that the theorem is fixed to the index type `Fin m`, even though the lemma it wraps works for any `[Fintype ι] [DecidableEq ι]`. I have not compiled the proposed proof sketch. It relies on `Finset.univ_map_equiv_to_embedding`, which I confirmed exists in Mathlib, and on `uniformDiscountBudget_map`, which I read.",
+  "findings": [
+    {
+      "declaration": "OAI.SLEExactGauge.RegularSLEPresentation.physical_multipoint_main",
+      "start_line": 26,
+      "end_line": 45,
+      "excerpt": "(m : ℕ) (J : ℂ → ℂ) (hJ : DifferentiableOn ℂ J upperHalfPlane)\n    (hJinj : InjOn J upperHalfPlane) (z : Fin m → ℂ)",
+      "problem": "The public estimate requires the marked points to be indexed by `Fin m`, and `b` and `e` are also `Fin m → ℝ`. The lemma it wraps, `Multipoint.capped_physical_radius_multipoint_bound`, is stated for any `{ι : Type*} [Fintype ι] [DecidableEq ι]`. The proof just passes everything through to that lemma and then uses `simpa [multipointConstant, Fintype.card_fin]` to match the `Fin` form. So the restriction comes only from the wrapper. A user whose points are indexed by a finset subtype, an `Option`, a sum type or a product type has to re-index through `Fintype.equivFin` before applying the theorem, and then transport `z`, `b`, `e`, injectivity, separation and the product back.",
+      "proposed_change": "Generalise the index type and state the constant in terms of the cardinality:\n\n```lean\ntheorem RegularSLEPresentation.physical_multipoint_main\n    {Ω ι : Type*} [MeasurableSpace Ω] [Fintype ι] [DecidableEq ι] {P : Measure Ω} {κ : ℝ}\n    {γ : Ω → ℝ≥0 → ℂ} (a : RegularSLEPresentation P κ γ)\n    (hκ : 0 < κ) (hκ8 : κ < 8) (hgrowth : PublishedDiskUnivalentGrowth)\n    (J : ℂ → ℂ) (hJ : DifferentiableOn ℂ J upperHalfPlane)\n    (hJinj : InjOn J upperHalfPlane) (z : ι → ℂ)\n    (hz : ∀ i, z i ∈ upperHalfPlane) (hne : Function.Injective z)\n    (b e : ι → ℝ) (hb : ∀ i, 0 < b i) (he : ∀ i, 0 < e i)\n    (hbR : ∀ i, b i ≤ 2*(z i).im*‖deriv J (z i)‖)\n    (hsep : ∀ i j, i ≠ j → b i ≤ dist (J (z i)) (J (z j))) :\n    (P.comap (Subtype.val : a.samples → Ω))\n      {ω | ∀ i, ∃ t : ℝ≥0, z i ∈ survivingDomain (γ ω) t ∧\n        physicalConformalRadius J (a.G ω) t (z i) ≤ e i} ≤\n      ENNReal.ofReal (multipointConstant κ (Fintype.card ι) *\n        ∏ i, min 1 ((e i/b i)^(1-κ/8)))\n```\n\nProof sketch:\n1. Apply `Multipoint.capped_physical_radius_multipoint_bound` at index type `ι`, exactly as the current proof does.\n2. That gives the bound with constant `3^(Fintype.card ι) * exp (uniformDiscountBudget κ (sourceBeta κ) (univ : Finset ι))`.\n3. Rewrite the budget term to the `Fin (Fintype.card ι)` form. Use `uniformDiscountBudget_map κ β (Fintype.equivFin ι).toEmbedding univ`, which gives `uniformDiscountBudget κ β (univ.map _) = uniformDiscountBudget κ β univ`, together with `Finset.univ_map_equiv_to_embedding`. After that the expression is definitionally `multipointConstant κ (Fintype.card ι)`.\n\nThe current `Fin m` statement is then the instance `ι := Fin m`, simplified by `Fintype.card_fin`. It can be kept as a corollary if the `m` form is convenient downstream. The same change applies to the wrapper `physical_multipoint` in GaugeGrowthDischarge.lean.\n\nDegenerate case: if `ι` is empty, the card is 0, the product is 1 and the budget is the empty one, which is the same as the current `m = 0` case.",
+      "benefit": "Users can apply the multipoint estimate directly to any finite family of marked points, without manual `Fin` re-indexing. The constant still depends only on `κ` and the number of points, as the file's docstring intends. The mathematics and the constant are unchanged, and the public theorem matches the generality of the lemma it already relies on.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointPhysicalProbability.lean",
+          "declaration": "OAI.SLEExactGauge.Multipoint.capped_physical_radius_multipoint_bound",
+          "excerpt": "theorem capped_physical_radius_multipoint_bound\n    {Ω ι : Type*} [mΩ : MeasurableSpace Ω] [Fintype ι] [DecidableEq ι]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointPhysicalProbability.lean",
+          "declaration": "OAI.SLEExactGauge.Multipoint.capped_physical_radius_multipoint_bound",
+          "excerpt": "ENNReal.ofReal ((3 : ℝ)^(Fintype.card ι) *\n        Real.exp (uniformDiscountBudget κ (sourceBeta κ) (Finset.univ : Finset ι)) *\n        ∏ i, min 1 ((e i/b i)^(1-κ/8)))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointBudgetMonotone.lean",
+          "declaration": "OAI.SLEExactGauge.Multipoint.uniformDiscountBudget_map",
+          "excerpt": "uniformDiscountBudget κ β (I.map f) = uniformDiscountBudget κ β I"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/Finset/BooleanAlgebra.lean",
+          "declaration": "Finset.univ_map_equiv_to_embedding",
+          "excerpt": "theorem univ_map_equiv_to_embedding {α β : Type*} [Fintype α] [Fintype β] (e : α ≃ β) :\n    univ.map e.toEmbedding = univ :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Multipoint/MultipointOrdinaryProbability.lean",
+          "declaration": "OAI.SLEExactGauge.RegularSLEPresentation.physical_multipoint_main",
+          "excerpt": "simpa only [multipointConstant,Fintype.card_fin] using"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 16849,
+    "cache_read_input_tokens": 120159,
+    "output_tokens": 5427,
+    "output_tokens_details": {
+      "thinking_tokens": 1273
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16849,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3296,
+        "cache_read_input_tokens": 26318,
+        "cache_creation_input_tokens": 1266,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1266
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2674198,
+  "duration_ms": 48091,
+  "turns": 8,
+  "attempts": 2,
+  "judged": "2026-10-21T07:00:10",
+  "unit": "file",
+  "source_sha256": "4d79dce965f43718001fb04148738bf7bd540dcbc84e55537aff82e5bc5a7c32",
+  "rubric": "statement-generality"
+}

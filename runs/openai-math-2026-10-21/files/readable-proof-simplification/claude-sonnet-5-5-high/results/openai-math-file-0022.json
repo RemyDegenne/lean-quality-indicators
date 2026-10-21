@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0022",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it relies on: `cubicThetaTorusCoefficientMap`, `cubicThetaTorusFourier_toLp`, `cubicThetaTorusCoefficient_basis` and `cubicThetaArithmeticRowTerm_phase`. I also read the sibling proofs in CubicThetaEisensteinTorus.lean and CubicThetaShiftedTorus.lean. In Mathlib I read `ContinuousMap.tsum_apply` (in `Mathlib/Topology/ContinuousMap/Algebra.lean`). I did not compile anything. Finding 1's replacement depends on how `rw ← tsum_apply` unifies, and on whether the `smul` step after `tsum_congr` needs `ContinuousMap.smul_apply`. Finding 2 is a refactor across files, so I give it as a sketch rather than a verified patch. I looked at the other proofs, including the `_summable` proof, the `_torus_real` simp, and the final by_cases. I found no clear readability-preserving simplification there.",
+  "findings": [
+    {
+      "declaration": "cubicThetaArithmeticModelRemainder_real",
+      "start_line": 30,
+      "end_line": 38,
+      "excerpt": "have he := (ContinuousMap.evalCLM ℂ (fun i => (x i:UnitAddCircle))).map_tsum\n    (cubicThetaArithmeticModelRemainder_summable hv)\n  change cubicThetaArithmeticModelRemainder v (fun i => (x i:UnitAddCircle))=_ at he",
+      "problem": "The proof evaluates a tsum of continuous maps at a point by building an `evalCLM` continuous linear map and applying `map_tsum`. It then needs a `change ... at he` to turn the result back into the goal's form. Mathlib already has `ContinuousMap.tsum_apply` for this, so the CLM construction and the `change` are unnecessary detours.",
+      "proposed_change": "Use the named lemma and drop `he` and the first `change`:\n```\nrw [cubicThetaArithmeticModelRemainder,\n  ← ContinuousMap.tsum_apply (cubicThetaArithmeticModelRemainder_summable hv),\n  cubicThetaArithmeticRowSeries]\napply tsum_congr\nintro h\nchange cubicThetaArithmeticRowTerm 0 v h *\n  cubicThetaTorusFourier h (fun i => (x i:UnitAddCircle)) = _\nrw [cubicThetaTorusFourier_actual, ← cubicThetaArithmeticRowTerm_phase]\n```\nThe last four lines stay as they are. If `change` is not accepted after the rewrite, `ContinuousMap.smul_apply` and `smul_eq_mul` do the same job. The summability hypothesis is already available as `cubicThetaArithmeticModelRemainder_summable hv`. The same pattern appears in `cubicThetaTorusRemainder_real` in CubicThetaEisensteinTorus.lean, so the fix applies there too.",
+      "benefit": "A reader sees at once that the step is 'evaluate the tsum pointwise', via a recognizable lemma name. They no longer have to decode a CLM-plus-`change` workaround. The proof also becomes shorter and less dependent on definitional unfolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/ContinuousMap/Algebra.lean",
+          "declaration": "ContinuousMap.tprod_apply (to_additive: ContinuousMap.tsum_apply)",
+          "excerpt": "∏'[L] i : γ, f i x = (∏'[L] i : γ, f i) x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaEisensteinTorus.lean",
+          "declaration": "cubicThetaTorusRemainder_real",
+          "excerpt": "have he := (ContinuousMap.evalCLM ℂ (fun i => (x i:UnitAddCircle))).map_tsum"
+        }
+      ]
+    },
+    {
+      "declaration": "cubicThetaArithmeticModelRemainder_coefficient",
+      "start_line": 43,
+      "end_line": 54,
+      "excerpt": "let L := (cubicThetaTorusCoefficientMap k).comp (ContinuousMap.toLp 2 volume ℂ)",
+      "problem": "This proof is a copy of the same boilerplate used in at least four other files. It builds `L`, rewrites with `cubicThetaTorusCoefficientMap_apply`, uses `change`, applies `map_tsum`, then does `tsum_eq_single` with two near-identical `simp only [L, comp_apply, map_smul, toLp, ...]` blocks. The mathematical content is only 'the k-th Fourier coefficient of Σ c_h e_h is c_k', and it is buried in the repeated mechanics.",
+      "proposed_change": "State the general fact once, next to `cubicThetaTorusCoefficient_basis`. For example, for any `c : Eisenstein → ℂ` with `Summable (fun h => c h • cubicThetaTorusFourier h)`, the coefficient of `toLp 2 volume ℂ (∑' h, c h • cubicThetaTorusFourier h)` at `k` equals `c k`. The existing proof body (the `let L` / `tsum_eq_single` argument) is proved once there. Then `cubicThetaArithmeticModelRemainder_coefficient` becomes `unfold cubicThetaArithmeticModelRemainder; exact cubicThetaTorusCoefficient_tsum_smul (cubicThetaArithmeticModelRemainder_summable hv) k`. The `_coefficient` lemmas in CubicThetaEisensteinTorus.lean, CubicThetaShiftedTorus.lean, CubicThetaInvertedTorus.lean and CubicThetaArithmeticTorus.lean collapse the same way. The lemma name above is a suggestion; it does not exist yet.",
+      "benefit": "The file's proof shrinks to one line that states the idea. The coefficient-extraction argument is kept in one place instead of being copied and maintained five times. The two near-duplicate `simp only` lists disappear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaEisensteinTorus.lean",
+          "declaration": "cubicThetaTorusRemainder_coefficient",
+          "excerpt": "let L := (cubicThetaTorusCoefficientMap k).comp (ContinuousMap.toLp 2 (volume : Measure (UnitAddTorus (Fin 2))) ℂ)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaShiftedTorus.lean",
+          "declaration": "cubicThetaShiftedTorusSeries coefficient lemma",
+          "excerpt": "rw [cubicThetaShiftedTorusSeries,L.map_tsum (cubicThetaShiftedTorusSeries_summable b hv hs)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaCuspFourierSurjective.lean",
+          "declaration": "cubicThetaTorusCoefficient_basis",
+          "excerpt": "cubicThetaTorusCoefficient (cubicThetaTorusBasis h) k=if k=h then 1 else 0"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 28,
+    "cache_creation_input_tokens": 41946,
+    "cache_read_input_tokens": 389811,
+    "output_tokens": 9708,
+    "output_tokens_details": {
+      "thinking_tokens": 3057
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 41946,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2844,
+        "cache_read_input_tokens": 42978,
+        "cache_creation_input_tokens": 3011,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3011
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.30390110000000004,
+  "duration_ms": 103879,
+  "turns": 21,
+  "attempts": 1,
+  "judged": "2026-10-21T07:04:22",
+  "unit": "file",
+  "source_sha256": "f75b1aa429756b4856085c0fa248413c70cf673f091ab0194bc92513148457f6",
+  "rubric": "readable-proof-simplification"
+}

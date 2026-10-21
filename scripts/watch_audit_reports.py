@@ -37,6 +37,18 @@ def main():
                 except ProcessLookupError:
                     status.update(stage="failed", reason="Worker exited; inspect its local log")
                     path.write_text(json.dumps(status, indent=2) + "\n")
+            deepseek = ROOT / "runs/deepseek-pilot-2026-10-21"
+            if (deepseek / "launch.json").exists():
+                info = json.loads((deepseek / "launch.json").read_text())
+                path = deepseek / "status.json"
+                status = json.loads(path.read_text()) if path.exists() else {}
+                if status.get("stage") not in ["complete", "failed", "budget-complete"]:
+                    try:
+                        os.kill(info["pid"], 0)
+                        active = True
+                    except ProcessLookupError:
+                        status.update(stage="failed", reason="Worker exited; inspect its local log")
+                        path.write_text(json.dumps(status, indent=2) + "\n")
             if not active:
                 return
             time.sleep(args.interval)

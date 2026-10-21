@@ -1,0 +1,101 @@
+{
+  "id": "openai-math-file-0023",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read TracialState (Traces/TracialStates.lean), starAlgHom_positive, MatrixDiagonal.lean, the Mathlib CStarMatrix signatures, and the downstream uses and duplicates of these lemmas. These are FiniteFamilyMatrixTrace.lean and JiangSu/MatrixAlgebras/CornerCompression.lean. I did not compile anything. The proposed generalisations rely on the proofs only using linearity and cyclicity of the functional, which I checked by reading the proof bodies, but they are untested. Other declarations looked appropriately specific: comap, the two bijection theorems and the nonempty iff all need the CStarAlgebra/TracialState structure, and TracialState.ext already omits StarOrderedRing A. matrixTrace_comap_scale is stated for TracialState because matrixTrace and comap take one; it could also be generalised, but I did not check matrixTrace's definition, which lives in MatrixTraces.lean.",
+  "findings": [
+    {
+      "declaration": "trace_single_offDiagonal / trace_single_diagonal_eq / trace_matrix_eq_sum_diagonal / trace_scalarMatrix",
+      "start_line": 64,
+      "end_line": 102,
+      "excerpt": "lemma trace_single_offDiagonal (ρ : TracialState (CStarMatrix ι ι A))",
+      "problem": "These lemmas are stated for a full TracialState on the matrix algebra. Their proofs use only that ρ.functional is additive/ℂ-linear and satisfies f (x*y) = f (y*x). They never use positivity or normalization (the `normalized` field). Because of this, other files that have only a cyclic linear functional cannot reuse them. FiniteFamilyMatrixTrace.lean re-proves the off-diagonal vanishing and the diagonal-sum decomposition from scratch (`hoff` and `matrix_eq_sum_diagonal_of_additive`), and also re-proves the diagonal-equality lemma (`matrix_diagonal_eq_of_additive`). The only reason is that the functional there is a plain linear map, not a TracialState.",
+      "proposed_change": "State the four lemmas for `(f : CStarMatrix ι ι A →ₗ[ℂ] ℂ) (hf : ∀ x y, f (x * y) = f (y * x))`. For example `lemma trace_single_offDiagonal (f : CStarMatrix ι ι A →ₗ[ℂ] ℂ) (hf : ∀ x y, f (x*y) = f (y*x)) (i j : ι) (hij : i ≠ j) (a : A) : f (singleMatrix i j a) = 0`. The proofs stay the same, with `ρ.tracial` replaced by `hf` and `map_zero`/`map_sum` applied to `f`. Then restate the TracialState versions as one-line corollaries using `ρ.functional.toLinearMap` and `ρ.tracial`. `matrixTrace_comap_scale` and the downstream `ComplexQuasitrace` lemmas can then use the general versions. The statements remain valid when ι is empty or when f is zero.",
+      "benefit": "Removes the duplicated cyclic-functional arguments in FiniteFamilyMatrixTrace.lean and lets any tracial linear functional on matrices (for example quasitrace-derived ones) use the same lemmas. It also makes explicit that positivity and normalization play no role in these steps.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/States/FiniteFamilyMatrixTrace.lean",
+          "declaration": "ComplexQuasitrace.matrix_eq_sum_diagonal_of_additive",
+          "excerpt": "have hoff (i j : ι) (hij : i ≠ j) (a : A) : L (singleMatrix i j a)=0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/States/FiniteFamilyMatrixTrace.lean",
+          "declaration": "ComplexQuasitrace.matrix_diagonal_eq_of_additive",
+          "excerpt": "have h := hcyc (singleMatrix i j a) (singleMatrix j i 1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Traces/TracialStates.lean",
+          "declaration": "TracialState",
+          "excerpt": "tracial : ∀ a b : A, functional (a * b) = functional (b * a)"
+        }
+      ]
+    },
+    {
+      "declaration": "singleMatrix_mul_same / singleMatrix_mul_ne / matrix_eq_sum_single",
+      "start_line": 39,
+      "end_line": 62,
+      "excerpt": "lemma singleMatrix_mul_same (i j k : ι) (a b : A) :",
+      "problem": "These are pure matrix-unit identities. They come from Mathlib's `Matrix.single_mul_single_same`, `Matrix.single_mul_single_of_ne` and `Matrix.matrix_eq_sum_single`, transported along `CStarMatrix.ofMatrixStarAlgEquiv`. They are stated under the ambient `[CStarAlgebra A]` and merely `omit` the order hypotheses. The equivalence they use only needs `[SMul ℂ A] [Semiring A] [StarRing A]`, and `singleMatrix` itself needs only `Zero A` and `DecidableEq ι`. So the CStarAlgebra assumption is unnecessarily strong. The lemmas cannot be used for non-C*-ring coefficients, and the file carries the extra instance context.",
+      "proposed_change": "Put these three lemmas, and the `singleMatrix` definition they refer to, in a section with `{A : Type*} [Semiring A] [StarRing A] [SMul ℂ A]` (plus `[Fintype ι] [DecidableEq ι]`). The proofs should be unchanged, since they already go through `ofMatrixStarAlgEquiv`. Alternatively, use `CStarMatrix.ofMatrixRingEquiv`, which needs only `[Semiring A]`. The current CStarAlgebra-based statements then follow by instance resolution.",
+      "benefit": "The matrix-unit calculus becomes available for any star semiring with a ℂ-action, with no loss for current users. The dependence of the later trace results on the C*-structure is also separated from the purely algebraic part.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/CStarAlgebra/CStarMatrix.lean",
+          "declaration": "CStarMatrix.ofMatrixStarAlgEquiv",
+          "excerpt": "def ofMatrixStarAlgEquiv [Fintype n] [SMul ℂ A] [Semiring A] [StarRing A] :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Cuntz/MatrixTraceCorrespondence.lean",
+          "declaration": "singleMatrix",
+          "excerpt": "CStarMatrix.ofMatrix (Matrix.single i j a)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 32142,
+    "cache_read_input_tokens": 133598,
+    "output_tokens": 6779,
+    "output_tokens_details": {
+      "thinking_tokens": 2467
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32142,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3760,
+        "cache_read_input_tokens": 32287,
+        "cache_creation_input_tokens": 3879,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3879
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2097458,
+  "duration_ms": 59778,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-21T07:06:48",
+  "unit": "file",
+  "source_sha256": "1cb4377537c01fa788040dc0565bbb719118e7a745ae00cdda590ad75803d60a",
+  "rubric": "statement-generality"
+}

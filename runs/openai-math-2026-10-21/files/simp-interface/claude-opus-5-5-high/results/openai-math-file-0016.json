@@ -1,0 +1,111 @@
+{
+  "id": "openai-math-file-0016",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 261 lines of the target file. I also read the definitions it depends on: maskedPoolCode, maskedPoolCode_decode, rawPoolLeading and stageLeading in ComplexPrefixSeparationPolynomialStage.lean; poolEnumeration in ComplexLabelHierarchySeparation.lean; and conditionalFinset, conditionalPoolEquivFin, appendCode, appendCode_val and decodedFine_eq_geometryDecode in ComplexConditionalPrefixWords.lean. I searched the repository for every downstream use of decodePool, actualPool, actualPool_card, decodedLeading, rawPoolLeading_eq_decodedLeading and nextPrefixDecoder. The main consumers are Completion/GeometricValues.lean and ComplexBounds/CW75ReorderedGeometricValues.lean. nextPrefixDecoder and surviving_nextPrefix have no uses outside this file.\n\nI did not recommend some other changes:\n- decodePool_eq_iff should not be a simp lemma. Its right-hand side contains `positive`, which does not occur on the left, so simp could not fill it in.\n- decodePool_mem could be tagged @[simp], but nothing downstream needs it, so the evidence is too weak.\n- The ExecutionStage and exists_actualPoolStage declarations are existence statements and do not affect the simp interface.\n\nRemaining uncertainty: I could not run Lean. I expect the proposed general bridge lemma to hold by `rfl` for any priorWord, because both downstream files prove the `priorWord = id` case by `rfl` and the unfolding does not depend on priorWord. I have not confirmed that it compiles, and the same applies to the proposed decodedLeading_apply.",
+  "findings": [
+    {
+      "declaration": "nextPrefixDecoder_val / actualPool (missing decodePool–conditionalPoolEquivFin bridge)",
+      "start_line": 187,
+      "end_line": 194,
+      "excerpt": "      ((priorWord p).val i,\n        decodePool (actualPool counts labels n t priorWord)\n          (stageRefinementCount counts labels n t)\n          (actualPool_card counts labels n t priorWord) p q i) := rfl",
+      "problem": "The file uses two different forms for the same decoded label. Its own lemmas write it as `decodePool (actualPool counts labels n t priorWord) (stageRefinementCount …) (actualPool_card …) p q`. The imported library's simp lemma `appendCode_val` writes it as `((conditionalPoolEquivFin old).symm code).val`. Since `nextPrefixDecoder` is defined as `appendCode (priorWord p.1) p.2`, both forms describe the same object, but no lemma in the file connects them. As a result, every consumer has to prove the connection itself. Both downstream geometric-value files contain an identical private copy, `actualPool_decode … := rfl`, specialised to `priorWord = id`. Each then needs a second wrapper, `decode_eq_iff_eligible`, to reach the `conditionalPoolEquivFin` statements in HierarchyWords/CW75ReorderedWords.",
+      "proposed_change": "Add the general lemma once in this file, right after `actualPool_card`:\n```lean\n@[simp] theorem decodePool_actualPool\n    (priorWord : Prefix → ExactPrefix counts labels n t Position) (p : Prefix)\n    (q : Fin (stageRefinementCount counts labels n t)) :\n    decodePool (actualPool counts labels n t priorWord)\n        (stageRefinementCount counts labels n t)\n        (actualPool_card counts labels n t priorWord) p q =\n      ((conditionalPoolEquivFin (priorWord p)).symm q).val := rfl\n```\nThis rewrites toward the form used by `appendCode_val`, so it does not compete with existing rules: `conditionalPoolEquivFin` already has its own simp lemmas, and none of them produce `decodePool`. Optionally, restate `nextPrefixDecoder_val` with the `conditionalPoolEquivFin` form, or add `@[simp] nextPrefixDecoder_apply : nextPrefixDecoder … (p, q) = appendCode (priorWord p) q := rfl` so that `appendCode_val` handles it directly. Then delete the two duplicated `actualPool_decode` lemmas downstream.",
+      "benefit": "The decoded-label expression gets one canonical form that matches the existing `appendCode_val` simp set. This removes duplicated `rfl` bridges in downstream files. It also lets `simp` or `rw` move from `decodedLeading` guards to the `appendCode`/eligibility statements without unfolding definitions by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/LinearAlgebra/MatrixMultiplication/Completion/GeometricValues.lean",
+          "declaration": "actualPool_decode",
+          "excerpt": "    decodePool (actualPool counts H.labels n t id) (size H counts n t)\n      (actualPool_card counts H.labels n t id) old code =\n        ((conditionalPoolEquivFin old).symm code).val := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/LinearAlgebra/MatrixMultiplication/ComplexBounds/CW75ReorderedGeometricValues.lean",
+          "declaration": "actualPool_decode",
+          "excerpt": "    decodePool (actualPool counts curveLabels n t id) (size counts n t)\n      (actualPool_card counts curveLabels n t id) old code =\n        ((conditionalPoolEquivFin old).symm code).val := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/LinearAlgebra/MatrixMultiplication/Entropy/ComplexConditionalPrefixWords.lean",
+          "declaration": "appendCode_val",
+          "excerpt": "@[simp] theorem appendCode_val (old : ExactPrefix counts labels n t Position)\n    (code : Fin (stageRefinementCount counts labels n t)) (i : Position) :\n    (appendCode old code).val i =\n      (old.val i, ((conditionalPoolEquivFin old).symm code).val i) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/LinearAlgebra/MatrixMultiplication/Completion/GeometricValues.lean",
+          "declaration": "decode_eq_iff_eligible",
+          "excerpt": "  rw [actualPool_decode]\n  exact (eligible_appendCode_iff_of_represents H old code u v w word hword).symm"
+        }
+      ]
+    },
+    {
+      "declaration": "decodedLeading",
+      "start_line": 46,
+      "end_line": 55,
+      "excerpt": "  classical\n  exact fun x y z => if\n    x.2.1 = y.2.1 ∧ x.2.1 = z.2.1 ∧\n      decodePool pool k counts p x.2.1 = fine p x.1 y.1 z.1 ∧ x.2.2 = y.2.2\n    then 1 else 0",
+      "problem": "`decodedLeading` is defined with a tactic block (`by classical; exact fun …`) and has no evaluation lemma. Consumers can only work with it by unfolding the definition. In all six downstream normalisation proofs, the step right after `rw [rawPoolLeading_eq_decodedLeading …]` is `unfold decodedLeading`, followed by `simp only` on the exposed `ite`. Inside this file, `surviving_nextPrefix` also calls `simp [decodedLeading, h]`. Each consumer therefore depends on the internal lambda and on whatever `Decidable` instance the `classical` block happened to choose, rather than on a stated equation.",
+      "proposed_change": "Add an evaluation lemma with the guard stated explicitly, for example:\n```lean\ntheorem decodedLeading_apply (pool : Prefix → Finset RawLabel) (k : ℕ)\n    (counts : ∀ p, (pool p).card = k) (fine : Prefix → X → Y → Z → RawLabel)\n    (p : Prefix) (x : X × InformedOutput k) (y : Y × InformedOutput k)\n    (z : Z × MissingOutput k) [Decidable (x.2.1 = y.2.1 ∧ x.2.1 = z.2.1 ∧\n      decodePool pool k counts p x.2.1 = fine p x.1 y.1 z.1 ∧ x.2.2 = y.2.2)] :\n    decodedLeading pool k counts fine p x y z =\n      if x.2.1 = y.2.1 ∧ x.2.1 = z.2.1 ∧\n        decodePool pool k counts p x.2.1 = fine p x.1 y.1 z.1 ∧ x.2.2 = y.2.2\n      then 1 else 0 := by\n  unfold decodedLeading; congr\n```\nThis could also be stated with a classical instance and proved by `rfl`. Downstream proofs would then use `rw [rawPoolLeading_eq_decodedLeading …, decodedLeading_apply]` instead of `unfold`. Because the right-hand side is an `ite` rather than another `decodedLeading`, the rewrite terminates.",
+      "benefit": "Consumers get a stable rewrite target that does not depend on how the definition body was elaborated. The six downstream proofs and `surviving_nextPrefix` would no longer need to unfold the definition, and changing the definition's internals later would not break them.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/LinearAlgebra/MatrixMultiplication/Completion/GeometricValues.lean",
+          "declaration": "raw_XY_normal",
+          "excerpt": "    old x y z hx hy]\n  unfold decodedLeading\n  simp only [decode_eq_iff_eligible H old x.2.1 x.1 y.1 z.1 word hword,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/LinearAlgebra/MatrixMultiplication/ComplexBounds/CW75ReorderedGeometricValues.lean",
+          "declaration": "raw_YZ_normal",
+          "excerpt": "  unfold decodedLeading\n  simp only [hguard, GeometricStageCoordinates.yz_tensor_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/LinearAlgebra/MatrixMultiplication/Entropy/ComplexConditionalHierarchyStage.lean",
+          "declaration": "surviving_nextPrefix",
+          "excerpt": "    exact hn (by simp [decodedLeading, h])"
+        }
+      ]
+    }
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 38512,
+    "cache_read_input_tokens": 192449,
+    "output_tokens": 7964,
+    "output_tokens_details": {
+      "thinking_tokens": 2696
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 38512,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3981,
+        "cache_read_input_tokens": 50130,
+        "cache_creation_input_tokens": 3619,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3619
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5059138,
+  "duration_ms": 76275,
+  "turns": 10,
+  "attempts": 2,
+  "judged": "2026-10-21T07:11:58",
+  "unit": "file",
+  "source_sha256": "17946fb9e3901970eca45b2ab70c7f2f11d6ed1e226edaa12ab7cd92ba98b467",
+  "rubric": "simp-interface"
+}
