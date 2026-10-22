@@ -1,0 +1,148 @@
+{
+  "id": "mathlib-file-0009",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 154 lines of the target and inspected the definitions and simp lemmas in Circle.lean, AddCircle/Real.lean, AddChar.lean, ZMod/Basic.lean, RootsOfUnity/Basic.lean, and the downstream uses in NumberTheory/LSeries/ZMod.lean and Analysis/Fourier/ZMod.lean. I did not execute Lean, so the proposed attributes and replacement lemmas are untested. I considered the specialized `rootsOfUnityCircleEquiv_comp_rootsOfUnityAddChar_val` formula but did not flag it as a missing simp rule because its right-hand side explicitly uses `ZMod.val` and the file treats such formulas as user-directed rather than global simp normal forms.",
+  "findings": [
+    {
+      "declaration": "ZMod.stdAddChar_apply",
+      "start_line": 89,
+      "end_line": 89,
+      "excerpt": "lemma stdAddChar_apply (j : ZMod N) : stdAddChar j = ↑(toCircle j) := rfl",
+      "problem": "This is the definitional evaluation lemma for `stdAddChar`, but it is not in the simp set. The analogous wrapper-removal lemma `rootsOfUnityAddChar_val` is tagged `@[simp]`, while downstream files have to put `stdAddChar_apply` explicitly into `simp only` sets. As written, ordinary `simp` has no rule for normalizing `stdAddChar j` to its underlying circle expression `↑(toCircle j)`.",
+      "proposed_change": "Attach `@[simp]` to `stdAddChar_apply`, or use `attribute [simp] stdAddChar_apply`. Keep the specialized `stdAddChar_coe` formula separate; if both are later made simp, also expose the `toCircle_intCast` step so the routes finish at the same exponential normal form.",
+      "benefit": "Ordinary `simp` would reduce `stdAddChar j` to the canonical underlying circle coercion, matching the existing `rootsOfUnityAddChar_val` interface and removing repeated manual inclusions from downstream simp sets.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "ZMod.rootsOfUnityAddChar_val",
+          "excerpt": "@[simp] lemma rootsOfUnityAddChar_val (n : ℕ) [NeZero n] (x : ZMod n) :\n    (rootsOfUnityAddChar n x).val = toCircle x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/LSeries/ZMod.lean",
+          "declaration": "LFunction_stdAddChar_eq_expZeta_of_one_lt_re",
+          "excerpt": "ofReal_natCast, mul_assoc, div_mul_eq_mul_div, stdAddChar_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Fourier/ZMod.lean",
+          "declaration": "dft_eq_fourier",
+          "excerpt": "simp only [dft_apply, stdAddChar_apply, Fourier.fourierIntegral_def, Circle.smul_def,"
+        }
+      ]
+    },
+    {
+      "declaration": "ZMod.toCircle_intCast / ZMod.toCircle_natCast",
+      "start_line": 53,
+      "end_line": 62,
+      "excerpt": "lemma toCircle_intCast (j : ℤ) :\n    toCircle (j : ZMod N) = exp (2 * π * I * j / N) := by",
+      "problem": "The explicit formula lemmas for `ZMod.toCircle` at integer and natural casts are not `simp` lemmas. Consequently, even after the existing tagged rules reduce a root-of-unity character value to `toCircle x`, or after `stdAddChar_apply` would reduce it to `↑(toCircle j)`, `simp` has no rule to reach the advertised `Complex.exp` formula. The file itself has to use the reverse of `toCircle_natCast` at line 143 and the forward lemma at line 148, and LSeries/ZMod.lean calls `ZMod.toCircle_intCast` manually at line 162. The docstring explicitly recommends `toCircle_intCast` over the `ZMod.val`-based `toCircle_apply`, but this recommended formula is not exposed to `simp`.",
+      "proposed_change": "Mark `toCircle_intCast` and its natural-cast specialization `toCircle_natCast` as `[simp]`. Leave `toCircle_apply` and `toCircle_eq_circleExp` untagged, since the former is explicitly described as `ZMod.val`-based and the latter is an alternate Circle-valued formula. The right-hand side `Complex.exp ...` is a terminal formula in this file: no existing lemma rewrites it back to `toCircle`, so this direction does not by itself introduce a cycle; I have not run Lean to verify termination.",
+      "benefit": "This completes the chain `stdAddChar`/`rootsOfUnityAddChar` -> `toCircle` -> `Complex.exp` for integer and natural casts, so `simp` can evaluate the standard character without repeating `toCircle_intCast`/`toCircle_natCast` in every proof. It also matches the file's own recommendation to lift arguments to `ℤ` and use the non-`val` formula.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "ZMod.toCircle_apply docstring",
+          "excerpt": "Explicit formula for `toCircle j`. Note that this is \"evil\" because it uses `ZMod.val`. Where\npossible, it is recommended to lift `j` to `ℤ` and use `toCircle_intCast` instead."
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "rootsOfUnityCircleEquiv_comp_rootsOfUnityAddChar_val",
+          "excerpt": "simp [← ZMod.toCircle_natCast, -ZMod.natCast_val, ZMod.natCast_zmod_val]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/LSeries/ZMod.lean",
+          "declaration": "LFunction_stdAddChar_eq_expZeta_of_one_lt_re",
+          "excerpt": "have := ZMod.toCircle_intCast (N := N) (j.val * n)"
+        }
+      ]
+    },
+    {
+      "declaration": "ZMod.injective_toCircle / ZMod.injective_stdAddChar",
+      "start_line": 79,
+      "end_line": 92,
+      "excerpt": "lemma injective_toCircle : Injective (toCircle : ZMod N → Circle) :=\n  (AddCircle.injective_toCircle one_ne_zero).comp (toAddCircle_injective N)",
+      "problem": "Injectivity is exposed only as an `Injective` theorem, not as a canonical `[simp]` iff lemma for equalities of character values. The related `ZMod.toAddCircle` API exposes `@[simp] toAddCircle_inj` and `@[simp] toAddCircle_eq_zero`. In this file, proofs must explicitly invoke `injective_stdAddChar.eq_iff` at line 98 and `ZMod.injective_toCircle.eq_iff` at line 152, so the simplifier has no direct rule reducing `toCircle j = toCircle k` or `stdAddChar j = stdAddChar k` to `j = k`.",
+      "proposed_change": "Add canonical simp lemmas, for example:\n\n@[simp] lemma toCircle_inj {j k : ZMod N} : toCircle j = toCircle k ↔ j = k := injective_toCircle.eq_iff\n@[simp] lemma stdAddChar_inj {j k : ZMod N} : stdAddChar j = stdAddChar k ↔ j = k := injective_stdAddChar.eq_iff\n\nOptionally add the corresponding equality-to-one forms using `AddChar.map_zero_eq_one`, about `toCircle j = 1 ↔ j = 0` and `stdAddChar j = 1 ↔ j = 0`.",
+      "benefit": "The simplifier could reduce character equalities to equalities of residues, the primitivity and bijectivity proofs would no longer need explicit `.eq_iff` rewrites, and the interface would match the existing `toAddCircle_inj`/`toAddCircle_eq_zero` API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Instances/AddCircle/Real.lean",
+          "declaration": "ZMod.toAddCircle_inj",
+          "excerpt": "@[simp] lemma toAddCircle_inj {j k : ZMod N} : toAddCircle j = toAddCircle k ↔ j = k :=\n  (toAddCircle_injective N).eq_iff"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Instances/AddCircle/Real.lean",
+          "declaration": "ZMod.toAddCircle_eq_zero",
+          "excerpt": "@[simp] lemma toAddCircle_eq_zero {j : ZMod N} : toAddCircle j = 0 ↔ j = 0 :=\n  map_eq_zero_iff _ (toAddCircle_injective N)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "ZMod.isPrimitive_stdAddChar",
+          "excerpt": "rwa [← (stdAddChar (N := N)).map_zero_eq_one, injective_stdAddChar.eq_iff] at ht"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "ZMod.bijective_rootsOfUnityAddChar",
+          "excerpt": "left _ _ := by simp [ZMod.rootsOfUnityAddChar, ZMod.injective_toCircle.eq_iff]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1352588,
+    "cached_input_tokens": 1309952,
+    "output_tokens": 69491,
+    "reasoning_output_tokens": 63317
+  },
+  "cost_usd": 0.048635996,
+  "generation_ids": [
+    "gen-1792631399-6XmcWMjnQaP0cxnzmZDB",
+    "gen-1792631403-4HGSgrDMeTqxaZ7IxaVi",
+    "gen-1792631417-xD6nHLDh38WVueDeWKkT",
+    "gen-1792631430-WzPMWZdmANdKZZ5jCEpG",
+    "gen-1792631446-mA2V1RE1vzg0ZbYlMCZc",
+    "gen-1792631463-yoOMTOVT62H8HCXrS27m",
+    "gen-1792631482-ZAs8D1xOCmoek4YL0pql",
+    "gen-1792631486-Jlw2xNrYYFshesXDDnFP",
+    "gen-1792631501-54xOer84RxpvSJQC7yhW",
+    "gen-1792631516-0bPl7qtWVsMnl9unFWnN",
+    "gen-1792631560-OyLwUnF5kCoVaWRDLYDV",
+    "gen-1792631596-Yst21lDNpTp4qcfo0bbb",
+    "gen-1792631603-CGaH6vBmfJojVcEJOSbW",
+    "gen-1792631616-neprN1q6wyh089Nfcxul",
+    "gen-1792631620-5YR09RiQIaYYNHdUqkqy",
+    "gen-1792631626-MtVXJEqPhFtoTBXsRa9z",
+    "gen-1792631630-X7p6tg6WW6riPsCd0MDs",
+    "gen-1792631640-aAAuxbEuRs7vY6fE50GN",
+    "gen-1792631657-LZcVCsUtB1Nv93FzUaS8",
+    "gen-1792631721-LtXPIhdmXPurVRuZrY3C",
+    "gen-1792631725-FIoqO6zTPbKFpzqNVsmS",
+    "gen-1792631762-ddErnQ4zFnAy4DWqHeuL",
+    "gen-1792631766-7oU1oSM6sEj2cJPB6KjA",
+    "gen-1792631777-EDRqaKwZQn7Oxq5IIzxQ",
+    "gen-1792631783-cU50ZtnZ6PnWvhcoFYGG",
+    "gen-1792631797-kVNFBbzU3LKvrcC2CmI6",
+    "gen-1792631831-XMP2pJGaJHebIORSqDnC",
+    "gen-1792631844-mb7S9t7pkSUETRzFK21Q",
+    "gen-1792631878-QhUyTDG6xNSgniyn1ngr",
+    "gen-1792631895-PhhrWAtT1sZ3tryhig5R",
+    "gen-1792632000-FIMXKmHTU431dfZeLyNu"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 31,
+  "duration_ms": 648242,
+  "judged": "2026-10-22T01:20:44+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "ee1e323e0d276bb12f0614141a7f650365c25b787683baa71cb19a7ec898d18e"
+}

@@ -1,0 +1,107 @@
+{
+  "id": "lean-pool-file-0009",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 90 lines of MeanLocalL2Energy.lean, then inspected the definitions and uses it depends on: MeanSolenoidalSpace (L2), MeanScalarSobolev (lpNorm_sq_eq_integral_norm_sq/lpNorm_sq_eq_integral_sq), MeanHarmonicComponents (sum_component_energy, ae_vector_bound_of_component_bounds), MeanWeakHarmonicScaling, MeanWeakHarmonicInterior and MeanSourceVariationalInverse (the consumers of lpNorm_coe_L2, integral_norm_sq_L2, integrable_norm_sq_L2 and localL2Energy), and in Mathlib LpSeminorm/LpNorm.lean, LpSpace/Basic.lean, L2Space.lean and Integral/Bochner/Set.lean for the surrounding simp set. The file contains no simp attribute at all, so its only simp-interface content is the bridge lemmas lpNorm_coe_L2 / integral_norm_sq_L2 and the (unexposed) definition localL2Energy; the two findings below concern those. I checked for competing rules: Lp.norm_def and toReal_eLpNorm carry no simp attribute, eLpNorm_congr_ae carries none, and the simp lemma Lp.norm_toLp only matches syntactic `hf.toLp f` terms and lands on `(eLpNorm f 2 μ).toReal`, so adding lpNorm_coe_L2 to the simp set does not obviously create a cycle; I could not execute Lean, so this is a source-level analysis, not an observed simp trace. I did not report integral_norm_sq_L2's missing attribute separately: it is used in both directions in the repository (forward at MeanSourceVariationalInverse line 155, backward at MeanLocalL2Energy line 42), so the case for tagging it is weaker. The second finding's `[simp]` on the unfolding lemma has a trade-off noted in the finding (it expands localL2Energy in every simp call); the minimum required change is the equation lemma itself, which is currently unavailable and is replaced by defeq/rfl downstream.",
+  "findings": [
+    {
+      "declaration": "lpNorm_coe_L2",
+      "start_line": 29,
+      "end_line": 30,
+      "excerpt": "theorem lpNorm_coe_L2 (u : L2) : lpNorm (u : Space → Space) 2 volume = ‖u‖ := by\n  rw [Lp.norm_def, toReal_eLpNorm]",
+      "problem": "This is the only bridge between the function-level `lpNorm (u : Space → Space) 2 volume` produced by the componentwise bounds and the bundled norm `‖u‖`, but it is not a simp lemma. Consequently every consumer has to name it by hand, and goals that mix the two forms cannot be normalized by ordinary `simp`/`simp_all` at all, because nothing in Mathlib reduces `lpNorm` of the coercion of an `Lp` element (the local `lpNorm_of_not_memLp` and `lpNorm_zero` rules do not apply to an element of `L2`). The direction is the right one for a simp rule: the left-hand side is the accidental seminorm-on-a-function form and the right-hand side the canonical bundled norm, and I found no rule rewriting `‖u‖` back to `lpNorm (u : Space → Space)` (`Lp.norm_def` is attribute-free, and the `[simp]` rule `Lp.norm_toLp` matches only syntactic `hf.toLp f` terms and produces `(eLpNorm f 2 μ).toReal`, i.e. `lpNorm f 2 μ`, so applying `lpNorm_coe_L2` first still terminates).",
+      "proposed_change": "Add `@[simp]` to `lpNorm_coe_L2`. Alternatively, put the fully general form `lpNorm (fun x => (F : α → E) x) p μ = ‖F‖` in a shared file (the same statement is re-proved privately in LeanPool/PhaseRetrieval/DimdPoly/Internal/OrthogonalReduction/OrthogonalReduction.lean) and register that version `[simp]`; the specialised lemma here can then be derived from it, so downstream code need not unfold `toReal_eLpNorm`/`Lp.norm_def` itself.",
+      "benefit": "A reader no longer has to know the lemma name to simplify `lpNorm` of an `L2` coercion to `‖u‖`: the two manual `simpa only [lpNorm_coe_L2]` calls become plain `simpa using H`, and any `simp`/`simp_all` in this development can normalize the function-level seminorm that the componentwise and dilation estimates naturally produce.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MeanWeakHarmonicScaling.lean",
+          "declaration": "weakHarmonic_pointwise_scaled",
+          "excerpt": "  simpa only [lpNorm_coe_L2] using H"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MeanWeakHarmonicInterior.lean",
+          "declaration": "weakHarmonic_pointwise",
+          "excerpt": "  simpa only [lpNorm_coe_L2] using H"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Function/LpSpace/Basic.lean",
+          "declaration": "MeasureTheory.Lp.norm_toLp",
+          "excerpt": "@[simp]\nlemma norm_toLp (f : α → E) (hf : MemLp f p μ) : ‖hf.toLp f‖ = ENNReal.toReal (eLpNorm f p μ) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "localL2Energy",
+      "start_line": 26,
+      "end_line": 27,
+      "excerpt": "/-- Local L² energy, given by `∫ x in s, ‖u x‖ ^ 2`. -/\ndef localL2Energy (s : Set Space) (u : L2) : ℝ := ∫ x in s, ‖u x‖ ^ 2",
+      "problem": "`localL2Energy` is a plain `def` and the file supplies no equation lemma for it, so `simp` cannot unfold it and `simp only [localL2Energy_def]`-style rewriting of the body is impossible. The definition is nevertheless relied on definitionally: this file's own `localL2Energy_le` treats `localL2Energy s u` as a set integral when it rewrites `‖u‖ ^ 2` back with `integral_norm_sq_L2`, and downstream in `localized_coefficient_lower` the identification of `∫ x in s, ‖z x‖ ^ 2` (obtained from `integral_indicator hs`) with `localL2Energy s z` is closed by a bare `rfl`. Any later change to the definition (e.g. expressing the energy via an explicitly restricted measure) would break such proofs with an opaque defeq failure instead of a fixable rewrite.",
+      "proposed_change": "Add an explicit equation lemma, e.g. `@[simp] theorem localL2Energy_def (s : Set Space) (u : L2) : localL2Energy s u = ∫ x in s, ‖u x‖ ^ 2 := rfl`, and use it where the body is needed (`rw [localL2Energy_def]` in `localL2Energy_le` and at the downstream `rfl`). Since the right-hand side is a set integral and no rule rewrites such an integral back to `localL2Energy`, the rewrite terminates; if unconditional expansion of the wrapper during every `simp` call is undesirable, state the lemma without the attribute and use it explicitly in `simp only`/`rw`. A companion `localL2Energy_univ : localL2Energy Set.univ u = ‖u‖ ^ 2` is the other natural normal form if the total energy is needed.",
+      "benefit": "The dependence on the definition becomes an explicit, greppable lemma instead of an invisible defeq step (`rfl`) inside another proof, and `simp`/`rw`/`simp only` can exchange `localL2Energy s u` with its defining set integral in both this file and its downstream consumers.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MeanLocalL2Energy.lean",
+          "declaration": "localL2Energy_le",
+          "excerpt": "theorem localL2Energy_le (s : Set Space) (u : L2) : localL2Energy s u ≤ ‖u‖ ^ 2 := by\n  rw [← integral_norm_sq_L2]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MeanSourceVariationalInverse.lean",
+          "declaration": "localized_coefficient_lower",
+          "excerpt": "      integral_const_mul, integral_indicator hs, integral_norm_sq_L2]\n    rfl"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1326437,
+    "cached_input_tokens": 1262464,
+    "output_tokens": 29741,
+    "reasoning_output_tokens": 23522
+  },
+  "cost_usd": 0.030088052,
+  "generation_ids": [
+    "gen-1792631372-VEjmNQhsc4ynGSCxe4UX",
+    "gen-1792631378-2E5X8FGyLxH53jdFujme",
+    "gen-1792631387-xNh9DXFq58DykwqDjuqd",
+    "gen-1792631398-Jyq754TPZaDhx2TxZ62n",
+    "gen-1792631410-Xj4AxKarOpIVGn6aLTwu",
+    "gen-1792631414-OM0awPFxlyiRzm6KzMkM",
+    "gen-1792631434-EYhWaowSUhKBWYyepZUT",
+    "gen-1792631442-UV8VLU5XSJSECYRnHeH6",
+    "gen-1792631460-V8ZdpYkTpA3b7wx98kj6",
+    "gen-1792631478-NRpTxLbfrqQWiEkn1V0l",
+    "gen-1792631499-9Ik7jtDWFvfvSkqPkbCA",
+    "gen-1792631507-Xk2bbRtHyfMn4iLCc8Oz",
+    "gen-1792631517-NM1Q4TXCcdGOZJRYCvpN",
+    "gen-1792631532-sdQ9JeL6dMrGNbvuJtFa",
+    "gen-1792631551-UAJ2jtiOuTtn42xmnoKo",
+    "gen-1792631571-GTXwdEvRkbABOHqBPCt1",
+    "gen-1792631591-jCmJtUR4saXaFH3Uxqi0",
+    "gen-1792631595-mqv67CG3QbWtg5NnSQwx",
+    "gen-1792631633-OfYl7GbGzgjs708WMVwB",
+    "gen-1792631649-OxH5VXi1MEoCARPDFwB1",
+    "gen-1792631656-21rMaOleSQ5sBH89Gr3e",
+    "gen-1792631674-ysqtITRaDcWzTHQ1ymIu",
+    "gen-1792631681-Qbm7ffz8ovkowqiyZlWW",
+    "gen-1792631700-rJoaBdx95Ru19WmYd5fm",
+    "gen-1792631734-fvWZQUc41at50xCdGr2T",
+    "gen-1792631755-jinDVSmrnSUl2vlcMEmM"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 26,
+  "duration_ms": 424148,
+  "judged": "2026-10-22T01:16:24+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "c30f0fdb673a6f2b1adbcbd62a03820ded182f0c4dcfc4b607a2ce1e366d0962"
+}

@@ -1,0 +1,103 @@
+{
+  "id": "lean-pool-file-0009",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–90), checked the definitions and imports it relies on, and inspected the relevant Mathlib lemmas (notably MeasureTheory.MemLp.integrable_sq, MeasureTheory.MemLp.norm, pow_le_pow_left₀, norm_add_le, setIntegral_const, and volume_ball_toReal). The two reported findings are proof simplifications: one replaces a measurability/iff detour by the named MemLp.integrable_sq lemma, and the other exposes the two scalar ingredients behind a five-hypothesis nlinarith call. I did not compile the proposed replacements, so their exact elaboration is untested. I considered proposing removal of the `change` in `localL2Energy_ball_le_of_ae_bound`, but left it alone because it may be needed to expose `.toReal` for the subsequent `rw [volume_ball_toReal r hr]` and the same pattern is used in the related file MeanHarmonicSmallBall.lean; claiming it redundant would be uncertain.",
+  "findings": [
+    {
+      "declaration": "integrable_norm_sq_L2",
+      "start_line": 32,
+      "end_line": 33,
+      "excerpt": "theorem integrable_norm_sq_L2 (u : L2) : Integrable (fun x => ‖u x‖ ^ 2) volume :=\n  (memLp_two_iff_integrable_sq (Lp.memLp u).norm.aestronglyMeasurable).1 (Lp.memLp u).norm",
+      "problem": "The proof goes through `memLp_two_iff_integrable_sq`, so it has to manufacture the measurability hypothesis `(Lp.memLp u).norm.aestronglyMeasurable` and then apply the forward direction of an iff. Mathlib already packages exactly this passage from a real-valued `MemLp f 2 μ` to integrability of `f x ^ 2`, so the explicit measurability plumbing is unnecessary.",
+      "proposed_change": "Replace the proof with\n```lean\ntheorem integrable_norm_sq_L2 (u : L2) : Integrable (fun x => ‖u x‖ ^ 2) volume :=\n  (Lp.memLp u).norm.integrable_sq\n```\nThis is not claimed to have been compiled here.",
+      "benefit": "The reader sees the direct reason: the norm of an L² field is in L², and a real-valued L² function has integrable square. It removes a repeated `aestronglyMeasurable` side condition and an iff application without hiding any mathematics.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Function/L2Space.lean",
+          "declaration": "MeasureTheory.MemLp.integrable_sq",
+          "excerpt": "theorem MemLp.integrable_sq {f : α → ℝ} (h : MemLp f 2 μ) : Integrable (fun x => f x ^ 2) μ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Function/LpSeminorm/Basic.lean",
+          "declaration": "MeasureTheory.MemLp.norm",
+          "excerpt": "theorem MemLp.norm {f : α → E} (h : MemLp f p μ) : MemLp (fun x => ‖f x‖) p μ :="
+        }
+      ]
+    },
+    {
+      "declaration": "norm_add_sq_le_twice",
+      "start_line": 46,
+      "end_line": 52,
+      "excerpt": "theorem norm_add_sq_le_twice (a b : Space) :\n    ‖a+b‖ ^ 2 ≤ 2 * ‖a‖ ^ 2 + 2 * ‖b‖ ^ 2 := by\n  have h := norm_add_le a b\n  have ha := norm_nonneg a\n  have hb := norm_nonneg b\n  have hab := norm_nonneg (a+b)\n  nlinarith [sq_nonneg (‖a‖-‖b‖)]",
+      "problem": "The proof hides the mathematical structure in a single `nlinarith` call with five hypotheses (`norm_add_le`, three nonnegativity facts, and `sq_nonneg (‖a‖ - ‖b‖)`). The reader must reconstruct that the argument is: apply the triangle inequality to get `‖a+b‖ ≤ ‖a‖+‖b‖`, then use the scalar inequality `(x+y)^2 ≤ 2x^2+2y^2`. The four `have` lines exist only to feed automation.",
+      "proposed_change": "Make the two scalar ingredients explicit, for example:\n```lean\ntheorem norm_add_sq_le_twice (a b : Space) :\n    ‖a+b‖ ^ 2 ≤ 2 * ‖a‖ ^ 2 + 2 * ‖b‖ ^ 2 := by\n  calc\n    ‖a + b‖ ^ 2 ≤ (‖a‖ + ‖b‖) ^ 2 :=\n      pow_le_pow_left₀ (norm_nonneg _) (norm_add_le a b) 2\n    _ ≤ 2 * ‖a‖ ^ 2 + 2 * ‖b‖ ^ 2 := by\n      nlinarith [sq_nonneg (‖a‖ - ‖b‖)]\n```\nThis replacement is untested and is not claimed to compile here.",
+      "benefit": "The proof now separates the triangle inequality from the elementary scalar estimate, so a reader can follow the key idea without decoding a five-hypothesis arithmetic call. It also removes four intermediate `have`s and reduces the `nlinarith` hint to the single inequality that genuinely drives the estimate.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Algebra/Order/GroupWithZero/Basic.lean",
+          "declaration": "pow_le_pow_left₀",
+          "excerpt": "theorem pow_le_pow_left₀ [PosMulMono M₀] [MulPosMono M₀]\n    (ha : 0 ≤ a) (hab : a ≤ b) : ∀ n, a ^ n ≤ b ^ n"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Normed/Group/Basic.lean",
+          "declaration": "norm_add_le",
+          "excerpt": "@[to_additive norm_add_le /-- **Triangle inequality** for the norm. -/]\ntheorem norm_mul_le' (a b : E) : ‖a * b‖ ≤ ‖a‖ + ‖b‖ := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1175122,
+    "cached_input_tokens": 1120384,
+    "output_tokens": 25380,
+    "reasoning_output_tokens": 19666
+  },
+  "cost_usd": 0.026032112,
+  "generation_ids": [
+    "gen-1792631619-X7Ja71AnW14oAS7DpdeU",
+    "gen-1792631623-iwHtXY2QqTSOHrHsdG4i",
+    "gen-1792631629-Vq7DWCkskbn6EjXbj32A",
+    "gen-1792631639-yTLFdDzh3FBnR4Im5GRT",
+    "gen-1792631645-xzt1PSzsTLBHLxkst0jT",
+    "gen-1792631654-X7HG2PQpAYpjhrVGx2o5",
+    "gen-1792631663-vdXgFUyQeefEBFjjDeU8",
+    "gen-1792631676-T7r5tmYuTaqgRyXeqTvG",
+    "gen-1792631688-GUCrjHS5EvGDRtu5WpzF",
+    "gen-1792631727-fEHbJsVz1gqX3NwsrnMA",
+    "gen-1792631739-Dc7LnulROH2NsYAW0dYU",
+    "gen-1792631756-2hMnDNwyRt1KATED1cEO",
+    "gen-1792631782-l70hb7k6JpkoUIqTZayP",
+    "gen-1792631816-I8Ks95GRm1nXPmBgELHx",
+    "gen-1792631838-1NCV5Occi00LEycwDh4r",
+    "gen-1792631845-B83BDfaOEHPO1xKVCYjv",
+    "gen-1792631858-kEoH2lCDjRJKoHvSiHPx",
+    "gen-1792631895-f7AUd2VY4zeJGGOMswql",
+    "gen-1792631902-wk2yib3oHtLGbnqunWHb",
+    "gen-1792631912-EsRsmaSD8wnTLl0FjIYo",
+    "gen-1792631923-3LMeG4zJUZuDf5EAFvgk",
+    "gen-1792631929-ktGeHq2NnyEK9XV40lR1",
+    "gen-1792631933-XXyq4YnfOBt9tN292CKE",
+    "gen-1792631966-kIrSjqYYit6BdrdZVawt",
+    "gen-1792631980-E2ZPdcOTJFYE0U6xQwe2",
+    "gen-1792631985-4RDUY8rBUbrT9f0OCuaS",
+    "gen-1792631991-kj4HQYmPAgjzZEPwf1nw"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 27,
+  "duration_ms": 394242,
+  "judged": "2026-10-22T01:20:11+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "c30f0fdb673a6f2b1adbcbd62a03820ded182f0c4dcfc4b607a2ce1e366d0962"
+}

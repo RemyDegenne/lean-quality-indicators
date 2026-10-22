@@ -1,0 +1,137 @@
+{
+  "id": "mathlib-file-0009",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the full 154-line target file and inspected the relevant definitions and lemmas in Mathlib/Analysis/Complex/Circle.lean, Mathlib/Analysis/SpecialFunctions/Complex/Circle.lean, Mathlib/Data/ZMod/Basic.lean, Mathlib/RingTheory/RootsOfUnity/Basic.lean, Mathlib/RingTheory/RootsOfUnity/Complex.lean, and Mathlib/Algebra/Group/Units/Defs.lean. The three findings concern concrete proof simplifications: using the existing exact formula lemma instead of a reverse simp proof, replacing an opaque `congr; aesop` by the explicit fact `z ^ n = 1`, and replacing two `aesop` inverse-law proofs by extensionality on the underlying values. The proposed replacements were not compiled; the main uncertainty is whether `by ext; rfl` for the inverse laws needs to be written explicitly as `Subtype.ext (Units.ext rfl)`, though the underlying values are definitionally equal after unfolding the definitions.",
+  "findings": [
+    {
+      "declaration": "rootsOfUnityCircleEquiv",
+      "start_line": 126,
+      "end_line": 129,
+      "excerpt": "  invFun z := ⟨(rootsOfUnitytoCircle n).toHomUnits z, by\n    rw [mem_rootsOfUnity', MonoidHom.coe_toHomUnits, ← map_pow, ← (rootsOfUnitytoCircle n).map_one]\n    congr\n    aesop⟩",
+      "problem": "The proof that the inverse lands in `rootsOfUnity n Circle` ends with `congr; aesop`. After the preceding rewrites, the only remaining fact is `z ^ n = 1`, which is exactly `z.prop` (viewed as an equality in the subgroup via `Subtype.ext`). The reverse `map_one` rewrite plus `congr` obscures that this is the whole argument, and `aesop` hides the key use of the root-of-unity condition.",
+      "proposed_change": "Replace the proof body by\n\n```lean\n  invFun z := ⟨(rootsOfUnitytoCircle n).toHomUnits z, by\n    have hz : z ^ n = 1 := Subtype.ext z.prop\n    rw [mem_rootsOfUnity', MonoidHom.coe_toHomUnits, ← map_pow, hz, map_one]⟩\n```\n\nThis removes the reverse `map_one`, `congr`, and `aesop` altogether.",
+      "benefit": "The reader sees immediately that the inverse is well defined precisely because `z.prop` says `z ^ n = 1` and `rootsOfUnitytoCircle n` is a monoid homomorphism. The proof becomes a transparent rewrite chain rather than opaque automation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/RootsOfUnity/Basic.lean",
+          "declaration": "rootsOfUnity",
+          "excerpt": "def rootsOfUnity (k : ℕ) (M : Type*) [CommMonoid M] : Subgroup Mˣ where\n  carrier := {ζ | ζ ^ k = 1}"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/RootsOfUnity/Basic.lean",
+          "declaration": "mem_rootsOfUnity'",
+          "excerpt": "theorem mem_rootsOfUnity' (k : ℕ) (ζ : Mˣ) : ζ ∈ rootsOfUnity k M ↔ (ζ : M) ^ k = 1 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "rootsOfUnityCircleEquiv",
+      "start_line": 130,
+      "end_line": 131,
+      "excerpt": "  left_inv _ := by aesop\n  right_inv _ := by aesop",
+      "problem": "Both inverse laws of this fundamental multiplicative equivalence are discharged by bare `aesop`. The roundtrip is definitional after extensionality: unfolding `toFun` and `invFun` reduces the underlying circle values to the original ones, so no nontrivial algebra or search is needed. Opaque automation makes the definition harder to audit and needlessly fragile.",
+      "proposed_change": "Replace these lines by\n\n```lean\n  left_inv _ := by ext; rfl\n  right_inv _ := by ext; rfl\n```\n\n(or the expanded terms `Subtype.ext (Units.ext rfl)` for each law).",
+      "benefit": "The reader can verify the inverse laws by the standard extensionality route: subgroup extensionality, unit extensionality, and then `rfl` on the underlying circle element. This is both shorter and more informative than `aesop`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/RootsOfUnity/Basic.lean",
+          "declaration": "rootsOfUnityUnitsMulEquiv",
+          "excerpt": "  left_inv ζ := by simp only [toUnits_val_apply, Subtype.coe_eta]\n  right_inv ζ := by simp only [val_toUnits_apply, Subtype.coe_eta]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Group/Units/Defs.lean",
+          "declaration": "Units.ext",
+          "excerpt": "theorem ext {u v : αˣ} (huv : u.val = v.val) : u = v := val_injective huv"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Complex/Circle.lean",
+          "declaration": "Circle.ext",
+          "excerpt": "@[ext] lemma ext : (x : ℂ) = y → x = y := Subtype.ext"
+        }
+      ]
+    },
+    {
+      "declaration": "rootsOfUnityCircleEquiv_comp_rootsOfUnityAddChar_val",
+      "start_line": 140,
+      "end_line": 143,
+      "excerpt": "lemma rootsOfUnityCircleEquiv_comp_rootsOfUnityAddChar_val (j : ZMod n) :\n    (rootsOfUnityCircleEquiv n (ZMod.rootsOfUnityAddChar n j)).val\n      = Complex.exp (2 * π * I * j.val / n) := by\n  simp [← ZMod.toCircle_natCast, -ZMod.natCast_val, ZMod.natCast_zmod_val]",
+      "problem": "The proof works backwards through the special natCast case `ZMod.toCircle_natCast` and has to disable the simp lemma `ZMod.natCast_val` with `-ZMod.natCast_val`, then use `ZMod.natCast_zmod_val` to reconcile the value. But `ZMod.toCircle_apply j` already states exactly the desired formula for an arbitrary `j : ZMod n`. The current `simp` call is a fragile workaround whose route is hard to follow.",
+      "proposed_change": "Replace the proof by\n\n```lean\n  rw [rootsOfUnityCircleEquiv_apply, ZMod.rootsOfUnityAddChar_val, ZMod.toCircle_apply]\n```\n\nThis goes forward from the left-hand side: the equivalence lemma removes `rootsOfUnityCircleEquiv`, the `val` lemma removes `rootsOfUnityAddChar`, and `toCircle_apply` gives the displayed exponential formula.",
+      "benefit": "The proof becomes a direct chain of three named lemmas that exactly match the expression, with no reverse rewriting, no negative simp argument, and no `ZMod.natCast_val`/`ZMod.natCast_zmod_val` cast juggling. The reader can follow the calculation left-to-right at the level of the statement.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "ZMod.toCircle_apply",
+          "excerpt": "lemma toCircle_apply (j : ZMod N) :\n    toCircle j = exp (2 * π * I * j.val / N) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "rootsOfUnityCircleEquiv_apply",
+          "excerpt": "lemma rootsOfUnityCircleEquiv_apply (w : rootsOfUnity n Circle) :\n    ((rootsOfUnityCircleEquiv n w).val : ℂ) = ((w.val : Circle) : ℂ) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "ZMod.rootsOfUnityAddChar_val",
+          "excerpt": "@[simp] lemma rootsOfUnityAddChar_val (n : ℕ) [NeZero n] (x : ZMod n) :\n    (rootsOfUnityAddChar n x).val = toCircle x := by\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/ZMod/Basic.lean",
+          "declaration": "ZMod.natCast_val",
+          "excerpt": "@[simp]\ntheorem natCast_val [NeZero n] (i : ZMod n) : (i.val : R) = cast i :="
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 915362,
+    "cached_input_tokens": 875520,
+    "output_tokens": 56208,
+    "reasoning_output_tokens": 50665
+  },
+  "cost_usd": 0.03829552,
+  "generation_ids": [
+    "gen-1792631635-mbcH4tjyUJW2yDn48n50",
+    "gen-1792631637-HluP7d0uYzlbn90esib8",
+    "gen-1792631652-HsKg3z9TsxNvtv6XInub",
+    "gen-1792631660-vLxzCYeHEIkFuOIQTpb2",
+    "gen-1792631670-2DQygT2TMn7MAbMcLGCI",
+    "gen-1792631687-dY7AXWkvIvIbgORmLDDJ",
+    "gen-1792631695-c9HKkJ1ZPOGs18eeP8rx",
+    "gen-1792631707-LRDm9Pj2jb6TtGxWmwEe",
+    "gen-1792631722-IXwDBxRl3RG0XBJGkFkp",
+    "gen-1792631758-PNEmjqjbphVpfyTwj4qE",
+    "gen-1792631801-NabydZLYaIEVd1fWcheE",
+    "gen-1792631823-Aq9g428JQq7nJpvg8itL",
+    "gen-1792631843-g5MFMzhQMeGHWJeF2JHg",
+    "gen-1792631865-8WZum9Jn1z4JNbFO6oZr",
+    "gen-1792631874-HRwIvuNhIxeyQgBhTObe",
+    "gen-1792631889-x1LYl14CefWmDpbLTkUL",
+    "gen-1792631898-P7Xp0OWT6AyvKCAiY0fw",
+    "gen-1792631930-sLqXlCru272CcgTd8NXO",
+    "gen-1792631946-5113zj02SAQmkfFVfcSJ",
+    "gen-1792631978-hGGUNjP9asytQyDlJF9v",
+    "gen-1792632011-0S2XInceN7nbjxoa8o3m",
+    "gen-1792632059-h49dSA5kWPV6ZBmh6rJp",
+    "gen-1792632089-bhbELT3z26btuMiDhbFL",
+    "gen-1792632096-rcy97ajr2TX9lY8rbb9O",
+    "gen-1792632121-QvuuEx9si6Vj2aPm5rRJ"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 25,
+  "duration_ms": 560942,
+  "judged": "2026-10-22T01:23:15+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "ee1e323e0d276bb12f0614141a7f650365c25b787683baa71cb19a7ec898d18e"
+}
