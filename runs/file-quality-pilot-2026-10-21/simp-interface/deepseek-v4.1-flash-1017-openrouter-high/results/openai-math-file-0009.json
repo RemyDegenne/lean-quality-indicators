@@ -1,0 +1,108 @@
+{
+  "id": "openai-math-file-0009",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the complete 99-line target file and inspected the downstream uses in WeingartenDecay.lean and GramCounting.lean, as well as the related TensorGram.lean and SecondMoment.lean. I also compared the intended simp interface with Mathlib's dist_self, dist_eq_zero, and LinearMap.mk'_apply. I did not execute Lean. The findings are limited to missing canonical simp rules; I found no evidence of a rewrite cycle or a bad existing orientation. In particular, permutationDistance_symm and permutationDistance_add_classes should not be tagged [simp], and permutationDistance_eq_zero is best left as an explicit iff lemma unless a concrete use requires otherwise.",
+  "findings": [
+    {
+      "declaration": "permutationDistance_self",
+      "start_line": 62,
+      "end_line": 63,
+      "excerpt": "theorem permutationDistance_self {r : ℕ} (π : Equiv.Perm (Fin r)) :\n    permutationDistance π π=0 := by simp [permutationDistance]",
+      "problem": "The canonical self-distance fact is not registered with simp. Since permutationDistance is a plain def wrapping Module.finrank of a range, simp cannot reduce permutationDistance π π without unfolding the whole definition; the proof itself must use simp [permutationDistance]. Downstream, WeingartenDecay.lean has to pass permutationDistance_self explicitly to distanceMatrix_inverse_bound rather than letting simp discharge the diagonal case. This is the same kind of canonical base-case rule that Mathlib tags [simp] for dist_self and that this repository tags [simp] for positionMatrix_refl and pair_position_self.",
+      "proposed_change": "Mark permutationDistance_self as @[simp], leaving its statement and proof unchanged. Do not also mark permutationDistance_eq_zero as [simp], since its right-hand side π = σ would rewrite all zero-distance hypotheses into permutation equalities and would overlap with this diagonal rule; Mathlib likewise leaves dist_eq_zero untagged.",
+      "benefit": "Users can close goals of the form permutationDistance π π = 0 by simp, without unfolding the finrank/range definition of permutationDistance and without explicitly citing the lemma. The resulting normal form is the expected numeral 0, mirroring dist_self and the file's other base-case simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "permutationDistance_self",
+          "excerpt": "theorem permutationDistance_self {r : ℕ} (π : Equiv.Perm (Fin r)) :\n    permutationDistance π π=0 := by simp [permutationDistance]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/MetricSpace/Pseudo/Defs.lean",
+          "declaration": "dist_self",
+          "excerpt": "@[simp]\ntheorem dist_self (x : α) : dist x x = 0 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/MetricSpace/Defs.lean",
+          "declaration": "dist_eq_zero",
+          "excerpt": "theorem dist_eq_zero {x y : γ} : dist x y = 0 ↔ x = y :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/SecondMoment.lean",
+          "declaration": "pair_position_self",
+          "excerpt": "@[simp] theorem pair_position_self {r d : ℕ} (π : Equiv.Perm (Fin r)) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/WeingartenDecay.lean",
+          "declaration": "weingarten_decay",
+          "excerpt": "have hb := distanceMatrix_inverse_bound permutationDistance permutationDistance_self"
+        }
+      ]
+    },
+    {
+      "declaration": "permutationLinear",
+      "start_line": 13,
+      "end_line": 16,
+      "excerpt": "def permutationLinear {ι : Type*} (π : Equiv.Perm ι) : (ι → ℂ) →ₗ[ℂ] (ι → ℂ) where\n  toFun f := f ∘ π",
+      "problem": "There is no characteristic application lemma for permutationLinear. The only way simp can evaluate permutationLinear π f is to unfold the whole structure definition, so the proof of permutationDistance_eq_zero at line 77 must include permutationLinear in its simp set. This exposes the LinearMap structure literal and coercions instead of the intended normal form f ∘ π, and makes later pointwise reasoning depend on the definition's internal shape. Mathlib's standard interface for a bundled map supplies a rfl application lemma, for example the [simp] lemma LinearMap.mk'_apply.",
+      "proposed_change": "Add a definitional simp lemma for applications, for example:\n\n@[simp] theorem permutationLinear_apply {ι : Type*} (π : Equiv.Perm ι) (f : ι → ℂ) :\n    permutationLinear π f = f ∘ π := rfl\n\n(A pointwise variant permutationLinear π f i = f (π i) can also be provided.) The lemma's left-hand side is applied, so it does not unfold the bundled map itself and does not interfere with goals about permutationLinear π - permutationLinear σ.",
+      "benefit": "simp can evaluate permutationLinear applications to f ∘ π without expanding the LinearMap structure, keeping permutationLinear opaque except at applications. This gives a stable canonical form for term-level reasoning and lets the proof at line 77 avoid unfolding the definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "permutationLinear",
+          "excerpt": "def permutationLinear {ι : Type*} (π : Equiv.Perm ι) : (ι → ℂ) →ₗ[ℂ] (ι → ℂ) where\n  toFun f := f ∘ π"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "permutationDistance_eq_zero",
+          "excerpt": "simp [permutationLinear,Ne.symm hn] at hv"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Module/LinearMap/Defs.lean",
+          "declaration": "mk'_apply",
+          "excerpt": "@[simp]\ntheorem mk'_apply {f : M → M₂} (lin : IsLinearMap R f) (x : M) : mk' f lin x = f x :="
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 337953,
+    "cached_input_tokens": 303872,
+    "output_tokens": 19362,
+    "reasoning_output_tokens": 15670
+  },
+  "cost_usd": 0.014838456,
+  "generation_ids": [
+    "gen-1792631440-lubIFxVDYZAGSB1S2tDE",
+    "gen-1792631445-HbOpn6iNjzEwVxqykXYp",
+    "gen-1792631458-wODOiFY9MqEhfRvxpEnx",
+    "gen-1792631474-6zF30c0UfYXGjrbgvQxG",
+    "gen-1792631481-kCIi5l3shx0ByVn5GttI",
+    "gen-1792631502-urhkbRSOm955j8tmSX9c",
+    "gen-1792631529-bxW89Dd6wFNI7csF9kWN",
+    "gen-1792631535-x4hd7ObmjIVuDwdS2FKt",
+    "gen-1792631558-iOTs475cYNhd1ms8jIer",
+    "gen-1792631572-x1OOKl7UWWCkHfNBXgay",
+    "gen-1792631586-3MszAxCgiNQ2m7FRh9TG",
+    "gen-1792631605-f9xbppadIbY5KpSmiQv8"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 12,
+  "duration_ms": 242823,
+  "judged": "2026-10-22T01:14:12+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "a647a7dbecf8ae05a4a6fcbeb5312383a14e8778510dfe9b90bc3fad8c9927ec"
+}

@@ -1,0 +1,75 @@
+{
+  "id": "openai-math-file-0008",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the full 88-line target file and checked the relevant imported definitions and downstream uses: `fourCells`/`original_spatial_kernel_max` in `Estimates/PositiveDistanceOriginalSpatial.lean`, `fourSpatialPairEquiv` and `setLIntegral_fourSpatialPair` in `Measures/FourSpatialPairMeasure.lean`, `cell_shell_positive_kernel_max` in `Estimates/PositiveDistanceRebinBound.lean`, `angular_complex_shell_rebin` in `Estimates/ComparableComplexRebin.lean`, and `uniform_actual_comparable_shell_rebin` in `Shells/ActualComparableShellRebin.lean`. The target file itself contains only one substantive proof besides the reusable helper `enorm_setIntegral_le_good_kernel`; the finding concerns a block in that proof reproduced almost verbatim in a downstream file that imports this one. The proposed lemma and rewrites are untested sketches; I did not execute Lean. I also noticed that the pointwise real-to-ENNReal comparison at lines 62-71 of the target is nearly verbatim repeated in `ActualComparableShellRebin.lean` lines 100-106, but I judged that a shorter algebraic/ENNReal calculation and did not report it as a separate finding.",
+  "findings": [
+    {
+      "declaration": "PositiveDistanceData.original_complex_kernel_max",
+      "start_line": 72,
+      "end_line": 82,
+      "excerpt": "  let T := fourSpatialPairEquiv.symm ⁻¹' S\n  have hT : MeasurableSet T := hS.preimage fourSpatialPairEquiv.symm.measurable\n  have he : S ∩ fourPairGood d.good e.good =\n      fourSpatialPairEquiv ⁻¹' (T ∩ (d.good ×ˢ e.good)) := by",
+      "problem": "The argument that transports the spatial kernel bound across `fourSpatialPairEquiv` (define `T := fourSpatialPairEquiv.symm ⁻¹' S`, prove `T` measurable, prove `S ∩ fourPairGood d.good e.good = fourSpatialPairEquiv ⁻¹' (T ∩ (d.good ×ˢ e.good))`, then apply `original_spatial_kernel_max` and unfold `distanceDifferenceKernel`/`Real.rpow_natCast`) is repeated almost verbatim in `PositiveDistanceRebinBound.cell_shell_positive_kernel_max` lines 33-47, which imports this file. There the only differences are that `angularLengthShell b` replaces `S`, `D`/`E` replace `d`/`e`, there is an extra `angularFourCellMeasure_eq` rewrite, and `lintegral_indicator`/`restrict_restrict` are used to convert the indicator integral into an integral over the intersection. The same set identity, measurability fact and reduction to `original_spatial_kernel_max` therefore have to be maintained in two proofs.",
+      "proposed_change": "Add a shared lemma in this file before `original_complex_kernel_max`, for example (new name, untested here):\n\n```lean\ntheorem fourPairGood_kernel_max (d e : PositiveDistanceData)\n    [IsFiniteMeasure d.ρ] [IsFiniteMeasure e.ρ]\n    (ht : d.t = e.t) (hn : d.normalization = e.normalization)\n    (S : Set (Fin 4 → Plane)) (hS : MeasurableSet S) :\n    ENNReal.ofReal ((2:ℝ)^(-((d.t:ℝ)-d.a))) *\n      (∫⁻ x in S ∩ fourPairGood d.good e.good, distanceDifferenceKernel d.t x\n        ∂Measure.pi (fourCells d e)) ≤\n      binKernelConstant * ENNReal.ofReal\n        (d.levelMass^4*(2:ℝ)^(-2*((d.t:ℝ)-d.a))) * max d.coincidence e.coincidence := by\n  let T := fourSpatialPairEquiv.symm ⁻¹' S\n  have hT : MeasurableSet T := hS.preimage fourSpatialPairEquiv.symm.measurable\n  have he : S ∩ fourPairGood d.good e.good =\n      fourSpatialPairEquiv ⁻¹' (T ∩ (d.good ×ˢ e.good)) := by\n    ext x\n    simp only [T, mem_inter_iff, mem_preimage, fourPairGood,\n      MeasurableEquiv.symm_apply_apply]\n  rw [he]\n  simpa only [distanceDifferenceKernel, Real.rpow_natCast] using\n    original_spatial_kernel_max d e ht hn T hT\n```\n\nThen replace lines 72-82 of `original_complex_kernel_max` by an application of `fourPairGood_kernel_max d e ht hn S hS`, after `hg := enorm_setIntegral_le_good_kernel ...`; use `mul_assoc` and `mul_le_mul_left'` (or `gcongr`) and `ENNReal.ofReal_mul hH` to reassociate the factor `ENNReal.ofReal H`. In `cell_shell_positive_kernel_max`, after `setLIntegral_indicator (measurable_fourPairGood ...)` (with `inter_comm` to match the intersection order) and `angularFourCellMeasure_eq`, the conclusion becomes exactly the lemma specialized to `D := d.atCells row.1 col.1`, `E := e.atCells row.2 col.2` and `S := angularLengthShell b`, with `measurable_angularLengthShell b`; so lines 35-47 reduce to that application and a `simpa only [D, E, atCells, levelMass, distanceDifferenceKernel, Real.rpow_natCast]`.",
+      "benefit": "The change-of-variables step is proved once and named as a reusable kernel bound on the good support. Both the complex majorant theorem here and the positive cell/shell bound downstream become short applications, and future changes to `fourPairGood`, `fourSpatialPairEquiv`, `distanceDifferenceKernel` or the `Real.rpow_natCast` normalization only need to be reflected in one place instead of two proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Fourier/GoodSupportedKernelMajorant.lean",
+          "declaration": "PositiveDistanceData.original_complex_kernel_max",
+          "excerpt": "  have hh := mul_le_mul_right (original_spatial_kernel_max d e ht hn T hT) (ENNReal.ofReal H)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Estimates/PositiveDistanceRebinBound.lean",
+          "declaration": "PositiveDistanceData.cell_shell_positive_kernel_max",
+          "excerpt": "  let T := fourSpatialPairEquiv.symm ⁻¹' angularLengthShell b\n  have hT : MeasurableSet T := (measurable_angularLengthShell b).preimage fourSpatialPairEquiv.symm.measurable"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Estimates/PositiveDistanceRebinBound.lean",
+          "declaration": "PositiveDistanceData.cell_shell_positive_kernel_max",
+          "excerpt": "  simpa only [D,E,atCells,levelMass,distanceDifferenceKernel,Real.rpow_natCast] using\n    original_spatial_kernel_max D E ht hn T hT"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 900734,
+    "cached_input_tokens": 823680,
+    "output_tokens": 28009,
+    "reasoning_output_tokens": 23996
+  },
+  "cost_usd": 0.02675826,
+  "generation_ids": [
+    "gen-1792630706-uq8Swfz7gzVbaRaf3GiB",
+    "gen-1792630709-YcdoMjUaejD79bbh1hgX",
+    "gen-1792630727-BbWPweKj7XL1I9xPrLu3",
+    "gen-1792630753-cgsbhBjYmR8XhS9UXyua",
+    "gen-1792630767-f4s7dTRVltQ11ebvlejh",
+    "gen-1792630785-mauME7HkzheXokLPlJTB",
+    "gen-1792630806-w0N41gaUMlOISKax5LwS",
+    "gen-1792630816-KCVdrrPiAoTJ8ohX58ZF",
+    "gen-1792630845-rBy1L9uvxoQbrBj81aAe",
+    "gen-1792630863-33meqg0V7Y4dsC63R090",
+    "gen-1792630877-QNmZD8zC9yF8BvehfdZg",
+    "gen-1792630907-KC55L6sBqub8VR4pKsvg",
+    "gen-1792630911-OMHx06k0Fx8xHWt3Nitr",
+    "gen-1792630999-7Oq6x87mB1PrRZ13cv7V",
+    "gen-1792631014-HD8RLVSuSiwzyDMGtVgh"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 15,
+  "duration_ms": 345629,
+  "judged": "2026-10-22T01:04:07+00:00",
+  "unit": "file",
+  "rubric": "repeated-proof-machinery",
+  "source_sha256": "41cf9edf78c0bf4d2c5d8d76c94bf84a4eb7673e011e9bbd71b1598b78b86a6d"
+}

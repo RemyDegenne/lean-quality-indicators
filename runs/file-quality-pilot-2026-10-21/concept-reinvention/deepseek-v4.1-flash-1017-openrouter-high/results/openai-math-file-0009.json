@@ -1,0 +1,112 @@
+{
+  "id": "openai-math-file-0009",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the entire 99-line target file and inspected the relevant Mathlib definitions and repository uses. In Mathlib I checked `LinearMap.funLeft`, `LinearMap.funLeft_apply`, `Equiv.Perm.SameCycle`, `Equiv.Perm.SameCycle.setoid`, and `Equiv.Perm.mul_apply`; I also checked the downstream use of `matchingSetoid` in `GramCounting.lean`. I considered `matchingEquiv` as a specialization of `Setoid.liftEquiv` and `matchingQuotientFintype` as a specialized Fintype instance, but did not report them because the former is a convenient specialized API and the latter has different assumptions from Mathlib's decidable `Quotient.fintype`. I did not execute Lean, so proposed replacements are suggestions rather than verified compiled code. The main uncertainty is proof adaptation after replacing the definitions while preserving downstream names.",
+  "findings": [
+    {
+      "declaration": "permutationLinear",
+      "start_line": 13,
+      "end_line": 16,
+      "excerpt": "def permutationLinear {ι : Type*} (π : Equiv.Perm ι) : (ι → ℂ) →ₗ[ℂ] (ι → ℂ) where\n  toFun f := f ∘ π\n  map_add' _ _ := rfl\n  map_smul' _ _ := rfl",
+      "problem": "`permutationLinear` is a hand-written copy of Mathlib's `LinearMap.funLeft ℂ ℂ`. Both define the same precomposition map `f ↦ f ∘ π`, with the same `rfl` proofs of additivity and scalar compatibility. The limitation to `Equiv.Perm ι` does not change the underlying map; `funLeft` works for every function. Because `permutationLinear` has its own body, users do not get the generic `LinearMap.funLeft_apply` simp lemma, `funLeft_comp`, or the injectivity/surjectivity lemmas, and must unfold the local definition instead.",
+      "proposed_change": "Keep the name if it is useful downstream, but define it by delegation: `def permutationLinear {ι : Type*} (π : Equiv.Perm ι) : (ι → ℂ) →ₗ[ℂ] (ι → ℂ) := LinearMap.funLeft ℂ ℂ π`. Alternatively remove `permutationLinear` and use `LinearMap.funLeft ℂ ℂ` directly in `permutationDistance` and `matchingLinearEquiv`.",
+      "benefit": "There is then one implementation of precomposition, which automatically exposes Mathlib's generic `funLeft` API and its simp lemma. Readers can recognize the construction as the standard function-precomposition linear map rather than a new local operation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Module/Equiv/Basic.lean",
+          "declaration": "LinearMap.funLeft",
+          "excerpt": "/-- Given an `R`-module `M` and a function `m → n` between arbitrary types,\nconstruct a linear map `(n → M) →ₗ[R] (m → M)` -/\ndef funLeft (f : m → n) : (n → M) →ₗ[R] m → M where\n  toFun := (· ∘ f)\n  map_add' _ _ := rfl\n  map_smul' _ _ := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Module/Equiv/Basic.lean",
+          "declaration": "LinearMap.funLeft_apply",
+          "excerpt": "@[simp]\ntheorem funLeft_apply (f : m → n) (g : n → M) (i : m) : funLeft R M f g i = g (f i) :=\n  rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "matchingSetoid",
+      "start_line": 21,
+      "end_line": 22,
+      "excerpt": "def matchingSetoid {ι : Type*} (π σ : Equiv.Perm ι) : Setoid ι :=\n  Relation.EqvGen.setoid (fun i j => ∃ k, i=π k ∧ j=σ k)",
+      "problem": "The relation `∃ k, i = π k ∧ j = σ k` is the graph of the relative permutation `σ * π⁻¹`: setting `k = π⁻¹ i` gives `j = (σ * π⁻¹) i`. Its equivalence closure is therefore exactly Mathlib's `Equiv.Perm.SameCycle.setoid (σ * π⁻¹)`, whose relation is `∃ n : ℤ, ((σ * π⁻¹) ^ n) i = j`. The file instead introduces a second setoid for the cycles of this permutation, with its own quotient type, `matching_respects`, `matchingEquiv`, and `matchingLinearEquiv` API. These downstream definitions then use a nonstandard cycle quotient rather than the existing `SameCycle` quotient.",
+      "proposed_change": "Keep the `matchingSetoid` name for readability, but define it as an abbreviation for the existing cycle setoid, e.g. `abbrev matchingSetoid {ι : Type*} (π σ : Equiv.Perm ι) : Setoid ι := Equiv.Perm.SameCycle.setoid (σ * π⁻¹)`. Add a bridge lemma relating this relation to the one-step generator relation, and derive `matching_respects` and `matchingEquiv` from the `SameCycle` API and `Setoid.liftEquiv` (or use `MulAction.orbitRel (Subgroup.zpowers (σ * π⁻¹)) ι` as the underlying setoid).",
+      "benefit": "This reuses Mathlib's canonical cycle equivalence and its lemmas, such as `SameCycle.apply_right`, `sameCycle_inv`, `cycleOf`, and `cycleFactorsFinset`, and avoids a parallel quotient with bespoke conversion lemmas. It also aligns the matching quotient with the cycle quotients already used throughout the repository.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/GroupTheory/Perm/Cycle/Basic.lean",
+          "declaration": "Equiv.Perm.SameCycle",
+          "excerpt": "/-- The equivalence relation indicating that two points are in the same cycle of a permutation. -/\ndef SameCycle (f : Perm α) (x y : α) : Prop :=\n  ∃ i : ℤ, (f ^ i) x = y"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/GroupTheory/Perm/Cycle/Basic.lean",
+          "declaration": "Equiv.Perm.SameCycle.setoid",
+          "excerpt": "/-- The setoid defined by the `SameCycle` relation. -/\n@[instance_reducible]\ndef SameCycle.setoid (f : Perm α) : Setoid α where\n  r := f.SameCycle\n  iseqv := SameCycle.equivalence f"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Group/End.lean",
+          "declaration": "Equiv.Perm.mul_apply",
+          "excerpt": "theorem mul_apply (f g : Perm α) (x) : (f * g) x = f (g x) :=\n  rfl"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 2503868,
+    "cached_input_tokens": 2391424,
+    "output_tokens": 31129,
+    "reasoning_output_tokens": 24144
+  },
+  "cost_usd": 0.043691412,
+  "generation_ids": [
+    "gen-1792630958-mPs3zYc74K28gt1dl5ne",
+    "gen-1792630966-AxW8Hwtf3ynWaC3lZVkY",
+    "gen-1792630981-DhSSIACSKf54wfA4atcK",
+    "gen-1792630992-ZvE4Au8awJMWJvVgZRSI",
+    "gen-1792631008-bIWhp9t6wg0vhmGPFEpj",
+    "gen-1792631017-EOcaEg5b0ekcr87BRsiN",
+    "gen-1792631030-WmoMYbYwEhifrayWJnHi",
+    "gen-1792631043-lHyJ2wfj8Vo6Jqk7LbZa",
+    "gen-1792631055-CoaIQzX65ZwvXhc7rnfF",
+    "gen-1792631076-LmTBWtBQXvbBJvnJAEC8",
+    "gen-1792631083-1yQWzK7YQGunjLe9Rsgg",
+    "gen-1792631095-yCG5BBHGfrQ7OPv4aRVY",
+    "gen-1792631114-QyVZnHXJJyQiWPgm1bsZ",
+    "gen-1792631118-EaaOgRBkLMFaSVlWTmzJ",
+    "gen-1792631141-9ELHKOEmu0L82E8xYjSE",
+    "gen-1792631145-KlcdVvvlQDr1gaxg8n3h",
+    "gen-1792631159-IpncJ6SCc82jGTI2Z3C8",
+    "gen-1792631168-GFOusvBdXFxdAK96ll2d",
+    "gen-1792631188-7KMlAommKw9WPCg7WoX8",
+    "gen-1792631212-xMLf3KGYafV2UbeQhW50",
+    "gen-1792631222-PMLe87oii3i18uxXs6Oe",
+    "gen-1792631239-LfI5DcRPiUzVzb6ZmV4V",
+    "gen-1792631295-AyqsBT8d9R1yOtkp5sl0",
+    "gen-1792631300-mqvULU6EdEIIsfoSd0Dc",
+    "gen-1792631310-DPDkxUB5KEE6IrhsIHYV",
+    "gen-1792631337-914zdTJkRXbLgJSNHoBM",
+    "gen-1792631343-EwUsAHP6xZfPcn2D9jY6",
+    "gen-1792631353-XPn4PbtFvkftiSjVmDkI",
+    "gen-1792631392-bZxXq0k3B3YLmfb3H8S7",
+    "gen-1792631421-Lalp8mKFxIsx9SKNoUNW",
+    "gen-1792631452-tqPpWk5ZJQlU9TlRFc8M"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 31,
+  "duration_ms": 539833,
+  "judged": "2026-10-22T01:11:35+00:00",
+  "unit": "file",
+  "rubric": "concept-reinvention",
+  "source_sha256": "a647a7dbecf8ae05a4a6fcbeb5312383a14e8778510dfe9b90bc3fad8c9927ec"
+}

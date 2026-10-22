@@ -1,0 +1,124 @@
+{
+  "id": "mathlib-file-0008",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file (lines 1-362) and inspected the relevant fold definitions in Mathlib/LinearAlgebra/CliffordAlgebra/Fold.lean, reverse lemmas in Conjugation.lean, and the `map_add` field of `LinearMap`. The proposed replacements are based on the existing declarations and are not claimed to have been compiled; in particular, the exact behavior of `simp only` normal forms remains to be checked by Lean. No changes affect the characteristic-not-two hypotheses or degenerate cases.",
+  "findings": [
+    {
+      "declaration": "CliffordAlgebra.contractLeft_ι_mul (and the same pattern in contractLeft_ι and contractLeft_algebraMap)",
+      "start_line": 123,
+      "end_line": 127,
+      "excerpt": "theorem contractLeft_ι_mul (a : M) (b : CliffordAlgebra Q) :\n    d⌋(ι Q a * b) = d a • b - ι Q a * (d⌋b) := by\n-- Porting note: Lean cannot figure out anymore the third argument\n  refine foldr'_ι_mul _ _ ?_ _ _ _\n  exact fun m x fx ↦ contractLeftAux_contractLeftAux Q d m x fx",
+      "problem": "The proof introduces the coherence hypothesis of `foldr'_ι_mul` as a metavariable in `refine` and then fills it with a separate `exact` line. The reader has to match the `?_` argument position to the later lambda, and the same split is repeated in `contractLeft_ι` (lines 155-159) and `contractLeft_algebraMap` (lines 167-169).",
+      "proposed_change": "State the theorem in term mode and pass the coherence lambda directly as the explicit third argument of `foldr'_ι_mul`:\n\n```lean\ntheorem contractLeft_ι_mul (a : M) (b : CliffordAlgebra Q) :\n    d⌋(ι Q a * b) = d a • b - ι Q a * (d⌋b) :=\n  foldr'_ι_mul _ _ (fun m x fx ↦ contractLeftAux_contractLeftAux Q d m x fx) _ _ _\n```\n\nAnalogously, use `foldr'_ι _ _ (fun m x fx ↦ contractLeftAux_contractLeftAux Q d m x fx) _ _` in `contractLeft_ι` and `foldr'_algebraMap _ _ (fun m x fx ↦ contractLeftAux_contractLeftAux Q d m x fx) _ _` in `contractLeft_algebraMap`.",
+      "benefit": "The fold recursion lemma and its coherence hypothesis now appear together in one term. The key mathematical idea, that `contractLeft` is the fold whose auxiliary map satisfies the required square, is visible without metavariable bookkeeping. The explicit lambda still supplies the argument that the porting note says Lean cannot infer.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.contractLeftAux_contractLeftAux",
+          "excerpt": "theorem contractLeftAux_contractLeftAux (v : M) (x : CliffordAlgebra Q) (fx : CliffordAlgebra Q) :\n    contractLeftAux Q d v (ι Q v * x, contractLeftAux Q d v (x, fx)) = Q v • fx := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Fold.lean",
+          "declaration": "CliffordAlgebra.foldr'_ι_mul",
+          "excerpt": "theorem foldr'_ι_mul (f : M →ₗ[R] CliffordAlgebra Q × N →ₗ[R] N)\n    (hf : ∀ m x fx, f m (ι Q m * x, f m (x, fx)) = Q m • fx) (n m) (x) :\n    foldr' Q f hf n (ι Q m * x) = f m (x, foldr' Q f hf n x) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.contractLeft_ι",
+          "excerpt": "  refine (foldr'_ι _ _ ?_ _ _).trans <| by\n    simp_rw [contractLeftAux_apply_apply, mul_zero, sub_zero,\n      Algebra.algebraMap_eq_smul_one]\n  exact fun m x fx ↦ contractLeftAux_contractLeftAux Q d m x fx"
+        }
+      ]
+    },
+    {
+      "declaration": "CliffordAlgebra.contractRight_comm",
+      "start_line": 207,
+      "end_line": 209,
+      "excerpt": "theorem contractRight_comm (x : CliffordAlgebra Q) : x⌊d⌊d' = -(x⌊d'⌊d) := by\n  rw [contractRight_eq, contractRight_eq, contractRight_eq, contractRight_eq, reverse_reverse,\n    reverse_reverse, contractLeft_comm, map_neg]",
+      "problem": "The chain repeats `contractRight_eq` four times and `reverse_reverse` twice, so the reader must track which occurrence is unfolded by each rewrite. The mathematical content is simply: unfold both right contractions, cancel double reverses, apply left-contraction commutativity, and push the negation through reverse.",
+      "proposed_change": "Use `simp only` for the uniformly applicable unfolding and reverse-cancellation steps, then keep the single commutativity rewrite explicit:\n\n```lean\ntheorem contractRight_comm (x : CliffordAlgebra Q) : x⌊d⌊d' = -(x⌊d'⌊d) := by\n  simp only [contractRight_eq, reverse_reverse]\n  rw [contractLeft_comm, map_neg]\n```",
+      "benefit": "The proof now states one conceptual step per line: unfold right contractions and cancel reverses, then commute the two left contractions and push negation through `reverse`. It no longer depends on counting occurrences of `contractRight_eq`, and it uses only explicitly named lemmas rather than default `simp` automation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.contractRight_eq",
+          "excerpt": "theorem contractRight_eq (x : CliffordAlgebra Q) :\n    contractRight (Q := Q) x d = reverse (contractLeft (R := R) (M := M) d <| reverse x) :=\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Conjugation.lean",
+          "declaration": "CliffordAlgebra.reverse_reverse",
+          "excerpt": "@[simp]\ntheorem reverse_reverse : ∀ a : CliffordAlgebra Q, reverse (reverse a) = a :=\n  reverse_involutive"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.contractLeft_comm",
+          "excerpt": "theorem contractLeft_comm (x : CliffordAlgebra Q) : d⌋(d'⌋x) = -(d'⌋(d⌋x)) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "CliffordAlgebra.contractLeft_comm (add case), with the same issue in CliffordAlgebra.contractLeft_contractLeft",
+      "start_line": 198,
+      "end_line": 204,
+      "excerpt": "theorem contractLeft_comm (x : CliffordAlgebra Q) : d⌋(d'⌋x) = -(d'⌋(d⌋x)) := by\n  induction x using CliffordAlgebra.left_induction with\n  | algebraMap => simp_rw [contractLeft_algebraMap, map_zero, neg_zero]\n  | add _ _ hx hy => rw [map_add, map_add, map_add, map_add, hx, hy, neg_add]",
+      "problem": "The additive induction step spells out four separate `map_add` rewrites. This makes the proof depend on the exact number of nested additions in the goal and obscures that the step is simply additivity followed by the two induction hypotheses and `neg_add`. The analogous step in `contractLeft_contractLeft` uses the same repeated `map_add` pattern with `add_zero`.",
+      "proposed_change": "Replace the repeated rewrites with an explicit `simp only` using the same named lemmas:\n\n```lean\n  | add _ _ hx hy => simp only [map_add, hx, hy, neg_add]\n```\n\nand in `contractLeft_contractLeft`:\n\n```lean\n  | add _ _ hx hy => simp only [map_add, hx, hy, add_zero]\n```",
+      "benefit": "The induction step reads as one mathematical statement: distribute the additive map, use the two induction hypotheses, and orient the resulting sums. Because `simp only` is restricted to the explicitly named lemmas, the argument remains transparent and is less brittle than a rewrite chain that counts occurrences.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.contractLeft_contractLeft",
+          "excerpt": "  | add _ _ hx hy => rw [map_add, map_add, hx, hy, add_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.contractLeft_comm",
+          "excerpt": "  | add _ _ hx hy => rw [map_add, map_add, map_add, map_add, hx, hy, neg_add]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 725513,
+    "cached_input_tokens": 687104,
+    "output_tokens": 38639,
+    "reasoning_output_tokens": 33442
+  },
+  "cost_usd": 0.027889052,
+  "generation_ids": [
+    "gen-1792630718-I1Wl2uSDrV0cJ7nq1obw",
+    "gen-1792630723-Xe8Ro64cCVHO4cTK2m93",
+    "gen-1792630751-n7RHc9eo4k4kOLhPfErT",
+    "gen-1792630813-EFpWrx4XVG28FJUZLnu9",
+    "gen-1792630884-WWvCVGoKJr3vARWNCkIA",
+    "gen-1792630898-3ic81fgmq9UTrUAdmDwn",
+    "gen-1792630916-tC4QMNdr9ay6Q1u787yN",
+    "gen-1792630930-HQsarIL2A5c59Zbdu0I1",
+    "gen-1792630984-OAFPiByNxr1cb6CxgeSA",
+    "gen-1792631041-2mLTdsluFrhYvjY0AUNX",
+    "gen-1792631052-HfmY5GIDsBc0As1Xz2rR",
+    "gen-1792631090-2vST4qM3UUR3MQp007h8",
+    "gen-1792631109-EaQTtOaYKYmb3gsN8GGo",
+    "gen-1792631124-r2a8NbC3pysyeiZvwqII",
+    "gen-1792631134-Y0kWpLi7MQWaJZYr3mkb",
+    "gen-1792631169-5prlVpyfaIQnTIU2Somo",
+    "gen-1792631191-mMmqaN7rjvFnyLlgZ6Zb"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 17,
+  "duration_ms": 546555,
+  "judged": "2026-10-22T01:07:28+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "0e9df2a660667e608c5016ab18fe99c1a8c04651dbdff95dbee5f4b53b1352ab"
+}

@@ -1,0 +1,142 @@
+{
+  "id": "lean-pool-file-0009",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 90 lines and the relevant ambient definitions: `EulerSmoothLimit.Space := EuclideanSpace ℝ (Fin 3)` (Foundations/DifferentialOperators.lean:23), `EulerMeanSolenoidal.L2 := Lp Space 2 volume` (MeanSolenoidalSpace.lean:38), and the local `volume_ball_toReal` (MeanHarmonicSmallBall.lean:33). Checked Mathlib facts used by the proofs (`Lp.norm_def`, `memLp_two_iff_integrable_sq_norm`, `EuclideanSpace.volume_ball_fin_three`, `add_sq_le`) and library lemmas that already state generic counterparts (`TransverseActivationSelection.norm_add_sq_le`, `RlTheoryInLean...norm_add_sq_le_norm_sq_add_norm_sq`, `EulerLpBochnerRealization.norm_sq_eq_integral`, `EulerLpConvergence.norm_sq_eq_integral`). Also inspected the downstream consumers `MeanWeakHarmonicInterior.weakHarmonic_smallBall_energy`, `MeanWeakHarmonicScaling` and `MeanSourceVariationalInverse` to gauge API impact. No Lean execution was possible, so the proposed replacement statements/proofs are argued from the cited lemmas and existing proof scripts but were not compiled. I did not report `localL2Energy`/`localL2Energy_add_le`/`localL2Energy_le_of_decomposition`, since those genuinely concern the `Space`-valued L² energy and generalizing them would be invasive without a clear gain.",
+  "findings": [
+    {
+      "declaration": "norm_add_sq_le_twice",
+      "start_line": 46,
+      "end_line": 52,
+      "excerpt": "theorem norm_add_sq_le_twice (a b : Space) :\n    ‖a+b‖ ^ 2 ≤ 2 * ‖a‖ ^ 2 + 2 * ‖b‖ ^ 2 := by\n  have h := norm_add_le a b\n  have ha := norm_nonneg a\n  have hb := norm_nonneg b\n  have hab := norm_nonneg (a+b)\n  nlinarith [sq_nonneg (‖a‖-‖b‖)]",
+      "problem": "The statement is restricted to `Space = EuclideanSpace ℝ (Fin 3)`, but the proof only uses `norm_add_le` and `norm_nonneg`, i.e. nothing about the dimension, the scalar field or even commutativity of addition. Consequently the lemma cannot be applied to the other normed additive groups used throughout the same development, in particular to `L2 = Lp Space 2 volume` itself (a normed additive group), where the analogous bound `‖u+v‖^2 ≤ 2*‖u‖^2 + 2*‖v‖^2` is immediately useful, or to the cylinder/time `Lp` spaces. The library already contains two independent generic copies of exactly this inequality, which shows the general form is what users want.",
+      "proposed_change": "State it for an arbitrary seminormed additive group and keep the existing proof:\n\ntheorem norm_add_sq_le_twice {E : Type*} [SeminormedAddCommGroup E] (a b : E) :\n    ‖a + b‖ ^ 2 ≤ 2 * ‖a‖ ^ 2 + 2 * ‖b‖ ^ 2 := by\n  have h := norm_add_le a b\n  have ha := norm_nonneg a\n  have hb := norm_nonneg b\n  have hab := norm_nonneg (a+b)\n  nlinarith [sq_nonneg (‖a‖ - ‖b‖)]\n\n(The existing script is type-agnostic; a version using `pow_le_pow_left₀` plus Mathlib's `add_sq_le` is also available, as in `EulerTerminalProjectionTrial.norm_add_sq_le`.) The single use `norm_add_sq_le_twice (u x) (v x)` in `localL2Energy_add_le` still elaborates with `E := Space`, so the generalisation is backward compatible at the call site.",
+      "benefit": "One lemma then serves every normed space in the library (including `L2` and the other `Lp` types), removes the need for the two duplicated generic copies, and makes the pointwise bound instantly usable for norms of sums of L² classes rather than only for points of `Space`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/TransverseActivationSelection.lean",
+          "declaration": "norm_add_sq_le",
+          "excerpt": "theorem norm_add_sq_le (a b : E) : ‖a + b‖ ^ 2 ≤ 2 * ‖a‖ ^ 2 + 2 * ‖b‖ ^ 2 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RlTheoryInLean/Analysis/Normed/Group/Basic.lean",
+          "declaration": "norm_add_sq_le_norm_sq_add_norm_sq",
+          "excerpt": "lemma norm_add_sq_le_norm_sq_add_norm_sq (x y : E) :\n  ‖x + y‖ ^ 2 ≤ 2 * ‖x‖ ^ 2 + 2 * ‖y‖ ^ 2 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Algebra/Order/Ring/Basic.lean",
+          "declaration": "add_sq_le",
+          "excerpt": "lemma add_sq_le : (a + b) ^ 2 ≤ 2 * (a ^ 2 + b ^ 2) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "lpNorm_coe_L2, integrable_norm_sq_L2, integral_norm_sq_L2",
+      "start_line": 29,
+      "end_line": 36,
+      "excerpt": "theorem lpNorm_coe_L2 (u : L2) : lpNorm (u : Space → Space) 2 volume = ‖u‖ := by\n  rw [Lp.norm_def, toReal_eLpNorm]\n\ntheorem integrable_norm_sq_L2 (u : L2) : Integrable (fun x => ‖u x‖ ^ 2) volume :=\n  (memLp_two_iff_integrable_sq (Lp.memLp u).norm.aestronglyMeasurable).1 (Lp.memLp u).norm\n\ntheorem integral_norm_sq_L2 (u : L2) : (∫ x, ‖u x‖ ^ 2) = ‖u‖ ^ 2 := by",
+      "problem": "All three bridge facts are stated only for `L2 := Lp Space 2 volume`, i.e. velocity fields on ℝ³, although nothing in their proofs uses the domain `Space`, the exponent 2 or Lebesgue measure. `Lp.norm_def` is `rfl` for an arbitrary `f : Lp E p μ`, `memLp_two_iff_integrable_sq_norm` is stated for arbitrary `f : α → F`, and `Lp.memLp u` supplies the `MemLp` hypothesis, so each lemma holds verbatim for `u : Lp E p μ` / `u : Lp E 2 μ` over any measured space and any normed group `E`. This matters because the development uses many other `Lp` types (`L2Space V`, `CylinderL2 V`, `TimeLp T E`, nested `Lp (Lp E 2 ν) 2 μ`), for which the same coercion-is-isometric and norm-square identities must currently be re-derived; the generic integral identity is in fact already proved elsewhere in the library.",
+      "proposed_change": "State the three lemmas once at the level of `Lp`, and keep the `L2` versions as `simpa` corollaries:\n\nvariable {α E : Type*} [MeasurableSpace α] [NormedAddCommGroup E] {μ : Measure α} {p : ℝ≥0∞}\n\ntheorem lpNorm_coe_Lp (u : Lp E p μ) : lpNorm (u : α → E) p μ = ‖u‖ := by\n  rw [Lp.norm_def, toReal_eLpNorm]\n\ntheorem integrable_norm_sq_Lp (u : Lp E 2 μ) : Integrable (fun x => ‖u x‖ ^ 2) μ :=\n  (memLp_two_iff_integrable_sq (Lp.memLp u).norm.aestronglyMeasurable).1 (Lp.memLp u).norm\n\ntheorem integral_norm_sq_Lp (u : Lp E 2 μ) : (∫ x, ‖u x‖ ^ 2 ∂μ) = ‖u‖ ^ 2\n\nThe first two proofs are literally the existing scripts after replacing `L2` by `Lp E p μ`; for the third, Mathlib's `Lp.norm_def` together with `MemLp.eLpNorm_eq_integral_rpow_norm` gives the identity (the same computation as `EulerLpBochnerRealization.norm_sq_eq_integral`), or one can reuse the codomain-general `lpNorm_sq_eq_integral_norm_sq` of `MeanScalarSobolev`. Existing `simpa only [lpNorm_coe_L2]` and `rw [integral_norm_sq_L2]` call sites continue to work via the corollaries.",
+      "benefit": "A single generic set of Lp bridge lemmas serves every L²/Lp space in this development (space, cylinder, time, nested Lp), instead of re-proving the same coercion and norm-square facts for each abbreviation, and it makes the code a natural candidate for upstreaming.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Function/LpSpace/Basic.lean",
+          "declaration": "Lp.norm_def",
+          "excerpt": "theorem norm_def (f : Lp E p μ) : ‖f‖ = ENNReal.toReal (eLpNorm f p μ) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Function/L2Space.lean",
+          "declaration": "memLp_two_iff_integrable_sq_norm",
+          "excerpt": "theorem memLp_two_iff_integrable_sq_norm {f : α → F} (hf : AEStronglyMeasurable f μ) :\n    MemLp f 2 μ ↔ Integrable (fun x => ‖f x‖ ^ 2) μ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/LpBochnerRealization.lean",
+          "declaration": "EulerLpBochnerRealization.norm_sq_eq_integral",
+          "excerpt": "theorem norm_sq_eq_integral (u : Lp E 2 μ) :\n    ‖u‖^2 = ∫ x, ‖u x‖^2 ∂μ := by"
+        }
+      ]
+    },
+    {
+      "declaration": "localL2Energy_ball_le_of_ae_bound",
+      "start_line": 76,
+      "end_line": 88,
+      "excerpt": "theorem localL2Energy_ball_le_of_ae_bound (u : L2) (C r : ℝ) (hr : 0 ≤ r)\n    (hbound : ∀ᵐ x ∂volume, x ∈ Metric.ball (0 : Space) r → ‖u x‖ ^ 2 ≤ C) :\n    localL2Energy (Metric.ball (0 : Space) r) u ≤ (Real.pi * 4 / 3) * r^3 * C := by",
+      "problem": "The estimate is restricted to balls centred at the origin. The centre is used only in the final volume computation `rw [volume_ball_toReal r hr]`; every other ingredient is centre-independent (`integral_mono_ae`, `(integrable_norm_sq_L2 u).integrableOn`, `ae_restrict_iff' Metric.isOpen_ball.measurableSet`, `measure_ball_lt_top`, `setIntegral_const`, `smul_eq_mul`). Moreover Mathlib's `EuclideanSpace.volume_ball_fin_three` is stated for an arbitrary centre `x : EuclideanSpace ℝ (Fin 3)`, so the loss of generality comes only from the local helper `volume_ball_toReal`, whose proof rewrites with that centre-general lemma anyway. Users who want the local L² energy near a point `x₀`, or for a translated field, must currently redo the whole argument.",
+      "proposed_change": "Replace the theorem by the centre-general version\n\ntheorem localL2Energy_ball_le_of_ae_bound (c : Space) (u : L2) (C r : ℝ) (hr : 0 ≤ r)\n    (hbound : ∀ᵐ x ∂volume, x ∈ Metric.ball c r → ‖u x‖ ^ 2 ≤ C) :\n    localL2Energy (Metric.ball c r) u ≤ (Real.pi * 4 / 3) * r^3 * C\n\nwith the same proof, except that the final step uses `EuclideanSpace.volume_ball_fin_three c r` together with `ENNReal.toReal_mul`, `ENNReal.toReal_pow`, `ENNReal.toReal_ofReal hr` and `ENNReal.toReal_ofReal (by positivity)` (exactly the steps of `volume_ball_toReal`). The helper `volume_ball_toReal` can be generalized in the same way, since its existing proof already rewrites by the centre-general `volume_ball_fin_three`. If API stability is desired, the `0`-centred statement can remain as a one-line corollary for the existing call sites (`MeanWeakHarmonicInterior.weakHarmonic_smallBall_energy`, `MeanWeakHarmonicScaling`). Degenerate cases are harmless: for `r = 0` every ball `Metric.ball c 0` is empty, both sides are `0` and `hbound` is vacuous, and for `C < 0` with `r > 0` the hypothesis is unsatisfiable.",
+      "benefit": "The geometric content (ball volume times an a.e. pointwise bound) becomes available around any point of `Space`, so energy localisation near a point or for translated fields is immediate and no longer requires re-running the volume computation; the origin-centred version remains available as a corollary for current users.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Measure/Lebesgue/VolumeOfBalls.lean",
+          "declaration": "EuclideanSpace.volume_ball_fin_three",
+          "excerpt": "lemma volume_ball_fin_three (x : EuclideanSpace ℝ (Fin 3)) (r : ℝ) :\n    volume (ball x r) = .ofReal r ^ 3 * .ofReal (π * 4 / 3) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MeanHarmonicSmallBall.lean",
+          "declaration": "EulerMeanHarmonic.volume_ball_toReal",
+          "excerpt": "theorem volume_ball_toReal (r : ℝ) (hr : 0 ≤ r) :\n    (volume (Metric.ball (0 : Space) r)).toReal = r ^ 3 * (Real.pi * 4 / 3) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MeanWeakHarmonicInterior.lean",
+          "declaration": "EulerMeanHarmonic.weakHarmonic_smallBall_energy",
+          "excerpt": "have H := localL2Energy_ball_le_of_ae_bound u"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1396288,
+    "cached_input_tokens": 1336320,
+    "output_tokens": 26946,
+    "reasoning_output_tokens": 19418
+  },
+  "cost_usd": 0.028961,
+  "generation_ids": [
+    "gen-1792631062-Lo5AIk6zWy518XzuZN7z",
+    "gen-1792631070-5FuQRlNWHivAZSrBnzq8",
+    "gen-1792631080-frMfR8swq40Bn69RpxXg",
+    "gen-1792631085-u6LB5oxpRcbt4xt5ir0n",
+    "gen-1792631097-TDAhKvjWVq87Zq6iu0hA",
+    "gen-1792631104-WThh9o7stesfH6Qh1yqb",
+    "gen-1792631121-3EclfgXEd7eqg8kps7DH",
+    "gen-1792631130-tNDug4vqDouK1NtgOhqp",
+    "gen-1792631150-SxyawFkRizTm2Q8EnLAd",
+    "gen-1792631172-B8H75QyjADU2zk7TTkaO",
+    "gen-1792631180-nAFfd1MHzthF0xf1quaZ",
+    "gen-1792631206-FPvS1u7scoIq2PWok61V",
+    "gen-1792631216-D1juL1lN5DWg1KJ8i6hT",
+    "gen-1792631225-yrOm2Vgg9WENmHXuB2uy",
+    "gen-1792631230-1qd3AvRieOfI5mZyr8UY",
+    "gen-1792631259-KYNdhtADvV447soblUJW",
+    "gen-1792631275-BREa8zyFMCc0Ql958tH6",
+    "gen-1792631278-iVbIqyVLdimcgLR2DwwX",
+    "gen-1792631306-kmTpCiw5uBIcUqZeapI5",
+    "gen-1792631331-qpoBtcDR24YplxqkCfdK",
+    "gen-1792631340-NQ8VnnvwZR4GctqUCn8K",
+    "gen-1792631359-fLwwH2YtbPIZn6PTz5L0",
+    "gen-1792631368-YzoXlCE9D6bZ1kkeSm5C",
+    "gen-1792631384-9Yw9ZJDc4fD98N8KZwLd",
+    "gen-1792631404-tktMnPUQ7LHN33G0gT9Y",
+    "gen-1792631433-04HjKWSnE8p77Q3NYrXf",
+    "gen-1792631449-x86SQC1AuIvY5od6tUBJ",
+    "gen-1792631455-JmxTlIUgufLeJiZrn5wy",
+    "gen-1792631493-mCbGD1ZcTEx7AgfHrtvn",
+    "gen-1792631523-k6W4QUk4chmCTaOZMaDp"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 30,
+  "duration_ms": 513996,
+  "judged": "2026-10-22T01:12:41+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "c30f0fdb673a6f2b1adbcbd62a03820ded182f0c4dcfc4b607a2ce1e366d0962"
+}

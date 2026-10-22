@@ -1,0 +1,88 @@
+{
+  "id": "mathlib-file-0009",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the target file in full (154 lines). Checked the related declarations in Mathlib/Analysis/Fourier/FiniteAbelian/PontryaginDuality.lean (AddChar.zmod, zmod_intCast, zmod_injective, zmod_inj, zmodHom, circleEquivComplex, zmodAddEquiv), Mathlib/Algebra/Group/AddChar.lean (compAddMonoidHom, mulShift, mulShift_one, compAddMonoidHom_injective_left), Mathlib/Analysis/SpecialFunctions/Complex/Circle.lean (toCircle_zero, toCircle_add, injective_toCircle), Mathlib/Analysis/Fourier/AddCircle.lean (fourier), Mathlib/RingTheory/RootsOfUnity/Basic.lean (rootsOfUnity, rootsOfUnityUnitsMulEquiv, restrictRootsOfUnity) and EnoughRootsOfUnity.lean, plus grep for all uses of stdAddChar, ZMod.toCircle, rootsOfUnityCircleEquiv/rootsOfUnitytoCircle/rootsOfUnityAddChar and HasEnoughRootsOfUnity Circle. The roots-of-unity material (rootsOfUnitytoCircle, rootsOfUnityCircleEquiv, rootsOfUnityAddChar, the Circle HasEnoughRootsOfUnity instance) has no existing Mathlib counterpart, so only the ZMod circle-character duplication is reported. Limitation: Lean cannot be run here, so the suggested redefinition of AddChar.zmod in terms of ZMod.toCircle.mulShift (and the import rearrangement it needs) is not compiled; I also could not fully verify import-cycle absence for moving AddChar.zmod into CircleAddChar.lean, although nothing in that file's import chain appears to import Mathlib/Analysis/Fourier.",
+  "findings": [
+    {
+      "declaration": "ZMod.toCircle",
+      "start_line": 50,
+      "end_line": 51,
+      "excerpt": "noncomputable def toCircle : AddChar (ZMod N) Circle :=\n  toCircle_addChar.compAddMonoidHom toAddCircle",
+      "problem": "This is an independent second construction of a character already present in Mathlib. `AddChar.zmod n 1 : AddChar (ZMod n) Circle` (PontryaginDuality.lean, lines 46-50) sends `y` to `toCircle (1 * y)` hence is the same specific character as `ZMod.toCircle`, under the same `[NeZero n]` assumption. `AddChar.zmod` even rebuilds the `AddCircle.toCircle_addChar` structure literal inline, so lines 30-34 and 50-51 of this file are a re-naming of existing Mathlib material rather than a new concept. The duplication is substantive, not just a proof: the two files carry parallel APIs for the same character (`zmod_intCast`, `zmod_zero`, `zmod_add`, `zmod_injective`, `zmod_inj` versus `toCircle_intCast`, `toCircle_natCast`, `toCircle_apply`, `toCircle_eq_circleExp`, `injective_toCircle`), and no bridge lemma exists between them (grep finds no occurrence of `AddChar.zmod` outside PontryaginDuality, and nothing imports PontryaginDuality). Consequently `simp` lemmas about one form do not fire on the other, and a user wanting e.g. the formula for `ZMod.toCircle` specialized to an integer cannot reuse `AddChar.zmod_intCast`.",
+      "proposed_change": "Construct the circle-valued character once. For instance, keep the names `AddCircle.toCircle_addChar` and `ZMod.toCircle` in a shared low-import location that both this file and PontryaginDuality.lean can import, and define the indexed family as `def zmod (x : ZMod n) : AddChar (ZMod n) Circle := ZMod.toCircle.mulShift x` (equivalently `ZMod.toCircle.compAddMonoidHom (AddMonoidHom.mulLeft x)`, which is exactly what `AddChar.mulShift` is). Then `AddChar.zmod n 1 = ZMod.toCircle` follows from the existing `AddChar.mulShift_one`, and the pointwise formula follows from the existing `AddChar.mulShift_apply`, so `zmod_intCast` can be derived from `toCircle_intCast` instead of restating it. Preserve the public names `AddChar.zmod` and `ZMod.toCircle` as the two views of the one object. If moving `AddChar.zmod` proves impossible because of import constraints, add an explicit bridge lemma (e.g. `ZMod.toCircle = AddChar.zmod N 1`) in a file that imports both, rather than leaving the two unconnected.",
+      "benefit": "One construction and one set of formula/injectivity lemmas for the standard circle-valued additive character of `ZMod`, usable by both the Fourier/ZMod development (which uses `stdAddChar`) and the finite-abelian Pontryagin duality development (which uses `AddChar.zmod`), without ad hoc conversions or duplicate proof work; `simp` results such as `mulShift_apply` and `mulShift_one` then apply uniformly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Fourier/FiniteAbelian/PontryaginDuality.lean",
+          "declaration": "AddChar.zmod",
+          "excerpt": "def zmod (x : ZMod n) : AddChar (ZMod n) Circle :=\n  AddChar.compAddMonoidHom ⟨AddCircle.toCircle, AddCircle.toCircle_zero, AddCircle.toCircle_add⟩ <|\n    ZMod.toAddCircle.comp <| .mulLeft x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Fourier/FiniteAbelian/PontryaginDuality.lean",
+          "declaration": "AddChar.zmod_injective",
+          "excerpt": "lemma zmod_injective : Injective (zmod n) := by\n  simp_rw [Injective, ZMod.intCast_surjective.forall]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Fourier/FiniteAbelian/PontryaginDuality.lean",
+          "declaration": "AddChar.zmod_intCast",
+          "excerpt": "@[simp] lemma zmod_intCast (x y : ℤ) : zmod n x y = exp (2 * π * (x * y / n)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Complex/CircleAddChar.lean",
+          "declaration": "AddCircle.toCircle_addChar",
+          "excerpt": "noncomputable def AddCircle.toCircle_addChar {T : ℝ} : AddChar (AddCircle T) Circle where\n  toFun := toCircle"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Group/AddChar.lean",
+          "declaration": "AddChar.mulShift",
+          "excerpt": "def mulShift (ψ : AddChar R M) (r : R) : AddChar R M :=\n  ψ.compAddMonoidHom (AddMonoidHom.mulLeft r)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Group/AddChar.lean",
+          "declaration": "AddChar.mulShift_one",
+          "excerpt": "lemma mulShift_one (ψ : AddChar R M) : mulShift ψ 1 = ψ := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 343885,
+    "cached_input_tokens": 297344,
+    "output_tokens": 17444,
+    "reasoning_output_tokens": 14351
+  },
+  "cost_usd": 0.014824032,
+  "generation_ids": [
+    "gen-1792630919-dY3OE3wO1d3UEK6xJLTI",
+    "gen-1792630925-NGD53cIXPp33HLQIHtIf",
+    "gen-1792630934-Y86xcfvRnxGHA9mgM6rn",
+    "gen-1792630939-MfXQTAJL0O92aJYANpav",
+    "gen-1792630975-YHeBhuhizsRIy5QuhhiE",
+    "gen-1792630990-Aj6m7lUZGcK6qbp0zgRf",
+    "gen-1792631002-lhthdaE9EZbrfMPyHGMb",
+    "gen-1792631032-OT2SPZdDx1Q0KNsJVsik",
+    "gen-1792631044-tjO3o0V7tNiUJqDHm4s7",
+    "gen-1792631064-BRSqvKaGKO8re3lOda4y",
+    "gen-1792631071-8NTIi1t7JXAHNOGgZM1X",
+    "gen-1792631077-UrfeekTCnwnW7tWeJ7TV",
+    "gen-1792631104-vlRz25edS8IsDoxo6nYh"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 13,
+  "duration_ms": 232560,
+  "judged": "2026-10-22T01:05:47+00:00",
+  "unit": "file",
+  "rubric": "concept-reinvention",
+  "source_sha256": "ee1e323e0d276bb12f0614141a7f650365c25b787683baa71cb19a7ec898d18e"
+}

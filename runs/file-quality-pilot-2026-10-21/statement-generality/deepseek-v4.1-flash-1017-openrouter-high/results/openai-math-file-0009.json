@@ -1,0 +1,110 @@
+{
+  "id": "openai-math-file-0009",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 99 lines of the target file and checked the supporting generic declarations (`permutationLinear`, `matchingSetoid`, `matchingEquiv`, `matchingLinearEquiv`) and the consumers in `OAI/Analysis/FreeWords/GramCounting.lean` and `WeingartenDecay.lean`. Checked the relevant Mathlib lemmas used by the proofs: `LinearMap.finrank_range_add_finrank_ker` (needs only `[DivisionRing K] [FiniteDimensional K V]`), `Module.finrank_pi` (needs only `[Fintype ι]` over a `StrongRankCondition` ring), `finiteDimensional_pi` (from `[Finite ι]`), `Submodule.finrank_eq_zero` (needs only `[StrongRankCondition R]` and `[Module.Finite R S]`), and `rank_fun_infinite` (which shows a naively unrestricted index type would make `finrank` degenerate, hence the `[Fintype ι]` proposal). The only specialisation that is mathematically load-bearing is finiteness of the index type; `Fin r` itself is not used anywhere in the proofs (line 59 converts `Fintype.card (Fin r)` back to `r`). I did not compile the proposed replacements, so the claims about proofs are based on reading the existing proof scripts and the cited Mathlib statements; callers in GramCounting/WeingartenDecay that destruct `permutationDistance_add_classes` with `omega` would need `Fintype.card_fin` (a `Fin r` corollary can be retained to avoid churn).",
+  "findings": [
+    {
+      "declaration": "permutationDistance (together with permutationDistance_add_classes, _self, _eq_zero, _symm, _triangle)",
+      "start_line": 18,
+      "end_line": 19,
+      "excerpt": "def permutationDistance {r : ℕ} (π σ : Equiv.Perm (Fin r)) : ℕ :=\n  Module.finrank ℂ (LinearMap.range (permutationLinear π-permutationLinear σ))",
+      "problem": "The whole distance development is restricted to `Equiv.Perm (Fin r)`, although its definition only mentions `permutationLinear`, which is already stated for an arbitrary index type `ι` (line 13), and `matchingSetoid`/`matchingLinearEquiv` are likewise generic in `ι` (lines 21, 46). None of the proofs uses any property of `Fin r`: `permutationDistance_add_classes` proves the general identity but then rewrites `Fintype.card (Fin r)` to `r` via `Fintype.card_fin` (line 59), and the other three theorems use only `range_neg`, order of submodules and finiteness of `(ι → ℂ)`. The result is visible in `permutationDistance_add_classes`: the mathematically natural right-hand side is `Fintype.card ι` (`finrank` of `ι → ℂ`), not the numeral `r`.",
+      "proposed_change": "Generalise the index type, keeping finiteness (which is needed for rank–nullity and nondegeneracy of `finrank`):\n\n```lean\ndef permutationDistance {ι : Type*} [Fintype ι] (π σ : Equiv.Perm ι) : ℕ :=\n  Module.finrank ℂ (LinearMap.range (permutationLinear π - permutationLinear σ))\n\ntheorem permutationDistance_add_classes {ι : Type*} [Fintype ι] (π σ : Equiv.Perm ι) :\n    permutationDistance π σ + Fintype.card (Quotient (matchingSetoid π σ)) = Fintype.card ι\n\ntheorem permutationDistance_self {ι : Type*} [Fintype ι] (π : Equiv.Perm ι) :\n    permutationDistance π π = 0\n\ntheorem permutationDistance_eq_zero {ι : Type*} [Fintype ι] (π σ : Equiv.Perm ι) :\n    permutationDistance π σ = 0 ↔ π = σ\n\ntheorem permutationDistance_symm {ι : Type*} [Fintype ι] (π σ : Equiv.Perm ι) :\n    permutationDistance π σ = permutationDistance σ π\n\ntheorem permutationDistance_triangle {ι : Type*} [Fintype ι] (π σ ρ : Equiv.Perm ι) :\n    permutationDistance π ρ ≤ permutationDistance π σ + permutationDistance σ ρ\n```\n\nThe existing proof scripts should replay: `LinearMap.finrank_range_add_finrank_ker` applies to `(ι → ℂ)` because `[Fintype ι]` gives `[Finite ι]` and hence `FiniteDimensional ℂ (ι → ℂ)`; `Module.finrank_pi` rewrites both function-space finranks and the `Fintype.card_fin` step simply disappears; `matchingLinearEquiv` applies verbatim. Optionally keep `Fin r` corollaries (deriving `r` from `Fintype.card (Fin r)` with `Fintype.card_fin`) to preserve existing callers. The degenerate cases are fine: for `ι = Fin 0` both sides are `0`, and no statement is made for infinite `ι`, which is correct since `Module.rank ℂ (ι → ℂ)` is then infinite and `finrank` would be `0` for every pair, making `permutationDistance_eq_zero` false.",
+      "benefit": "Users can apply the distance to permutations of any finite index type (for example `Fin n × Fin m`, or the vertex sets used elsewhere in this repository) instead of relabelling through `Fin r`, and `permutationDistance_add_classes` then states the invariant in its natural form `#ι = distance + #orbit classes` rather than a numeral coincidence. This also makes the API consistent with `permutationLinear`, `matchingSetoid` and `matchingLinearEquiv`, which already accept an arbitrary `ι`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "matchingSetoid",
+          "excerpt": "def matchingSetoid {ι : Type*} (π σ : Equiv.Perm ι) : Setoid ι :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "matchingLinearEquiv",
+          "excerpt": "def matchingLinearEquiv {ι : Type*} (π σ : Equiv.Perm ι) :\n    LinearMap.ker (permutationLinear π-permutationLinear σ) ≃ₗ[ℂ]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/FiniteDimensional/Lemmas.lean",
+          "declaration": "LinearMap.finrank_range_add_finrank_ker",
+          "excerpt": "theorem finrank_range_add_finrank_ker [FiniteDimensional K V] (f : V →ₗ[K] V₂) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/Dimension/Constructions.lean",
+          "declaration": "Module.finrank_pi",
+          "excerpt": "theorem Module.finrank_pi {ι : Type v} [Fintype ι] :\n    finrank R (ι → R) = Fintype.card ι := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/FiniteDimensional/Defs.lean",
+          "declaration": "finiteDimensional_pi",
+          "excerpt": "instance finiteDimensional_pi {ι : Type*} [Finite ι] : FiniteDimensional K (ι → K) :="
+        }
+      ]
+    },
+    {
+      "declaration": "permutationLinear and matchingLinearEquiv",
+      "start_line": 13,
+      "end_line": 16,
+      "excerpt": "def permutationLinear {ι : Type*} (π : Equiv.Perm ι) : (ι → ℂ) →ₗ[ℂ] (ι → ℂ) where\n  toFun f := f ∘ π\n  map_add' _ _ := rfl\n  map_smul' _ _ := rfl",
+      "problem": "The scalar field is hard-coded to `ℂ` in `permutationLinear` (lines 13–16) and in `matchingLinearEquiv` (lines 46–48), even though nothing in either definition or proof is specific to the complex numbers. The linearity fields are discharged by `rfl` in any semiring, and the body of `matchingLinearEquiv` uses only `sub_eq_zero` (an additive-group fact) plus quotient recursion and function extensionality (lines 49–54). Consequently the orbit/kernel description of the difference of two permutation operators is unavailable over `ℝ`, `ℚ` or a finite field without reproving it.",
+      "proposed_change": "Generalise the scalar in the structural lemmas, e.g.\n\n```lean\ndef permutationLinear {ι R : Type*} [Semiring R] (π : Equiv.Perm ι) :\n    (ι → R) →ₗ[R] (ι → R) where\n  toFun f := f ∘ π\n  map_add' _ _ := rfl\n  map_smul' _ _ := rfl\n\ndef matchingLinearEquiv {ι 𝕜 : Type*} [Field 𝕜] (π σ : Equiv.Perm ι) :\n    LinearMap.ker (permutationLinear π - permutationLinear σ) ≃ₗ[𝕜]\n      (Quotient (matchingSetoid π σ) → 𝕜) := ...\n```\n\n(`Ring 𝕜` already suffices for `matchingLinearEquiv`; a field is the appropriate level for the accompanying `permutationDistance`, whose definition becomes `Module.finrank 𝕜`.) The proofs transfer unchanged: the `map_add'`/`map_smul'`/`map_smul'` fields remain `rfl`, and lines 49–54 use only `sub_eq_zero`, `Submodule`/`Quotient` extensionality and the universal property of `Quotient.lift`. The order lemmas for the distance need only `[DivisionRing 𝕜]` plus `[Fintype ι]`, since `LinearMap.finrank_range_add_finrank_ker` is stated over a division ring and `Module.finrank_pi`/`Submodule.finrank_eq_zero` require only `[StrongRankCondition 𝕜]`, an instance of every division ring. The `ℂ` case is recovered by instantiation, so no degenerate case changes.",
+      "benefit": "Reuses the same kernel-is-functions-on-classes equivalence (and hence the same rank–nullity count) for real, rational or finite-field-valued function spaces, which is useful whenever a Weingarten/matching computation is carried out over a coefficient field other than `ℂ`. It also matches Mathlib's level of generality for `Module.finrank_pi` and `LinearMap.finrank_range_add_finrank_ker`, making the statements more reusable without lengthening any proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeWords/PermutationDistance.lean",
+          "declaration": "matchingLinearEquiv",
+          "excerpt": "  toFun f := (matchingEquiv π σ) ⟨f.val, sub_eq_zero.mp f.property⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/Dimension/Finite.lean",
+          "declaration": "Submodule.finrank_eq_zero",
+          "excerpt": "theorem Submodule.finrank_eq_zero [StrongRankCondition R] {S : Submodule R M} [Module.Finite R S] :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/Dimension/Constructions.lean",
+          "declaration": "Module.finrank_pi",
+          "excerpt": "theorem Module.finrank_pi {ι : Type v} [Fintype ι] :\n    finrank R (ι → R) = Fintype.card ι := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 321151,
+    "cached_input_tokens": 297984,
+    "output_tokens": 20955,
+    "reasoning_output_tokens": 16062
+  },
+  "cost_usd": 0.014714732,
+  "generation_ids": [
+    "gen-1792631100-GpcZsec8Xvo0o8V10jCF",
+    "gen-1792631103-chk9HjYgkZgST4AY46ET",
+    "gen-1792631129-vnJ3e8KzVMW0ZYX7FoXx",
+    "gen-1792631133-knQZjTUN9s3bQOxHcocm",
+    "gen-1792631165-hnwh1C4H146e2YIIwuQm",
+    "gen-1792631182-IaxXe0qIyJG47TDnRSsu",
+    "gen-1792631189-JMJyfzff7uH2l68cr8Iz",
+    "gen-1792631236-HS3xP0GWM8Ah0mcVFhas",
+    "gen-1792631247-RtMPAXKNWvwGPvFGJKNZ",
+    "gen-1792631356-OukAQnhe6bcRkxMqKFbH",
+    "gen-1792631366-X57RHh3T8aorBZ7J602f",
+    "gen-1792631375-6Comhw8rWzA6iI0rPCNv",
+    "gen-1792631389-tvTOEKXa6HsS6Kcimoe5",
+    "gen-1792631405-EYouAD7oMU0leigCr2st"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 14,
+  "duration_ms": 357580,
+  "judged": "2026-10-22T01:10:43+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "a647a7dbecf8ae05a4a6fcbeb5312383a14e8778510dfe9b90bc3fad8c9927ec"
+}

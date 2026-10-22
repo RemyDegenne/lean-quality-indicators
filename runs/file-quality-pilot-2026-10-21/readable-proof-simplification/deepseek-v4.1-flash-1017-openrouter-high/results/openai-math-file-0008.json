@@ -1,0 +1,73 @@
+{
+  "id": "openai-math-file-0008",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (88 lines) and the sources it depends on or that use its lemmas: OAI/MeasureTheory/Falconer/Measures/FourSpatialPairMeasure.lean (definition of fourSpatialPairEquiv, measure preserving), OAI/MeasureTheory/Falconer/Estimates/PositiveDistanceOriginalSpatial.lean (statement of original_spatial_kernel_max), OAI/MeasureTheory/Falconer/Estimates/PositiveDistanceRebinBound.lean, OAI/MeasureTheory/Falconer/Estimates/ComparableComplexRebin.lean (other user of enorm_setIntegral_le_good_kernel), and OAI/MeasureTheory/Falconer/Shells/ActualComparableShellRebin.lean (which repeats the pointwise ofReal/convert idiom). I also checked the exact Mathlib statements of lintegral_indicator, lintegral_const_mul', Measure.restrict_restrict, ENNReal.ofReal_mul, ENNReal.ofReal_le_ofReal, Real.rpow_natCast and enorm_integral_le_lintegral_enorm to avoid proposing invalid rewrites. distanceDifferenceKernel_measurable, measurable_fourPairGood, the T/he translation in original_complex_kernel_max, and the inter_comm at line 41 appear essentially minimal: Measure.restrict_restrict hG produces the set G ∩ S, so inter_comm is genuinely required, and the T/he step is forced because original_spatial_kernel_max is stated in pair space. The remaining proposed replacement in the single finding is not compiled (no execution available) and should be checked.",
+  "findings": [
+    {
+      "declaration": "PlanarFalconer.PositiveDistanceData.original_complex_kernel_max",
+      "start_line": 62,
+      "end_line": 71,
+      "excerpt": "      filter_upwards [hb] with x hx\n      rw [← ofReal_norm]\n      have hh := ENNReal.ofReal_le_ofReal hx\n      convert hh using 1",
+      "problem": "The anonymous a.e. hypothesis of enorm_setIntegral_le_good_kernel is discharged by introducing `have hh := ENNReal.ofReal_le_ofReal hx` and then `convert hh using 1`. Because `convert` silently generates the remaining goal, the reader is not told which inequality is being used or in which direction: the following `dsimp [distanceDifferenceKernel]` / `rw [← ENNReal.ofReal_mul …]` / `rw [Real.rpow_natCast]` / `congr 1` / `ring` block is really proving the equality `ENNReal.ofReal (H * 2^(-(t-a)) / (1 + 2^(t) * |…|)^2) = ENNReal.ofReal H * ENNReal.ofReal (2^(-(t-a))) * ENNReal.ofReal (1 / (1 + 2^t * |…|)^2)`, but nothing in the script states this, and `hh` is a redundant named intermediate on which no other step depends. The very same nine-line idiom is duplicated verbatim in `uniform_actual_comparable_shell_rebin` (ActualComparableShellRebin.lean 100–106), which confirms it is a reusable pattern rather than a one-off.",
+      "proposed_change": "Make the direction explicit with `trans` and replace the `convert`/`congr 1`/`ring` dance by a stated equality, e.g.\n```\n    (by finiteness) (by\n      filter_upwards [hb] with x hx\n      rw [← ofReal_norm]\n      refine (ENNReal.ofReal_le_ofReal hx).trans ?_\n      dsimp only [distanceDifferenceKernel]\n      rw [Real.rpow_natCast, ← ENNReal.ofReal_mul hH,\n        ← ENNReal.ofReal_mul (mul_nonneg hH (by positivity))]\n      exact ENNReal.ofReal_le_ofReal (le_of_eq (by rw [div_eq_mul_inv]; ring))) hs\n```\n(Untested; the final step is the identity `H * 2^(-(t-a)) / D = (H * 2^(-(t-a))) * (1/D)`.) Optionally, since the block is duplicated, extract it once next to `distanceDifferenceKernel`, with statement\n```\ntheorem enorm_le_ofReal_mul_distanceDifferenceKernel {H v e : ℝ} (hH : 0 ≤ H)\n    {F : (Fin 4 → Plane) → ℂ} {x : Fin 4 → Plane}\n    (hx : ‖F x‖ ≤ H * (2:ℝ)^(-e) /\n      (1+(2:ℝ)^v*|dist (x 0) (x 1)-dist (x 2) (x 3)|)^2) :\n    ‖F x‖ₑ ≤ ENNReal.ofReal H * ENNReal.ofReal ((2:ℝ)^(-e)) * distanceDifferenceKernel v x\n```\nand use it here (after `rw [← Real.rpow_natCast] at hx`, since `hb` writes the exponent as a natural power) and in `uniform_actual_comparable_shell_rebin`.",
+      "benefit": "A reader can see immediately that the pointwise hypothesis gives exactly the kernel bound up to the constant `ENNReal.ofReal H`, instead of having to inspect the goal produced by `convert`; the named lemma version also gives that mathematical fact a name and removes the duplicated, direction-opaque `convert`/`ring` block from the second file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Fourier/GoodSupportedKernelMajorant.lean",
+          "declaration": "PlanarFalconer.PositiveDistanceData.original_complex_kernel_max",
+          "excerpt": "      dsimp [distanceDifferenceKernel]\n      rw [← ENNReal.ofReal_mul hH,← ENNReal.ofReal_mul (mul_nonneg hH (by positivity))]\n      rw [Real.rpow_natCast]\n      congr 1\n      ring) hs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Shells/ActualComparableShellRebin.lean",
+          "declaration": "PlanarFalconer.uniform_actual_comparable_shell_rebin",
+          "excerpt": "    have he' := ENNReal.ofReal_le_ofReal he\n    convert he' using 1\n    dsimp [distanceDifferenceKernel]\n    rw [← ENNReal.ofReal_mul hH,← ENNReal.ofReal_mul (mul_nonneg hH (by positivity))]\n    congr 1\n    ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Basic/ENNReal/Real.lean",
+          "declaration": "ENNReal.ofReal_mul",
+          "excerpt": "theorem ofReal_mul {p q : ℝ} (hp : 0 ≤ p) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/SpecialFunctions/Pow/Real.lean",
+          "declaration": "Real.rpow_natCast",
+          "excerpt": "theorem rpow_natCast (x : ℝ) (n : ℕ) : x ^ (n : ℝ) = x ^ n := by simpa using rpow_intCast x n"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 210124,
+    "cached_input_tokens": 190464,
+    "output_tokens": 31211,
+    "reasoning_output_tokens": 28252
+  },
+  "cost_usd": 0.018702012,
+  "generation_ids": [
+    "gen-1792630742-TAJeQJZY8TdujW1tO7Q9",
+    "gen-1792630774-nvwbp2ULLwwCTCI09URR",
+    "gen-1792630783-hk86EEnMGM6v8EUpnQWm",
+    "gen-1792630892-9EAsqY7XcovINAwRGcJE",
+    "gen-1792630908-vFycBn7hX9UUez9vCFRM",
+    "gen-1792631092-aydNrVcUW587T9VD2cvX",
+    "gen-1792631123-NQOMZYWAncFwHHFBU28i",
+    "gen-1792631160-AYc2OHgSdB14KIg681c1"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 8,
+  "duration_ms": 478702,
+  "judged": "2026-10-22T01:06:20+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "41cf9edf78c0bf4d2c5d8d76c94bf84a4eb7673e011e9bbd71b1598b78b86a6d"
+}
