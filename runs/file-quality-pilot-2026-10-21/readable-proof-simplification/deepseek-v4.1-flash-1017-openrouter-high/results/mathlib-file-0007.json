@@ -1,0 +1,78 @@
+{
+  "id": "mathlib-file-0007",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file plus the related definitions and lemmas it depends on: Mathlib/Control/Traversable/Lemmas.lean (functor_norm registration of LawfulTraversable.naturality, traverse lemmas), Mathlib/Control/Functor.lean (Functor.ext, Comp.map_mk, instance-plumbing examples), and Lean core Init/Control/Lawful/Basic.lean (the exact fields of LawfulFunctor: map_const, id_map, comp_map). I checked every proof in the file. Most are short, idiomatic one-line simp/rw proofs (Equiv.id_map, comp_map, id_traverse, traverse_eq_map_id, naturality, and the four field proofs of isLawfulTraversable') and I saw no worthwhile simplification there; merging rw chains into a single simp (e.g. in comp_traverse) would be pure golf with no gain, so I did not flag it. The one substantive finding is the detour through an equality of Functor structures in Equiv.lawfulFunctor'. Proposed proofs are sketches: I could not run Lean, so I do not claim the replacements are verified; the map_const case in particular may need an extra Function.comp_apply/Function.comp_def in the simp set or an explicit `exact h₁ a`/`exact h₀ ...` fallback. Note also that Functor.ext (Mathlib/Control/Functor.lean:47) cannot be used here, because it needs two LawfulFunctor instances for the same Functor, one of which is exactly what is being constructed. Out of rubric scope: the stale question-comment at line 117 and the old lemma name 'lawful_functor'' in the comment at line 165 are documentation issues, not proof issues.",
+  "findings": [
+    {
+      "declaration": "Equiv.lawfulFunctor'",
+      "start_line": 74,
+      "end_line": 83,
+      "excerpt": "  have : F = Equiv.functor eqv := by\n    cases F\n    dsimp [Equiv.functor]\n    congr <;> ext <;> [rw [← h₀]; rw [← h₁]] <;> rfl\n  subst this\n  exact Equiv.lawfulFunctor eqv",
+      "problem": "The proof does not prove the functor laws at all; it builds an equality `F = Equiv.functor eqv` by destructing the `Functor t'` structure, `dsimp`-unfolding `Equiv.functor`, splitting both record fields with `congr`, and then closing the two subgoals with the goal-order-dependent bracket list `congr <;> ext <;> [rw [← h₀]; rw [← h₁]] <;> rfl`, finally `subst`-ing the equality and reusing `Equiv.lawfulFunctor`. A reader has to reconstruct which hypothesis (`h₀` or `h₁`) belongs to which field, and has to rely on the unstated fact that `congr` emits the `map` subgoal before the `mapConst` subgoal. This is exactly the kind of opaque, order-sensitive tactic chain the proofs of `Equiv.id_map`, `Equiv.comp_map`, and `Equiv.isLawfulTraversable'` (which rewrites each law with `h₂` directly) avoid.",
+      "proposed_change": "Prove the three `LawfulFunctor t'` fields directly from `h₀`/`h₁` and the transported laws on `t`, mirroring the field-by-field style already used in `Equiv.isLawfulTraversable'`:\n\n```lean\n    LawfulFunctor t' where\n  map_const := by\n    funext a\n    simp only [h₁, h₀]\n  id_map x := by simp only [h₀, Equiv.id_map]\n  comp_map g h x := by simp only [h₀, Equiv.comp_map]\n```\n\nHere `h₀` converts the arbitrary `t'`-`map` into `Equiv.map eqv`, after which `Equiv.id_map`/`Equiv.comp_map` (this file, proved from `LawfulFunctor t`) finish the goal, and `h₁` together with `h₀` gives `map_const`. No proof of an equality of `Functor` structures, no `cases F`, no `subst`, and no bracketed `<;>` list are needed. (If `simp only` does not fire the `Equiv.map`/`Function.comp` rewrite under the `map ∘ const` binder, the fallbacks `exact h₁ a` and `exact Equiv.comp_map eqv g h x` after the corresponding `rw [h₀]` keep the same structure. I have not compiled this replacement.)",
+      "benefit": "Each law's proof becomes a one-line derivation naming the hypothesis and the transported law that justify it, so the reader sees the mathematical content (rewrite along the equivalence, then apply the law on `t`) instead of a record equality argument whose subgoals are determined by `congr`'s field ordering. It also no longer depends on the shape of the `Functor` structure literal, making the proof robust to changes in that structure, and it makes `lawfulFunctor'` stylistically parallel to `isLawfulTraversable'`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Traversable/Equiv.lean",
+          "declaration": "Equiv.id_map",
+          "excerpt": "  simp [Equiv.map, id_map]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Traversable/Equiv.lean",
+          "declaration": "Equiv.comp_map",
+          "excerpt": "  simp [Equiv.map, Function.comp_def]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Traversable/Equiv.lean",
+          "declaration": "Equiv.isLawfulTraversable'",
+          "excerpt": "  id_traverse _ := by rw [h₂, Equiv.id_traverse]"
+        },
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.36.0-rc1/src/lean/Init/Control/Lawful/Basic.lean",
+          "declaration": "LawfulFunctor",
+          "excerpt": "  id_map   (x : f α) : id <$> x = x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Traversable/Equiv.lean",
+          "declaration": "Equiv.lawfulFunctor",
+          "excerpt": "    map_const := fun {_ _} => rfl"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 138200,
+    "cached_input_tokens": 119040,
+    "output_tokens": 18955,
+    "reasoning_output_tokens": 16531
+  },
+  "cost_usd": 0.01196262,
+  "generation_ids": [
+    "gen-1792629574-zbWNYQKCdxKSMNhMkBDT",
+    "gen-1792629585-Px3wer9a5SBkVe6n1Ho7",
+    "gen-1792629595-Ma7lDRZ7fkvHwLm6EHDC",
+    "gen-1792629599-HtjzzKRWKcKEUkStdSaU",
+    "gen-1792629609-VwkzU4ARkm7DznnvlYbM",
+    "gen-1792629634-V1q45bCin4nw76vNo0SS",
+    "gen-1792629643-URMQ1zdMwCYaRy8HXtSU",
+    "gen-1792629651-Vxri6YfK1FUgIqIwNYKJ"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 8,
+  "duration_ms": 131915,
+  "judged": "2026-10-22T00:41:42+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "a502d938b32508ea911865f5436d809205b72ff488242b25fe4471d77a98fe15"
+}

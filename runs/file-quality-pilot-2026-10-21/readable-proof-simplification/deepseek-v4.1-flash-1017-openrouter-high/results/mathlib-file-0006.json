@@ -1,0 +1,156 @@
+{
+  "id": "mathlib-file-0006",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Reviewed all 1008 lines of the target file. I also inspected the relevant fiber-bundle projection and trivialization lemmas in Mathlib/Topology/FiberBundle/Trivialization.lean and the LinearEquiv helper definitions. The proposed replacements are based on static source reading and were not compiled; no claim of compilation is made.",
+  "findings": [
+    {
+      "declaration": "Bundle.Pretrivialization.symmₗ",
+      "start_line": 91,
+      "end_line": 94,
+      "excerpt": "protected def symmₗ (e : Pretrivialization F (π F E)) [e.IsLinear R] (b : B) : F →ₗ[R] E b := by\n  refine if hb : b ∈ e.baseSet then IsLinearMap.mk' (e.symm b) ?_ else 0\n  exact (((e.linear R hb).mk' _).inverse (e.symm b) (e.symm_apply_apply_mk hb) fun v ↦\n    congr($(e.apply_mk_symm hb v).snd)).isLinear",
+      "problem": "The proof reconstructs the linearity of the inverse by using `IsLinearMap.mk'`, `IsLinearMap.inverse`, and a component equality. This hides the intended mathematical fact that the inverse map is just the inverse of a linear equivalence. The relevant `linearEquivAt` definition is immediately below, but it is defined after `symmₗ`, so it cannot currently be reused.",
+      "proposed_change": "Move `linearEquivAt` above `symmₗ` (it does not depend on `symmₗ`) and replace the body with the term\n```lean\nprotected def symmₗ (e : Pretrivialization F (π F E)) [e.IsLinear R] (b : B) : F →ₗ[R] E b :=\n  if hb : b ∈ e.baseSet then\n    (e.linearEquivAt R b hb).symm.toLinearMap\n  else 0\n```\nThis preserves both the in-base-set and zero-extension cases.",
+      "benefit": "The definition now says directly that `symmₗ` is the inverse linear equivalence on the base set and zero elsewhere. The reader no longer has to follow a low-level `IsLinearMap.inverse` construction to see why the inverse is linear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Pretrivialization.linearEquivAt",
+          "excerpt": "def linearEquivAt (e : Pretrivialization F (π F E)) [e.IsLinear R] (b : B) (hb : b ∈ e.baseSet) :\n    E b ≃ₗ[R] F where\n  toFun y := (e ⟨b, y⟩).2\n  invFun := e.symm b"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Module/Equiv/Defs.lean",
+          "declaration": "LinearEquiv.toLinearMap",
+          "excerpt": "theorem coe_toLinearMap : ⇑e.toLinearMap = e :="
+        }
+      ]
+    },
+    {
+      "declaration": "Bundle.Trivialization.continuousLinearEquivAt",
+      "start_line": 449,
+      "end_line": 456,
+      "excerpt": "    continuous_toFun := (e.continuousOn.comp_continuous\n      (FiberBundle.totalSpaceMk_isInducing F E b).continuous fun _ => e.mem_source.mpr hb).snd\n    continuous_invFun := by convert (e.symmL R b).continuous; ext; simp [hb] }",
+      "problem": "The forward and inverse continuity fields re-derive continuity from `e.continuousOn` and `totalSpaceMk_isInducing`, then use `convert`, `ext`, and `simp` for the inverse. But the file has already defined the continuous linear maps `continuousLinearMapAt` and `symmL`, together with lemmas identifying their underlying functions on `e.baseSet`.",
+      "proposed_change": "Replace the two continuity fields with\n```lean\n    continuous_toFun := (e.continuousLinearMapAt R b).continuous.congr\n      fun y => continuousLinearMapAt_apply_of_mem e hb y\n    continuous_invFun := (e.symmL R b).continuous.congr\n      fun y => e.symmL_apply hb y }\n```",
+      "benefit": "The reader sees immediately that the forward map is the already-defined continuous map `continuousLinearMapAt`, and the inverse is the already-defined continuous map `symmL`; no additional continuity argument through the total-space embedding is needed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.continuousLinearMapAt_apply_of_mem",
+          "excerpt": "lemma continuousLinearMapAt_apply_of_mem (e : Trivialization F TotalSpace.proj)\n    [Trivialization.IsLinear R e] {b : B} (hb : b ∈ e.baseSet) (y : E b) :\n    (continuousLinearMapAt R e b) y = (e ⟨b, y⟩).2 := by\n  simp [coe_linearMapAt_of_mem e hb]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.symmL_apply",
+          "excerpt": "theorem symmL_apply (e : Trivialization F (π F E)) [e.IsLinear R] {b : B} (hb : b ∈ e.baseSet)\n    (y : F) : e.symmL R b y = e.symm b y :=\n  e.toPretrivialization.symmₗ_apply R hb y"
+        }
+      ]
+    },
+    {
+      "declaration": "Bundle.Trivialization.mk_coordChangeL",
+      "start_line": 316,
+      "end_line": 323,
+      "excerpt": "  ext\n  · rw [e.mk_symm hb.1 y, e'.coe_fst', e.proj_symm_apply' hb.1]\n    rw [e.proj_symm_apply' hb.1]\n    exact hb.2",
+      "problem": "The first-coordinate equality is proved by rewriting through `e.mk_symm`, `e'.coe_fst'`, and repeated `e.proj_symm_apply'`, after which the remaining membership goal is discharged by `hb.2`. This obscures the simple fact that the first coordinate is read directly from `e'` at a point whose projection is `b`.",
+      "proposed_change": "Use the base-set projection lemma directly:\n```lean\n  ext\n  · exact (e'.coe_fst' hb.2).symm\n  · exact e.coordChangeL_apply e' hb y\n```",
+      "benefit": "The proof becomes a direct projection calculation. It also removes a repeated rewrite and prevents the side-condition proof `hb.2` from being mistaken for the main argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/FiberBundle/Trivialization.lean",
+          "declaration": "Bundle.Trivialization.coe_fst'",
+          "excerpt": "theorem coe_fst' (ex : proj x ∈ e.baseSet) : (e x).1 = proj x :=\n  e.coe_fst (e.mem_source.2 ex)"
+        }
+      ]
+    },
+    {
+      "declaration": "Bundle.Trivialization.apply_eq_prod_continuousLinearEquivAt",
+      "start_line": 484,
+      "end_line": 490,
+      "excerpt": "  ext\n  · refine e.coe_fst ?_\n    rw [e.source_eq]\n    exact hb",
+      "problem": "The first coordinate is proved using `coe_fst`, for which one must first convert `hb` into membership in `e.source`. The base-set version `coe_fst'` is exactly the lemma intended for this situation.",
+      "proposed_change": "Replace the first branch by\n```lean\n  · exact e.coe_fst' hb\n```\nand keep the second branch as\n```lean\n  · simp only [continuousLinearEquivAt_apply]\n```",
+      "benefit": "This removes the unnecessary conversion from `e.baseSet` membership to `e.source` membership and makes the projection argument a single visible lemma application.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/FiberBundle/Trivialization.lean",
+          "declaration": "Bundle.Trivialization.coe_fst'",
+          "excerpt": "theorem coe_fst' (ex : proj x ∈ e.baseSet) : (e x).1 = proj x :=\n  e.coe_fst (e.mem_source.2 ex)"
+        }
+      ]
+    },
+    {
+      "declaration": "VectorBundleCore.localTriv_continuousLinearMapAt",
+      "start_line": 767,
+      "end_line": 772,
+      "excerpt": "  ext1 v\n  simp_all\n  rfl",
+      "problem": "The proof uses the broad tactic `simp_all` followed by `rfl`, hiding the two concrete facts needed: the defining property of `continuousLinearMapAt` on the base set and the definitional formula for `localTriv`.",
+      "proposed_change": "Make those facts explicit:\n```lean\n  ext v\n  rw [Bundle.Trivialization.continuousLinearMapAt_apply_of_mem (Z.localTriv i) hb]\n  rfl\n```",
+      "benefit": "A reader can follow the calculation without guessing which simp lemmas `simp_all` used, and the final `rfl` is justified by the explicit `localTriv_apply` computation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.continuousLinearMapAt_apply_of_mem",
+          "excerpt": "lemma continuousLinearMapAt_apply_of_mem (e : Trivialization F TotalSpace.proj)\n    [Trivialization.IsLinear R e] {b : B} (hb : b ∈ e.baseSet) (y : E b) :\n    (continuousLinearMapAt R e b) y = (e ⟨b, y⟩).2 := by\n  simp [coe_linearMapAt_of_mem e hb]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "VectorBundleCore.localTriv_apply",
+          "excerpt": "theorem localTriv_apply {i : ι} (p : Z.TotalSpace) :\n    (Z.localTriv i) p = ⟨p.1, Z.coordChange (Z.indexAt p.1) i p.1 p.2⟩ :=\n  rfl"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1835370,
+    "cached_input_tokens": 1747072,
+    "output_tokens": 39743,
+    "reasoning_output_tokens": 34412
+  },
+  "cost_usd": 0.040911916,
+  "generation_ids": [
+    "gen-1792628696-6shxxCXyv8ZZuGYABgie",
+    "gen-1792628732-GLqI39Pu3as6mfMVmbTx",
+    "gen-1792628738-kGjWkJTzWOAvBUbFKLPZ",
+    "gen-1792628740-yiPb3j5lXRy1NKm6A1Cl",
+    "gen-1792628747-VvsuGlzyHLAiJCjytHXI",
+    "gen-1792628754-f9diqDVg11Jvs3rcY1QM",
+    "gen-1792628758-NCkmHtgZ4kKTJ2TMdswX",
+    "gen-1792628772-OLmuD5QaT7qIYbgMPae1",
+    "gen-1792628776-6AoQavbYeE2oEOXIPIfg",
+    "gen-1792628814-nQav9Vp7VAY8ojvAYZ1B",
+    "gen-1792628826-Tjf8N8l85IY0Hwge7ak8",
+    "gen-1792628834-byu6d6afB4pq1HSv2ezV",
+    "gen-1792628857-SVMgwkij7aDZJDx9vsI6",
+    "gen-1792628861-AXSmWL6HQAGcdjNwsYG5",
+    "gen-1792628885-FzWYE2ykL6ytoSgm3F48",
+    "gen-1792628891-Ioyfple6kqoRFCBgCD9P",
+    "gen-1792628913-aDpi7RLlHD6uOyY8YZdr",
+    "gen-1792628919-Ueo7v3ASRWXKyO7mijtu",
+    "gen-1792628933-J1soji2F1EPcYlkbWX3O",
+    "gen-1792628943-Cee3KjFLMzbs1BlcHEg1",
+    "gen-1792628949-lBoimpBY37cgfrMZF2lT",
+    "gen-1792628977-OoGDQW1RSEqipnr9AdkJ",
+    "gen-1792629020-AERyVSNydMOfHwgWazW1",
+    "gen-1792629051-2j9g7OhS1YKJcX6Ed0RX",
+    "gen-1792629109-SMSDxCT4hmn3cYuJbANi",
+    "gen-1792629134-tn5rFAi8GudwenunaQCL",
+    "gen-1792629141-mI5HWPpRa8943nw42tBr"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 27,
+  "duration_ms": 502637,
+  "judged": "2026-10-22T00:33:10+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "115769215c14a8abc3b1ef7b15f774011ad3255f74f3d2deba17c7b22d47fedf"
+}

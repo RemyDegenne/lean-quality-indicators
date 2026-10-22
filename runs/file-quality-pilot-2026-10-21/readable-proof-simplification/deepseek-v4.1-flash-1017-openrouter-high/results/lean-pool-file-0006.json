@@ -1,0 +1,117 @@
+{
+  "id": "lean-pool-file-0006",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 245 lines of the target file and inspected the relevant Mathlib sources: Mathlib/Analysis/Calculus/DSlope.lean (dslope, dslope_same, dslope_of_ne, dslope_sub_smul_of_ne, pow_sub_smul_iterate_dslope_of_zero), Mathlib/Analysis/Calculus/Deriv/Slope.lean (no pointwise `slope` multiplication lemma exists, so dslope_const_mul/dslope_const have no library shortcut), Mathlib/Analysis/Analytic/Constructions.lean (HasFPowerSeriesAt.add/.neg/.sub), Mathlib/Analysis/Calculus/FDeriv/Analytic.lean (AnalyticAt.differentiableAt is tagged @[fun_prop]), Mathlib/Analysis/Analytic/IsolatedZeros.lean (has_fpower_series_iterate_dslope_fslope, coeff_zero). Findings are limited to: an unused intermediate `have` in taylorCoeffAt_sub_pow_mul; a detour through negation + function extensionality/`ring` in taylorCoeffAt_sub that duplicates the pattern of the sibling taylorCoeffAt_add; and two `have h := ...; rw ... at h; exact h` style detours in AnalyticAt.exists_taylor_remainder that can be stated directly in the terms of the lemmas used. Proposed replacements were not compiled; the `rfl` closing step in the taylorCoeffAt_sub replacement assumes the same definitional behaviour of `coeff` of a pointwise difference as the existing `rfl` in taylorCoeffAt_add (and a `show`/`simp` fallback is mentioned). Deliberately not flagged: taylorCoeffAt_congr / taylorCoeffAt_const_mul explicitly rewriting with the `rfl` lemma `taylorCoeffAt_succ` (the explicitness aids readability), and the weak-definition/junk-value documentation, which is intentional.",
+  "findings": [
+    {
+      "declaration": "RS.taylorCoeffAt_sub",
+      "start_line": 133,
+      "end_line": 139,
+      "excerpt": "  have hneg : AnalyticAt ℂ (fun z => -g z) z₀ := by fun_prop\n  have h2 := taylorCoeffAt_fun_add (g := fun z => -g z) hf hneg j\n  rw [taylorCoeffAt_neg] at h2\n  have h1 : (fun z => f z - g z) = fun z => f z + -g z := by funext z; ring\n  rw [h1, h2, sub_eq_add_neg]",
+      "problem": "The proof of subtraction manufactures `-g`, applies additivity and `taylorCoeffAt_neg`, then spends a `funext`/`ring` step re-expressing `fun z => f z - g z` as `fun z => f z + -g z` before closing with `sub_eq_add_neg`. All of this is machinery for the difference rather than for the mathematics, and it does not match the shape of the sibling lemma `taylorCoeffAt_add` (lines 121-127), which the reader has just read and which goes straight through the power series.",
+      "proposed_change": "Mirror `taylorCoeffAt_add` using `HasFPowerSeriesAt.sub`:\n\n```lean\ntheorem taylorCoeffAt_sub (hf : AnalyticAt ℂ f z₀) (hg : AnalyticAt ℂ g z₀) (j : ℕ) :\n    taylorCoeffAt (fun z => f z - g z) z₀ j = taylorCoeffAt f z₀ j - taylorCoeffAt g z₀ j := by\n  obtain ⟨p, hp⟩ := hf\n  obtain ⟨q, hq⟩ := hg\n  rw [HasFPowerSeriesAt.taylorCoeffAt_eq (hp.sub hq) j,\n    HasFPowerSeriesAt.taylorCoeffAt_eq hp j, HasFPowerSeriesAt.taylorCoeffAt_eq hq j]\n  rfl\n```\n\n(If the rewrite has trouble matching `f - g` against `fun z => f z - g z`, state the goal first with `show taylorCoeffAt (f - g) z₀ j = taylorCoeffAt f z₀ j - taylorCoeffAt g z₀ j`; the final step is the same pointwise-difference property of `coeff` that the `rfl` in `taylorCoeffAt_add` uses.)",
+      "benefit": "Three intermediate facts (`hneg`, `h2`, `h1`), a `funext`/`ring` computation and the `sub_eq_add_neg` rewriting disappear; the proof becomes structurally identical to `taylorCoeffAt_add`, so the reader sees the same one-sentence idea twice (Taylor coefficients are the power-series coefficients, and coefficients are subtracted pointwise) instead of a negation detour.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Analytic/Constructions.lean",
+          "declaration": "HasFPowerSeriesAt.sub",
+          "excerpt": "theorem HasFPowerSeriesAt.sub (hf : HasFPowerSeriesAt f pf x) (hg : HasFPowerSeriesAt g pg x) :\n    HasFPowerSeriesAt (f - g) (pf - pg) x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.taylorCoeffAt_add",
+          "excerpt": "  obtain ⟨p, hp⟩ := hf\n  obtain ⟨q, hq⟩ := hg\n  rw [HasFPowerSeriesAt.taylorCoeffAt_eq (hp.add hq) j,\n    HasFPowerSeriesAt.taylorCoeffAt_eq hp j, HasFPowerSeriesAt.taylorCoeffAt_eq hq j]\n  rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "RS.taylorCoeffAt_sub_pow_mul",
+      "start_line": 183,
+      "end_line": 185,
+      "excerpt": "      have hg' : DifferentiableAt ℂ g z₀ := hg.differentiableAt\n      have hdiff : DifferentiableAt ℂ (fun z => (z - z₀) ^ d * g z) z₀ := by fun_prop\n      rw [hfun, taylorCoeffAt_succ, dslope_sub_mul hdiff, ih j]",
+      "problem": "`hg'` is introduced and never used: the only consumer is `hdiff`, which is discharged by `fun_prop` (it obtains differentiability of `g` from the analyticity hypothesis `hg` itself, since `AnalyticAt.differentiableAt` is a `fun_prop` lemma). The name `hg'` also suggests a hypothesis that the rest of the proof depends on, which misleads a reader trying to follow where analyticity is used in the induction step.",
+      "proposed_change": "Delete the `have hg'` line, keeping\n\n```lean\n      have hdiff : DifferentiableAt ℂ (fun z => (z - z₀) ^ d * g z) z₀ := by fun_prop\n      rw [hfun, taylorCoeffAt_succ, dslope_sub_mul hdiff, ih j]\n```",
+      "benefit": "Removes a dead intermediate step from the induction step of the file's advertised \"workhorse\" identity, so the visible flow is exactly: rewrite the power, unfold one `dslope` step, cancel the linear factor with `dslope_sub_mul`, apply the induction hypothesis.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/FDeriv/Analytic.lean",
+          "declaration": "AnalyticAt.differentiableAt",
+          "excerpt": "@[fun_prop]\ntheorem AnalyticAt.differentiableAt : AnalyticAt 𝕜 f x → DifferentiableAt 𝕜 f x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.taylorCoeffAt_sub_pow_mul",
+          "excerpt": "      have hg' : DifferentiableAt ℂ g z₀ := hg.differentiableAt\n      have hdiff : DifferentiableAt ℂ (fun z => (z - z₀) ^ d * g z) z₀ := by fun_prop"
+        }
+      ]
+    },
+    {
+      "declaration": "RS.AnalyticAt.exists_taylor_remainder",
+      "start_line": 224,
+      "end_line": 232,
+      "excerpt": "  have hzero : ∀ k < m, (Function.swap dslope z₀)^[k] G z₀ = 0 := by\n    intro k hk\n    have h0 := hGcoeff k\n    rw [ite_eq_left hk, sub_self] at h0\n    exact h0\n  have h1 : (fun z => (z - z₀) ^ m * (Function.swap dslope z₀)^[m] G z) = G := by\n    funext z\n    have hpt := pow_sub_smul_iterate_dslope_of_zero (f := G) (a := z₀) m hzero z\n    rwa [smul_eq_mul] at hpt",
+      "problem": "Both steps go through a throw-away `have` that is immediately rewritten and handed back (`have h0 := ...; rw ... at h0; exact h0` and `have hpt := ...; rwa ... at hpt`). The reader must track `h0`/`hpt` whose only role is to be the goal, and in `hzero` the goal is stated in raw-iterate form while `hGcoeff` is stated in `taylorCoeffAt` form, hiding the fact that it is exactly the vanishing-coefficient statement just proved.",
+      "proposed_change": "State both goals directly and close them with the rewriting/`simpa` in place:\n\n```lean\n  have hzero : ∀ k < m, (Function.swap dslope z₀)^[k] G z₀ = 0 := by\n    intro k hk\n    show taylorCoeffAt G z₀ k = 0\n    rw [hGcoeff k, ite_eq_left hk, sub_self]\n  have h1 : (fun z => (z - z₀) ^ m * (Function.swap dslope z₀)^[m] G z) = G := by\n    funext z\n    simpa [smul_eq_mul] using pow_sub_smul_iterate_dslope_of_zero (f := G) (a := z₀) m hzero z\n```",
+      "benefit": "The hypothesis `hzero` of `pow_sub_smul_iterate_dslope_of_zero` is now visibly the statement `taylorCoeffAt G z₀ k = 0` matching `hGcoeff`, and `h1` names the key Mathlib lemma without an intermediate `hpt`. The remaining mathematics (coefficients below `m` vanish, so the iterate extracts the `(z-z₀)^m` factor) is unchanged and easier to follow.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/DSlope.lean",
+          "declaration": "pow_sub_smul_iterate_dslope_of_zero",
+          "excerpt": "lemma pow_sub_smul_iterate_dslope_of_zero {f : 𝕜 → E} {a : 𝕜} (n : ℕ)\n    (hf : ∀ k < n, (Function.swap dslope a)^[k] f a = 0) (b : 𝕜) :\n    (b - a) ^ n • (Function.swap dslope a)^[n] f b = f b := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.AnalyticAt.exists_taylor_remainder",
+          "excerpt": "  have hGcoeff : ∀ j, taylorCoeffAt G z₀ j\n      = taylorCoeffAt g z₀ j - (if j < m then taylorCoeffAt g z₀ j else 0) := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 583695,
+    "cached_input_tokens": 558720,
+    "output_tokens": 23498,
+    "reasoning_output_tokens": 17864
+  },
+  "cost_usd": 0.01821676,
+  "generation_ids": [
+    "gen-1792628666-OCuACC2Kp6rWynQ0Mygu",
+    "gen-1792628674-Oh662QqJY5Rf5iYoucpd",
+    "gen-1792628714-mSmUVunLfQOou5vQdEIO",
+    "gen-1792628734-1nEk1NEOnjmYhmVdiPnp",
+    "gen-1792628782-76rxrJa8GA5OGmah39sa",
+    "gen-1792628812-UouZ8QtFnFqSUERWWZjF",
+    "gen-1792628824-HSb98FFTy8iXauIqJY7l",
+    "gen-1792628830-CcXbWLrfeWUXIEcLoxBb",
+    "gen-1792628847-qlTRBMUE0zx0eCC6TdY5",
+    "gen-1792628851-B8i1kQh9vyOk9ikcqpAR",
+    "gen-1792628855-ieX30qoG5LrfPeUp2VOO",
+    "gen-1792628879-a99QYqmxyQiwqdI58Nvg",
+    "gen-1792628893-kjFySh00Mi0l8ZD0xg0H",
+    "gen-1792628897-ZR054FFBvY3OXW5LK5J1",
+    "gen-1792628903-yJ0jxa5Vcs6mqho20l5w",
+    "gen-1792628907-V6aFxsylYrMtulv4nlPl",
+    "gen-1792628925-D7RjVLm9H6LWcATzZGve",
+    "gen-1792628941-rcIEQ6NB6MjxX0KiQkz1",
+    "gen-1792628968-ury2BdEgFREQknVDMecF",
+    "gen-1792628974-Z6oi6dqcp2gblbvQN01y"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 20,
+  "duration_ms": 349438,
+  "judged": "2026-10-22T00:30:11+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "3e82a82475e8b77b7278b6d06fb86d1f0a00271666d05221126ea38cc71e85ab"
+}

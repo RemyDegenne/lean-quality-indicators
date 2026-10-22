@@ -1,0 +1,123 @@
+{
+  "id": "mathlib-file-0006",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed the complete supplied target file and inspected the cited imported declarations in Mathlib/Topology/FiberBundle/Trivialization.lean and Mathlib/Analysis/Normed/Operator/BoundedLinearMaps.lean. The finding for VectorBundleCore.toFiberBundleCore / VectorPrebundle.toFiberPrebundle spans both declarations (lines 589-880); the repeated proof blocks are specifically at 594-596 and 872-875. Replacement snippets are proof sketches and were not compiled.",
+  "findings": [
+    {
+      "declaration": "Bundle.Trivialization.coordChangeL",
+      "start_line": 270,
+      "end_line": 292,
+      "excerpt": "    continuous_toFun := by\n      by_cases hb : b ∈ e.baseSet ∩ e'.baseSet\n      · rw [dite_eq_left hb]\n        refine (e'.continuousOn.comp_continuous ?_ ?_).snd\n        · exact e.continuousOn_symm.comp_continuous (Continuous.prodMk_right b) fun y =>\n            mk_mem_prod hb.1 (mem_univ y)\n        · exact fun y => e'.mem_source.mpr hb.2",
+      "problem": "The `continuous_toFun` and `continuous_invFun` fields prove the same coordinate-change continuation argument twice, once with `(e,e')` and once with `(e',e)`. Both manually compose `e'.continuousOn` with `e.continuousOn_symm` and then handle the source-membership side condition. This is exactly the content of the already imported `Bundle.Trivialization.continuous_coordChange` lemma, so the same low-level proof is duplicated and kept out of sync with the existing fiber-bundle API.",
+      "proposed_change": "Refactor `coordChangeL` so both continuity fields use `Bundle.Trivialization.continuous_coordChange`. A clean implementation is to define the underlying linear equivalence first, prove its pointwise formula (essentially `coordChangeL_apply`, lines 311-314), and then define `coordChangeL`: use `e.continuous_coordChange e' hb.1 hb.2` for `continuous_toFun` and `e'.continuous_coordChange e hb.2 hb.1` for `continuous_invFun`, with the pointwise bridge obtained from `linearEquivAt_symm_apply`, `linearEquivAt_apply`, and `e.mk_symm`/`e'.mk_symm`. Keep `continuous_id` in the `hb`-false branch.",
+      "benefit": "This removes a duplicated proof of coordinate-change continuity and expresses both directions through one existing lemma. Future changes to `Trivialization.coordChange` continuity only need to be made in one place, and the forward and inverse fields become visibly symmetric.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.coordChangeL",
+          "excerpt": "    continuous_invFun := by\n      by_cases hb : b ∈ e.baseSet ∩ e'.baseSet\n      · rw [dite_eq_left hb]\n        refine (e.continuousOn.comp_continuous ?_ ?_).snd\n        · exact e'.continuousOn_symm.comp_continuous (Continuous.prodMk_right b) fun y =>\n            mk_mem_prod hb.2 (mem_univ y)\n        exact fun y => e.mem_source.mpr hb.1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/FiberBundle/Trivialization.lean",
+          "declaration": "Bundle.Trivialization.continuous_coordChange",
+          "excerpt": "theorem continuous_coordChange (e₁ e₂ : Trivialization F proj) {b : B} (h₁ : b ∈ e₁.baseSet)\n    (h₂ : b ∈ e₂.baseSet) : Continuous (e₁.coordChange e₂ b) := by\n  refine continuous_snd.comp (e₂.toOpenPartialHomeomorph.continuousOn.comp_continuous\n    (e₁.toOpenPartialHomeomorph.continuousOn_symm.comp_continuous ?_ ?_) ?_)"
+        }
+      ]
+    },
+    {
+      "declaration": "VectorBundleCore.toFiberBundleCore and VectorPrebundle.toFiberPrebundle",
+      "start_line": 589,
+      "end_line": 880,
+      "excerpt": "      have : ContinuousOn (fun x : B × F ↦ a.coordChange he' he x.1 x.2)\n          ((e'.baseSet ∩ e.baseSet) ×ˢ univ) :=\n        isBoundedBilinearMap_apply.continuous.comp_continuousOn\n          ((a.continuousOn_coordChange he' he).prodMap continuousOn_id)",
+      "problem": "Both `toFiberBundleCore` (lines 594-596) and `toFiberPrebundle` (lines 872-875) manually prove continuity of `(b, v) ↦ γ b v` by composing `isBoundedBilinearMap_apply.continuous` with `ContinuousOn.prodMap`. This is exactly the imported `ContinuousOn.clm_apply` lemma, whose proof is the same bounded-bilinear-map composition. The implementation repeats both the evaluation-continuity argument and the `s ×ˢ univ` domain bookkeeping in two constructions.",
+      "proposed_change": "Use `ContinuousOn.clm_apply` in both places after precomposing the CLM-valued map with `Prod.fst`. For example, add a shared wrapper\n\n```lean\nprivate lemma ContinuousOn.clm_apply_fst {f : B → F →L[R] F} {s : Set B}\n    (hf : ContinuousOn f s) :\n    ContinuousOn (fun p : B × F => f p.1 p.2) (s ×ˢ univ) := by\n  exact ((hf.comp' continuousOn_fst (by\n    rintro ⟨b, v⟩ ⟨hb, -⟩\n    exact hb)).clm_apply continuous_snd.continuousOn)\n```\n\nThen the core proof becomes `(Z.continuousOn_coordChange i j).clm_apply_fst`, and the prebundle proof becomes `(a.continuousOn_coordChange he' he).clm_apply_fst`.",
+      "benefit": "Both fiber-bundle-core and vector-prebundle constructions would use one standard evaluation-continuity lemma instead of duplicating the internals of bounded bilinear evaluation. This makes the domain conversion reusable and keeps the two construction paths aligned with the normed-operator API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "VectorBundleCore.toFiberBundleCore",
+          "excerpt": "def toFiberBundleCore : FiberBundleCore ι B F :=\n  { Z with\n    coordChange := fun i j b => Z.coordChange i j b\n    continuousOn_coordChange := fun i j =>\n      isBoundedBilinearMap_apply.continuous.comp_continuousOn\n        ((Z.continuousOn_coordChange i j).prodMap continuousOn_id) }"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Operator/BoundedLinearMaps.lean",
+          "declaration": "ContinuousOn.clm_apply",
+          "excerpt": "theorem ContinuousOn.clm_apply {f : X → E →L[𝕜] F} {g : X → E}\n    {s : Set X} (hf : ContinuousOn f s) (hg : ContinuousOn g s) :\n    ContinuousOn (fun x ↦ f x (g x)) s :=\n  (isBoundedBilinearMap_apply (𝕜 := 𝕜) (F := F)).continuous.comp_continuousOn (hf.prodMk hg)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "module imports",
+          "excerpt": "public import Mathlib.Analysis.Normed.Operator.BoundedLinearMaps\npublic import Mathlib.Topology.FiberBundle.Basic"
+        }
+      ]
+    },
+    {
+      "declaration": "Bundle.Trivialization.continuousLinearEquivAt (with Bundle.Trivialization.continuousLinearMapAt)",
+      "start_line": 399,
+      "end_line": 455,
+      "excerpt": "    continuous_toFun := (e.continuousOn.comp_continuous\n      (FiberBundle.totalSpaceMk_isInducing F E b).continuous fun _ => e.mem_source.mpr hb).snd",
+      "problem": "The `continuous_toFun` field literally repeats the proof term already used for `continuousLinearMapAt` at lines 404-407. Both prove continuity of the forward map by composing `e.continuousOn` with the inducing map `TotalSpace.mk b` and taking the second projection. The inverse field already reuses `symmL` via `(e.symmL R b).continuous`, so the forward field is now the only place where this topological argument is duplicated.",
+      "proposed_change": "Reuse the already defined `continuousLinearMapAt` continuity together with `coe_linearMapAt_of_mem hb`, for example:\n\n```lean\ncontinuous_toFun := by\n  refine (e.continuousLinearMapAt R b).continuous.congr (fun y => ?_)\n  simp [e.coe_linearMapAt_of_mem hb]\n```\n\nThis matches the existing inverse-field pattern `convert (e.symmL R b).continuous; ext; simp [hb]`.",
+      "benefit": "This removes duplicated inducing-map/source-membership reasoning and makes the forward and inverse continuity fields of `continuousLinearEquivAt` symmetric. A future change to the continuity proof of the forward map only needs to be made in `continuousLinearMapAt`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.continuousLinearMapAt",
+          "excerpt": "      refine continuous_if_const _ (fun hb => ?_) fun _ => continuous_zero\n      exact (e.continuousOn.comp_continuous (FiberBundle.totalSpaceMk_isInducing F E b).continuous\n        fun x => e.mem_source.mpr hb).snd }"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/VectorBundle/Basic.lean",
+          "declaration": "Bundle.Trivialization.coe_linearMapAt_of_mem",
+          "excerpt": "theorem coe_linearMapAt_of_mem (e : Trivialization F (π F E)) [e.IsLinear R] {b : B}\n    (hb : b ∈ e.baseSet) : ⇑(e.linearMapAt R b) = fun y => (e ⟨b, y⟩).2 := by\n  simp_rw [coe_linearMapAt, ite_eq_left hb]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1071931,
+    "cached_input_tokens": 1020928,
+    "output_tokens": 39707,
+    "reasoning_output_tokens": 34856
+  },
+  "cost_usd": 0.032101164,
+  "generation_ids": [
+    "gen-1792628618-WCsAURFUR6TbqTW8d2J9",
+    "gen-1792628624-hflVGPSwIcMRG0J2IdX5",
+    "gen-1792628628-kT2jjrvqKHgKrMVixERG",
+    "gen-1792628632-D8msLOA9SOyXqyXbhDgI",
+    "gen-1792628642-oaAdEHRgEwCS5ZKyxGFe",
+    "gen-1792628658-LgfUnpJltVqmnudaY5Sv",
+    "gen-1792628676-XSQ9FE0qmSVZeh9RKmqJ",
+    "gen-1792628684-1YbcVAUS2rwitB8CnwfB",
+    "gen-1792628698-oGQXY7Qd78Mexehguxno",
+    "gen-1792628722-OhiCo6PyZOR94DOFYsVZ",
+    "gen-1792628743-m5Ae0tPaqIcnXZBY1FvP",
+    "gen-1792628752-kqKf8OcVkcWk1DNDfW9P",
+    "gen-1792628792-Z2qACvAFS6cCnRMsZs0z",
+    "gen-1792628800-dJDzYPcpcAmW56GRZSOq",
+    "gen-1792628822-MO5Iw2dePkFf5F4rqlel",
+    "gen-1792628828-A78UhoyBDeB6bRYRKw6R",
+    "gen-1792628853-0Jp8YMpPe0mJBqe8n8tz",
+    "gen-1792628859-tBZbZBL3cZxp23somk54",
+    "gen-1792628865-shGtBqIhnIJup2jLyzc7",
+    "gen-1792628869-OKFSgpdVJL6bA0eiZCd6",
+    "gen-1792628905-AAVzAPYMGI4SSBrwQLtO"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 21,
+  "duration_ms": 372069,
+  "judged": "2026-10-22T00:29:48+00:00",
+  "unit": "file",
+  "rubric": "repeated-proof-machinery",
+  "source_sha256": "115769215c14a8abc3b1ef7b15f774011ad3255f74f3d2deba17c7b22d47fedf"
+}

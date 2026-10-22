@@ -1,0 +1,117 @@
+{
+  "id": "lean-pool-file-0007",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 287 lines of LimitRepresentation.lean and checked the declarations it depends on: MemL2On (Homogenization/Sobolev/H1/Definitions.lean), frozenInitialData_memLp_torus (FourierGalerkin/FrozenInitialData.lean), the generic torus cell/transfer lemmas (Infra/Torus/Basic.lean), FrozenDriftProblem and initialTorusL2 (FourierGalerkin/GalerkinSequence.lean), the existing general lemma weak_continuous_memL2On (WeakUniqueness/WeakAlgebra.lean) and TestDensity.continuous_L2 (Section5/TestDensity.lean), plus the users of smoothPeriodicTestL2 in ScalarFourierDerivative.lean, ProductWeakGradient.lean, ScalarRepresentative.lean and the public statement IsWeakSolutionGrad. Findings concern three statements whose hypotheses or bundling are stronger than the proof and mathematical content require. I did not report the file-local closed-cell triple (lines 40-54) even though it duplicates weakSpatialClosedCell/scalarFourierDerivativeClosedCell, because that is primarily a duplication/dimension-abstraction matter and the project is intentionally two-dimensional. I could not execute Lean: the proposed restatements are not tested, and one option for Finding 1 (reusing weak_continuous_memL2On) would require an additional public import since WeakUniqueness/WeakAlgebra is not in this file's transitive import set.",
+  "findings": [
+    {
+      "declaration": "LimitRepresentation.smoothPeriodicTest_memL2On",
+      "start_line": 56,
+      "end_line": 61,
+      "excerpt": "theorem LimitRepresentation.smoothPeriodicTest_memL2On {ψ : Vec 2 → ℝ}\n    (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) : MemL2On AVenhance.unitCube ψ := by\n  apply (memLp_two_iff_integrable_sq hψ.continuous.measurable.aestronglyMeasurable).2\n  exact (hψ.continuous.pow 2).continuousOn.integrableOn_compact",
+      "problem": "The hypothesis is `ContDiff ℝ (⊤ : ℕ∞) ψ`, but the proof only ever uses `hψ.continuous` (both `hψ.continuous.measurable.aestronglyMeasurable` and `(hψ.continuous.pow 2).continuousOn.integrableOn_compact`), and the conclusion `MemL2On unitCube ψ` is just `MemLp ψ 2 (volume.restrict unitCube)` on a bounded set. The lemma is therefore exactly the already-proved general fact `weak_continuous_memL2On` restricted to smooth functions; the smoothness buys nothing here. This matters because callers who only know continuity (or only continuity on the cube) cannot use it.",
+      "proposed_change": "State it for continuous functions:\n```\ntheorem LimitRepresentation.smoothPeriodicTest_memL2On {ψ : Vec 2 → ℝ}\n    (hψ : Continuous ψ) : MemL2On AVenhance.unitCube ψ := by\n  apply (memLp_two_iff_integrable_sq hψ.measurable.aestronglyMeasurable).2\n  exact (hψ.pow 2).continuousOn.integrableOn_compact\n    LimitRepresentation.representationClosedCell_compact |>.mono_set\n      LimitRepresentation.unitCube_subset_representationClosedCell\n```\nor simply prove it by `WeakAlgebra.weak_continuous_memL2On hψ` (equivalently `AVenhance.Infra.Section5.TestDensity.continuous_L2 hψ`), adding the corresponding public import. The two call sites in this file (lines 66, 197, 241) then pass `hψ.continuous`. No degenerate case arises: `unitCube` is an open box whose closure is the compact `representationClosedCell` already defined here, and `MemL2On` imposes nothing else.",
+      "benefit": "Any continuous test function, not only a `C^∞` one, becomes usable as an `L²` torus class, and the file stops re-proving (with its own private closed-cell compactness machinery) a general library fact. Smooth tests are still covered by `hψ.continuous`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/WeakUniqueness/WeakAlgebra.lean",
+          "declaration": "weak_continuous_memL2On",
+          "excerpt": "theorem weak_continuous_memL2On {f : Vec 2 → ℝ}\n    (hf : Continuous f) : MemL2On AVenhance.unitCube f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section5/TestDensity.lean",
+          "declaration": "TestDensity.continuous_L2",
+          "excerpt": "theorem TestDensity.continuous_L2 {f : Vec 2 → ℝ} (hf : Continuous f) : MemL2On unitCube f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/Homogenization/Sobolev/H1/Definitions.lean",
+          "declaration": "MemL2On",
+          "excerpt": "abbrev MemL2On {d : ℕ} (U : Set (Vec d)) (u : Vec d → ℝ) : Prop :=\n  MeasureTheory.MemLp u 2 (MeasureTheory.volume.restrict U)"
+        }
+      ]
+    },
+    {
+      "declaration": "smoothPeriodicTestL2 (and the statements that thread its hypothesis: weakPathRepresentative_pairing_eq_inner, FrozenDriftProblem.initial_pairing_eq_cell_integral, weakPathRepresentative_testPairing_continuous)",
+      "start_line": 63,
+      "end_line": 67,
+      "excerpt": "noncomputable def smoothPeriodicTestL2 {ψ : Vec 2 → ℝ}\n    (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) (_hperiodic : AVenhance.IsZ2Periodic ψ) : ScalarTorusL2 :=\n  (frozenInitialData_memLp_torus (LimitRepresentation.smoothPeriodicTest_memL2On hψ)).toLp\n    (AVenhance.Infra.Torus.periodicToTorus ψ)",
+      "problem": "The body uses `hψ` only through `smoothPeriodicTest_memL2On hψ`, i.e. only through the fact `MemL2On unitCube ψ`; that fact is the exact hypothesis of `frozenInitialData_memLp_torus`, which is what builds the `L²` class. The only mathematical requirement for constructing this torus class is square-integrability on the cell, yet the definition (and every theorem below that passes `hψ` along, notably `weakPathRepresentative_pairing_eq_inner` at lines 188-193 and `FrozenDriftProblem.initial_pairing_eq_cell_integral` at lines 230-234) is restricted to `C^∞` tests. Nothing about differentiability or periodicity enters the construction of `.toLp (periodicToTorus ψ)`. The same construction is already performed for arbitrary `MemL2On` functions by `frozenCellToTorusL2`.",
+      "proposed_change": "Introduce the general class first and keep the current one as a specialization:\n```\nnoncomputable def periodicTestL2 {ψ : Vec 2 → ℝ} (hψ : MemL2On AVenhance.unitCube ψ) :\n    ScalarTorusL2 :=\n  (frozenInitialData_memLp_torus hψ).toLp (AVenhance.Infra.Torus.periodicToTorus ψ)\n\nnoncomputable def smoothPeriodicTestL2 {ψ : Vec 2 → ℝ}\n    (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) (hperiodic : AVenhance.IsZ2Periodic ψ) : ScalarTorusL2 :=\n  periodicTestL2 (LimitRepresentation.smoothPeriodicTest_memL2On hψ)\n```\nand state `weakPathRepresentative_pairing_eq_inner` / `weakPathRepresentative_testPairing_continuous` / `initial_pairing_eq_cell_integral` with `(hψ : MemL2On AVenhance.unitCube ψ)` (or with the derived continuity hypothesis of Finding 1). Their proofs already go through `frozenInitialData_memLp_torus (...) .coeFn_toLp` and never use smoothness or periodicity of ψ. Because of the wrapper, no existing call site (ScalarFourierDerivative.lean:84, ProductWeakGradient.lean:361, ScalarRepresentative.lean:246, LimitArbitraryTest.lean:119) has to change.",
+      "benefit": "The pairing identity `∫ unitCube, rep * ψ = inner ℝ (u t) ψT` becomes available for every square-integrable cell test (including merely continuous periodic tests and `L²` initial data), which is the class one actually needs for density/approximation arguments; smooth tests remain a special case. It also removes the false impression that smoothness of the test is needed to form its torus `L²` class.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/FrozenInitialData.lean",
+          "declaration": "frozenInitialData_memLp_torus",
+          "excerpt": "theorem frozenInitialData_memLp_torus {θ₀ : Vec 2 → ℝ}\n    (hθ₀ : MemL2On AVenhance.unitCube θ₀) :\n    MemLp (AVenhance.Infra.Torus.periodicToTorus θ₀) 2 (volume : Measure Torus) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Heat/WeakBridge.lean",
+          "declaration": "frozenCellToTorusL2",
+          "excerpt": "noncomputable def frozenCellToTorusL2 {f : Vec 2 → ℝ}\n    (hf : MemL2On AVenhance.unitCube f) : TorusL2 2 :=\n  (memLp_frozenCellTransfer hf).toLp\n    (periodicToTorus (fun x => (f x : ℂ)))"
+        }
+      ]
+    },
+    {
+      "declaration": "FrozenDriftProblem.initial_pairing_eq_cell_integral",
+      "start_line": 228,
+      "end_line": 241,
+      "excerpt": "theorem FrozenDriftProblem.initial_pairing_eq_cell_integral\n    (P : FrozenDriftProblem) {ψ : Vec 2 → ℝ}\n    (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) (hperiodic : AVenhance.IsZ2Periodic ψ) :\n    inner ℝ P.initialTorusL2 (smoothPeriodicTestL2 hψ hperiodic) =\n      ∫ x in AVenhance.unitCube, P.θ₀ x * ψ x := by",
+      "problem": "The theorem is bundled to `FrozenDriftProblem`, but the proof (lines 236-263) uses only `P.θ₀`, `P.initial_memL2` and the definition `P.initialTorusL2 = (frozenInitialData_memLp_torus P.initial_memL2).toLp (periodicToTorus P.θ₀)` (GalerkinSequence.lean:91-93). The drift `b`, the periodicity of `b` and the diffusivity `κ` play no role. The identity being proved is a data-independent statement about an arbitrary `MemL2On` datum, which is exactly the shape of the initial condition in the public target `IsWeakSolutionGrad` (`MemLp` of `θ₀`-type data with weak-form right-hand side `∫ x in unitCube, θ₀ x * φ 0 x`). As stated, a user holding an arbitrary `L²` initial datum must first manufacture a `FrozenDriftProblem` (with a drift and a positive `κ`) merely to pair it with a test.",
+      "proposed_change": "State the general identity and derive the bundled version from it:\n```\ntheorem pairing_initialTorusL2_eq_cell_integral {θ₀ : Vec 2 → ℝ}\n    (hθ₀ : MemL2On AVenhance.unitCube θ₀) {ψ : Vec 2 → ℝ}\n    (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) (hperiodic : AVenhance.IsZ2Periodic ψ) :\n    inner ℝ ((frozenInitialData_memLp_torus hθ₀).toLp\n        (AVenhance.Infra.Torus.periodicToTorus θ₀))\n      (smoothPeriodicTestL2 hψ hperiodic) =\n    ∫ x in AVenhance.unitCube, θ₀ x * ψ x\n```\nThe existing proof works verbatim with `P.initial_memL2` replaced by `hθ₀` and `P.θ₀` by `θ₀` (line 238 becomes `(frozenInitialData_memLp_torus hθ₀).coeFn_toLp`). The `FrozenDriftProblem` version then follows by `exact pairing_initialTorusL2_eq_cell_integral P.initial_memL2 hψ hperiodic` (after `change`/`rfl`, since `P.initialTorusL2` unfolds to precisely that `toLp` term).",
+      "benefit": "The initial-condition matching step of the `IsWeakSolutionGrad` assembly can be applied to any square-integrable initial datum, without bundling unrelated drift/diffusivity data, and the lemma states the mathematical content (torus class versus cell integral) rather than a property of one particular structure.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/GalerkinSequence.lean",
+          "declaration": "FrozenDriftProblem.initialTorusL2",
+          "excerpt": "noncomputable def FrozenDriftProblem.initialTorusL2 (P : FrozenDriftProblem) : ScalarTorusL2 :=\n  (frozenInitialData_memLp_torus P.initial_memL2).toLp\n    (AVenhance.Infra.Torus.periodicToTorus P.θ₀)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Statements/Roots/IsWeakSolutionGrad.lean",
+          "declaration": "IsWeakSolutionGrad",
+          "excerpt": "def IsWeakSolutionGrad (b : ℝ → Vec 2 → Vec 2) (κ : ℝ) (θ₀ : Vec 2 → ℝ)\n    (θ : ℝ → Vec 2 → ℝ) (Dθ : ℝ → Vec 2 → Vec 2) : Prop :="
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1052917,
+    "cached_input_tokens": 899328,
+    "output_tokens": 22085,
+    "reasoning_output_tokens": 15926
+  },
+  "cost_usd": 0.030524244,
+  "generation_ids": [
+    "gen-1792629151-kh2kqdWMudJA7Q7bQVk0",
+    "gen-1792629164-YgnxtddqPiEF7JuO7hZN",
+    "gen-1792629174-VjsBCb7eh8wQDfCXafcV",
+    "gen-1792629181-RHc3oOCCO59dcfCv3pO4",
+    "gen-1792629195-WTHjXFARghtftbs85mLF",
+    "gen-1792629201-JMrfXsVzh7CpgSNkkCUu",
+    "gen-1792629216-3jhb2pVTQkskYeKnayT4",
+    "gen-1792629232-rh8nkftFZxiL5hemK1Al",
+    "gen-1792629241-pGThGjobHI4nFdY8otGQ",
+    "gen-1792629268-aJSGpySMCsyl3AOr2X2z",
+    "gen-1792629276-BWpB49qQMSTy2f8sm6Kv",
+    "gen-1792629287-708ZkxjfSuWSb55LszUS",
+    "gen-1792629310-QZsNG66lkcLIEYConmYv",
+    "gen-1792629322-llnRakB41xnEOY2f7C82",
+    "gen-1792629326-Q5RsXlmEBBj4INYqzXwk"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 15,
+  "duration_ms": 207437,
+  "judged": "2026-10-22T00:35:56+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "7481faf851369321065137087beecc63fb712c22b0a32549754de4bb8da821cd"
+}

@@ -1,0 +1,91 @@
+{
+  "id": "mathlib-file-0007",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–175) and checked the relevant class/definition sources: `Functor` and `LawfulFunctor` in Lean core (`Init/Prelude.lean` line 3930, `Init/Control/Lawful/Basic.lean` line 29), `Traversable` and `LawfulTraversable` in `Mathlib/Control/Traversable/Basic.lean` (lines 195, 221), `ApplicativeTransformation` (lines 70–83 there), `Equiv` in `Mathlib/Logic/Equiv/Defs.lean` line 65, and the two existing users of this file (`Mathlib/Data/DList/Instances.lean`, `Mathlib/Logic/Equiv/Array.lean`). I concluded that the Traversable/Equiv sections (lines 89–171) cannot be universe-generalised, since `Traversable` and `LawfulTraversable` are declared at `Type u → Type u` and `LawfulTraversable.naturality` forces `F` and `G` to be `Type u → Type u`, so the binders at lines 89–122 are forced. The only place where the file is more specialised than the underlying classes is the `Functor` section, reported below. Other candidate remarks (e.g. the redundant `[Traversable t]` next to `[LawfulTraversable t]` at line 118, the unused `G`/`η` in some theorem contexts, or weakening `[Applicative m]` on `Equiv.traverse` to `[Functor m]` — which would not elaborate because the underlying `traverse` needs `Applicative m`) belong to the unnecessary-hypotheses experiment or are not real weakenings, so I did not report them. The proposed universe generalisation is not compiled; proofs should be unchanged in shape but this was not machine-checked.",
+  "findings": [
+    {
+      "declaration": "Equiv.map, Equiv.functor, Equiv.id_map, Equiv.comp_map, Equiv.lawfulFunctor, Equiv.lawfulFunctor' (section Functor)",
+      "start_line": 39,
+      "end_line": 83,
+      "excerpt": "/-- Given a functor `t`, a function `t' : Type u → Type u`, and\nequivalences `t α ≃ t' α` for all `α`, then every function `α → β` can\nbe mapped to a function `t' α → t' β` functorially (see\n`Equiv.functor`). -/\nprotected def map {α β : Type u} (f : α → β) (x : t' α) : t' β :=\n  eqv β <| map f ((eqv α).symm x)",
+      "problem": "The whole `Functor` section fixes the codomain universe of both families: `variable {t t' : Type u → Type u}` (line 39, and the docstring at line 45 repeats it). That is stricter than the class being transferred: `Functor` is declared as `class Functor (f : Type u → Type v) : Type (max (u+1) v)` and `LawfulFunctor` as `class LawfulFunctor (f : Type u → Type v) [Functor f] : Prop`, so the codomain universe is free; and Mathlib's `Equiv` relates two types without requiring them to be in the same universe (`structure Equiv (α β : Sort*)`). `Equiv.map` only composes `(eqv α).symm : t' α → t α`, `map f : t α → t β` and `eqv β : t β → t' β`, so no step needs `t` and `t'` to share a codomain universe. As written, one cannot use these declarations to transport functoriality onto a universe-raising wrapper (for example `fun α => ULift (t α)`, where `ULift` is a lawful functor whose values live one universe up) nor onto any `t'` whose values live in a different universe from `t`'s.",
+      "proposed_change": "Declare `universe u v w` and, in the `Functor` section only, replace line 39 with\n```lean\nvariable {t : Type u → Type v} {t' : Type u → Type w} (eqv : ∀ α, t α ≃ t' α)\n```\nleaving the bodies of `Equiv.map`, `Equiv.functor`, `Equiv.id_map`, `Equiv.comp_map`, `Equiv.lawfulFunctor` and `Equiv.lawfulFunctor'` unchanged (and updating the docstring at lines 44–47 to say `t : Type u → Type v`, `t' : Type u → Type w`). Justification: in `Equiv.map` the three components have types `t' α → t α` (`(eqv α).symm`), `t α → t β` (`Functor.map` for a functor with codomain universe `v`) and `t β → t' β` (`eqv β`), so the composite is `t' α → t' β` with codomain universe `w`; `Equiv.functor` supplies only the `map` field, and the default `mapConst` is `Function.comp map (Function.const _)`, which is universe-agnostic, so `map_const := fun {_ _} => rfl` in `lawfulFunctor` remains a definitional equality; `id_map` and `comp_map` reduce exactly as now because the laws of `LawfulFunctor t` mention `f α` at a fixed `α`; and `lawfulFunctor'` compares the two `Functor` structures on `t'` fieldwise, which never inspects universes. Degenerate case `v = w = u` recovers the current statements verbatim by instantiating the universe variables. Elaboration note: the Traversable sections (lines 89–171) must stay at `Type u → Type u`, since `class Traversable (t : Type u → Type u)` and `class LawfulTraversable (t : Type u → Type u)`; `Equiv.traversable`'s field `toFunctor := Equiv.functor eqv` then simply instantiates `w := u`, so the generalised `Equiv.functor` must (and does) remain usable at `w = u`. The change was not compiled.",
+      "benefit": "Users gain a universe-polymorphic transport of `Functor`/`LawfulFunctor` structure: e.g. a functor instance on `t : Type u → Type u` can be moved to `fun α => ULift (t α) : Type u → Type (max u v)` via `Equiv.functor (fun α => Equiv.ulift.symm)`, and `Equiv.lawfulFunctor`/`Equiv.map` become available whenever the two equivalent families live in different universes. This matches the generality of the analogous Mathlib API `Functor.mapEquiv (f : Type u → Type v) [Functor f] [LawfulFunctor f]`, avoiding the need for downstream copies of these definitions for cross-universe functors.",
+      "evidence": [
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.36.0-rc1/src/lean/Init/Prelude.lean",
+          "declaration": "Functor",
+          "excerpt": "class Functor (f : Type u → Type v) : Type (max (u+1) v) where"
+        },
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.36.0-rc1/src/lean/Init/Control/Lawful/Basic.lean",
+          "declaration": "LawfulFunctor",
+          "excerpt": "class LawfulFunctor (f : Type u → Type v) [Functor f] : Prop where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Logic/Equiv/Defs.lean",
+          "declaration": "Equiv",
+          "excerpt": "structure Equiv (α β : Sort*) where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Logic/Equiv/Functor.lean",
+          "declaration": "Functor.mapEquiv",
+          "excerpt": "variable (f : Type u → Type v) [Functor f] [LawfulFunctor f]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/ULift.lean",
+          "declaration": "ULift.lawfulFunctor (instance)",
+          "excerpt": "instance : LawfulFunctor ULift where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Traversable/Basic.lean",
+          "declaration": "Traversable",
+          "excerpt": "class Traversable (t : Type u → Type u) extends Functor t where"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 505174,
+    "cached_input_tokens": 466560,
+    "output_tokens": 19737,
+    "reasoning_output_tokens": 15768
+  },
+  "cost_usd": 0.0166901,
+  "generation_ids": [
+    "gen-1792629190-vuCwRGiaLlvAhhmDqeq1",
+    "gen-1792629197-ahTzFV5KfzDSLsJii8to",
+    "gen-1792629218-TY2bOlmThIEz9fWFRKpa",
+    "gen-1792629224-FZb4JToPSIbRgY83PDyO",
+    "gen-1792629234-XUDrAAvTx4vJuKJuXFv4",
+    "gen-1792629252-OWDY1rwHy9ofYKaa8huH",
+    "gen-1792629282-8LjIYbUSUfJyDnUsKZnr",
+    "gen-1792629289-qPGrRqeMOySOUgqUFOMB",
+    "gen-1792629301-l5kOIkgERLV7EjuoOtiA",
+    "gen-1792629343-qzaRHhaoiuXa3zRzpJag",
+    "gen-1792629361-Hk0btiZEpNPw415edZkQ",
+    "gen-1792629384-WeOM2t8lOqJm8oxOGKQx",
+    "gen-1792629387-eC9iqd8voY0CTwvTiozc",
+    "gen-1792629401-Os5sng5GoRpEoxiN8EO0",
+    "gen-1792629408-aD0XJPu2otPNKRlgHTEM",
+    "gen-1792629419-fjJMM0RR0P1KJu8e2oQ7"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 16,
+  "duration_ms": 270383,
+  "judged": "2026-10-22T00:37:35+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "a502d938b32508ea911865f5436d809205b72ff488242b25fe4471d77a98fe15"
+}

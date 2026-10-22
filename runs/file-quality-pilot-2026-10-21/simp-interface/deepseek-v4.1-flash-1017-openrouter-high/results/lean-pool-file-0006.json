@@ -1,0 +1,164 @@
+{
+  "id": "lean-pool-file-0006",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 245 lines of the target and inspected the relevant Mathlib sources (DSlope, Deriv/Basic, Deriv/Mul, IteratedDeriv/Defs and Lemmas, GroupWithZero/Basic) plus downstream uses in LaurentCoeff.lean, PrincipalPart.lean, Residue.lean, and RationalOnP1.lean. The file currently has only three simp lemmas for taylorCoeffAt: zero_apply, const, and monomial. The unconditional linearity/const lemmas are not in the simp set, and the monomial/zero_apply rules overlap at j = 0. I did not execute Lean, so finding 3 is a priority/overlap analysis based on the two rule statements and Mathlib's conditional zero_pow; I do not claim an observed simp failure.",
+  "findings": [
+    {
+      "declaration": "taylorCoeffAt_const_mul (with the underlying dslope_const_mul and dslope_const)",
+      "start_line": 82,
+      "end_line": 103,
+      "excerpt": "theorem taylorCoeffAt_const_mul (c : ℂ) (j : ℕ) :\n    taylorCoeffAt (fun z => c * g z) z₀ j = c * taylorCoeffAt g z₀ j := by",
+      "problem": "These three lemmas are unconditional normal-form rewrites (no analyticity or differentiability hypotheses), but none is tagged `[simp]`. Consequently `simp` cannot reduce `taylorCoeffAt (fun z => c * (z - z₀) ^ d) z₀ j`, even though `taylorCoeffAt_monomial` is already a simp lemma; the file and its consumers must write `rw [taylorCoeffAt_const_mul, taylorCoeffAt_monomial]` (line 220) or `rw [taylorCoeffAt_const_mul]` (LaurentCoeff.lean:293). The `dslope` lemmas are likewise rewritten manually at lines 102, 108, and 114. This is a missing canonical simp rule for the constant-multiplication/constant layer, not a conditional identity that would impose a discharge burden.",
+      "proposed_change": "Add `@[simp]` to `taylorCoeffAt_const_mul`, `dslope_const_mul`, and `dslope_const`, leaving their statements unchanged. With `taylorCoeffAt_const_mul` in the simp set, the existing `[simp] taylorCoeffAt_monomial` composes to reduce a constant multiple of a monomial to `if j = d then c else 0`. Tagging the two `dslope` lemmas at the same time keeps the underlying `dslope` interface consistent with the `deriv` interface.",
+      "benefit": "`simp` obtains the canonical pulled-out forms `c * taylorCoeffAt g z₀ j` and `fun b => c * dslope g z₀ b`, and constants reduce to zero. The manual rewrites at lines 102/108/114/220 and LaurentCoeff.lean:293 become automation. No side conditions are introduced and the rewrites are terminating: the function argument loses a constant multiplication or a constant body.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.AnalyticAt.exists_taylor_remainder",
+          "excerpt": "rw [taylorCoeffAt_const_mul, taylorCoeffAt_monomial]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/LaurentCoeff.lean",
+          "declaration": "RS.laurentCoeffAt_const_mul",
+          "excerpt": "rw [taylorCoeffAt_const_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/IteratedDeriv/Lemmas.lean",
+          "declaration": "iteratedDeriv_const_mul_field",
+          "excerpt": "@[simp]\ntheorem iteratedDeriv_const_mul_field {n : ℕ} (c : 𝕜') (f : 𝕜 → 𝕜') :\n    iteratedDeriv n (c * f ·) x = c * iteratedDeriv n f x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/Deriv/Mul.lean",
+          "declaration": "deriv_const_mul_field'",
+          "excerpt": "@[simp]\ntheorem deriv_const_mul_field' (u : 𝕜') : (deriv fun x => u * v x) = fun x => u * deriv v x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/Deriv/Basic.lean",
+          "declaration": "deriv_const'",
+          "excerpt": "@[simp]\ntheorem deriv_const' : (deriv fun _ : 𝕜 => c) = fun _ => 0 :="
+        }
+      ]
+    },
+    {
+      "declaration": "taylorCoeffAt_neg",
+      "start_line": 116,
+      "end_line": 118,
+      "excerpt": "theorem taylorCoeffAt_neg (j : ℕ) :\n    taylorCoeffAt (fun z => -g z) z₀ j = -taylorCoeffAt g z₀ j := by\n  simpa [neg_one_mul] using taylorCoeffAt_const_mul (g := g) (z₀ := z₀) (-1) j",
+      "problem": "The lemma is stated only for the lambda form `fun z => -g z`, and it is not tagged `[simp]`. The file's add API shows the intended dual shape: `taylorCoeffAt_add` for `f + g` (line 122) and `taylorCoeffAt_fun_add` for the lambda form (line 130). For negation there is no companion whose left-hand side is `taylorCoeffAt (-g) z₀ j`, so a user writing the natural pointwise-negation form has no dedicated rule. Mathlib provides both `iteratedDeriv_neg` (for `-f`) and `iteratedDeriv_fun_neg` (for `fun x => -(f x)`), and marks both `[simp]`.",
+      "proposed_change": "Add a function-form companion with left-hand side `taylorCoeffAt (-g) z₀ j = -taylorCoeffAt g z₀ j`, proved from the existing lambda form (for example after rewriting with `Pi.neg_def`). Keep the lambda form as the `_fun` variant if desired, and mark both forms `[simp]`; both are unconditional.",
+      "benefit": "Both syntactic forms of pointwise negation reduce to `-taylorCoeffAt g z₀ j`, matching the existing `taylorCoeffAt_add`/`taylorCoeffAt_fun_add` pattern and the Mathlib `iteratedDeriv` precedent. Users can then simplify `taylorCoeffAt (-g)` without an explicit `change` or `simpa`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.taylorCoeffAt_add",
+          "excerpt": "theorem taylorCoeffAt_add (hf : AnalyticAt ℂ f z₀) (hg : AnalyticAt ℂ g z₀) (j : ℕ) :\n    taylorCoeffAt (f + g) z₀ j = taylorCoeffAt f z₀ j + taylorCoeffAt g z₀ j := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.taylorCoeffAt_fun_add",
+          "excerpt": "theorem taylorCoeffAt_fun_add (hf : AnalyticAt ℂ f z₀) (hg : AnalyticAt ℂ g z₀) (j : ℕ) :\n    taylorCoeffAt (fun z => f z + g z) z₀ j = taylorCoeffAt f z₀ j + taylorCoeffAt g z₀ j :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/IteratedDeriv/Lemmas.lean",
+          "declaration": "iteratedDeriv_neg",
+          "excerpt": "@[simp]\nlemma iteratedDeriv_neg (n : ℕ) (f : 𝕜 → F) (a : 𝕜) :\n    iteratedDeriv n (-f) a = -(iteratedDeriv n f a) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/IteratedDeriv/Lemmas.lean",
+          "declaration": "iteratedDeriv_fun_neg",
+          "excerpt": "@[simp]\nlemma iteratedDeriv_fun_neg (n : ℕ) (f : 𝕜 → F) (a : 𝕜) :\n    iteratedDeriv n (fun x ↦ -(f x)) a = -(iteratedDeriv n f a) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "taylorCoeffAt_monomial (overlapping with taylorCoeffAt_zero_apply)",
+      "start_line": 188,
+      "end_line": 193,
+      "excerpt": "@[simp] theorem taylorCoeffAt_monomial (d j : ℕ) :\n    taylorCoeffAt (fun z => (z - z₀) ^ d) z₀ j = if j = d then 1 else 0 := by",
+      "problem": "At `j = 0` the left-hand side of this rule is also an instance of `@[simp] taylorCoeffAt_zero_apply` (line 45). The two rules have different right-hand sides: this lemma gives `if 0 = d then 1 else 0`, while `taylorCoeffAt_zero_apply` gives `(fun z => (z - z₀) ^ d) z₀`, i.e. `(z₀ - z₀) ^ d`, which simp reduces to `0 ^ d`. Thus the normal form of `taylorCoeffAt (fun z => (z - z₀) ^ d) z₀ 0` is priority-dependent. If the base rule is selected, `0 ^ d` remains for symbolic `d`: Mathlib's `zero_pow` is simp only with the side condition `d ≠ 0`, and `zero_pow_eq` is not a simp lemma. A goal such as `taylorCoeffAt (fun z => (z - z₀) ^ d) z₀ 0 = if 0 = d then 1 else 0` can then be left with an unreduced `0 ^ d`. This is a competing-rule interface problem, not an experimentally observed simplifier failure.",
+      "proposed_change": "Make the specialized monomial rule fire before the general base rule at `j = 0`: mark `taylorCoeffAt_monomial` `@[simp high]`, or mark `taylorCoeffAt_zero_apply` `@[simp low]` so specialized rules take precedence while the base rule remains the fallback. Alternatively add a high-priority specialized zero-case lemma whose right-hand side is `if 0 = d then 1 else 0`. The statement of `taylorCoeffAt_monomial` need not change.",
+      "benefit": "The normal form for monomial coefficients at the center becomes stable: `if 0 = d then 1 else 0` instead of an order-dependent `0 ^ d`. This avoids leaving `0 ^ d` for symbolic exponents and encodes the intended canonicalization (specialized monomial and constant rules before the general zero-apply rule).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.taylorCoeffAt_zero_apply",
+          "excerpt": "@[simp] theorem taylorCoeffAt_zero_apply : taylorCoeffAt g z₀ 0 = g z₀ := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Algebra/GroupWithZero/Basic.lean",
+          "declaration": "zero_pow",
+          "excerpt": "@[simp] lemma zero_pow : ∀ {n : ℕ}, n ≠ 0 → (0 : M₀) ^ n = 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Algebra/GroupWithZero/Basic.lean",
+          "declaration": "zero_pow_eq",
+          "excerpt": "lemma zero_pow_eq (n : ℕ) : (0 : M₀) ^ n = if n = 0 then 1 else 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Order/Heyting/Basic.lean",
+          "declaration": "sdiff_le_iff",
+          "excerpt": "@[simp low] -- low priority so that it doesn't overwrite user-provided simp lemmas"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 2163009,
+    "cached_input_tokens": 2092800,
+    "output_tokens": 69915,
+    "reasoning_output_tokens": 61195
+  },
+  "cost_usd": 0.05731662,
+  "generation_ids": [
+    "gen-1792628338-SfvMCG2gVAlMP3nU5k3A",
+    "gen-1792628346-dCouhNmEuqBJb08v1VpW",
+    "gen-1792628360-unUDb0XluGbHTZxEfjOV",
+    "gen-1792628366-1pClpdUMtytuzLdV596v",
+    "gen-1792628372-IiOfwkm0nemet6Wgz4l6",
+    "gen-1792628393-qdMyYvcLZs6LYrTRHYAc",
+    "gen-1792628403-Bcwc3riwreBug6LwmYLD",
+    "gen-1792628421-owcZX4ZdVx3uumuWeGk1",
+    "gen-1792628427-U6fykDYvngYx37Q7hBqA",
+    "gen-1792628443-oj1aLIG8Ey3Lg58Tp53Z",
+    "gen-1792628455-58zBZxfVNrN5ewpS09ra",
+    "gen-1792628463-QVHEylLYn4vzL2v766xE",
+    "gen-1792628485-4ONyBWBeLAJ0T7I66GVA",
+    "gen-1792628505-xW9DY8aRyyJW8Lt4f0kP",
+    "gen-1792628533-oiyyxyFIw1EnlhQvoKFg",
+    "gen-1792628545-5deaB7mIHQPJ02mRRR2P",
+    "gen-1792628549-Fwhecc90pU1chJQms2l1",
+    "gen-1792628557-Oodka0Tgv3Q6yQzteCDL",
+    "gen-1792628622-xdvCoQlv4JfSUN3slPZ3",
+    "gen-1792628630-Ob111JzBbYtPnHDaM6kP",
+    "gen-1792628652-GU4kPpbCfFGSNG9it7Kz",
+    "gen-1792628668-lUovsgkfscDcV1rI33c9",
+    "gen-1792628692-PjzrIGvEH6rL8uk1Lfhn",
+    "gen-1792628712-GfvGZGDNiQnWza6OV1zO",
+    "gen-1792628718-byikoIIzjINGhIY9owLd",
+    "gen-1792628728-7mM5L327eWyLfXADaXmE",
+    "gen-1792628756-1FeueepWy3fL6al6Z2oQ",
+    "gen-1792628762-awBmBSV8EoN8HM1TZRZT",
+    "gen-1792628816-ogAM8cmPmX9iq6SrLnOu",
+    "gen-1792628889-AlEjCNcGY4L3TVdfPZ1U",
+    "gen-1792628935-5wYxpnD8MVjRQy7BxuPP",
+    "gen-1792628998-vPNKkR20zrhRi8ZaW0VB"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 32,
+  "duration_ms": 688977,
+  "judged": "2026-10-22T00:30:24+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "3e82a82475e8b77b7278b6d06fb86d1f0a00271666d05221126ea38cc71e85ab"
+}

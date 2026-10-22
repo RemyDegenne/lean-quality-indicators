@@ -1,0 +1,113 @@
+{
+  "id": "tauceti-file-0006",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 152 lines of the target and every proof. I checked the mathlib API used by the file: `Map_struct/NumberField/Cyclotomic/Ideal.lean` (`map_eq_span_zeta_sub_one_pow` at line 106, `eq_span_zeta_sub_one_of_liesOver'` at 258, `associated_zeta_sub_one_pow_prime` at 212, `span_singleton_eq_span_singleton` in `RingTheory/Ideal/Span.lean:187`), `Ideal.map_span` (`Ideal/Maps.lean:185`), `span_singleton_pow` (`Ideal/Operations.lean:419`), `Set.image_singleton` (`Data/Set/Image.lean:277`), `map_ofNat` (`Data/Nat/Cast/Basic.lean:147`), `Int.cast_ofNat` (`Data/Int/Cast/Basic.lean:75`), and the sibling worked example `WorkedExamples/Cubic23/Ramification.lean:32`. Two observations shaped the report. (1) The `have hK : IsCyclotomicExtension {5 ^ (0 + 1)} ℚ K` in `map_span_five_eq_pow_four` is not ordinary dead code: the whole file relies on Lean's behaviour that a `have` whose type is a class is usable by typeclass search (as Mathlib's `Cyclotomic/PID.lean:50` does), and it supplies the `{p ^ (k+1)}` instance that search does not otherwise find from the `{5}` instance. I therefore proposed replacing the `k = 0` route entirely rather than deleting that line in isolation. (2) Nothing was compiled; the proposed replacement for `map_span_five_eq_pow_four` uses only lemmas I verified exist and the standard identity `5 ~ (ζ - 1)^(5 - 1)`, but the exact cast-normalization step (`map_ofNat` vs `map_intCast` + `Int.cast_ofNat`) may need adjusting.",
+  "findings": [
+    {
+      "declaration": "TauCeti.NumberField.FifthCyclotomic.map_span_five_eq_pow_four",
+      "start_line": 136,
+      "end_line": 150,
+      "excerpt": "  -- the canonical primitive fifth root of unity of the cyclotomic extension\n  have hzeta := IsCyclotomicExtension.zeta_spec 5 ℚ K\n  have hK : IsCyclotomicExtension {5 ^ (0 + 1)} ℚ K := by\n    rw [zero_add, pow_one]\n    infer_instance\n  have hzeta' : IsPrimitiveRoot (IsCyclotomicExtension.zeta 5 ℚ K) (5 ^ (0 + 1)) := by\n    rw [zero_add, pow_one]\n    exact hzeta",
+      "problem": "The proof works around the API by transporting everything to the artifical index `5 ^ (0 + 1)`: it re-establishes the cyclotomic instance at that index (`hK`), restates the primitive-root hypothesis at that index (`hzeta'`), applies the `k = 0` case of `map_eq_span_zeta_sub_one_pow`, and then has to repair a numeral coercion with `rw [Nat.cast_ofNat] at h`. None of these steps carries mathematical content, and the reader has to be told what `5 ^ (0 + 1)` is supposed to mean.",
+      "proposed_change": "Replace the whole proof body with the standard derivation from `5 ~ (ζ - 1)^(5 - 1)`:\n\n```lean\ntheorem map_span_five_eq_pow_four :\n    (span {(5 : ℤ)}).map (algebraMap ℤ (𝓞 K)) = 𝔭 ^ 4 := by\n  have : Fact (Nat.Prime 5) := ⟨Nat.prime_five⟩\n  have hζ := IsCyclotomicExtension.zeta_spec 5 ℚ K\n  -- `5` is associated to `(ζ - 1) ^ (5 - 1)`, and `𝔭 = (ζ - 1)`\n  rw [eq_span_zeta_sub_one 𝔭 hζ, Ideal.map_span, Set.image_singleton,\n    map_ofNat (algebraMap ℤ (𝓞 K)),\n    ← span_singleton_eq_span_singleton.mpr (associated_zeta_sub_one_pow_prime 5 hζ),\n    ← span_singleton_pow]\n```\n\n(`associated_zeta_sub_one_pow_prime` is `Mathlib/NumberTheory/NumberField/Cyclotomic/Ideal.lean:212`; `(5 - 1)` reduces to `4`. If `map_ofNat` does not fire on `algebraMap ℤ (𝓞 K) (5 : ℤ)`, `map_intCast (algebraMap ℤ (𝓞 K))` followed by `Int.cast_ofNat` is the drop-in variant. This replacement has not been compiled.)",
+      "benefit": "The replacement is shorter, removes the `5 ^ (0 + 1)` encoding, the auxiliary `hK`/`hzeta'` hypotheses, and the numeral-coercion repair, and it replaces all of them with the mathematically informative statement that `5` is associated to `(ζ₅ - 1)^(5-1)`; the reader can see directly why the exponent in `𝔭 ^ 4` is `p - 1`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/NumberTheory/NumberField/Cyclotomic/Ideal.lean",
+          "declaration": "IsCyclotomicExtension.Rat.associated_zeta_sub_one_pow_prime",
+          "excerpt": "theorem associated_zeta_sub_one_pow_prime :\n    Associated ((hζ.toInteger - 1) ^ (p - 1)) (p : 𝓞 K) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/NumberTheory/NumberField/Cyclotomic/Ideal.lean",
+          "declaration": "IsCyclotomicExtension.Rat.map_eq_span_zeta_sub_one_pow",
+          "excerpt": "theorem map_eq_span_zeta_sub_one_pow :\n    (map (algebraMap ℤ (𝓞 K)) 𝒑) = span {hζ.toInteger - 1} ^ Module.finrank ℚ K := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/RingTheory/Ideal/Operations.lean",
+          "declaration": "Ideal.span_singleton_pow",
+          "excerpt": "theorem span_singleton_pow (s : R) [(span {s}).IsTwoSided] (n : ℕ) :\n    span {s} ^ n = (span {s ^ n} : Ideal R) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "pattern: discr_eq_one_hundred_twenty_five, ncard_primesOver_five_eq_one, eq_span_zeta_sub_one, ramificationIdx_eq_four, inertiaDeg_eq_one, map_span_five_eq_pow_four",
+      "start_line": 114,
+      "end_line": 134,
+      "excerpt": "@[simp] theorem ncard_primesOver_five_eq_one : (primesOver (span {(5 : ℤ)}) (𝓞 K)).ncard = 1 := by\n  have : Fact (Nat.Prime 5) := ⟨Nat.prime_five⟩\n  exact IsCyclotomicExtension.Rat.ncard_primesOver_of_prime 5 K",
+      "problem": "The line `have : Fact (Nat.Prime 5) := ⟨Nat.prime_five⟩` is repeated verbatim in six declarations (lines 67, 115, 123, 128, 133, 139), and in five of them (114-116, 121-124, 127-129, 132-134) the result is a `by` block whose entire remaining content is a single `exact` of a Mathlib lemma. The standing fact that 5 is prime is a property of the whole file, not of any individual proof, so the repetition obscures the one-line content of each theorem.",
+      "proposed_change": "Add once, immediately after `namespace TauCeti.NumberField.FifthCyclotomic` (line 57),\n\n```lean\nlocal instance factPrimeFive : Fact (Nat.Prime 5) := ⟨Nat.prime_five⟩\n```\n\nand delete the six `have : Fact (Nat.Prime 5)` lines. The affected proofs then reduce to e.g.\n\n```lean\n@[simp] theorem ncard_primesOver_five_eq_one : (primesOver (span {(5 : ℤ)}) (𝓞 K)).ncard = 1 :=\n  IsCyclotomicExtension.Rat.ncard_primesOver_of_prime 5 K\n\n@[simp] theorem ramificationIdx_eq_four : 𝔭.ramificationIdx ℤ = 4 :=\n  IsCyclotomicExtension.Rat.ramificationIdx_eq_of_prime 5 K 𝔭\n```\n\n(untested).",
+      "benefit": "Each theorem becomes a single declaration stating exactly which Mathlib result it invokes, the recurring `Fact` hypothesis is visible once at file scope, and the file matches the established convention in the sibling worked example `WorkedExamples/Cubic23/Ramification.lean:32`, which declares `private instance : Fact (Nat.Prime 23)` instead of repeating `have`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/NumberTheory/NumberField/WorkedExamples/Cubic23/Ramification.lean",
+          "declaration": "TauCeti.NumberField.Cubic23 (local instance)",
+          "excerpt": "private instance : Fact (Nat.Prime 23) := ⟨by decide⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/NumberTheory/NumberField/Cyclotomic/Ideal.lean",
+          "declaration": "IsCyclotomicExtension.Rat.ncard_primesOver_of_prime",
+          "excerpt": "include hK in\ntheorem ncard_primesOver_of_prime :\n    (primesOver 𝒑 (𝓞 K)).ncard = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/NumberTheory/NumberField/WorkedExamples/FifthCyclotomic/Invariants.lean",
+          "declaration": "ramificationIdx_eq_four",
+          "excerpt": "  have : Fact (Nat.Prime 5) := ⟨Nat.prime_five⟩\n  exact IsCyclotomicExtension.Rat.ramificationIdx_eq_of_prime 5 K 𝔭"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1143081,
+    "cached_input_tokens": 1101824,
+    "output_tokens": 33799,
+    "reasoning_output_tokens": 27433
+  },
+  "cost_usd": 0.029014652,
+  "generation_ids": [
+    "gen-1792628788-dWy4Mr9qjkUi7YCcFQEe",
+    "gen-1792628802-Lvt2zIm8sUWlfeMeex6I",
+    "gen-1792628808-w1VCGQVSJOVv1LXllwuq",
+    "gen-1792628820-loZOFY7DFwraJMU4HOKb",
+    "gen-1792628873-UqxgjoRlBFpOKsbzZImi",
+    "gen-1792628883-LRHIYqmL0FT84y9SWxsj",
+    "gen-1792628887-eI7F4dgO5MWdBevEJxqs",
+    "gen-1792628931-4HY4xI0v0Czmb83BVtN4",
+    "gen-1792628953-gR7AV0tpPjILoRg3MA3u",
+    "gen-1792628959-q2UyaIwMyAl79t6MXE7H",
+    "gen-1792628967-RCAmDVCcqaySmMsmSz88",
+    "gen-1792628982-YTNA159qqfcV7JrXijVK",
+    "gen-1792628988-CP2cn3NB5TckEl2K2FMX",
+    "gen-1792628993-681ZpeexpVdY6B0vYB2F",
+    "gen-1792628997-izYzVkKMJqSJjXFqc0CB",
+    "gen-1792629000-HVpr1UcFijL0mNTngQoy",
+    "gen-1792629028-Yq8SrGQJcARsT55nH643",
+    "gen-1792629053-zTFmtQuSdQLbVVrrQCUd",
+    "gen-1792629070-oIsuBmaMFTazvBUu2HVR",
+    "gen-1792629088-LXmmPxC7MSUlqHK8m7RR",
+    "gen-1792629097-bdfWgAWFTfSFI7srV1JP",
+    "gen-1792629128-6LDMAqbwMfihYhLxxFlE",
+    "gen-1792629150-WJr824kT87lm99sgc8io",
+    "gen-1792629167-ByIYmiM92WNNUHwtbG5F",
+    "gen-1792629179-AivSapBwJWDeBlSJNae1",
+    "gen-1792629188-a7JkGPitIFrbxU38dqUG",
+    "gen-1792629204-hd8VsiYuQVy3ZwGE0UEg"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 27,
+  "duration_ms": 440406,
+  "judged": "2026-10-22T00:33:39+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "e79505c4bcc191c6995919c9996c7f842ec5bab60d0c9669729656a43af78b3b"
+}

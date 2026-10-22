@@ -1,0 +1,114 @@
+{
+  "id": "lean-pool-file-0007",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 287 lines of the target. I also inspected Torus/Basic.lean for the `fromUnitTorus`/`periodicToTorus` API and its `@[simp]` attributes, ScalarRepresentative.lean for downstream uses of `weakPathRepresentative`, and Mathlib's `Real.inner_apply`, `Real.norm_eq_abs`, and `sq_abs`. Coverage of the target is complete. The proposed lemmas are not compiled or tested; in particular, whether the subtype-specialized `weakPathRepresentative_coe` form is needed in addition to the generic `_of_mem` form requires checking. I did not report missing `[simp]` on `scalarTorusRepresentative_periodic` or a definitional unfolding lemma for `scalarTorusRepresentative`: those are optional conveniences, and a global unfolding lemma could cause unwanted expansion. I also did not recommend `[simp]` for the `l2NormSq` identities, because that would compete with the file's existing direction of expanding `l2NormSq` to an integral. No simplifier loop or failure is claimed to have been observed.",
+  "findings": [
+    {
+      "declaration": "weakPathRepresentative (and weakPathRepresentative_isPeriodic, weakPathRepresentative_memL2On, weakPathRepresentative_l2NormSq)",
+      "start_line": 149,
+      "end_line": 184,
+      "excerpt": "  have hfun : weakPathRepresentative u t = scalarTorusRepresentative (u t) := by\n    funext x\n    simp [weakPathRepresentative, t.property]",
+      "problem": "`weakPathRepresentative` is defined with an `if ht : t ∈ Icc 0 1` and no canonical simp equation for its two branches. Consequently every use has to unfold the definition and separately supply the membership proof: the target repeats `funext x; simp [weakPathRepresentative, ...]` at lines 156-158, 161-163, 171-173, 180-182 and 200-202, and ScalarRepresentative.lean repeats it at lines 262-267. There is no rule that takes `weakPathRepresentative u t` directly to the desired normal form `scalarTorusRepresentative (u ⟨t, ht⟩)` inside the interval, or to the zero function outside it. This makes the interface dependent on the exact form of the `if` and on the local simp set.",
+      "proposed_change": "Add branch equations immediately after the definition, for example:\n\n```lean\n@[simp] theorem weakPathRepresentative_of_mem (u : Icc (0 : ℝ) 1 → ScalarTorusL2)\n    {t : ℝ} (ht : t ∈ Icc (0 : ℝ) 1) :\n    weakPathRepresentative u t = scalarTorusRepresentative (u ⟨t, ht⟩) := by\n  funext x\n  simp [weakPathRepresentative, ht]\n\n@[simp] theorem weakPathRepresentative_of_not_mem (u : Icc (0 : ℝ) 1 → ScalarTorusL2)\n    {t : ℝ} (ht : t ∉ Icc (0 : ℝ) 1) :\n    weakPathRepresentative u t = fun _ : Vec 2 => 0 := by\n  funext x\n  simp [weakPathRepresentative, ht]\n```\n\nIf the generic `_of_mem` rule does not discharge the `u ⟨t, ht⟩` versus `u t` mismatch in the `t : Icc (0 : ℝ) 1` uses, add the specialization:\n\n```lean\n@[simp] theorem weakPathRepresentative_coe (u : Icc (0 : ℝ) 1 → ScalarTorusL2)\n    (t : Icc (0 : ℝ) 1) :\n    weakPathRepresentative u t = scalarTorusRepresentative (u t) := by\n  funext x\n  simp [weakPathRepresentative, t.property]\n```\n\nThen replace the repeated local blocks with `simpa`/`rw` using these lemmas, and remove the explicit `weakPathRepresentative` argument from local simp sets to avoid having the definition unfold compete with the new rule.",
+      "benefit": "The simplifier gets a single terminating rule oriented from the conditional wrapper to the underlying periodic representative, or to zero outside the interval. This removes five duplicated unfolding blocks in the target and further duplication in ScalarRepresentative.lean, and it makes clients independent of the exact `if`/proof structure of the definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "weakPathRepresentative",
+          "excerpt": "def weakPathRepresentative (u : Icc (0 : ℝ) 1 → ScalarTorusL2) : ℝ → Vec 2 → ℝ :=\n  fun t x => if ht : t ∈ Icc (0 : ℝ) 1 then\n    scalarTorusRepresentative (u ⟨t, ht⟩) x else 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "weakPathRepresentative_isPeriodic",
+          "excerpt": "  · have hfun : weakPathRepresentative u t = scalarTorusRepresentative (u ⟨t, ht⟩) := by\n      funext x\n      simp [weakPathRepresentative, ht]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "weakPathRepresentative_pairing_eq_inner",
+          "excerpt": "    have hrep : weakPathRepresentative u t = scalarTorusRepresentative (u t) := by\n      funext y\n      simp [weakPathRepresentative, t.property]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ScalarRepresentative.lean",
+          "declaration": "synchronizedScalarRepresentative_pairing_eq_inner",
+          "excerpt": "      _ = ∫ x in AVenhance.unitCube,\n          weakPathRepresentative u t x * ψ x := by\n            apply integral_congr_ae\n            filter_upwards with x\n            rw [hpath]\n            simp [weakPathRepresentative, ht]"
+        }
+      ]
+    },
+    {
+      "declaration": "weakPathRepresentative_pairing_eq_inner and FrozenDriftProblem.initial_pairing_eq_cell_integral",
+      "start_line": 222,
+      "end_line": 249,
+      "excerpt": "    _ = ∫ x : Torus, inner ℝ (u t x) (ψT x) := by\n      apply integral_congr_ae\n      filter_upwards with x\n      simp [mul_comm]",
+      "problem": "Both integrand comparisons use `simp [mul_comm]` to identify a real inner product with multiplication. `mul_comm` is a global commutativity rewrite: as a simp argument it can reorder every multiplication in the goal and is a plausible source of a rewrite cycle or nontermination, while it does not express the actual normalization needed here. Mathlib already provides the canonical rule `Real.inner_apply : inner ℝ x y = x * y`, which has exactly the desired orientation and needs no commutativity. The same pattern occurs again at lines 246-249 in `FrozenDriftProblem.initial_pairing_eq_cell_integral`.",
+      "proposed_change": "Replace both `simp [mul_comm]` calls with a local application of the canonical rule, e.g. `rw [Real.inner_apply]` (or `simpa only [Real.inner_apply]`) after `filter_upwards`. This rewrites the inner product to the product in the exact orientation `x * y` and closes the pointwise goals without invoking a global commutativity rule.",
+      "benefit": "The proof step becomes local, terminating and independent of the surrounding multiplication structure. It avoids reordering unrelated products with `mul_comm` and removes a known simplification hazard, while using the existing canonical lemma for real inner products.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "weakPathRepresentative_pairing_eq_inner",
+          "excerpt": "    _ = ∫ x : Torus, inner ℝ (u t x) (ψT x) := by\n      apply integral_congr_ae\n      filter_upwards with x\n      simp [mul_comm]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "FrozenDriftProblem.initial_pairing_eq_cell_integral",
+          "excerpt": "    _ = ∫ x : Torus, (P.initialTorusL2 x) * (ψT x) := by\n          apply integral_congr_ae\n          filter_upwards with x\n          simp [mul_comm]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/InnerProductSpace/Basic.lean",
+          "declaration": "Real.inner_apply",
+          "excerpt": "theorem Real.inner_apply (x y : ℝ) : inner ℝ x y = x * y := by rw [mul_comm]; rfl"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1813646,
+    "cached_input_tokens": 1723520,
+    "output_tokens": 40059,
+    "reasoning_output_tokens": 34700
+  },
+  "cost_usd": 0.04102774,
+  "generation_ids": [
+    "gen-1792629368-gyW49agHZrQqhh5hbB7k",
+    "gen-1792629373-pY8egTUUZm8slT5NtY6G",
+    "gen-1792629380-RYWkKirJ2G8Q30ETEdsM",
+    "gen-1792629394-fhnbbbWrwkuEBjQL3aHY",
+    "gen-1792629403-bm7XzCO9tmefaglETuBr",
+    "gen-1792629415-0uBtTM4woXnT1uQoDLjz",
+    "gen-1792629430-Jbulf57BiKni4OISWSI6",
+    "gen-1792629463-WMpFXznFR2ipbij6aLnp",
+    "gen-1792629512-QgIcAOTddueYOJcrzTSK",
+    "gen-1792629526-bpiM7uXFANRiifg6XKcD",
+    "gen-1792629535-tgE0V46EHcFyondeI70q",
+    "gen-1792629549-kJpVbfhRsG1vuvEriSi7",
+    "gen-1792629563-grEzq2znn5eIxRGszrKd",
+    "gen-1792629570-xcrcTPfRrcWjzbdQp2pc",
+    "gen-1792629586-FvemVpiXhrgFsLUft3qV",
+    "gen-1792629592-kmOvj7X680MultKFpLQR",
+    "gen-1792629613-JcB1Qi4UUBD0TRGhAQep",
+    "gen-1792629622-x2d4lbnS96ExFS0C5yK3",
+    "gen-1792629637-fJQPFbhZjOb3zVBnURDV",
+    "gen-1792629648-AHJ2QXlGi8zCJEmPWSkv",
+    "gen-1792629678-vklm9QFLFmVGJ0213QJl",
+    "gen-1792629695-XtxCxv7bTxB3wuGlq6Lr",
+    "gen-1792629699-DUdUEDaQ518bTH7KUtKE"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 23,
+  "duration_ms": 373812,
+  "judged": "2026-10-22T00:42:14+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "7481faf851369321065137087beecc63fb712c22b0a32549754de4bb8da821cd"
+}

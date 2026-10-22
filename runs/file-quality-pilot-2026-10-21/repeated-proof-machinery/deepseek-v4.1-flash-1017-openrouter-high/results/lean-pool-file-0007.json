@@ -1,0 +1,89 @@
+{
+  "id": "lean-pool-file-0007",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1–287), including definitions, the local measure instances, and all theorems. I also inspected the related API used by the proofs: LeanPool/AnomalousDiffusion/AVenhance/Infra/Torus/Basic.lean (integral_unitCell_eq_unitCube at line 86, periodicToTorus at 100, periodicToTorus_fromUnitTorus at 177, integral_periodicToTorus_eq_unitCell at 195), the downstream consumer LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ScalarRepresentative.lean (lines 238–275, which calls weakPathRepresentative_pairing_eq_inner), and the sibling files that re-derive the same a.e. coefficient identification (ProductWeakGradient.lean lines 176–187, ScalarFourierDerivative.lean lines 63–70). Findings: one substantiated case of nontrivial repeated reasoning — the two 'torus L² pairing = unit-cell integral' computations. I deliberately did not report the three identical four-line `hfun : weakPathRepresentative u t = scalarTorusRepresentative (u t)` unfoldings (lines 156–158, 171–173, 180–182, 200–202) or the thin wrappers `weakPathRepresentative_memL2On` / `weakPathRepresentative_l2NormSq`, because they are routine unfolding/thin wrappers, which the rubric excludes. The proposed shared lemma is a design proposal only; I could not run Lean, so it is not verified to compile.",
+  "findings": [
+    {
+      "declaration": "weakPathRepresentative_pairing_eq_inner and FrozenDriftProblem.initial_pairing_eq_cell_integral (shared 'torus pairing = cell integral' calculation)",
+      "start_line": 188,
+      "end_line": 263,
+      "excerpt": "  calc\n    inner ℝ P.initialTorusL2 ψT =\n        ∫ x : Torus, inner ℝ (P.initialTorusL2 x) (ψT x) :=\n          (MeasureTheory.L2.inner_def P.initialTorusL2 ψT).symm",
+      "problem": "The same multi-step mathematical argument is written out twice: (i) rewrite the Hilbert inner product `inner ℝ F ψT` via `MeasureTheory.L2.inner_def` into the torus integral of the pointwise pairing (lines 226 and 244–245, both followed by the `simp [mul_comm]` step at 222–225 and 246–249); (ii) rewrite both factor coeFn's using a.e. equalities to `periodicToTorus` of the Euclidean functions and use that `periodicToTorus` is multiplicative (rfl proof at 217–221 and 255–259); (iii) transfer the torus integral to the half-open cell with `integral_periodicToTorus_eq_unitCell` (213 and 260–261) and then to `AVenhance.unitCube` with `integral_unitCell_eq_unitCube` (207–209 and 262–263). In addition, the three-line a.e. identification of the test class, `have htest : (fun x : Torus => ψT x) =ᵐ[volume] AVenhance.Infra.Torus.periodicToTorus ψ := (frozenInitialData_memLp_torus (LimitRepresentation.smoothPeriodicTest_memL2On hψ)).coeFn_toLp`, appears verbatim twice (lines 195–197 as `htest`, lines 239–241 as `hψT`). The two theorems differ only in the torus class `F` (`u t` resp. `P.initialTorusL2`) and the Euclidean representative `g` (`weakPathRepresentative u t` resp. `P.θ₀`), plus the fact that the weak-path statement puts the integral on the left. Roughly twenty lines of real argument (L² inner product ↔ integral, a.e. transport through the periodic transfer, cell/cube transfer) are duplicated, so an API change in the torus integration lemmas or in `smoothPeriodicTestL2` must be fixed in two places, and the two proofs can silently diverge (e.g. one could start from `unitCell` and the other from `unitCube`).",
+      "proposed_change": "Extract one lemma carrying the whole calculation, e.g.\n\n```lean\ntheorem inner_smoothPeriodicTestL2_eq_cell_integral (F : ScalarTorusL2) {g ψ : Vec 2 → ℝ}\n    (hg : (fun x : Torus => F x) =ᵐ[volume] AVenhance.Infra.Torus.periodicToTorus g)\n    (hψ : ContDiff ℝ (⊤ : ℕ∞) ψ) (hperiodic : AVenhance.IsZ2Periodic ψ) :\n    inner ℝ F (smoothPeriodicTestL2 hψ hperiodic) =\n      ∫ x in AVenhance.unitCube, g x * ψ x\n```\n\nProof sketch (one copy of the current reasoning): set `ψT := smoothPeriodicTestL2 hψ hperiodic`, record `hψT : (fun x => ψT x) =ᵐ periodicToTorus ψ` from `MemLp.coeFn_toLp`; expand `L2.inner_def`, rewrite `inner ℝ (F x) (ψT x)` to `F x * ψT x`, fold the product using the definitional multiplicativity of `periodicToTorus` together with `hg` and `hψT` (after `.symm`), then apply `AVenhance.Infra.Torus.integral_periodicToTorus_eq_unitCell` and `AVenhance.Infra.Torus.integral_unitCell_eq_unitCube`. Rewritten uses under the actual hypotheses of this file:\n* `weakPathRepresentative_pairing_eq_inner u t hψ hperiodic` (lines 188–226) becomes `(inner_smoothPeriodicTestL2_eq_cell_integral (u t) ?hg hψ hperiodic).symm`, where `?hg : (fun x : Torus => u t x) =ᵐ periodicToTorus (weakPathRepresentative u t)` is obtained pointwise from `periodicToTorus_fromUnitTorus (fun y : Torus => u t y)` applied to the current `hrep` (lines 200–205); the goal is stated with the integral on the left, hence `.symm`.\n* `FrozenDriftProblem.initial_pairing_eq_cell_integral P hψ hperiodic` (lines 230–263) becomes exactly `inner_smoothPeriodicTestL2_eq_cell_integral P.initialTorusL2 hθ hψ hperiodic`, reusing the existing `hθ` of lines 236–238; the duplicated `hψT` at 239–241 disappears.\n(I could not compile this proposal.)",
+      "benefit": "The L²-pairing/periodic-transfer calculation is stated and proved once, so both theorems reduce to instantiating a single lemma with the torus class and representative as parameters; the a.e. identification of `smoothPeriodicTestL2` with `periodicToTorus ψ` is computed once instead of twice. A reader sees immediately that both statements share the same mathematical content (and that the weak-path version is only the symmetric form of the initial-data version), and future changes to the torus integration API (`integral_periodicToTorus_eq_unitCell`, `integral_unitCell_eq_unitCube`, `smoothPeriodicTestL2`) require one proof update. It also gives later files that need the same identification (cf. the re-derived a.e. lemmas `ProductWeakGradient.smoothPeriodicTestL2_coeFn` and `ScalarFourierDerivative.smoothPeriodicTestL2_ae_periodicToTorus`) a canonical, reusable statement.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "weakPathRepresentative_pairing_eq_inner",
+          "excerpt": "  have htest : (fun x : Torus => ψT x) =ᵐ[volume]\n      AVenhance.Infra.Torus.periodicToTorus ψ :=\n    (frozenInitialData_memLp_torus (LimitRepresentation.smoothPeriodicTest_memL2On hψ)).coeFn_toLp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "weakPathRepresentative_pairing_eq_inner",
+          "excerpt": "    _ = ∫ x : Torus, (u t x) * ψT x := by\n      apply integral_congr_ae\n      filter_upwards [htest] with x hx"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "FrozenDriftProblem.initial_pairing_eq_cell_integral",
+          "excerpt": "  have hψT : (fun x : Torus => ψT x) =ᵐ[volume]\n      AVenhance.Infra.Torus.periodicToTorus ψ :=\n    (frozenInitialData_memLp_torus (LimitRepresentation.smoothPeriodicTest_memL2On hψ)).coeFn_toLp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/LimitRepresentation.lean",
+          "declaration": "FrozenDriftProblem.initial_pairing_eq_cell_integral",
+          "excerpt": "    _ = ∫ x in AVenhance.Infra.Torus.unitCell 2, P.θ₀ x * ψ x :=\n      AVenhance.Infra.Torus.integral_periodicToTorus_eq_unitCell _\n    _ = ∫ x in AVenhance.unitCube, P.θ₀ x * ψ x :=\n      AVenhance.Infra.Torus.integral_unitCell_eq_unitCube _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Torus/Basic.lean",
+          "declaration": "integral_periodicToTorus_eq_unitCell",
+          "excerpt": "theorem integral_periodicToTorus_eq_unitCell {d : ℕ} {E : Type*}\n    [NormedAddCommGroup E] [NormedSpace ℝ E]\n    (f : Vec d → E) :\n    ∫ x : UnitAddTorus (Fin d), periodicToTorus f x = ∫ x in unitCell d, f x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ProductWeakGradient.lean",
+          "declaration": "ProductWeakGradient.smoothPeriodicTestL2_coeFn",
+          "excerpt": "    (fun x : Torus => smoothPeriodicTestL2 hψ hperiodic x) =ᵐ[volume]\n      AVenhance.Infra.Torus.periodicToTorus ψ"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Parabolic/FourierGalerkin/ScalarFourierDerivative.lean",
+          "declaration": "ScalarFourierDerivative.smoothPeriodicTestL2_ae_periodicToTorus",
+          "excerpt": "    (fun y : Torus => smoothPeriodicTestL2 hψ hperiodic y) =ᵐ[volume]\n      AVenhance.Infra.Torus.periodicToTorus ψ"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 328079,
+    "cached_input_tokens": 215808,
+    "output_tokens": 11967,
+    "reasoning_output_tokens": 5469
+  },
+  "cost_usd": 0.016691644,
+  "generation_ids": [
+    "gen-1792629458-exzbbY0Vzj0OJ0uc9dAM",
+    "gen-1792629470-TSmeGyJLcga4dLGGT58k",
+    "gen-1792629481-nmJxxmR1wOug14LVqxsQ",
+    "gen-1792629491-S8yHUvQ1rFuidy5IoLM0",
+    "gen-1792629504-wg1eRikYGQOIoHhXAQy3",
+    "gen-1792629516-ZNB0f1mn097mc72O3k3p",
+    "gen-1792629523-ZdRyeem7Ius18KHsvma3",
+    "gen-1792629539-8xZjH0hS72biHw5lH5yM",
+    "gen-1792629558-9qVHbA1tmffe5wJwpEOC"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 9,
+  "duration_ms": 113908,
+  "judged": "2026-10-22T00:39:29+00:00",
+  "unit": "file",
+  "rubric": "repeated-proof-machinery",
+  "source_sha256": "7481faf851369321065137087beecc63fb712c22b0a32549754de4bb8da821cd"
+}
