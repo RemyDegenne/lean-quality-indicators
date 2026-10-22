@@ -1,0 +1,108 @@
+{
+  "id": "mathlib-file-0005",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 108 lines of the target file and inspected the relevant declarations in Mathlib: PrincipalSeg.cocone, Monotone.final_functor_iff, IsSuccLimit and not_isSuccLimit_of_isSuccArchimedean, the Nat IsSuccArchimedean instance, not_isMin_iff, and the analogous max-based finality proof for Set.Ici. I also checked the IsColimit/Cocone transport API for the isomorphism instance. The two proposed replacements are untested and were not compiled, as execution is unavailable. I did not flag the iso-transport, initial-segment, or Fin-instance proofs because no clearly better readable simplification was found there.",
+  "findings": [
+    {
+      "declaration": "CategoryTheory.Functor.IsWellOrderContinuous (instance for F : ℕ ⥤ C)",
+      "start_line": 60,
+      "end_line": 61,
+      "excerpt": "instance (F : ℕ ⥤ C) : F.IsWellOrderContinuous where\n  nonempty_isColimit m hm := by simp at hm",
+      "problem": "The proof `by simp at hm` closes the goal by simplifying the contradictory hypothesis, but it does not say which order-theoretic fact is being used. This is especially unclear because the immediately following `Fin n` instance uses the explicit lemma `Order.not_isSuccLimit_of_isSuccArchimedean`; the reader must reverse-engineer the natural-number case.",
+      "proposed_change": "Replace the field proof with\n\n`nonempty_isColimit m hm := (Order.not_isSuccLimit_of_isSuccArchimedean hm).elim`\n\nso that it matches the `Fin n` instance pattern.",
+      "benefit": "The proof now explicitly states the mathematical reason: `ℕ` has no successor limits because it is successor-Archimedean, so the required colimit condition is vacuous. This is easier to read and less sensitive to changes in the simp set.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/Limits/Shapes/Preorder/WellOrderContinuous.lean",
+          "declaration": "instance {n : ℕ} (F : Fin n ⥤ C)",
+          "excerpt": "instance {n : ℕ} (F : Fin n ⥤ C) : F.IsWellOrderContinuous where\n  nonempty_isColimit _ hj := (Order.not_isSuccLimit_of_isSuccArchimedean hj).elim"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Order/SuccPred/Limit.lean",
+          "declaration": "not_isSuccLimit_of_isSuccArchimedean",
+          "excerpt": "@[to_dual (attr := simp)]\ntheorem not_isSuccLimit_of_isSuccArchimedean : ¬ IsSuccLimit a :=\n  fun h ↦ h.not_isMin h.isSuccPrelimit.isMin"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Order/SuccPred/Nat.lean",
+          "declaration": "instance : IsSuccArchimedean ℕ",
+          "excerpt": "instance : IsSuccArchimedean ℕ :="
+        }
+      ]
+    },
+    {
+      "declaration": "CategoryTheory.Functor.IsWellOrderContinuous.restriction_setIci",
+      "start_line": 92,
+      "end_line": 104,
+      "excerpt": "      by_cases! h : j' ≤ j\n      · refine ⟨⟨⟨j, le_refl j⟩, ?_⟩, h⟩\n        by_contra h'\n        simp only [Set.mem_Iio, not_lt] at h'\n        apply hm.1\n        rintro ⟨k, hk⟩ hkm\n        exact h'.trans hk\n      · exact ⟨⟨⟨j', h.le⟩, hj'⟩, by rfl⟩",
+      "problem": "After `Monotone.final_functor_iff`, the task is simply to find, for every `j' < m.1`, an element of `Iio m` above `j'`. The proof instead splits on `j' ≤ j`; one branch proves `j < m.1` by contradiction while the other returns `j'`. This obscures the uniform cofinality witness `max j j'` and makes the proof longer than necessary.",
+      "proposed_change": "First extract `j < m.1` from `hm.1`, then use `max j j'` as the single cofinality witness. For example, replace lines 92--104 by:\n\n```lean\n    have hjm : j < m.1 := by\n      obtain ⟨⟨k, hk⟩, hkm⟩ := not_isMin_iff.1 hm.1\n      exact lt_of_le_of_lt hk hkm\n    have : hf.functor.Final := by\n      rw [Monotone.final_functor_iff]\n      rintro ⟨j', hj'⟩\n      simp only [Set.mem_Iio] at hj'\n      exact ⟨⟨⟨max j j', le_max_left _ _⟩, max_lt hjm hj'⟩, le_max_right _ _⟩\n```",
+      "benefit": "The simplified proof exposes the actual finality argument: since `j < m.1`, the element `max j j'` remains below `m.1`, lies in `Ici j`, and dominates `j'`. It removes an unnecessary case split and proof by contradiction while making the key idea easier to follow.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Order/Interval/Set/Final.lean",
+          "declaration": "Set.Ici.subtype_functor_final",
+          "excerpt": "instance Set.Ici.subtype_functor_final {J : Type u} [LinearOrder J] (j : J) :\n    (Subtype.mono_coe (· ∈ Set.Ici j)).functor.Final := by\n  rw [Monotone.final_functor_iff]\n  intro k\n  exact ⟨⟨max j k, le_max_left _ _⟩, le_max_right _ _⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Order/Max.lean",
+          "declaration": "not_isMin_iff",
+          "excerpt": "@[to_dual (attr := simp)]\ntheorem not_isMin_iff : ¬IsMin a ↔ ∃ b, b < a := by\n  simp [lt_iff_le_not_ge, IsMin, not_forall]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1146986,
+    "cached_input_tokens": 1083520,
+    "output_tokens": 21957,
+    "reasoning_output_tokens": 17152
+  },
+  "cost_usd": 0.02472394,
+  "generation_ids": [
+    "gen-1792627558-WgFbi4CTUsmmxmDwvFXL",
+    "gen-1792627561-eVHo8dXWwz8pOxmfWfbe",
+    "gen-1792627572-R960Z3gFah5R6Q8WRjzx",
+    "gen-1792627584-DzhDCACoitFL1pNOcI0J",
+    "gen-1792627593-yEhQX1fofho5aubhUCJv",
+    "gen-1792627602-6zwv56v60t8kZNr1A2Gy",
+    "gen-1792627605-8Vc3TrmUncsDa4i9WyTZ",
+    "gen-1792627616-MvqXNl94BEfxEqp119AW",
+    "gen-1792627628-cXrEITeu9idHtGNm75vd",
+    "gen-1792627632-Y7ciDASeQmvjp4yYnYGH",
+    "gen-1792627644-gYWACNRbBhdbizAQN2dD",
+    "gen-1792627660-JYWFO8dRWmbFdo4jsuGd",
+    "gen-1792627678-wRLZQhRGrD3GvzlJAbN9",
+    "gen-1792627686-CCRJ52Ei0ow8UKCfOHjs",
+    "gen-1792627690-9m2MLZnWfMnCehAJp9mI",
+    "gen-1792627697-Oji9FLSTH2fVKRgex1aQ",
+    "gen-1792627720-sbIE2JrfIDHE8KAZFvKG",
+    "gen-1792627732-WTdmz5ssBCy4fpInKOlJ",
+    "gen-1792627768-MTpQnZvI98CaFFEIG96V",
+    "gen-1792627784-z1U2LY6o2FLjwC16Aa7P",
+    "gen-1792627801-pWRKslAtvFiKv2q36xm8",
+    "gen-1792627803-X7mY5Tq6mOOvs9YYL3E5",
+    "gen-1792627841-IFV8huqx6Y3wT8wVZYK0",
+    "gen-1792627855-yxjqI7vqtkItkheOVWCd",
+    "gen-1792627867-opIeqaxM8zp1yP4vdQq5",
+    "gen-1792627873-5OXm9Nkmmu5fpJ7bqCnE",
+    "gen-1792627891-DN8XBHrGhKIs2EV8ITXM"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 27,
+  "duration_ms": 393493,
+  "judged": "2026-10-22T00:12:28+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "7ea84f0f23e0e41c39c77cfc801efb2df12fa5822d577252c7fe164c8eda47ce"
+}

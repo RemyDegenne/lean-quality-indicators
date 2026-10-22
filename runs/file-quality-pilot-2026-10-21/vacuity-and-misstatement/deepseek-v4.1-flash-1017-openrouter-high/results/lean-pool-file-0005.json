@@ -1,0 +1,74 @@
+{
+  "id": "lean-pool-file-0005",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 438 lines of Tail.lean and the definitions it depends on: `morreyCell`/`morreyNorm`/`cylinderPowerIntegral` (Basic.lean 37–68), `parabolicRho₂`, `parabolicRieszKernel`, `parabolicRieszShell`, `parabolicRho₂_lt_subset_metricBall`, `parabolicRieszShell_subset_tail` (Kernel.lean 30–175), `parabolicCylinder`/`metricBall_subset_parabolicCylinder` (Basic.lean 108–123, 271), plus the downstream uses and the constant's finiteness proof (Adams.lean, AdamsM4.lean, AdamsEndpoints.lean, Core/Endgame/AdamsConstants.lean). I checked for vacuity: the tail set {w | R ≤ ρ z w} is nonempty and excludes the kernel's singularity at ρ = 0 because R > 0; the positive dyadic shells are nonempty, disjoint and cover exactly the tail (boundary ρ = 2^k R is admitted by the inner `≤`); the exponent in the dyadic constant is n·(β − 5/q) + 10(1 − 1/q) with β − 5/q < 0 exactly under β·q < 5, q > 0, so the series is convergent rather than ∞; the exponent bookkeeping in `positive_shell_scale_identity` (β − 5/q and n(β − 5/q) + 2·5(1 − 1/q)) is arithmetically correct, and the Morrey factor uses the covering cylinder radius 2b consistently in `positive_shell_cylinder_subset`, `positive_shell_integral_le` and `positive_shell_scale_identity`. I found no false or empty-domain statement. Things I considered but did not report: unused hypotheses/arguments (`_ : AEMeasurable f volume` at line 28 and line 351, `_ : β * q < 5` at lines 193 and 272) are generality/clutter issues rather than vacuity, and `tail_integral_le_shell_sum` states `≤` where the disjoint-union argument actually gives an equality. The single reported finding concerns a missing conclusion (finiteness of the dyadic constant) whose absence makes the module's quantitative conclusions potentially vacuous and is visible in a downstream hypothesis.",
+  "findings": [
+    {
+      "declaration": "parabolicTailKernelConstant / parabolicRieszKernel_tail_le",
+      "start_line": 382,
+      "end_line": 393,
+      "excerpt": "/-- The dyadic constant used by the Morrey tail estimate. -/\ndef parabolicTailKernelConstant (β q : ℝ) : ℝ≥0∞ :=\n  ∑' n : ℕ, (ENNReal.ofReal (2 : ℝ)) ^\n    ((n : ℝ) * (β - 5 / q) + 2 * (5 * (1 - 1 / q)))\n\ntheorem parabolicRieszKernel_tail_le {β q : ℝ} (hβ : 0 < β) (hβ5 : β < 5)\n    (hq : 1 ≤ q) (hβq : β * q < 5) {R : ℝ} (hR : 0 < R)",
+      "problem": "The headline estimate of this file bounds the far-field integral by `parabolicTailKernelConstant β q * (ofReal R) ^ (β - 5/q) * morreyNorm 1 q f`, but nothing in the module establishes that the constant is finite. `parabolicRieszKernel_tail_le` (387–393) only consumes the constant, and its import `Kernel` (and below it `Basic`) know nothing about it, so from this file alone the right-hand side is compatible with the trivial bound: `(ofReal R) ^ (β - 5/q)` is finite and nonzero for `R > 0`, so if the constant were `∞` the right-hand side would be `∞` as soon as `morreyNorm 1 q f ≠ 0`, and the inequality would carry no quantitative information. This is not a hypothetical junk value only: outside the strict subcritical range the constant really is infinite (for `β * q = 5`, every summand is `2 ^ (2 * (5 * (1 - 1/q))) ≥ 1`, so the series diverges), and the docstring \"The dyadic constant used by the Morrey tail estimate\" gives no indication that the finite case is only the subcritical one. The mismatch shows up in practice: `AdamsM4.parabolicRieszPotential_adams_finite` has to carry the hypothesis `(hCtop : parabolicHedbergNearConstant β + parabolicTailKernelConstant β τ ≠ ∞)`, although under its own hypotheses `0 < β` and `β * τ < 5` this is provable, and the only proof in the library is far downstream in `Core/Endgame/AdamsConstants.tail_kernel_constant_lt_top`, which cannot be used in the Foundation layer. The same constant appears in the coefficient of `Adams.parabolicRieszPotential_scale_le` (348–349), so the vacuity propagates to the potential estimate.",
+      "proposed_change": "Add, immediately after the definition, a finiteness theorem such as `theorem parabolicTailKernelConstant_lt_top {β q : ℝ} (hq : 0 < q) (hβq : β * q < 5) : parabolicTailKernelConstant β q < ∞` (and/or the `≠ ∞` form), proved by rewriting the summand as `((2 : ℝ≥0∞) ^ (β - 5 / q)) ^ n * 2 ^ (2 * (5 * (1 - 1/q)))` and using the geometric-series bound `ENNReal.tsum_geometric_lt_top`; `β - 5 / q < 0` follows from `hβq` and `hq`, and the argument of `Core/Endgame/AdamsConstants.lean` lines 26–37 (`dyadic_series_lt_top`) can be adapted without new imports (Tail.lean is the definition site, so this cannot be imported from below). Also extend the docstring to record that the constant is `∞` for `β * q ≥ 5` (junk value) and that it is finite in the subcritical range, and mention the finiteness in the docstring of `parabolicRieszKernel_tail_le` (which currently has none).",
+      "benefit": "Readers and users of the Foundation layer can verify at the definition site that the tail estimate is a genuine quantitative statement rather than a bound by `∞`; downstream `AdamsM4.parabolicRieszPotential_adams_finite` can discharge its `hCtop` tail component from its existing hypotheses instead of carrying an extra finiteness assumption on a public theorem, and the duplicate finiteness work in `Core/Endgame/AdamsConstants.lean` becomes a corollary of the lemma placed next to the definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Endgame/AdamsConstants.lean",
+          "declaration": "tail_kernel_constant_lt_top",
+          "excerpt": "theorem tail_kernel_constant_lt_top {β τ : ℝ} (hτ : 0 < τ) (hβτ : β * τ < 5) :\n    parabolicTailKernelConstant β τ < ∞ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/AdamsM4.lean",
+          "declaration": "parabolicRieszPotential_adams_finite",
+          "excerpt": "    (hCtop : parabolicHedbergNearConstant β +\n      parabolicTailKernelConstant β τ ≠ ∞) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Adams.lean",
+          "declaration": "parabolicRieszPotential_scale_le",
+          "excerpt": "      parabolicTailKernelConstant β q *\n        ENNReal.ofReal R ^ (β - 5 / q) * morreyNorm 1 q f := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 705797,
+    "cached_input_tokens": 640384,
+    "output_tokens": 24125,
+    "reasoning_output_tokens": 20694
+  },
+  "cost_usd": 0.022418612,
+  "generation_ids": [
+    "gen-1792627152-sP32IyGLM2OgK4OwYc5U",
+    "gen-1792627162-N3I2QKt8LT9AlYx6LIkX",
+    "gen-1792627172-71L13Q0ZtEOgHiIN6u5b",
+    "gen-1792627180-SKqUANcPycVb1ZJuQmBx",
+    "gen-1792627192-BhC4G8150vpDLIzZR2Aj",
+    "gen-1792627200-QptLzCs28KKvdOZb1Pv0",
+    "gen-1792627224-fd79KUXVqKfPrhrzkIAw",
+    "gen-1792627238-dIXX9f9nnlOGsHIoy2Qu",
+    "gen-1792627248-Ah6SB4yx7WJpUu1Qh2hq",
+    "gen-1792627284-Th9jjeeNmGg7SI6peLK0",
+    "gen-1792627308-lRBtPvqcZjpSaFlgBGxq",
+    "gen-1792627346-JBktcCpQLLnW4KHlB7h4",
+    "gen-1792627350-1GEBKSX1iwiprprYjYhL",
+    "gen-1792627366-m0f5Wf0BhUXaP5iOFq8v"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 14,
+  "duration_ms": 290222,
+  "judged": "2026-10-22T00:03:55+00:00",
+  "unit": "file",
+  "rubric": "vacuity-and-misstatement",
+  "source_sha256": "d887bac2a8cb1a61b5f7a93914422e13484394d7568dcb01574bd1e1ce9e6d64"
+}

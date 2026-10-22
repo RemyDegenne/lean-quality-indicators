@@ -1,0 +1,179 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 794 lines of the target file and inspected the defining modules and downstream uses in Walsh.lean, ThreeBitTest.lean, CayleySpectral.lean, GameDecoder.lean, Occurrences.lean, Game.lean, HonestTest.lean, and TemplateExpressions.lean. I checked every local @[simp] annotation, searched for uses of the relevant folding, coefficient, and equation lemmas, and considered rewrite termination and canonical forms. I did not run Lean, so proposed replacement proofs and attribute changes are not machine-verified.",
+  "findings": [
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.cubeFlip",
+      "start_line": 15,
+      "end_line": 20,
+      "excerpt": "def cubeFlip (f : Cube I) : Cube I := fun i => !(f i)\n\nomit [Fintype I] [DecidableEq I] in\n@[simp] theorem cubeFlip_cubeFlip (f : Cube I) : cubeFlip (cubeFlip f) = f := by\n  funext i\n  simp [cubeFlip]",
+      "problem": "The simp set contains only the function-level involution `cubeFlip_cubeFlip`. There is no pointwise application rule, so `simp` cannot reduce the normal form `cubeFlip f i` to `!f i`; instead several proofs explicitly unfold `cubeFlip` via `simp [representative, cubeFlip, hf]` or `simp [foldedAnswer, ..., cubeFlip, ...]`. The rewrite is unconditional and terminates, and it is orthogonal to the existing involution rule because it applies to an application rather than to `cubeFlip (cubeFlip f)`.",
+      "proposed_change": "Add a pointwise simp lemma after the definition, for example:\n`omit [Fintype I] [DecidableEq I] in`\n`@[simp] theorem cubeFlip_apply (f : Cube I) (i : I) : cubeFlip f i = !f i := rfl`\nKeep `cubeFlip_cubeFlip` as the function-level rule.",
+      "benefit": "This gives `cubeFlip` a canonical pointwise normal form, closes pointwise `cubeFlip` goals by `simp`, and removes repeated explicit definition unfolding from this file and downstream preprocessing proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.representative_at",
+          "excerpt": "cases hf : f i₀ <;> simp [representative, cubeFlip, hf]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.foldedAnswer_dictator",
+          "excerpt": "simp [foldedAnswer, canonicalInput, representative, cubeFlip, hf, hi]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/Estimates/TemplateExpressions.lean",
+          "declaration": "MinUncut.SourceTemplate.map_representative",
+          "excerpt": "cases f p x (i p x) <;> simp [cubeFlip]"
+        }
+      ]
+    },
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.foldedAnswer_flip",
+      "start_line": 81,
+      "end_line": 82,
+      "excerpt": "theorem foldedAnswer_flip (i₀ : I) (table : HalfCube i₀ → Bool) (f : Cube I) :\n    foldedAnswer i₀ table (cubeFlip f) = !(foldedAnswer i₀ table f) := by",
+      "problem": "`foldedAnswer_flip` is the canonical elimination rule for a flip inside a folded answer, but it is not tagged `[simp]`. As a result `conditionedFoldedAnswer_flip` and `equation_satisfied_flip` must name it explicitly, and ordinary `simp` cannot normalize `foldedAnswer i₀ table (cubeFlip f)` to `!(foldedAnswer i₀ table f)`. This is directly analogous to the already-tagged `bitSign_not` rule. The rewrite is unconditional and terminates because the right-hand side has no outer `cubeFlip`.",
+      "proposed_change": "Tag `foldedAnswer_flip` with `@[simp]` (and, if desired for consistency, tag its conditioned counterpart `conditionedFoldedAnswer_flip`). Keep the existing orientation.",
+      "benefit": "This lets both this file and downstream users simplify folded answers of flipped cubes without explicitly naming `foldedAnswer_flip`, while preserving the obvious normal form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.bitSign_not",
+          "excerpt": "@[simp] theorem bitSign_not (b : Bool) : bitSign (!b) = -bitSign b := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.EmptyContext.equation_satisfied_flip",
+          "excerpt": "rw [equation_satisfied, foldedAnswer_flip, equation_satisfied]"
+        }
+      ]
+    },
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.satisfied_mapEquation",
+      "start_line": 674,
+      "end_line": 676,
+      "excerpt": "theorem satisfied_mapEquation {Name Name' : Type} (rename : Name → Name')\n    (e : Equation Name) (assignment : Name' → Bool) :\n    satisfied (mapEquation rename e) assignment = satisfied e (assignment ∘ rename) := rfl",
+      "problem": "`satisfied_mapEquation` is a canonical, terminating rewrite that removes `mapEquation` from a satisfaction expression, but it is not in the simp set. The target must use `simp only [satisfied_mapEquation]`, and downstream files repeatedly use it explicitly with `rw`. Desired normal form is `satisfied e (assignment ∘ rename)`, which contains no `mapEquation`; this is a standard eliminator rule rather than an expansion.",
+      "proposed_change": "Tag `satisfied_mapEquation` with `@[simp]`. Then ordinary `simp` can discharge mapped satisfaction goals, and explicit `simp only [satisfied_mapEquation]` calls can be shortened.",
+      "benefit": "This improves the public simp interface for all mapped equations and reduces brittle dependency on naming the definitional elimination lemma in every downstream proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.EmptyContext.mapped_equationAcceptance_eq_half",
+          "excerpt": "simp only [satisfied_mapEquation]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Occurrences.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.SourceOccurrences.conditionedOccurrence_satisfied",
+          "excerpt": "rw [conditionedOccurrence, satisfied_mapEquation]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Game.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.SourceGame.mapped_conditioned_equation_honest_satisfied",
+          "excerpt": "rw [satisfied_mapEquation, hlocal]"
+        }
+      ]
+    },
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.EmptyContext.foldedMean_eq_zero",
+      "start_line": 754,
+      "end_line": 756,
+      "excerpt": "theorem foldedMean_eq_zero (i₀ : I) (table : HalfCube i₀ → Bool) :\n    (𝔼 f : Cube I, bitSign (foldedAnswer i₀ table f)) = 0 := by\n  simpa [coefficient, walsh, bitSign] using foldedAnswer_zero_coefficient i₀ table",
+      "problem": "The proof has to unfold `coefficient`, `walsh`, and `bitSign` to commute a zero-frequency coefficient with the mean. The same manual expansion is repeated downstream in `GameDecoder.lean`. The canonical normal form `coefficient f (fun _ => false) = 𝔼 x, f x` is not available as a simp lemma here, even though an analogous `[simp] coefficient_zeroFrequency` exists in the project's CayleySpectral module.",
+      "proposed_change": "Add a reusable simp lemma, ideally in the shared Walsh module or locally before the coefficient lemmas:\n`@[simp] theorem coefficient_false (f : Cube I → ℝ) :`\n`    coefficient f (fun _ => false) = 𝔼 x, f x := by`\n`  simp [coefficient, walsh, bitSign]`\nThen `foldedMean_eq_zero` can be proved by rewriting with this lemma instead of reopening all three definitions.",
+      "benefit": "This gives the zero frequency a canonical coefficient-to-mean simplification and avoids duplicating definitional unfolding in this file and downstream consumers.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/CayleySpectral.lean",
+          "declaration": "MinUncutGames.Foundations.PCP.CayleySpectral.zeroFrequency",
+          "excerpt": "def zeroFrequency : Cube I := fun _ => false"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/CayleySpectral.lean",
+          "declaration": "MinUncutGames.Foundations.PCP.CayleySpectral.coefficient_zeroFrequency",
+          "excerpt": "@[simp] theorem coefficient_zeroFrequency (f : Cube I → ℝ) :\n    coefficient f zeroFrequency = 𝔼 x, f x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/Encoding/GameDecoder.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.empty_conditioned_bias",
+          "excerpt": "have hz := foldedAnswer_zero_coefficient i₀ tableA\n  simpa [coefficient, walsh, bitSign] using hz"
+        }
+      ]
+    },
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.EmptyContext.equation_second_eq_third",
+      "start_line": 693,
+      "end_line": 694,
+      "excerpt": "@[simp] theorem equation_second_eq_third (i₀ : I) (f : Cube I) :\n    (equation i₀ f).second = (equation i₀ f).third := rfl",
+      "problem": "This `[simp]` rule is not a canonical normal form: both fields are definitionally `Sum.inr ()` by the definition of `EmptyContext.equation`, so rewriting `.second` to `.third` neither unfolds `equation` nor reaches the constructor. It is a non-progress rewrite in the global simp set and hides the `.second` projection. The nearby proof passes `rfl` directly to `satisfied_repeated_right`; no use of this declaration is present in the MinUncut sources inspected.",
+      "proposed_change": "Remove `@[simp]` from `equation_second_eq_third` and keep it as an explicit equality lemma for `satisfied_repeated_right`. If a simp normal form for these fields is needed, add canonical field lemmas such as `(equation i₀ f).second = .inr ()` and `(equation i₀ f).third = .inr ()`, rather than swapping the two projections.",
+      "benefit": "This avoids a no-progress rewrite in generic simplification and leaves `simp` free to reach the actual constructor form if canonical field lemmas are added.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.EmptyContext.equation",
+          "excerpt": "second := .inr ()\n  third := .inr ()"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.EmptyContext.equation_satisfied",
+          "excerpt": "rw [FoldedEquation.satisfied_repeated_right (equation i₀ f) assignment rfl]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 2426449,
+    "cached_input_tokens": 2305664,
+    "output_tokens": 33471,
+    "reasoning_output_tokens": 25951
+  },
+  "cost_usd": 0.044843612,
+  "generation_ids": [
+    "gen-1792627382-VSKdbINDRDFl3bszUGZT",
+    "gen-1792627384-8FvYsdFLI4ojGRb9vgT7",
+    "gen-1792627391-IRGkISxaQXlEpGSjxReP",
+    "gen-1792627398-SMcPnf9u44cbuBpqwXSz",
+    "gen-1792627410-pjw5z4EVTzMpztBjLzVs",
+    "gen-1792627429-jouf3UgGb85d3Oa9MoBO",
+    "gen-1792627432-YTVhV9VkaCOcx61dvxuU",
+    "gen-1792627438-Ma4FQ1zlgedg4KOL3wwd",
+    "gen-1792627448-l8b3mhn8uZlN66kpVX0v",
+    "gen-1792627459-Cc9wnWZhJDI1M5Us2Abn",
+    "gen-1792627471-PJ8iNudAkXO3NdMyQsKc",
+    "gen-1792627475-rGGazIEQT6kPYg6pxvnm",
+    "gen-1792627483-XNWQMeI1nwNBcyIW0Kmk",
+    "gen-1792627490-ljLsL4FEnDeN7qXESTfy",
+    "gen-1792627499-7eCYErD2AaZ6HbDgntHJ",
+    "gen-1792627508-nP7HCerXlKcAfpFpP0WX",
+    "gen-1792627536-Mgqnf9NBV7HlXAeicktA",
+    "gen-1792627570-QN4avVSQvEfhdxIOUhO8",
+    "gen-1792627583-nGmO6DPPUB00lMYVQgMm",
+    "gen-1792627591-pcWWbAUdwXEoks8dyUpf",
+    "gen-1792627595-v0dFkwl1oW2Xxu2vtO61",
+    "gen-1792627598-ViBjdZBQLjF5VrxhfbCw",
+    "gen-1792627613-RUCjIOhCHxikS196sT5N",
+    "gen-1792627621-cdLQ7H8Jq5lP3B6KM0MM",
+    "gen-1792627662-yjSP4Z7iFxd9yMaSFFX5"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 25,
+  "duration_ms": 309707,
+  "judged": "2026-10-22T00:08:08+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034"
+}

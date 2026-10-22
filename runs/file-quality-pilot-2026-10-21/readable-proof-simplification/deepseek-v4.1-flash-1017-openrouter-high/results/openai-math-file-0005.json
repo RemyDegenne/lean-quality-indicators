@@ -1,0 +1,131 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file (1–794) with Read, covering all four namespaces (folded-answer/Walsh layer, CloneGap counting layer, FoldedEquation layer, EmptyContext layer). Checked supporting definitions in OAI/Computability/MinUncut/PCP/Walsh.lean (Cube, bitSign, cubeXor, walsh, coefficient), OAI/Computability/MinUncut/Encoding/ThreeBitTest.lean (noiseWeight, thirdQuery, testAcceptance), core Bool xor/beq lemmas in Init/Data/Bool.lean, List.length_eq_countP_add_countP in Init/Data/List/Count.lean, and mathlib's Function.Involutive.bijective and Function.Bijective.sum_comp. Several proofs are already minimal (equation_indicator, correction_eq, count_union_le, clone_gap) and were not flagged. Replacements below have not been compiled; implicits like the Boolean previous per datatype of Function.Bijective.sum_comp and relying on definitional unfolding of cubeFlip/cubeToggle may need minor adjustment.",
+  "findings": [
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.foldedAnswer_flip",
+      "start_line": 81,
+      "end_line": 87,
+      "excerpt": "theorem foldedAnswer_flip (i₀ : I) (table : HalfCube i₀ → Bool) (f : Cube I) :\n    foldedAnswer i₀ table (cubeFlip f) = !(foldedAnswer i₀ table f) := by\n  unfold foldedAnswer\n  rw [canonicalInput_flip]\n  change (table (canonicalInput i₀ f) ^^ !(f i₀)) =\n    !(table (canonicalInput i₀ f) ^^ f i₀)\n  cases table (canonicalInput i₀ f) <;> cases f i₀ <;> rfl",
+      "problem": "After the genuinely informative step (`rw [canonicalInput_flip]`, folding makes the table agree on the two halves of the cube), the rest of the proof is the Boolean identity `x ^^ !y = !(x ^^ y)`, re-derived via a `change` plus a four-way `cases ... <;> cases ... <;> rfl`. This obscures what the flip does to the answer bit and duplicates a core lemma that states the identity verbatim.",
+      "proposed_change": "Drop the `change` and use the named lemma, e.g.\n\n```\n  unfold foldedAnswer\n  rw [canonicalInput_flip]\n  exact Bool.xor_not _ _\n```\n\n(if `cubeFlip f i₀` does not reduce definitionally, `simpa [foldedAnswer, cubeFlip] using Bool.xor_not (table (canonicalInput i₀ f)) (f i₀)`).",
+      "benefit": "The key idea appears explicitly as two steps: 'both halves share a table value' and 'xor with a toggled bit negates'. The reader no longer has to reverse-engineer a truth table to see why folding produces a negated answer. Core's `Bool.xor_not` is a two-line `decide` lemma, so no opaque automation is introduced.",
+      "evidence": [
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.34.1/src/lean/Init/Data/Bool.lean",
+          "declaration": "Bool.xor_not",
+          "excerpt": "theorem xor_not : ∀ (x y : Bool), (x ^^ !y) = !(x ^^ y) := by decide"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Foundations.Hastad.cubeFlip",
+          "excerpt": "def cubeFlip (f : Cube I) : Cube I := fun i => !(f i)"
+        }
+      ]
+    },
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.sum_cubeFlip",
+      "start_line": 25,
+      "end_line": 35,
+      "excerpt": "theorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f := by\n  refine Finset.sum_bij (fun f _ => cubeFlip f) ?_ ?_ ?_ ?_\n  · intro f _\n    exact Finset.mem_univ _\n  · intro f _ g _ h\n    have h' := congrArg cubeFlip h\n    simpa only [cubeFlip_cubeFlip] using h'\n  · intro g _\n    exact ⟨cubeFlip g, Finset.mem_univ _, cubeFlip_cubeFlip g⟩\n  · intro f _\n    rfl",
+      "problem": "The proof content is just 'an involution is a bijection': injectivity by applying `cubeFlip` to an equality, surjectivity by flipping the preimage back. Mathlib names exactly this fact (`Function.Involutive.bijective`), and the involution hypothesis is already the simp lemma `cubeFlip_cubeFlip`. The near-identical `sum_cubeToggle` (lines 126–137, via `cubeToggle_twice`) repeats the same four-goal bookkeeping, so the pattern is duplicated as well.",
+      "proposed_change": "Route the statement through the bijection library, e.g.\n\n```\ntheorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f :=\n  (Function.Involutive.bijective cubeFlip_cubeFlip).sum_comp F\n```\n\nand analogously `... (Function.Involutive.bijective (cubeToggle_twice i)).sum_comp F` for `sum_cubeToggle` (after wrapping in the new function). Downstream users (`coefficient_zero_of_odd`, `conditioned_coefficient_zero_invalid`) only need the equality.",
+      "benefit": "The lemma now says 'permuting the cube by an involution leaves the sum unchanged', with `cubeFlip_cubeFlip`/`cubeToggle_twice` identified as the mathematical hypothesis. Readers get one line per lemma instead of two almost identical block proofs to diff.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Logic/Function/Basic.lean",
+          "declaration": "Function.Involutive.bijective",
+          "excerpt": "protected theorem bijective : Bijective f := ⟨h.injective, h.surjective⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean",
+          "declaration": "Function.Bijective.prod_comp (to_additive sum_comp)",
+          "excerpt": "lemma _root_.Function.Bijective.prod_comp {e : ι → κ} (he : e.Bijective) (g : κ → M) :"
+        }
+      ]
+    },
+    {
+      "declaration": "MinUncutGames.Reduction.CloneGap.majority_exists",
+      "start_line": 315,
+      "end_line": 327,
+      "excerpt": "theorem majority_exists (g : Index → Bool) :\n    ∃ b : Bool, 24 ≤ indices.countP (fun i => g i == b) := by\n  have h := List.length_eq_countP_add_countP g (l := indices)\n  have hn : (fun i => decide (¬g i = true)) = (fun i => !g i) := by\n    funext i\n    cases g i <;> rfl\n  rw [hn] at h\n  rw [length_indices] at h\n  by_cases ht : 24 ≤ indices.countP g\n  · exact ⟨true, by simpa using ht⟩\n  · refine ⟨false, ?_⟩\n    have : 24 ≤ indices.countP (fun i => !g i) := by omega\n    simpa using this",
+      "problem": "The 48-index pigeonhole argument (one side of the split has at least 24) is written out twice: here and, to the character, in `majorityBit_count` (lines 403–413), including the same auxiliary `have hn : (fun i => decide (¬g i = true)) = (fun i => !g i) := by funext i; cases g i <;> rfl`. The two lemmas also do not show how they relate: the stronger existence statement and the canonical `majorityBit` are disconnected.",
+      "proposed_change": "Make the existence statement a corollary of the canonical majority lemma (moving `majority_exists` after `majorityBit_count`, or vice versa if the declaration order is fixed by other files):\n\n```\ntheorem majority_exists (g : Index → Bool) :\n    ∃ b : Bool, 24 ≤ indices.countP (fun i => g i == b) :=\n  ⟨majorityBit g, majorityBit_count g⟩\n```",
+      "benefit": "Only one complement-counting step remains, and `clone_gap`'s use of `majorityBit` is visibly connected to the pigeonhole statement. Readers see `List.length_eq_countP_add_countP` applied once with a clear role.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "MinUncutGames.Reduction.CloneGap.majorityBit_count",
+          "excerpt": "  have h := List.length_eq_countP_add_countP g (l := indices)\n  have hn : (fun i => decide (¬g i = true)) = (fun i => !g i) := by\n    funext i\n    cases g i <;> rfl"
+        },
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.34.1/src/lean/Init/Data/List/Count.lean",
+          "declaration": "List.length_eq_countP_add_countP",
+          "excerpt": "theorem length_eq_countP_add_countP (p : α → Bool) {l : List α} : length l = countP p l + countP (fun a => ¬p a) l :="
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 2314338,
+    "cached_input_tokens": 2157440,
+    "output_tokens": 34342,
+    "reasoning_output_tokens": 25458
+  },
+  "cost_usd": 0.04698236,
+  "generation_ids": [
+    "gen-1792627588-U8ThBYUQKDk4fsbxSX0q",
+    "gen-1792627597-9yTdz4HlQlR03otHovhu",
+    "gen-1792627600-ZUj35hzfkGToteecseYM",
+    "gen-1792627623-uTyzXHhiimDUsD5EjT25",
+    "gen-1792627639-eDt6qIb63mcC6gx7jikP",
+    "gen-1792627649-YUjTKrBn15FD6T6J5hin",
+    "gen-1792627667-UAv8qGolpE6SGSzLfF3k",
+    "gen-1792627672-2ZTNKDCY6DyBTkvOZJj2",
+    "gen-1792627676-HRHi3To76z6YabcKERrG",
+    "gen-1792627679-wLAqaq3MWBh2iznRuhPC",
+    "gen-1792627683-a2OVuvGKo8wseFMWuLwg",
+    "gen-1792627694-kIexAdL1wtwRoDCQhSYY",
+    "gen-1792627715-3ykdkx2725u2QRQKqfIQ",
+    "gen-1792627729-XNTjHnFid7QVvGJkjg9l",
+    "gen-1792627764-a7Cf3FVFu1cziYLrbXdz",
+    "gen-1792627770-5sogo9QJTqTEvWDDqLUc",
+    "gen-1792627778-2YPCbsP43O4CWm1VOTea",
+    "gen-1792627791-wtCdXvNGBKK52ET4qzld",
+    "gen-1792627857-H26aV7pvKTPRLqAZDyby",
+    "gen-1792627879-0ztQaCHtSSLDRCAfXbF1",
+    "gen-1792627907-WDR56j9Ld3u6sztKmNOy",
+    "gen-1792627911-fPwmvFzQMsHLdNXhFJmX",
+    "gen-1792627927-U11xWMd2k6emOkCO5ePC",
+    "gen-1792627948-JKEIrUHGTK5Tk2icXdxz",
+    "gen-1792627954-gQ1pwYqwaI992CPUo9Jn",
+    "gen-1792628063-JfgK7IpJdhlJJIDO0kGc",
+    "gen-1792628125-sAsXsReUxbt3ERVicoaA",
+    "gen-1792628163-DGynWdAgCPhg80Qn3AQF",
+    "gen-1792628177-kSHMAJCQSlxfcHr1hrWk",
+    "gen-1792628187-dIQw7ueVHfxmYf2z1gKm",
+    "gen-1792628212-fVsgJz8vmpE2GGL2hfpA",
+    "gen-1792628220-kZU0Tt4s21vpCqP01mkK",
+    "gen-1792628246-6jEM6ZNoVZ0QnLMafxA3",
+    "gen-1792628304-lnRTueh6nL2o21NOnOa5"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 34,
+  "duration_ms": 746580,
+  "judged": "2026-10-22T00:18:37+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034"
+}

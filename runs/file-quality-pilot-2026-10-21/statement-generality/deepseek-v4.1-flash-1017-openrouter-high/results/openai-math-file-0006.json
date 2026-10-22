@@ -1,0 +1,140 @@
+{
+  "id": "openai-math-file-0006",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the full 73-line target and the supporting declarations in HomogeneousLogJetBound.lean (the `HasLogJetBound` structure, `const`, `add`, `mul`, `smul`). Checked Mathlib instances/lemmas cited in the evidence (Prod.normedRing in Mathlib/Analysis/Normed/Ring/Basic.lean, `ContinuousLinearMap.toNormedRing`, and `starL'` in Mathlib/Topology/Algebra/Module/Star.lean). Also inspected consumers of the target's operations in HomogeneousLogCoefficients.lean and SpectralTailPowerBounds.lean. `map`, `pair`, and `twoColumns` were judged appropriately specialized (real-linear maps; the ℂ×ℂ matrix encoding tied to `spectralTwoColumns`, which is itself ℂ-specific). The findings are proposals only; I could not compile anything, and for the `conj` generalization I could not verify that `starL'` is transitively imported by the target's current imports (an extra import may be needed).",
+  "findings": [
+    {
+      "declaration": "HasLogJetBound.const_mul",
+      "start_line": 49,
+      "end_line": 51,
+      "excerpt": "theorem const_mul {g : ℝ → ℂ} (hg : HasLogJetBound σ g) (c : ℂ) :\n    HasLogJetBound σ (fun t => c * g t) := by\n  simpa only [zero_add] using (HasLogJetBound.const c).mul hg",
+      "problem": "`const_mul` is stated only for ℂ-valued functions and ℂ scalars, although its one-line proof goes through the general `HasLogJetBound.mul` and `HasLogJetBound.const`, which are stated for any `[NormedRing R] [NormedAlgebra ℝ R]`. Nothing in the proof uses commutativity or the special structure of ℂ (the constant is on the left, so even noncommutativity is harmless).",
+      "proposed_change": "Replace the statement by\n```\ntheorem const_mul {R : Type*} [NormedRing R] [NormedAlgebra ℝ R]\n    {g : ℝ → R} (hg : HasLogJetBound σ g) (c : R) :\n    HasLogJetBound σ (fun t => c * g t) := by\n  simpa only [zero_add] using (HasLogJetBound.const c).mul hg\n```\nThe same `simpa only [zero_add]` proof applies: `HasLogJetBound.const c` needs `NormedAddCommGroup R` and `NormedSpace ℝ R`, which are provided by `NormedRing`/`NormedAlgebra ℝ R`, and `mul` is exactly the general `NormedRing` version already in HomogeneousLogJetBound.lean. (The ℂ case is recovered by instance resolution.) Degenerate case `m = 0` is unaffected since multiplication by zero is covered by the general `mul`.",
+      "benefit": "Users can multiply jet bounds of operator-valued functions (e.g. `End = (ℂ × ℂ) →L[ℂ] (ℂ × ℂ)`, which has the `NormedRing`/`NormedAlgebra ℝ` instances) by a fixed operator without detouring through `mul`/`const` and rewriting the `zero_add` bookkeeping by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousLogJetBound.lean",
+          "declaration": "HasLogJetBound.mul",
+          "excerpt": "variable {R : Type*} [NormedRing R] [NormedAlgebra ℝ R]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousLogJetBound.lean",
+          "declaration": "HasLogJetBound.const",
+          "excerpt": "theorem const (c : A) : HasLogJetBound 0 (fun _ : ℝ => c) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Normed/Operator/NormedSpace.lean",
+          "declaration": "ContinuousLinearMap.toNormedRing",
+          "excerpt": "instance toNormedRing : NormedRing (E →L[𝕜] E) where"
+        }
+      ]
+    },
+    {
+      "declaration": "HasLogJetBound.pow",
+      "start_line": 53,
+      "end_line": 59,
+      "excerpt": "theorem pow {g : ℝ → ℂ} (hg : HasLogJetBound σ g) (m : ℕ) :\n    HasLogJetBound ((m : ℝ) * σ) (fun t => (g t) ^ m) := by\n  induction m with\n  | zero => simpa only [Nat.cast_zero, zero_mul, pow_zero] using HasLogJetBound.const (1 : ℂ)",
+      "problem": "`pow` is specialized to ℂ-valued functions even though the induction only uses `HasLogJetBound.const (1 : _)` and the general `HasLogJetBound.mul` for a `[NormedRing R] [NormedAlgebra ℝ R]`. Operator powers (as in `homogeneousEulerLeading D n` using `(-D) ^ n`) cannot use this lemma.",
+      "proposed_change": "State it for a general normed algebra over ℝ:\n```\ntheorem pow {R : Type*} [NormedRing R] [NormedAlgebra ℝ R]\n    {g : ℝ → R} (hg : HasLogJetBound σ g) (m : ℕ) :\n    HasLogJetBound ((m : ℝ) * σ) (fun t => (g t) ^ m) := by\n  induction m with\n  | zero => simpa only [Nat.cast_zero, zero_mul, pow_zero] using HasLogJetBound.const (1 : R)\n  | succ m ih =>\n      have he : ((m + 1 : ℕ) : ℝ) * σ = (m : ℝ) * σ + σ := by push_cast; ring\n      simpa only [he, pow_succ] using ih.mul hg\n```\nThis is the existing proof with the two ℂ-specific terms replaced; `NormedRing`/`NormedAlgebra ℝ R` supply the required `NormedAddCommGroup`/`NormedSpace ℝ` for `mul` and `const`. The case `m = 0` (`pow_zero`) becomes the constant `1 : R` and is handled by `HasLogJetBound.const`.",
+      "benefit": "Makes the finite-power step directly reusable for `End`-valued coefficients and other ℝ-normed algebras, avoiding re-deriving the same induction locally (the file already builds polynomial expressions such as `(-D) ^ n` for `End`).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousLogJetBound.lean",
+          "declaration": "HasLogJetBound.mul",
+          "excerpt": "theorem mul (hf : HasLogJetBound σ f) (hg : HasLogJetBound τ g) :\n    HasLogJetBound (σ + τ) (fun t => f t * g t) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousLogCoefficients.lean",
+          "declaration": "HasLogJetBound.spectralDiagonal",
+          "excerpt": "have hp := ((hq.pow m).mul (hq.conj.pow m)).const_mul (m + 1)"
+        }
+      ]
+    },
+    {
+      "declaration": "HasLogJetBound.conj",
+      "start_line": 44,
+      "end_line": 47,
+      "excerpt": "theorem conj {g : ℝ → ℂ} (hg : HasLogJetBound σ g) :\n    HasLogJetBound σ (fun t => star (g t)) := by\n  simpa only [ContinuousLinearEquiv.coe_coe, Complex.conjCLE_apply, starRingEnd_apply] using\n    hg.map Complex.conjCLE.toContinuousLinearMap",
+      "problem": "`conj` is stated only for ℂ-valued functions, yet its proof is an instance of the general fact that `star` is a continuous real-linear equivalence on any star-normed real module (`starL' ℝ`). The only ℂ-specific ingredient used here is a rewrite with `Complex.conjCLE_apply`; the mathematical step is fully general.",
+      "proposed_change": "Generalize to\n```\ntheorem conj {A : Type*} [NormedAddCommGroup A] [NormedSpace ℝ A]\n    [StarAddMonoid A] [StarModule ℝ A] [ContinuousStar A]\n    {g : ℝ → A} (hg : HasLogJetBound σ g) :\n    HasLogJetBound σ (fun t => star (g t)) :=\n  hg.map (starL' ℝ).toContinuousLinearMap\n```\n`starL' ℝ` is `A ≃L[ℝ] A` and its value is `star`, so this is `map` applied to a continuous linear map; `TrivialStar ℝ` is the real star-triviality instance needed by `starL'`. The ℂ case follows by specialising `A = ℂ`. Because I could not compile, confirm that `Mathlib.Topology.Algebra.Module.Star` (where `starL'` lives) is imported by the target's current imports; if not, add that import. The degenerate case `g ≡ 0` and `σ` arbitrary is unaffected since `star 0 = 0`.",
+      "benefit": "Exposes the conjugation closure for any star-normed real module (e.g. real or complex Hilbert spaces, matrix algebras) rather than only ℂ, and makes the connection to Mathlib's bundled `starL'` explicit instead of a bespoke `Complex.conjCLE` shenanigan.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/Algebra/Module/Star.lean",
+          "declaration": "starL'",
+          "excerpt": "def starL' : A ≃L[R] A :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Topology/Algebra/Module/Star.lean",
+          "declaration": "starL'",
+          "excerpt": "variable [TrivialStar R]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousLogJetOperations.lean",
+          "declaration": "HasLogJetBound.map",
+          "excerpt": "theorem map (hf : HasLogJetBound σ f) (L : A →L[ℝ] B) :\n    HasLogJetBound σ (fun t => L (f t)) := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1653203,
+    "cached_input_tokens": 1533184,
+    "output_tokens": 37120,
+    "reasoning_output_tokens": 30667
+  },
+  "cost_usd": 0.040426992,
+  "generation_ids": [
+    "gen-1792628157-kqCLG63okOor3jzMoCqr",
+    "gen-1792628170-R7pkmdrBIQzuQoaVTFnQ",
+    "gen-1792628175-A6WM88fUIoDEClWVCOgs",
+    "gen-1792628185-FzEDXLK2GNUeTDIZcYSj",
+    "gen-1792628191-IIPBpqwnFmcVP42OBuiH",
+    "gen-1792628206-PYXkQGmtqstycF40kZZh",
+    "gen-1792628228-O4g0zgIyTJtLrhaNwlNF",
+    "gen-1792628234-y0B9Mfa6XuROM4HyUipk",
+    "gen-1792628240-c8cdx9rtKM24XEMffNNt",
+    "gen-1792628242-JrM3rM90Ec7ye9Zp1rjJ",
+    "gen-1792628252-ytqj10WfI4o1eXi1NXri",
+    "gen-1792628256-0XsrgJwbWyCDau2CSPbc",
+    "gen-1792628294-pEx3mAf5se140hvgQbC1",
+    "gen-1792628302-9FaXbZZsYgk3RCWTM545",
+    "gen-1792628308-dy6rP3g9vn0Es95BogV6",
+    "gen-1792628310-fQSxG54k3DAAmE5DZAvi",
+    "gen-1792628334-9YTH4tgYWLW0zydcrtVd",
+    "gen-1792628350-Oi7lpLBc7enz7HYbZ0xf",
+    "gen-1792628364-b6AqbXh5h8TWeqEGHZ7J",
+    "gen-1792628380-Jgo5Py3VvEQOI1dbALR4",
+    "gen-1792628391-ORGVlCHKGIzBwAU8iSpg",
+    "gen-1792628401-mJUg5bvZinjvqLIgO2e6",
+    "gen-1792628415-u9VFvCO1Tfxq1UsSExCb",
+    "gen-1792628447-AQjlaSBpLSdRvZIm3yat",
+    "gen-1792628469-Y09yfCPCPYbFlewv64IR",
+    "gen-1792628489-dr9uoMGW0NeMzMrprxb6",
+    "gen-1792628499-3N53a3gUANQt3x3nmuRy",
+    "gen-1792628525-F0S6LTaxDUAjry055LTs",
+    "gen-1792628529-2f548zVS2qAA0M2mA2q1",
+    "gen-1792628535-3rT7HzIzfVEf8yMXTJRi",
+    "gen-1792628559-NhEWJ5vAb2G3dZiH8iLf",
+    "gen-1792628565-ncAnV30uvSKHm594EAVA",
+    "gen-1792628638-ND712ZoAzHRwscmnlDFb"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 33,
+  "duration_ms": 524067,
+  "judged": "2026-10-22T00:24:22+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "3c8c595a98c335d3c7cd82721e3de0270278d462e0a5dd83beee99867d14f6b5"
+}

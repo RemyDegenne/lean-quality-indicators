@@ -1,0 +1,117 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 794 lines of the target file (in three passes) and inspected the supporting definitions in OAI/Computability/MinUncut/PCP/Walsh.lean (coefficient, walsh, bitSign) and the declaration names in Encoding/ThreeBitTest.lean that the file imports. I grepped the repository for uses of majority_exists, majorityBit, sum_cubeFlip, sum_cubeToggle, coefficient_zero_of_odd, pairedEquations_acceptedCount/failureCount, equationAcceptance_eq_half and equationBias_eq_zero. In Mathlib I checked the additive `Function.Bijective.sum_comp` (to_additive of prod_comp) and `Function.Involutive.bijective` in Algebra/BigOperators/Group/Finset/Defs.lean and Logic/Function/Basic.lean, plus `Finset.sum_involution` (to_additive of prod_involution) in Algebra/BigOperators/Group/Finset/Basic.lean. I did not compile any proposed replacement; the helper-lemma statements and proof sketches are suggestions, not verified builds. I did not attempt to relate the file to sibling files that contain near-identical copies (e.g. MaxCut/PCP/Folding.lean), since duplicated code across files is outside this rubric. The reported findings are the three cases in this file where a non-trivial argument, not merely a two-line Boolean case split, appears twice; I deliberately left out the literally identical two-line proofs of pairedEquations_acceptedCount and pairedEquations_failureCount and the routine case splits in equation_indicator/equationBias_eq_zero as too short for this rubric.",
+  "findings": [
+    {
+      "declaration": "OAI.MinUncutGames.Foundations.Hastad.sum_cubeFlip (and OAI.MinUncutGames.Foundations.Hastad.sum_cubeToggle, lines 126-137)",
+      "start_line": 25,
+      "end_line": 35,
+      "excerpt": "theorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f := by\n  refine Finset.sum_bij (fun f _ => cubeFlip f) ?_ ?_ ?_ ?_\n  · intro f _\n    exact Finset.mem_univ _\n  · intro f _ g _ h\n    have h' := congrArg cubeFlip h\n    simpa only [cubeFlip_cubeFlip] using h'",
+      "problem": "The four-goal `Finset.sum_bij` reindexing proof is repeated verbatim for two involutions of the cube. The first occurrence is lines 25-35 (`sum_cubeFlip`, involution `cubeFlip` with `cubeFlip_cubeFlip`); the second is lines 126-137 (`sum_cubeToggle`, involution `cubeToggle i` with `cubeToggle_twice i`). In both, the membership goal is `Finset.mem_univ`, injectivity is obtained by applying the same involution to the equality and simplifying with the involution lemma, and surjectivity by applying the involution to the target. The mathematics is just 'a finite sum is invariant under precomposition by an involution', which has nothing to do with cubes, so the whole bijection argument is maintained twice.",
+      "proposed_change": "Introduce one generic reindexing lemma and define both sums by it:\n\n  theorem sum_apply_involution {α : Type*} [Fintype α] (e : α → α)\n      (he : Function.Involutive e) (F : α → ℝ) : (∑ a, F (e a)) = ∑ a, F a :=\n    he.bijective.sum_comp F\n\nthen\n\n  theorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f :=\n    sum_apply_involution cubeFlip cubeFlip_cubeFlip F\n\n  theorem sum_cubeToggle (i : I) (F : Cube I → ℝ) :\n      (∑ f, F (cubeToggle i f)) = ∑ f, F f :=\n    sum_apply_involution (cubeToggle i) (cubeToggle_twice i) F\n\n(`Function.Involutive` is definitionally `∀ x, f (f x) = x`, so `cubeFlip_cubeFlip` and `cubeToggle_twice i` are the required hypotheses; depending on elaboration they may need an explicit `show Function.Involutive _ from _`.) The needed Mathlib ingredients are `Function.Involutive.bijective` and the additive `Function.Bijective.sum_comp`. The hypotheses `[Fintype I]` and `[DecidableEq I]` are already in scope at both declarations. This has not been compiled.",
+      "benefit": "The reindexing argument exists once, is stated in its natural generality, and both cube sums become one-line corollaries. Any future involution (e.g. a toggle on a restricted cube) gets the result for free, and a reader no longer has to compare two 10-line tactic scripts to see that they are the same proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "OAI.MinUncutGames.Foundations.Hastad.sum_cubeToggle (lines 126-137)",
+          "excerpt": "theorem sum_cubeToggle (i : I) (F : Cube I → ℝ) :\n    (∑ f, F (cubeToggle i f)) = ∑ f, F f := by\n  refine Finset.sum_bij (fun f _ => cubeToggle i f) ?_ ?_ ?_ ?_\n  · intro f _\n    exact Finset.mem_univ _\n  · intro f _ g _ h\n    have h' := congrArg (cubeToggle i) h\n    simpa only [cubeToggle_twice] using h'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean",
+          "declaration": "Function.Bijective.prod_comp (to_additive variant Function.Bijective.sum_comp)",
+          "excerpt": "lemma _root_.Function.Bijective.prod_comp {e : ι → κ} (he : e.Bijective) (g : κ → M) :\n    ∏ i, g (e i) = ∏ i, g i := prod_bijective _ he _ _ fun _ ↦ rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Logic/Function/Basic.lean",
+          "declaration": "Function.Involutive.bijective",
+          "excerpt": "protected theorem bijective : Bijective f := ⟨h.injective, h.surjective⟩"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.MinUncutGames.Reduction.CloneGap.majority_exists (and OAI.MinUncutGames.Reduction.CloneGap.majorityBit_count, lines 403-413)",
+      "start_line": 315,
+      "end_line": 327,
+      "excerpt": "theorem majority_exists (g : Index → Bool) :\n    ∃ b : Bool, 24 ≤ indices.countP (fun i => g i == b) := by\n  have h := List.length_eq_countP_add_countP g (l := indices)\n  have hn : (fun i => decide (¬g i = true)) = (fun i => !g i) := by\n    funext i\n    cases g i <;> rfl\n  rw [hn] at h\n  rw [length_indices] at h\n  by_cases ht : 24 ≤ indices.countP g\n  · exact ⟨true, by simpa using ht⟩\n  · refine ⟨false, ?_⟩\n    have : 24 ≤ indices.countP (fun i => !g i) := by omega\n    simpa using this",
+      "problem": "The pigeonhole argument 'on 48 indices some Boolean value is taken at least 24 times' is proved twice with the same script. `majority_exists` (lines 315-327) and `majorityBit_count` (lines 403-413) both start from `List.length_eq_countP_add_countP g (l := indices)`, both reprove the same local function equality `(fun i => decide (¬g i = true)) = (fun i => !g i)` by `funext`/`cases`, both rewrite `length_indices`, and both close by splitting on `24 ≤ indices.countP g` and using `omega`. They differ only in that the second proof additionally unfolds `majorityBit` in the final `simp`. Thus two copies of the same counting argument, including the same auxiliary extensionality lemma, are maintained side by side. `majority_exists` has no uses in this file or elsewhere in the repository (grep finds only its own declaration and unrelated same-named copies), whereas the rest of this file uses `majorityBit_count` (via `clone_gap`, lines 452-454).",
+      "proposed_change": "Define `majorityBit` and prove `majorityBit_count` before `majority_exists`, then make the existential a direct corollary of the constructive witness:\n\n  def majorityBit (g : Index → Bool) : Bool := decide (24 ≤ indices.countP g)\n\n  theorem majorityBit_count (g : Index → Bool) :\n      24 ≤ indices.countP (fun i => g i == majorityBit g) := by\n    ... (the existing proof, with the duplicated `hn`/`countP`/`by_cases` block)\n\n  theorem majority_exists (g : Index → Bool) :\n      ∃ b : Bool, 24 ≤ indices.countP (fun i => g i == b) :=\n    ⟨majorityBit g, majorityBit_count g⟩\n\nNo hypotheses change: both declarations currently quantify over the fixed `indices : List Index` and use only `List.length_eq_countP_add_countP`, `length_indices` and `List.countP` lemmas. No downstream proof in the file names `majority_exists`, so the reordering is local. Not compiled here.",
+      "benefit": "The count-splitting/pigeonhole step and its auxiliary `decide (¬ g i = true) = !g i` identity are written once, in the lemma that the file actually uses. The existential statement is recovered for free and can no longer drift out of sync with the constructive majority function.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "OAI.MinUncutGames.Reduction.CloneGap.majorityBit_count (lines 403-413)",
+          "excerpt": "theorem majorityBit_count (g : Index → Bool) :\n    24 ≤ indices.countP (fun i => g i == majorityBit g) := by\n  have h := List.length_eq_countP_add_countP g (l := indices)\n  have hn : (fun i => decide (¬g i = true)) = (fun i => !g i) := by\n    funext i\n    cases g i <;> rfl\n  rw [hn, length_indices] at h\n  by_cases ht : 24 ≤ indices.countP g\n  · simp [majorityBit, ht]\n  · have hn : 24 ≤ indices.countP (fun i => !g i) := by omega\n    simpa [majorityBit, ht] using hn"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "OAI.MinUncutGames.Reduction.CloneGap.clone_gap (lines 452-454)",
+          "excerpt": "  let majority : Name → Bool := fun v => majorityBit (fun i => g (v, i))\n  have hmaj : ∀ v, 24 ≤ indices.countP (fun i => g (v, i) == majority v) :=\n    fun v => majorityBit_count (fun i => g (v, i))"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.MinUncutGames.Foundations.Hastad.coefficient_zero_of_odd (and OAI.MinUncutGames.Foundations.Hastad.conditioned_coefficient_zero_invalid, lines 154-162)",
+      "start_line": 37,
+      "end_line": 44,
+      "excerpt": "theorem coefficient_zero_of_odd (F : Cube I → ℝ)\n    (hF : ∀ f, F (cubeFlip f) = -F f) :\n    coefficient F (fun _ => false) = 0 := by\n  have hs : (∑ f, F f) = 0 := by\n    have h := sum_cubeFlip F\n    simp_rw [hF, Finset.sum_neg_distrib] at h\n    linarith\n  simp [coefficient, walsh, bitSign, Fintype.expect_eq_sum_div_card, hs]",
+      "problem": "The same Fourier/averaging argument is performed twice: a summand that changes sign under a fixed-point-free involution of `Cube I` has total sum zero, and hence the corresponding Fourier coefficient, which is the mean of the summand, vanishes. In `coefficient_zero_of_odd` (lines 37-44) the involution is `cubeFlip` and the summand is `F`, using `sum_cubeFlip` and `hF`; the proof rewrites the involution invariance to `∑ F = -∑ F`, closes the sum with `linarith`, and finishes with `simp [coefficient, walsh, bitSign, Fintype.expect_eq_sum_div_card, hs]`. In `conditioned_coefficient_zero_invalid` (lines 154-162) the involution is `cubeToggle i` and the summand is `fun f => B (restrictQuery valid f) * walsh s f`, where the `B` factor is invariant by `restrictQuery_cubeToggle valid i hi` and the Walsh factor is negated by `walsh_cubeToggle s i _ hs`; the proof again rewrites to a negated sum with `Finset.sum_neg_distrib`, closes it with `linarith`, and finishes with the same `simp [coefficient, Fintype.expect_eq_sum_div_card, hz]`. The hypotheses `hi : valid i = false` and `hs : s i = true` are used only to build the sign-reversal, and that general step is not isolated.",
+      "proposed_change": "Factor the sign-reversal step into one lemma, e.g.\n\n  theorem sum_eq_zero_of_negated {α : Type*} [Fintype α] (e : α → α)\n      (he : Function.Involutive e) (G : α → ℝ) (hG : ∀ a, G (e a) = -G a) :\n      (∑ a, G a) = 0\n\nProof sketch: reindex with `he.bijective.sum_comp G` to get `∑ a, G (e a) = ∑ a, G a`, rewrite the left side using `hG` and `Finset.sum_neg_distrib` to obtain `∑ G = -∑ G`, and finish with `linarith`. Equivalently, apply `Finset.sum_involution` on `Finset.univ`. Then:\n\n  -- coefficient_zero_of_odd\n  have hs : (∑ f, F f) = 0 := sum_eq_zero_of_negated cubeFlip cubeFlip_cubeFlip F hF\n  simp [coefficient, walsh, bitSign, Fintype.expect_eq_sum_div_card, hs]\n\n  -- conditioned_coefficient_zero_invalid\n  let G : Cube I → ℝ := fun f => B (restrictQuery valid f) * walsh s f\n  have hG : ∀ f, G (cubeToggle i f) = -G f := by\n    intro f\n    simp [G, restrictQuery_cubeToggle valid i hi, walsh_cubeToggle s i f hs, mul_neg]\n  have hz : (∑ f, G f) = 0 := sum_eq_zero_of_negated (cubeToggle i) (cubeToggle_twice i) G hG\n  simp [coefficient, Fintype.expect_eq_sum_div_card, hz]\n\n(Using the reindexing lemma suggested in the first finding for the reindexing step, or `Finset.sum_involution` directly.) The hypotheses and imports (`coefficient`, `walsh`, `Finset.sum_neg_distrib`, `Fintype.expect_eq_sum_div_card`) are already available. Not compiled here.",
+      "benefit": "The 'odd function averages to zero, so its Fourier coefficient vanishes' argument, which is the mathematical core of both results, exists in a single reusable lemma instead of being re-derived in each coefficient computation. The specific hypotheses (`hF`, and the pair `hi`/`hs` producing `hG`) become short sign-reversal proofs, making it clear what each theorem actually needs and making the same argument immediately available for other toggles.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "OAI.MinUncutGames.Foundations.Hastad.conditioned_coefficient_zero_invalid (lines 154-162)",
+          "excerpt": "theorem conditioned_coefficient_zero_invalid (valid : I → Bool)\n    (B : Cube {i : I // valid i = true} → ℝ) (s : Cube I) (i : I)\n    (hi : valid i = false) (hs : s i = true) :\n    coefficient (fun f => B (restrictQuery valid f)) s = 0 := by\n  have hsum := sum_cubeToggle i (fun f => B (restrictQuery valid f) * walsh s f)\n  simp_rw [restrictQuery_cubeToggle valid i hi, walsh_cubeToggle s i _ hs,\n    mul_neg, Finset.sum_neg_distrib] at hsum\n  have hz : (∑ f, B (restrictQuery valid f) * walsh s f) = 0 := by linarith\n  simp [coefficient, Fintype.expect_eq_sum_div_card, hz]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Basic.lean",
+          "declaration": "Finset.prod_involution (to_additive variant Finset.sum_involution)",
+          "excerpt": "lemma prod_involution (g : ∀ a ∈ s, ι) (hg₁ : ∀ a ha, f a * f (g a ha) = 1)\n    (hg₃ : ∀ a ha, f a ≠ 1 → g a ha ≠ a)\n    (g_mem : ∀ a ha, g a ha ∈ s) (hg₄ : ∀ a ha, g (g a ha) (g_mem a ha) = a) :\n    ∏ x ∈ s, f x = 1 := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 684513,
+    "cached_input_tokens": 633216,
+    "output_tokens": 26577,
+    "reasoning_output_tokens": 20224
+  },
+  "cost_usd": 0.022457988,
+  "generation_ids": [
+    "gen-1792627510-faUW9MrZc1tc7uwaLgzi",
+    "gen-1792627517-0HYELe9BWWqzRAD0LJZg",
+    "gen-1792627520-q7yjwYDbSAzyyRpCCMmN",
+    "gen-1792627541-8PeZKzWSxK4c3L6D3YOe",
+    "gen-1792627609-qWF5GSGrbU8byQPPP44x",
+    "gen-1792627627-K8xnvvC9waxmWUZDq423",
+    "gen-1792627630-C6RdTwow1ABFUbqwQHY7",
+    "gen-1792627637-ChSQZwABRCHEFiJYwmSI",
+    "gen-1792627655-RzptOJQKKNLAqU7oIM4Q",
+    "gen-1792627671-YiNDFZDopQ94RfzWIFsZ",
+    "gen-1792627701-J9hwaaKWYMoKgwz1UgfE",
+    "gen-1792627704-MyHPtdbnF5Coro86oayT",
+    "gen-1792627708-JKJWjewgRR0GcKhyEZHa",
+    "gen-1792627719-81bsiWCdM9MDE5qiBwfe",
+    "gen-1792627744-NQtxRSJjrWjmlMTBjv9J"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 15,
+  "duration_ms": 288920,
+  "judged": "2026-10-22T00:09:42+00:00",
+  "unit": "file",
+  "rubric": "repeated-proof-machinery",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034"
+}

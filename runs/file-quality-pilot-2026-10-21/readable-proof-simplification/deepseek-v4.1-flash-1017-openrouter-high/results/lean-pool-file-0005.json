@@ -1,0 +1,144 @@
+{
+  "id": "lean-pool-file-0005",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the full 438-line target and the related Kernel.lean and Basic.lean definitions (parabolicRieszKernel, parabolicRieszShell, positiveShell measurability, cylinderPowerIntegral, morreyCell, morreyNorm, metricBall_subset_parabolicCylinder). I also checked the cited Mathlib declarations ENNReal.mul_rpow_of_ne_top, ENNReal.rpow_add, ENNReal.rpow_mul, ENNReal.tsum_mul_right and setLIntegral_mono' in the supplied Mathlib commit. No Lean execution was possible, so all proposed replacement blocks are uncompiled suggestions; every lemma used in them was found in the sources. The five findings cover the clearest redundant proofs/arguments; other possible edits were either cosmetic or risked reducing readability.",
+  "findings": [
+    {
+      "declaration": "ennreal_mul_rpow",
+      "start_line": 168,
+      "end_line": 190,
+      "excerpt": "private lemma ennreal_mul_rpow {x y : ℝ≥0∞} {e : ℝ} (hx0 : x ≠ 0) (hxtop : x ≠ ∞)\n    (_ : y ≠ 0) (_ : y ≠ ∞) :\n    (x * y) ^ e = x ^ e * y ^ e := by\n  by_cases he : 0 ≤ e\n  · exact ENNReal.mul_rpow_of_nonneg x y he",
+      "problem": "This private lemma gives a 23-line case split proving multiplicativity of ENNReal rpow for all real exponents, but Mathlib already has ENNReal.mul_rpow_of_ne_top, which proves the same identity under only the two `≠ ∞` hypotheses, for every real exponent. The `hx0` and second nonzero hypothesis are not needed by that theorem, so the current proof also advertises a stronger hypothesis set than necessary.",
+      "proposed_change": "Replace the body with `exact ENNReal.mul_rpow_of_ne_top hxtop hytop e`. Since the nonzero hypotheses then become unused, narrow the signature to `{x y : ℝ≥0∞} {e : ℝ} (hxtop : x ≠ ∞) (hytop : y ≠ ∞)` and update the two calls in positive_shell_scale_identity (lines 331 and 333) accordingly, or keep the existing signature and only replace the proof body.",
+      "benefit": "The reader immediately sees the standard named theorem instead of following an inverse/exponent-case argument, and the omitted hypotheses no longer suggest that nonvanishing or sign conditions on the bases are essential.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Pow/NNReal.lean",
+          "declaration": "ENNReal.mul_rpow_of_ne_top",
+          "excerpt": "theorem mul_rpow_of_ne_top {x y : ℝ≥0∞} (hx : x ≠ ⊤) (hy : y ≠ ⊤) (z : ℝ) :\n    (x * y) ^ z = x ^ z * y ^ z := by simp [*, mul_rpow_eq_ite]"
+        }
+      ]
+    },
+    {
+      "declaration": "cylinderAbsIntegral_le_morreyNorm",
+      "start_line": 51,
+      "end_line": 60,
+      "excerpt": "    _ = (ENNReal.ofReal r) ^ (5 * (1 - 1 / q)) *\n          ((ENNReal.ofReal r) ^ (-(5 * (1 - 1 / q))) *\n            cylinderPowerIntegral 1 f z r) := by\n      calc\n        cylinderPowerIntegral 1 f z r =\n            1 * cylinderPowerIntegral 1 f z r := by rw [one_mul]\n        _ = ((ENNReal.ofReal r) ^ (5 * (1 - 1 / q)) *\n              (ENNReal.ofReal r) ^ (-(5 * (1 - 1 / q)))) *\n            cylinderPowerIntegral 1 f z r := by rw [hinv]\n        _ = _ := by ac_rfl",
+      "problem": "The nested calc expands `cylinderPowerIntegral 1 f z r` to `1 * ...`, then to `(a * a⁻¹) * ...`, and finally reassociates. This is just the single identity `a * (a⁻¹ * cP) = cP` obtained from the already-proved `hinv`.",
+      "proposed_change": "Replace the nested calc and its `ac_rfl` step by `by rw [mul_assoc, hinv, one_mul]`, using the existing `hinv` block at lines 41-43.",
+      "benefit": "The key idea—multiplying by the reciprocal normalization factor—is still explicit, but the reader no longer has to check three bookkeeping equalities and an associativity rearrangement.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Tail.lean",
+          "declaration": "cylinderAbsIntegral_le_morreyNorm",
+          "excerpt": "  have hinv : (ENNReal.ofReal r) ^ (5 * (1 - 1 / q)) *\n      (ENNReal.ofReal r) ^ (-(5 * (1 - 1 / q))) = 1 := by\n    rw [← ENNReal.rpow_add _ _ hr0 hrtop, add_neg_cancel, ENNReal.rpow_zero]"
+        }
+      ]
+    },
+    {
+      "declaration": "parabolicRieszKernel_tail_le",
+      "start_line": 421,
+      "end_line": 431,
+      "excerpt": "    _ = parabolicTailKernelConstant β q * T * N := by\n      have hfun : (fun n : ℕ =>\n          (ENNReal.ofReal (2 : ℝ)) ^\n            ((n : ℝ) * (β - 5 / q) + 2 * (5 * (1 - 1 / q))) * T * N) =\n          (fun n : ℕ =>\n            ((ENNReal.ofReal (2 : ℝ)) ^\n              ((n : ℝ) * (β - 5 / q) + 2 * (5 * (1 - 1 / q)))) * T * N) := by\n        funext n\n        rfl\n      rw [hfun, ENNReal.tsum_mul_right, ENNReal.tsum_mul_right]\n      rfl",
+      "problem": "`hfun` states an equality between two functions whose bodies are identical (the extra parentheses around the rpow do not change the term), as the subsequent `funext n; rfl` confirms. The `rw [hfun, ...]` is therefore a rewrite by reflexivity preceding the two genuine uses of ENNReal.tsum_mul_right.",
+      "proposed_change": "Delete `hfun` and rewrite the block as\n`rw [ENNReal.tsum_mul_right, ENNReal.tsum_mul_right]`\nfollowed by `rfl` (or keep the final `rfl` on its own line).",
+      "benefit": "The remaining two rewrites are exactly the mathematical statement that `T` and `N` factor out of the tsum; removing the reflexive function equality makes this step transparent instead of burying it under a vacuous equality proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Topology/Algebra/InfiniteSum/ENNReal.lean",
+          "declaration": "ENNReal.tsum_mul_right",
+          "excerpt": "protected theorem tsum_mul_right : ∑' i, f i * a = (∑' i, f i) * a := by\n  simp [mul_comm, ENNReal.tsum_mul_left]"
+        }
+      ]
+    },
+    {
+      "declaration": "positive_shell_scale_identity",
+      "start_line": 283,
+      "end_line": 288,
+      "excerpt": "  have hq0 : 0 < q := lt_of_lt_of_le zero_lt_one hq\n  have hα : 0 ≤ α := by\n    dsimp [α]\n    exact mul_nonneg (by norm_num)\n      (sub_nonneg.mpr (by\n        simpa using (one_div_le_one_div_of_le zero_lt_one hq)))",
+      "problem": "These two `have`s are dead in the rest of the lemma: `hq0` is never referenced, and `hα : 0 ≤ α` is never consumed—`α` appears only as an exponent argument in `ennreal_mul_rpow` and in the final algebraic calculation. The exponent additions use ENNReal.rpow_add (which only needs nonzero/top hypotheses) and ENNReal.rpow_mul (which has no side condition), so nonnegativity of α is irrelevant. The local `δ` at line 282 is likewise never present in the goal.",
+      "proposed_change": "Delete both `hq0` and `hα`. Since `hq` is then used only to construct `hα`, change its binder to `(_ : 1 ≤ q)` (or remove it and adjust the call site); delete `let δ : ℝ := β - 5 / q` and remove `δ` from the final `dsimp [S, T, α, δ]`.",
+      "benefit": "The reader is no longer sent through a six-line exponent-nonnegativity detour that has no bearing on the identity, making clear that the scaling identity is purely algebraic and works for arbitrary real α.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Tail.lean",
+          "declaration": "positive_shell_scale_identity",
+          "excerpt": "  have hsecond := ennreal_mul_rpow hSn2_0 hSn2_Top hT0 hTTop (e := α)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Pow/NNReal.lean",
+          "declaration": "ENNReal.rpow_add",
+          "excerpt": "theorem rpow_add {x : ℝ≥0∞} (y z : ℝ) (hx : x ≠ 0) (h'x : x ≠ ⊤) : x ^ (y + z) = x ^ y * x ^ z"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Pow/NNReal.lean",
+          "declaration": "ENNReal.rpow_mul",
+          "excerpt": "theorem rpow_mul (x : ℝ≥0∞) (y z : ℝ) : x ^ (y * z) = (x ^ y) ^ z"
+        }
+      ]
+    },
+    {
+      "declaration": "positive_shell_integral_le",
+      "start_line": 220,
+      "end_line": 229,
+      "excerpt": "  have hprod :\n      (∫⁻ w in s, parabolicRieszKernel β z w * ENNReal.ofReal |f w|) ≤\n        ∫⁻ w in s, (ENNReal.ofReal a) ^ (-(5 - β)) *\n          ENNReal.ofReal |f w| := by\n    apply setLIntegral_mono_ae\n      ((hf.norm.ennreal_ofReal.restrict).const_mul\n        ((ENNReal.ofReal a) ^ (-(5 - β))))\n    filter_upwards [] with w hw\n    simpa [mul_comm] using\n      (mul_le_mul_right (hkernel w hw) (ENNReal.ofReal |f w|))",
+      "problem": "This is an integral comparison over a single set `s`, and the inequality holds pointwise via `hkernel`. Using the a.e. monotonicity lemma forces a nontrivial AEMeasurable proof for the product, written in the obscure form `(hf.norm.ennreal_ofReal.restrict).const_mul ...`, although `s` is already known measurable by `positiveShell_measurable`.",
+      "proposed_change": "Replace `hprod` with the measurable-set pointwise version:\n`setLIntegral_mono' (by simpa [s] using positiveShell_measurable R n z)`\n`  fun w hw => by`\n`    simpa [mul_comm] using`\n`      (mul_le_mul_right (hkernel w hw) (ENNReal.ofReal |f w|))`.",
+      "benefit": "The proof then reads directly as 'integrate the pointwise kernel bound over a measurable shell'; the reader no longer has to parse a separate measurability construction for the product.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Tail.lean",
+          "declaration": "positiveShell_measurable",
+          "excerpt": "private lemma positiveShell_measurable (R : ℝ) (n : ℕ) (z : ParabolicPoint) :\n    MeasurableSet (positiveShell R n z) := by\n  exact measurableSet_parabolicRieszShell R (n : ℤ) z"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Integral/Lebesgue/Basic.lean",
+          "declaration": "setLIntegral_mono'",
+          "excerpt": "theorem setLIntegral_mono' {s : Set α} {f g : α → ℝ≥0∞} (hs : MeasurableSet s)\n    (hfg : ∀ x ∈ s, f x ≤ g x) : ∫⁻ x in s, f x ∂μ ≤ ∫⁻ x in s, g x ∂μ"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 688587,
+    "cached_input_tokens": 638336,
+    "output_tokens": 21572,
+    "reasoning_output_tokens": 16648
+  },
+  "cost_usd": 0.019912768,
+  "generation_ids": [
+    "gen-1792627543-ZtyKoJyUDza6pm00U6nw",
+    "gen-1792627547-XyrCeWS38PhesXDFO5Xr",
+    "gen-1792627567-GglkEZqAaxv2reyCsc0Z",
+    "gen-1792627577-wDQLrunS04ToD3kdy4Nd",
+    "gen-1792627590-5XBpVwEosrskgbZoxFWW",
+    "gen-1792627614-kIpmWzjFWlwTRm96EBV9",
+    "gen-1792627625-NqaT0lUQthh3deZuWuo3",
+    "gen-1792627641-T0H97XVtczCpXxqj11bE",
+    "gen-1792627648-EwgW94XFhNQYxDKAJb8U",
+    "gen-1792627658-IqIk9n0Q73W3QhhrzQcr",
+    "gen-1792627665-fqLnmV8cFcAKI8EHEpOo",
+    "gen-1792627688-ootmh6KJ4o8PbCoWp14y",
+    "gen-1792627766-tXi8sAzqrJN6GhxTtVBY",
+    "gen-1792627800-PzuzIzAZ2t0TWi3bMQza",
+    "gen-1792627843-9JDAuUrbxwPFxKF9hCrM"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 15,
+  "duration_ms": 323013,
+  "judged": "2026-10-22T00:11:03+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "d887bac2a8cb1a61b5f7a93914422e13484394d7568dcb01574bd1e1ce9e6d64"
+}

@@ -1,0 +1,126 @@
+{
+  "id": "lean-pool-file-0006",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 245 lines of the target file, plus the Mathlib sources it builds on: Mathlib/Analysis/Calculus/DSlope.lean (definition of dslope, dslope_same, dslope_of_ne, dslope_sub_smul_of_ne, pow_sub_smul_iterate_dslope_of_zero, ContinuousLinearMap.dslope_comp), Mathlib/LinearAlgebra/AffineSpace/Slope.lean (slope_def_field, slope_def_module), Mathlib/Analysis/Analytic/IsolatedZeros.lean (has_fpower_series_dslope_fslope, has_fpower_series_iterate_dslope_fslope over general 𝕜,E), Mathlib/Analysis/Analytic/Basic.lean (AnalyticAt, HasFPowerSeriesAt), and Mathlib/Analysis/Calculus/Deriv/Basic.lean (Filter.EventuallyEq.deriv_eq). I also grepped the repository for uses of the reviewed declarations (PrincipalPart.lean, LaurentCoeff.lean), confirming all in-repo uses are over ℂ and analytic. Findings: (1) taylorCoeffAt_sub_pow_mul only uses differentiability at z₀, so AnalyticAt is unnecessary; (2) Filter.EventuallyEq.dslope_eq has no ℂ-specific content and generalizes verbatim to 𝕜 → E; (3) AnalyticAt.iterate_dslope likewise generalizes to 𝕜 → E using the existing general Mathlib lemma. I deliberately did not demand generalizing taylorCoeffAt itself to 𝕜 → E, since taylorCoeffAt_monomial (with `1 : E`) and taylorCoeffAt_const_mul are genuinely scalar-valued and the blueprint is over ℂ; I also did not claim that taylorCoeffAt_add/_sub can be weakened to DifferentiableAt, because the iterate induction needs differentiability of the iterated dslopes, which is currently supplied by analyticity. Proposed statements were not compiled (no execution available); in particular the weakened taylorCoeffAt_sub_pow_mul may need an explicit `DifferentiableAt.mul`/`DifferentiableAt.pow` term instead of relying on `fun_prop` with a merely differentiable hypothesis. Coverage is complete for the file; the remaining uncertainty is elaboration of the proposed variants.",
+  "findings": [
+    {
+      "declaration": "RS.taylorCoeffAt_sub_pow_mul",
+      "start_line": 169,
+      "end_line": 171,
+      "excerpt": "theorem taylorCoeffAt_sub_pow_mul (hg : AnalyticAt ℂ g z₀) (d j : ℕ) :\n    taylorCoeffAt (fun z => (z - z₀) ^ d * g z) z₀ j\n      = if j < d then 0 else taylorCoeffAt g z₀ (j - d) := by",
+      "problem": "The hypothesis `hg : AnalyticAt ℂ g z₀` is much stronger than what the proof uses. The only place the hypothesis enters is the `d + 1`, `j + 1` case, where the proof needs `DifferentiableAt ℂ (fun z => (z - z₀) ^ d * g z) z₀`; the file itself records that this reduces to differentiability of `g` at z₀ (`have hg' : DifferentiableAt ℂ g z₀ := hg.differentiableAt`, line 183), and the `d = 0` case and the `j = 0` case use no hypothesis at all. The statement is therefore a purely differentiability-level identity artificially restricted to analytic functions.",
+      "proposed_change": "Weaken the hypothesis to `(hg : DifferentiableAt ℂ g z₀)`:\n\n  theorem taylorCoeffAt_sub_pow_mul (hg : DifferentiableAt ℂ g z₀) (d j : ℕ) :\n      taylorCoeffAt (fun z => (z - z₀) ^ d * g z) z₀ j\n        = if j < d then 0 else taylorCoeffAt g z₀ (j - d)\n\nand in the `succ d`, `succ j` case discharge `hdiff` explicitly from `hg`, e.g. by `((differentiableAt_id.sub_const z₀).pow d).mul hg` (or keep `fun_prop` if it picks up the hypothesis). The two call sites in this file (lines 190 and 235) then pass `analyticAt_const.differentiableAt` and `(AnalyticAt.iterate_dslope hGan m).differentiableAt`.",
+      "benefit": "Users holding only a differentiability fact for `g` (e.g. from `ContDiffAt`, or a function defined only near `z₀`) can apply the monomial-shift workhorse, and the statement honestly reflects the mathematical content: the shift identity is a differentiability statement, not an analyticity one. Analytic call sites keep working after a one-token `.differentiableAt` insertion.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.taylorCoeffAt_sub_pow_mul",
+          "excerpt": "      have hg' : DifferentiableAt ℂ g z₀ := hg.differentiableAt"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "RS.dslope_sub_mul",
+          "excerpt": "theorem dslope_sub_mul (hF : DifferentiableAt ℂ F z₀) :\n    dslope (fun z => (z - z₀) * F z) z₀ = F := by"
+        }
+      ]
+    },
+    {
+      "declaration": "Filter.EventuallyEq.dslope_eq",
+      "start_line": 64,
+      "end_line": 71,
+      "excerpt": "theorem Filter.EventuallyEq.dslope_eq (hfg : f =ᶠ[𝓝 z₀] g) :\n    dslope f z₀ =ᶠ[𝓝 z₀] dslope g z₀ := by",
+      "problem": "This lemma contains no complex analysis: `dslope`, `slope` and `Filter.EventuallyEq.deriv_eq` are all stated in Mathlib over an arbitrary `NontriviallyNormedField 𝕜` and `NormedSpace 𝕜 E` (DSlope.lean line 30, `slope_def_module`). Restricting `f g : ℂ → ℂ` makes the result unusable for real-valued, p-adic-valued or vector-valued functions, even though the proof only unfolds `slope` and rewrites with the pointwise equalities; there is no ℂ-specific step. Grepping Mathlib confirms there is no `EventuallyEq` congruence lemma for `dslope` at any level, so this is a genuine gap being filled only in the scalar-complex case.",
+      "proposed_change": "State it over a general field and normed space:\n\n  theorem Filter.EventuallyEq.dslope_eq {𝕜 E : Type*} [NontriviallyNormedField 𝕜]\n      [NormedAddCommGroup E] [NormedSpace 𝕜 E] {f g : 𝕜 → E} {z₀ : 𝕜}\n      (hfg : f =ᶠ[𝓝 z₀] g) : dslope f z₀ =ᶠ[𝓝 z₀] dslope g z₀\n\nThe proof is the current one, with the two `slope_def_field, slope_def_field` rewrites at line 71 replaced by `slope_def_module, slope_def_module` followed by `rw [hb, hz]` (the general slope is definitionally `(b - z₀)⁻¹ • (f b - f z₀)`, so the two hypotheses close the goal); the `b = z₀` case is unchanged, using `dslope_same` and `Filter.EventuallyEq.deriv_eq`.",
+      "benefit": "The lemma becomes a field-generic congruence result that other developments (over ℝ, over vector-valued analytic functions) can reuse, matching the generality of the surrounding Mathlib `dslope` API, at no cost in proof length. Degenerate cases are unaffected: at `b = z₀` both sides are `deriv` values, which agree by `deriv_eq`, and for `b ≠ z₀` the scalar `(b - z₀)⁻¹` is multiplied by equal vectors.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "Filter.EventuallyEq.dslope_eq",
+          "excerpt": "  · rw [dslope_of_ne _ hbz, dslope_of_ne _ hbz, slope_def_field, slope_def_field, hb, hz]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/DSlope.lean",
+          "declaration": "dslope",
+          "excerpt": "noncomputable def dslope (f : 𝕜 → E) (a : 𝕜) : 𝕜 → E :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/LinearAlgebra/AffineSpace/Slope.lean",
+          "declaration": "slope_def_module",
+          "excerpt": "theorem slope_def_module (f : k → E) (a b : k) : slope f a b = (b - a)⁻¹ • (f b - f a) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/Deriv/Basic.lean",
+          "declaration": "Filter.EventuallyEq.deriv_eq",
+          "excerpt": "theorem Filter.EventuallyEq.deriv_eq (hL : f₁ =ᶠ[𝓝 x] f) : deriv f₁ x = deriv f x := by"
+        }
+      ]
+    },
+    {
+      "declaration": "AnalyticAt.iterate_dslope",
+      "start_line": 50,
+      "end_line": 54,
+      "excerpt": "theorem AnalyticAt.iterate_dslope (hg : AnalyticAt ℂ g z₀) (j : ℕ) :\n    AnalyticAt ℂ ((Function.swap dslope z₀)^[j] g) z₀ := by",
+      "problem": "The proof is a two-line invocation of `HasFPowerSeriesAt.has_fpower_series_iterate_dslope_fslope`, which Mathlib proves for `f : 𝕜 → E` with `[NontriviallyNormedField 𝕜] [NormedAddCommGroup E] [NormedSpace 𝕜 E]` (IsolatedZeros.lean lines 47-48 and 91-92). The statement of `AnalyticAt.iterate_dslope` mentions neither `taylorCoeffAt` nor any complex-specific operation, so pinning it to `ℂ → ℂ` and `AnalyticAt ℂ` is gratuitous and blocks use for real-analytic or vector-valued functions.",
+      "proposed_change": "State it at the generality of the underlying Mathlib lemma:\n\n  theorem AnalyticAt.iterate_dslope {𝕜 E : Type*} [NontriviallyNormedField 𝕜]\n      [NormedAddCommGroup E] [NormedSpace 𝕜 E] {g : 𝕜 → E} {z₀ : 𝕜}\n      (hg : AnalyticAt 𝕜 g z₀) (j : ℕ) :\n      AnalyticAt 𝕜 ((Function.swap dslope z₀)^[j] g) z₀\n\nThe existing proof (`obtain ⟨p, hp⟩ := hg; exact ⟨_, hp.has_fpower_series_iterate_dslope_fslope j⟩`) is unchanged, and the in-file use at line 233 (`AnalyticAt.iterate_dslope hGan m`) still elaborates by unification at `𝕜 = E = ℂ`.",
+      "benefit": "The lemma becomes a reusable statement about the `dslope`-iterate of a general analytic function, complementing Mathlib's general analytic API (`AnalyticAt.eventually_eq_or_eventually_ne` etc.), and costs nothing but the type binders; no ℂ-specific content or degenerate case (including `j = 0`, where it is `hg` itself) is affected.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/JacobianDiffgeo/ResidueCalculus/TaylorCoeff.lean",
+          "declaration": "AnalyticAt.iterate_dslope",
+          "excerpt": "  obtain ⟨p, hp⟩ := hg\n  exact ⟨_, hp.has_fpower_series_iterate_dslope_fslope j⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Analytic/IsolatedZeros.lean",
+          "declaration": "HasFPowerSeriesAt.has_fpower_series_iterate_dslope_fslope",
+          "excerpt": "theorem has_fpower_series_iterate_dslope_fslope (n : ℕ) (hp : HasFPowerSeriesAt f p z₀) :\n    HasFPowerSeriesAt ((swap dslope z₀)^[n] f) (fslope^[n] p) z₀ := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Analytic/IsolatedZeros.lean",
+          "declaration": "variable [𝕜 E context of IsolatedZeros]",
+          "excerpt": "variable {𝕜 : Type*} [NontriviallyNormedField 𝕜] {E : Type*} [NormedAddCommGroup E]\n  [NormedSpace 𝕜 E] {s : E} {p : FormalMultilinearSeries 𝕜 𝕜 E} {f g : 𝕜 → E} {n : ℕ} {z z₀ : 𝕜}"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 327698,
+    "cached_input_tokens": 301568,
+    "output_tokens": 22877,
+    "reasoning_output_tokens": 17592
+  },
+  "cost_usd": 0.015941444,
+  "generation_ids": [
+    "gen-1792628103-LxV6rxyXDpTGCyaCaCgN",
+    "gen-1792628113-c5qE1KxFgZCquQnTc6CZ",
+    "gen-1792628127-wat1WkvLyYeT8nbPr6TG",
+    "gen-1792628141-avz88df5ldCImJWUhRoI",
+    "gen-1792628149-UkY76tO6oj8MLJRtd3jR",
+    "gen-1792628167-CxKq4tSP3QaUDLENiW1s",
+    "gen-1792628189-KtLhCJ5YBc8XIMeIJTpe",
+    "gen-1792628198-o6uO2q3hCZ45oJmTe3uA",
+    "gen-1792628216-kxfNpFcKZC8DZZ30fAHC",
+    "gen-1792628232-HXf5jNfNipd0Pg2isZs5",
+    "gen-1792628244-eMhNmmLVEzzmreIVb6oS",
+    "gen-1792628276-c3lCL7oWQWGmwaVPVcTW",
+    "gen-1792628296-20uTR5cFNG867Z0ZnUjw",
+    "gen-1792628300-1O9fShXhtaAUuPMQLRtk"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 14,
+  "duration_ms": 235538,
+  "judged": "2026-10-22T00:18:55+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "3e82a82475e8b77b7278b6d06fb86d1f0a00271666d05221126ea38cc71e85ab"
+}
