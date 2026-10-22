@@ -1,0 +1,73 @@
+{
+  "id": "lean-pool-file-0005",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file (lines 1–438) and the definitions it builds on: `parabolicRho₂`, `parabolicRieszKernel`, `parabolicRieszShell`, `mem_parabolicRieszShell`, `negativeShell` in Foundation/Parabolic/Morrey/Kernel.lean, and `cylinderPowerIntegral`, `morreyCell`, `morreyNorm` in Foundation/Parabolic/Morrey/Basic.lean. Also checked downstream consumers (AdamsBridge.lean, Adams.lean, AdamsM4.lean, AdamsEndpoints.lean, Core/Endgame/AdamsConstants.lean, Core/HeatPotential/*) and Mathlib's ENNReal power API. Most declarations here (`positiveShell`, `parabolicTailKernelConstant`, the dyadic-shell cover/pairwise lemmas, the scale identity, and `parabolicRieszKernel_tail_le`) are genuinely new library-specific concepts or named specialisations of `parabolicRieszShell`, so they are not defects under this rubric. The one clear duplication is the private helper `ennever_mul_rpow`, which is exactly Mathlib's `ENNReal.mul_rpow_of_ne_zero` (and the file already imports the module providing it). I abstained on the repeated ball/cylinder containment pattern (e.g. `T := z.2 + (2*b)^2/2`) and on the parallel `negativeShell` API, since those are local-library notions rather than Mathlib concepts. Outside this rubric I noticed several unused hypotheses (`_ : AEMeasurable f volume` at line 28, `_ : 0 < β`/`_ : β*q < 5` at lines 192–193, `_ : β*q < 5` at line 272, `_ : AEMeasurable f volume` at line 351); these are API-cleanliness issues, not duplication, and are not reported as findings.",
+  "findings": [
+    {
+      "declaration": "CKN.Foundation.Parabolic.Morrey.ennever_mul_rpow",
+      "start_line": 168,
+      "end_line": 190,
+      "excerpt": "private lemma ennreal_mul_rpow {x y : ℝ≥0∞} {e : ℝ} (hx0 : x ≠ 0) (hxtop : x ≠ ∞)\n    (_ : y ≠ 0) (_ : y ≠ ∞) :\n    (x * y) ^ e = x ^ e * y ^ e := by\n  by_cases he : 0 ≤ e\n  · exact ENNReal.mul_rpow_of_nonneg x y he",
+      "problem": "This 23-line private lemma proves the multiplicativity of `ENNReal` real powers, `(x * y) ^ e = x ^ e * y ^ e`, from a case split on the sign of `e` plus `mul_rpow_of_nonneg`, `rpow_neg`, `mul_inv` and `rpow_pos`/`rpow_ne_top_of_nonneg`. That is exactly Mathlib's `ENNReal.mul_rpow_of_ne_zero {x y : ℝ≥0∞} (hx : x ≠ 0) (hy : y ≠ 0) (z : ℝ) : (x * y) ^ z = x ^ z * y ^ z` (with `ENNReal.mul_rpow_of_ne_top`/`mul_rpow_of_nonneg` as further variants), so the file re-derives a Mathlib theorem instead of using it. The re-derivation also drifted: the hypotheses `hxtop : x ≠ ∞` and `(_ : y ≠ 0)` / `(_ : y ≠ ∞)` are not what the statement needs (only `x ≠ 0` and `y ≠ 0` are used), which is why the two arguments at the call site come with four side conditions instead of Mathlib's two. The same proof has additionally been copied verbatim into LeanPool/CaffarelliKohnNirenberg/Foundation/Euclidean/Hedberg.lean, showing the redundancy is already spreading across the library.",
+      "proposed_change": "Delete `ennever_mul_rpow` and use the Mathlib lemma at its two call sites in `positive_shell_scale_identity` (lines 331–333): `have hfirst := ENNReal.mul_rpow_of_ne_zero hSn0 hT0 (z := -(5 - β))` and `have hsecond := ENNReal.mul_rpow_of_ne_zero hSn2_0 hT0 (z := α)` (or `ENNReal.mul_rpow_of_ne_top hSnTop hTTop _` if the `≠ ∞` bounds are preferable as the primary side conditions). The `hSnTop`, `hSn2_Top` and `hTTop` hypotheses then remain only where `rpow_add`/`rpow_mul` need them. If a locally named wrapper is still desired for discoverability, make it a one-line `private lemma ... := ENNReal.mul_rpow_of_ne_zero hx0 hy0 e` with the same hypothesis list as Mathlib rather than a second proof, and consider removing the identical copy in Foundation/Euclidean/Hedberg.lean at the same time.",
+      "benefit": "Removes 23 lines of duplicated substantial proof, eliminates a hypothesis set that disagrees with Mathlib's (unused `x ≠ ∞`, `y ≠ 0`, `y ≠ ∞`), and makes later users reach for the canonical `ENNReal.mul_rpow_of_ne_zero`/`mul_rpow_of_ne_top` API instead of an in-library variant that cannot be found by name search. It also stops the same proof from being maintained in two places in the library.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Pow/NNReal.lean",
+          "declaration": "ENNReal.mul_rpow_of_ne_zero",
+          "excerpt": "theorem mul_rpow_of_ne_zero {x y : ℝ≥0∞} (hx : x ≠ 0) (hy : y ≠ 0) (z : ℝ) :\n    (x * y) ^ z = x ^ z * y ^ z := by simp [*, mul_rpow_eq_ite]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Pow/NNReal.lean",
+          "declaration": "ENNReal.mul_rpow_of_ne_top",
+          "excerpt": "theorem mul_rpow_of_ne_top {x y : ℝ≥0∞} (hx : x ≠ ⊤) (hy : y ≠ ⊤) (z : ℝ) :\n    (x * y) ^ z = x ^ z * y ^ z := by simp [*, mul_rpow_eq_ite]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Euclidean/Hedberg.lean",
+          "declaration": "CKN.Foundation.Euclidean.ennreal_mul_rpow_of_ne_zero_of_ne_top",
+          "excerpt": "private lemma ennreal_mul_rpow_of_ne_zero_of_ne_top\n    {x y : ℝ≥0∞} {e : ℝ} (hx0 : x ≠ 0) (hxtop : x ≠ ∞)\n    (hy0 : y ≠ 0) (hytop : y ≠ ∞) :\n    (x * y) ^ e = x ^ e * y ^ e := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 640792,
+    "cached_input_tokens": 567424,
+    "output_tokens": 7220,
+    "reasoning_output_tokens": 4007
+  },
+  "cost_usd": 0.014018832,
+  "generation_ids": [
+    "gen-1792627007-Xndf1DvBWAc9ljzq6LSu",
+    "gen-1792627011-DT3SikgZTjKJUr6GZJTP",
+    "gen-1792627043-24ZLn9D5HcYH702NIkBE",
+    "gen-1792627059-iQ5YSE6XbwQ3H7ETloVP",
+    "gen-1792627063-Ki2CaftcmQZlEH302SUI",
+    "gen-1792627073-0Utn6feoXqiX7Nb4QCln",
+    "gen-1792627079-ZkZ1pd8m5iWIVvVCCpl6",
+    "gen-1792627087-Y2XSJo5YwW6X317u9nPJ",
+    "gen-1792627093-kZSSSa8bIKjbtxQYmBXW",
+    "gen-1792627099-XWQfErNw1mwaDFzdOq6q",
+    "gen-1792627105-CXtT3TSeWab0kX3aFWSy",
+    "gen-1792627111-0YL21ghaSiu6xI8VqWVC",
+    "gen-1792627119-IQGqomx12TapOcuPfnsF"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 13,
+  "duration_ms": 125561,
+  "judged": "2026-10-21T23:58:50+00:00",
+  "unit": "file",
+  "rubric": "concept-reinvention",
+  "source_sha256": "d887bac2a8cb1a61b5f7a93914422e13484394d7568dcb01574bd1e1ce9e6d64"
+}

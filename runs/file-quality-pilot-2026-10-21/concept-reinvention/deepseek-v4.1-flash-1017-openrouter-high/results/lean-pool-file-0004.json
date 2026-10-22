@@ -1,0 +1,81 @@
+{
+  "id": "lean-pool-file-0004",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and checked every definition it introduces against Mathlib (c55e6e786f49) and against the surrounding LeanPool Odlyzko sources (PoitouTransform.lean, RegularizedTartarTransform.lean, TartarDerivativeBounds.lean, TartarPoitouTransform.lean, RegularizedPrimePowerSeriesIntegral.lean, PoitouEstimate.lean). The derivative-formula definitions (poitouKernelDerivative, poitouKernelSecondDerivative, poitouVerticalProfileDerivative, poitouVerticalProfileSecondDerivative) were not reported: they are explicit chosen representations needed to state the sup-norm bounds, and no Mathlib declaration names the same concept. The tartar* definitions (tartarAmplitudeSecondDerivativeIntegrand, tartarAmplitudeSecondDerivative, tartarTestFunctionSecondDerivative{,Bound}, regularizedScaledTartarSecondDerivative) are library-specific and have no Mathlib counterpart. abs_sinh_le_cosh and integrable_quadratic_abs_mul_exp_neg_mul_sq are theorems, so they fall under the rubric's exclusion of standalone theorem duplication/proof shortening; I note separately that abs_sinh_le_cosh has an exact same-name/same-statement copy in LeanPool/MovingSofa/Development/IntervalArithmetic/Foundations/Development001.lean:5437 and that Mathlib only provides Real.sinh_lt_cosh plus Real.abs_sinh, so a shared lemma would be the right home, but I did not turn this into a finding because of that exclusion. The single finding below concerns the one definition whose body is a copy of an existing generic definition. I could not compile, so the proposed redefinition is unverified; also note that (↑σ - 1/2 : ℂ) vs ↑(σ - 1/2) is only propositionally equal, so some downstream push_cast steps may remain even after the change, though the tie to poitouTransformIntegrand becomes definitional.",
+  "findings": [
+    {
+      "declaration": "regularizedPoitouVerticalProfile",
+      "start_line": 493,
+      "end_line": 497,
+      "excerpt": "/-- A regularized poitou vertical profile used in the Odlyzko-bound argument. -/\nnoncomputable def regularizedPoitouVerticalProfile\n    (y δ σ x : ℝ) : ℂ :=\n  (poitouKernel (regularizedScaledTartar y δ) x : ℂ) *\n    Complex.exp ((σ - 1 / 2) * x)",
+      "problem": "This definition re-spells the body of the existing generic definition poitouTransformIntegrand (PoitouTransform.lean:32-34), specialised at f := regularizedScaledTartar y δ and s := (σ : ℂ), instead of being defined in terms of it. The two declarations therefore represent the same specific concept but are two independent bodies, and the resulting mismatch is visible as repeated conversions: the file's own integrability lemma has to close the goal with a `congr`/`rw [regularizedPoitouVerticalProfile, poitouTransformIntegrand]` (lines 499-504), poitouTransform_regularizedScaledTartar_eq_fourier has to unfold both (line 514), and downstream proofs repeat the unfolding, e.g. `unfold regularizedPoitouVerticalProfile poitouKernel` in RegularizedPrimePowerSeriesIntegral.lean at lines 190 and 275. A reader who has poitouTransformIntegrand in mind must reconstruct which generic object this is.",
+      "proposed_change": "Define the named specialisation through the generic concept, e.g. `noncomputable def regularizedPoitouVerticalProfile (y δ σ : ℝ) : ℝ → ℂ := poitouTransformIntegrand (regularizedScaledTartar y δ) (σ : ℂ)` (the current pointwise signature `(y δ σ x : ℝ)` can be kept as the same body applied to x). Then regularizedPoitouVerticalProfile_integrable should be derivable directly from poitouTransformIntegrand_regularizedScaledTartar_integrable hδ (σ : ℂ), and poitouTransform_regularizedScaledTartar_eq_fourier can use the definitional unfolding of poitouTransform instead of a manual two-definition rewrite. Keep the existing statement-level API (differentiable/deriv/Fourier lemmas) unchanged; if a pointwise statement is preferred, add a rfl-bridge lemma `regularizedPoitouVerticalProfile_apply` for rewriting in the downstream files. I did not compile this replacement.",
+      "benefit": "The specialised profile becomes definitionally tied to the general poitou transform integrand, removing a duplicated formula, making the connection to poitouTransform immediate, and eliminating the ad-hoc unfolding/conversion steps in this file and in RegularizedPrimePowerSeriesIntegral.lean. The useful name and all existing lemma statements are preserved, so downstream users keep the convenient API while gaining a definitional link to the generic object.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/PoitouTransform.lean",
+          "declaration": "poitouTransformIntegrand",
+          "excerpt": "noncomputable def poitouTransformIntegrand\n    (f : ℝ → ℝ) (s : ℂ) (x : ℝ) : ℂ :=\n  (poitouKernel f x : ℂ) * Complex.exp ((s - 1 / 2) * x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedTartarTransform.lean",
+          "declaration": "poitouTransformIntegrand_regularizedScaledTartar_integrable",
+          "excerpt": "theorem poitouTransformIntegrand_regularizedScaledTartar_integrable\n    {y δ : ℝ} (hδ : 0 < δ) (s : ℂ) :\n    Integrable\n      (poitouTransformIntegrand (regularizedScaledTartar y δ) s)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "regularizedPoitouVerticalProfile_integrable",
+          "excerpt": "(poitouTransformIntegrand_regularizedScaledTartar_integrable\n    hδ (σ : ℂ)).congr (ae_of_all _ fun x ↦\n      (by rw [regularizedPoitouVerticalProfile, poitouTransformIntegrand]))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPrimePowerSeriesIntegral.lean",
+          "declaration": "integral_poitouTransform_regularized_vertical",
+          "excerpt": "rw [habs]\n  unfold regularizedPoitouVerticalProfile poitouKernel\n  simp"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 791253,
+    "cached_input_tokens": 723584,
+    "output_tokens": 12693,
+    "reasoning_output_tokens": 8571
+  },
+  "cost_usd": 0.017548692,
+  "generation_ids": [
+    "gen-1792625710-OkHnGDFhawYhTFGG92Rq",
+    "gen-1792625737-k50lnmbEMEp2zLF9kE2f",
+    "gen-1792625745-GUTWfBPYV95dSt0rWkxI",
+    "gen-1792625780-EDXzH0vpDTJPtDkyRffJ",
+    "gen-1792625805-3wMaDyDII98oI41SsoC5",
+    "gen-1792625820-WLzUkXWZjXtSLoobTxqb",
+    "gen-1792625845-lnelgfsW7XTioEiJiALN",
+    "gen-1792625880-WbPr9opDX40R4QATQKyy",
+    "gen-1792625890-keGQfuTpf2O2NjIjqsDY",
+    "gen-1792625898-gSlCR7BlIiuwCnrmk3uf",
+    "gen-1792625913-FQHRxBbnduLZVotfsfib",
+    "gen-1792625955-W8pcjuX3dJjt1h6aAHjs",
+    "gen-1792625963-QOrnC5wdPdWB2AYl87W2",
+    "gen-1792625973-9UtaN1TkLEhkznhp7r8p",
+    "gen-1792625980-zykWz2o4p9KyEwddHIsM",
+    "gen-1792626003-LflKKXp6rczo9XRt8KXQ"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 16,
+  "duration_ms": 305863,
+  "judged": "2026-10-21T23:40:12+00:00",
+  "unit": "file",
+  "rubric": "concept-reinvention",
+  "source_sha256": "56ef8d471d0ee3f0b24a9cdf7f0d1a043ae91df828c144b9a95b83891efe9b66"
+}

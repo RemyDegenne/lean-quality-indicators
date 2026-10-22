@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0004",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 1272 lines of the target file, plus the supporting declarations in LeanPool/Odlyzko/ExplicitFormula/RegularizedTartarTransform.lean (exp_neg_mul_sq_add_mul_le, norm_poitouTransformIntegrand_regularizedScaledTartar_le, poitouTransformIntegrand_regularizedScaledTartar_integrable) to see which helpers already exist. I checked the two Fourier-transform theorems, the two norm-bound theorems, and the two integrability theorems for genuinely repeated reasoning, and ignored thin wrappers (differentiable_/deriv_ variants) and short derivative computations. Reported three findings: (1) the identical deriv-plus-Real.fourier_deriv skeleton in fourier_poitouVerticalProfileDerivative_regularized and fourier_poitouVerticalProfileSecondDerivative_regularized; (2) the verbatim duplicated local bounds hkd/hk' and hphase inside the two `..._regularized_le` norm estimates (with C and D₁ being the same let-definition); (3) the duplicated Gaussian-moment integrability plumbing between poitouVerticalProfileDerivative_regularized_integrable and the later generic lemma integrable_quadratic_abs_mul_exp_neg_mul_sq. I also noticed an intra-proof repetition of the positivity block for P (lines 1064-1072 vs 1108-1122) in norm_poitouVerticalProfileSecondDerivative_regularized_le, but it occurs within one proof, so it does not meet the rubric's 'at least two proofs' bar and is not reported separately. All proposed replacements are sketches: nothing was executed, so their compilability (including section/`open` placement and statement direction of `Real.fourier_deriv`) is unverified.",
+  "findings": [
+    {
+      "declaration": "fourier_poitouVerticalProfileDerivative_regularized and fourier_poitouVerticalProfileSecondDerivative_regularized",
+      "start_line": 556,
+      "end_line": 579,
+      "excerpt": "  have h :=\n    congrFun (Real.fourier_deriv\n      (regularizedPoitouVerticalProfile_integrable hδ σ)\n      (differentiable_regularizedPoitouVerticalProfile y δ σ)\n      (by\n        rw [hderiv]\n        exact\n          poitouVerticalProfileDerivative_regularized_integrable\n            hδ y σ)) w\n  simp_all",
+      "problem": "Both Fourier theorems execute the same nontrivial three-part argument: build `hderiv` by `funext x; exact deriv_...`, discharge the differentiability and the integrability of the derived function, and finish with `congrFun (Real.fourier_deriv ...) w` plus `simp_all`. The second occurrence (lines 1190-1210) differs only in which profile/derivative pair it instantiates, so any change in how the `Real.fourier_deriv` hypotheses are packaged has to be made twice.",
+      "proposed_change": "Extract the skeleton once, e.g.\n\n  theorem fourier_eq_smul_fourier_of_deriv\n      {F F' : ℝ → ℂ} {w : ℝ}\n      (hF : Integrable F) (hdF : Differentiable ℝ F)\n      (hF' : Integrable F') (h : F' = deriv F) :\n      𝓕 F' w = (2 * Real.pi * I * w) • 𝓕 F w := by\n    simpa [h] using congrFun (Real.fourier_deriv hF hdF (h ▸ hF')) w\n\nplaced before line 556 (all required imports, including Mathlib.Analysis.Fourier.FourierTransformDeriv, are already present). Each of the two theorems then reduces to supplying the four facts, e.g. for the derivative pair `(regularizedPoitouVerticalProfile y δ σ, poitouVerticalProfileDerivative (regularizedScaledTartar y δ) (regularizedScaledTartarDerivative y δ) σ)` with `h := by funext x; exact deriv_regularizedPoitouVerticalProfile y δ σ x`.",
+      "benefit": "One proof to maintain for the derivative-of-Fourier-transfer identity: the second-derivative statement becomes a five-line instantiation instead of a re-derivation of the same `fourier_deriv` bookkeeping, and the reader sees at a glance that the two theorems share one engine and differ only in the profile pair.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "fourier_poitouVerticalProfileDerivative_regularized",
+          "excerpt": "  have hderiv :\n      deriv (regularizedPoitouVerticalProfile y δ σ) =\n        poitouVerticalProfileDerivative\n          (regularizedScaledTartar y δ)\n          (regularizedScaledTartarDerivative y δ) σ := by\n    funext x\n    exact deriv_regularizedPoitouVerticalProfile y δ σ x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "fourier_poitouVerticalProfileSecondDerivative_regularized",
+          "excerpt": "  have h :=\n    congrFun (Real.fourier_deriv\n      (poitouVerticalProfileDerivative_regularized_integrable hδ y σ)\n      (differentiable_regularizedPoitouVerticalProfileDerivative y δ σ)\n      (by\n        rw [hderiv]\n        exact\n          poitouVerticalProfileSecondDerivative_regularized_integrable\n            hδ y σ)) w\n  simp_all"
+        }
+      ]
+    },
+    {
+      "declaration": "norm_poitouVerticalProfileDerivative_regularized_le and norm_poitouVerticalProfileSecondDerivative_regularized_le",
+      "start_line": 348,
+      "end_line": 361,
+      "excerpt": "  have hkd :\n      |poitouKernelDerivative\n          (regularizedScaledTartar y δ)\n          (regularizedScaledTartarDerivative y δ) x| ≤\n        (C + 2 * δ * |x| + 1 / 2) *\n          Real.exp (-δ * x ^ 2) := by\n    refine (abs_poitouKernelDerivative_le _ _ x).trans ?_\n    grind\n  have hphase :\n      Real.exp ((σ - 1 / 2) * x) ≤\n        Real.exp (a * |x|) := by\n    dsimp [a]",
+      "problem": "The local estimate `hkd` (combined kernel-derivative bound, obtained by chaining `abs_poitouKernelDerivative_le` with the Gaussian bounds for `regularizedScaledTartar` and its derivative) and the phase estimate `hphase` are reproduced verbatim for the same functions in `norm_poitouVerticalProfileSecondDerivative_regularized_le` (lines 976-993), where `D₁` (lines 960-961) is literally the same expression as `C` (line 338), so the two statements are identical up to a let-name. The positivity lemmas for these constants (`hC` at 340-342, `hD₁` at 965-969) are duplicated too.",
+      "proposed_change": "Prove two standalone lemmas once, next to `abs_poitouKernelDerivative_le` (line 228) or just before line 328, and use them in both norm estimates:\n\n  theorem abs_poitouKernelDerivative_regularizedScaledTartar_le (y δ x : ℝ) :\n      |poitouKernelDerivative (regularizedScaledTartar y δ)\n          (regularizedScaledTartarDerivative y δ) x| ≤\n        (2 * |y| * tartarAmplitudeDerivativeBound + 2 * δ * |x| + 1 / 2) *\n          Real.exp (-δ * x ^ 2)\n\n  theorem exp_mul_le_exp_abs_mul_abs (σ x : ℝ) :\n      Real.exp ((σ - 1 / 2) * x) ≤ Real.exp (|σ - 1 / 2| * |x|)\n\n(the first is the current `(abs_poitouKernelDerivative_le _ _ x).trans (by grind)` step, the second the current `hphase` body with `a` unfolded). Then delete `C`/`D₁` as local lets, use the shared lemmas wherever `hkd`/`hk'` and `hphase` are consumed, and derive the nonnegativity of `2 * |y| * tartarAmplitudeDerivativeBound` once inside the first lemma or as its own small lemma.",
+      "benefit": "The kernel-derivative estimate and the Gaussian phase bound are the two inputs both quadratic-decay estimates depend on; stating them as named lemmas makes each norm calculation shorter, guarantees the two estimates use the same constants, and gives other users of the file a reusable bound on `poitouKernelDerivative` of the regularized test function instead of a proof-local `have`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "norm_poitouVerticalProfileSecondDerivative_regularized_le",
+          "excerpt": "  have hk' :\n      |poitouKernelDerivative\n          (regularizedScaledTartar y δ)\n          (regularizedScaledTartarDerivative y δ) x| ≤\n        (D₁ + 2 * δ * |x| + 1 / 2) *\n          Real.exp (-δ * x ^ 2) := by\n    refine (abs_poitouKernelDerivative_le _ _ x).trans ?_\n    grind"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "norm_poitouVerticalProfileSecondDerivative_regularized_le",
+          "excerpt": "  have hphase :\n      Real.exp ((σ - 1 / 2) * x) ≤ Real.exp (a * |x|) := by\n    apply Real.exp_le_exp.mpr\n    dsimp [a]\n    simpa only [abs_mul] using le_abs_self ((σ - 1 / 2) * x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedTartarTransform.lean",
+          "declaration": "norm_poitouTransformIntegrand_regularizedScaledTartar_le",
+          "excerpt": "    _ ≤ Real.exp (-δ * x ^ 2 + |s.re - 1 / 2| * |x|) := by\n      have hlin := le_abs_self ((s.re - 1 / 2) * x)\n      simp_all"
+        }
+      ]
+    },
+    {
+      "declaration": "poitouVerticalProfileDerivative_regularized_integrable and integrable_quadratic_abs_mul_exp_neg_mul_sq",
+      "start_line": 439,
+      "end_line": 449,
+      "excerpt": "  have hzero :\n      Integrable (fun x : ℝ ↦\n        K * (A * Real.exp (-(δ / 2) * x ^ 2))) :=\n    ((integrable_exp_neg_mul_sq (half_pos hδ)).const_mul A).const_mul K\n  have hone :\n      Integrable (fun x : ℝ ↦\n        K * ((2 * δ) *\n          (|x| * Real.exp (-(δ / 2) * x ^ 2)))) := by\n    have h := (integrable_mul_exp_neg_mul_sq (half_pos hδ)).norm",
+      "problem": "`poitouVerticalProfileDerivative_regularized_integrable` rebuilds its Gaussian majorant from scratch: `integrable_exp_neg_mul_sq` for the constant term and `(integrable_mul_exp_neg_mul_sq ...).norm` for the `|x|` term, then `.add` and `mono'`. Exactly this majorant construction, generalized to an arbitrary coefficient `b` and with an added `C * x ^ 2` term, is proved later in the same file by `integrable_quadratic_abs_mul_exp_neg_mul_sq` (lines 918-941), whose `hzero`/`hone` blocks (lines 922-930) are the same plumbing with `b` in place of `δ / 2` and no outer constant `K`. Since that generic lemma does not depend on anything proved between lines 449 and 918, the two proofs keep two copies of the same integrability reasoning.",
+      "proposed_change": "Move `integrable_quadratic_abs_mul_exp_neg_mul_sq` (and, if desired, the small lemma `Integrable (fun x => B * (|x| * exp (-b * x ^ 2)))`) above line 430, then replace the `hzero`/`hone` block in `poitouVerticalProfileDerivative_regularized_integrable` by a single majorant:\n\n  have hmajor : Integrable (fun x : ℝ ↦\n      K * ((A + (2 * δ) * |x| + 0 * x ^ 2) * Real.exp (-(δ / 2) * x ^ 2))) :=\n    (integrable_quadratic_abs_mul_exp_neg_mul_sq (half_pos hδ) A (2 * δ) 0).const_mul K\n\nand discharge the pointwise comparison with the same `trans_eq ... grind` step already used at lines 476-480 (the `A` used there, `2 * |y| * tartarAmplitudeDerivativeBound + 1 / 2 + |σ - 1 / 2|`, already coincides with the coefficient appearing in `norm_poitouVerticalProfileDerivative_regularized_le`).",
+      "benefit": "Removes a duplicate Gaussian-moment integrability argument, makes the first-derivative and second-derivative integrability theorems use the same majorant lemma (so a fix to the `|x| * exp (-b x^2)` handling touches one place), and makes `integrable_quadratic_abs_mul_exp_neg_mul_sq` a file-wide utility rather than a private step of the second-derivative proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "integrable_quadratic_abs_mul_exp_neg_mul_sq",
+          "excerpt": "  have hzero :\n      Integrable (fun x : ℝ ↦\n        A * Real.exp (-b * x ^ 2)) :=\n    (integrable_exp_neg_mul_sq hb).const_mul A\n  have hone :\n      Integrable (fun x : ℝ ↦\n        B * (|x| * Real.exp (-b * x ^ 2))) := by\n    have h := (integrable_mul_exp_neg_mul_sq hb).norm.const_mul B"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "poitouVerticalProfileSecondDerivative_regularized_integrable",
+          "excerpt": "  have hmajor :=\n    (integrable_quadratic_abs_mul_exp_neg_mul_sq\n      (half_pos hδ) A B C).const_mul E\n  apply hmajor.mono'"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 230910,
+    "cached_input_tokens": 187648,
+    "output_tokens": 13567,
+    "reasoning_output_tokens": 8771
+  },
+  "cost_usd": 0.011745644,
+  "generation_ids": [
+    "gen-1792626526-jkAn9VTZp0qDLqYO1lTC",
+    "gen-1792626533-ZRA10nlvv2dPez9GTE0n",
+    "gen-1792626541-b5966KbQ0uImarXvzlR2",
+    "gen-1792626546-lP5eWrS4OjZfm401kvtO",
+    "gen-1792626573-tEMgTtjOxIRe45B10hX8",
+    "gen-1792626588-HyTgHIYkT5n6nxhkuZQY",
+    "gen-1792626602-spUJBMHm3LFHh28TuF11"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 7,
+  "duration_ms": 116833,
+  "judged": "2026-10-21T23:50:37+00:00",
+  "unit": "file",
+  "rubric": "repeated-proof-machinery",
+  "source_sha256": "56ef8d471d0ee3f0b24a9cdf7f0d1a043ae91df828c144b9a95b83891efe9b66"
+}

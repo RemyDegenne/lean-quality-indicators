@@ -1,0 +1,125 @@
+{
+  "id": "openai-math-file-0004",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 112 lines of the target file and the supporting declarations it depends on: VectorPolynomial and coefficients (VectorPolynomialReconstruction.lean:15,23), coefficientSubmodule (ExtendedPolynomialValues.lean:200), coefficients_directionalDerivative (ShiftedGradedCalculus.lean:166), directionalDerivative, dualEvalLie_base, dualEvalLie_tangent, polynomialFirstJet_coord and polynomialLogDerivative (RealPolynomialChartSubstitution.lean:56-176), dualLogDerivative_mem_of_invariant (DualIdealSteps.lean:532), dualDerivativeSystem_remove and derivative_removal_preserves_quotient_layers (DualDerivativeRemoval.lean:114,135), and Mathlib's MvPolynomial.pderiv (PDeriv.lean:58-61). The ℚ in the statements involving DualNumber/LieAlgebra ℚ is forced by the surrounding BCH/dual-number API, so I did not flag those. The two findings concern the one genuinely ℚ-specific lemma (which is pure module theory) and a hypothesis-strength issue shared by the two dual-submodule membership lemmas. I could not execute Lean; in particular the proposed generalization of directionalDerivative/coefficients_directionalDerivative to an arbitrary CommRing is unverified, and the exact binder shape produced when generalizing a definition whose type currently mentions the LieAlgebra.toModule instance must be checked by elaboration. The `omit [Fintype σ]` at line 46 is already correctly done.",
+  "findings": [
+    {
+      "declaration": "OAI.Erdos3.VectorPolynomial.directionalDerivative_mem_coefficientSubmodule",
+      "start_line": 13,
+      "end_line": 19,
+      "excerpt": "theorem directionalDerivative_mem_coefficientSubmodule (V : Submodule ℚ L)\n    (h : σ → ℚ) (P : VectorPolynomial σ ℚ L)\n    (hP : ∀ α, coefficients P α ∈ V) :\n    ∀ α, coefficients (directionalDerivative h P) α ∈ V := by\n  intro α\n  rw [coefficients_directionalDerivative]",
+      "problem": "The lemma is stated only for ℚ coefficients and under the section's `[LieRing L] [LieAlgebra ℚ L]`, although its statement and proof use nothing but the ℚ-module structure of L: `coefficients` is a linear equivalence and `directionalDerivative h` is a finite sum of `(MvPolynomial.pderiv i).toLinearMap.rTensor L`, which is defined for any commutative coefficient ring and any module. The repository already defines `VectorPolynomial σ R V` for arbitrary `[CommRing R] [AddCommGroup V] [Module R V]` and `coefficientSubmodule` for arbitrary K, and it uses real-coefficient vector polynomials in many places (e.g. `VectorPolynomial I ℝ (J → ℝ)`), so this ℚ/Lie-restricted form cannot be reused there. The restriction is only inherited from the definition `directionalDerivative` in RealPolynomialChartSubstitution.lean:62 and from `coefficients_directionalDerivative` in ShiftedGradedCalculus.lean:166, not from the mathematics.",
+      "proposed_change": "Generalize `directionalDerivative` to\n  `noncomputable def directionalDerivative {σ R V : Type*} [Fintype σ] [CommRing R]\n      [AddCommGroup V] [Module R V] (h : σ → R) :\n      VectorPolynomial σ R V →ₗ[R] VectorPolynomial σ R V := ∑ i, h i • (MvPolynomial.pderiv i).toLinearMap.rTensor V`,\nand likewise state `coefficients_directionalDerivative` over R (its proof is the same: `LinearMap.rTensor_tmul`, `coefficients_tmul`, `MvPolynomial.coeff_pderiv`, `smul_smul`, `Finset.sum`). Then state the target lemma as\n  `theorem directionalDerivative_mem_coefficientSubmodule {σ R V : Type*} [Fintype σ] [CommRing R]\n      [AddCommGroup V] [Module R V] (W : Submodule R V) (h : σ → R)\n      (P : VectorPolynomial σ R V) (hP : ∀ α, coefficients P α ∈ W) :\n      ∀ α, coefficients (directionalDerivative h P) α ∈ W`\nwith exactly the existing proof body (`intro α; rw [coefficients_directionalDerivative]; exact W.sum_mem (fun i _ => W.smul_mem _ (W.smul_mem _ (hP _)))`). If a general definition is deemed out of scope, at least restate it with `[AddCommGroup L] [Module ℚ L]`, which requires relaxing the instance arguments of `directionalDerivative` in RealPolynomialChartSubstitution.lean:62 (unverified by compilation). Degenerate case: for empty σ the sum is empty, so the conclusion is `0 ∈ W`, which holds by `Submodule.zero_mem`.",
+      "benefit": "Users get a statement about arbitrary coefficient rings and plain modules, usable with the real-coefficient `VectorPolynomial σ ℝ (...)` objects that appear throughout the development, and consistent with the already-general `VectorPolynomial`/`coefficientSubmodule` API. The original ℚ case is recovered by specialization, so nothing is lost.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/VectorPolynomialReconstruction.lean",
+          "declaration": "OAI.Erdos3.VectorPolynomial.VectorPolynomial",
+          "excerpt": "abbrev VectorPolynomial (σ R V : Type*) [CommRing R] [AddCommGroup V] [Module R V] :=\n  MvPolynomial σ R ⊗[R] V"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/ExtendedPolynomialValues.lean",
+          "declaration": "OAI.Erdos3.VectorPolynomial.coefficientSubmodule",
+          "excerpt": "noncomputable def coefficientSubmodule (U : Submodule K L) : Submodule K (VectorPolynomial σ K L) where\n  carrier := {p | ∀ α, coefficients p α ∈ U}"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "OAI.Erdos3.VectorPolynomial.directionalDerivative",
+          "excerpt": "noncomputable def directionalDerivative [Fintype σ] (h : σ → ℚ) :\n    VectorPolynomial σ ℚ L →ₗ[ℚ] VectorPolynomial σ ℚ L :=\n  ∑ i, h i • (MvPolynomial.pderiv i).toLinearMap.rTensor L"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/ShiftedGradedCalculus.lean",
+          "declaration": "OAI.Erdos3.VectorPolynomial.coefficients_directionalDerivative",
+          "excerpt": "theorem coefficients_directionalDerivative [Fintype σ]\n    (h : σ → ℚ) (p : VectorPolynomial σ ℚ L) (α : σ →₀ ℕ) :\n    coefficients (directionalDerivative h p) α =\n      ∑ i, h i • ((α i + 1 : ℚ) • coefficients p (α + Finsupp.single i 1))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/MvPolynomial/PDeriv.lean",
+          "declaration": "MvPolynomial.pderiv",
+          "excerpt": "def pderiv (i : σ) : Derivation R (MvPolynomial σ R) (MvPolynomial σ R) :="
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.Erdos3.NilpotentLieBCHGroup.polynomialLogDerivative_mem_of_coefficients",
+      "start_line": 30,
+      "end_line": 44,
+      "excerpt": "theorem polynomialLogDerivative_mem_of_coefficients\n    (U : LieSubalgebra ℚ L) (V : Submodule ℚ L)\n    (hUV : ∀ u ∈ U, ∀ v ∈ V, ⁅u, v⁆ ∈ V)\n    (A : PolynomialGroup σ hnil)\n    (hAU : ∀ α, coefficients A.coord α ∈ U)\n    (hAV : ∀ α, coefficients A.coord α ∈ V) (t h : σ → ℚ) :",
+      "problem": "The coefficientwise hypotheses `hAU`/`hAV` are stronger than what the proof consumes. Applying `dualLogDerivative_mem_of_invariant` needs only `dualBaseLinear (polynomialFirstJetHom t h A).coord ∈ U` and `dualTangentLinear (polynomialFirstJetHom t h A).coord ∈ V`, and by `dualEvalLie_base`/`dualEvalLie_tangent` these are exactly `eval t A.coord ∈ U` and `eval t (directionalDerivative h A.coord) ∈ V`. The present proof discards all coefficient information except at the single point t via `(eval_mem_iff_coefficients U.toSubmodule A.coord).mpr hAU t` (lines 40 and 43-44). The same stronger-than-needed coefficientwise pattern is repeated for A and C at lines 76-77, 84-101 of `polynomial_removal_preserves_derivative_layers`, which internally only needs `dualBaseLinear`/`dualTangentLinear` memberships of the first jets (DualDerivativeRemoval.lean:135-144).",
+      "proposed_change": "Add (and use as the primary form) the strictly weaker-hypothesis statement\n  `theorem polynomialLogDerivative_mem_of_eval (t h : σ → ℚ) (U : LieSubalgebra ℚ L)\n      (V : Submodule ℚ L) (hUV : ∀ u ∈ U, ∀ v ∈ V, ⁅u, v⁆ ∈ V)\n      (A : PolynomialGroup σ hnil) (hAU : eval t A.coord ∈ U)\n      (hAV : eval t (directionalDerivative h A.coord) ∈ V) :\n      polynomialLogDerivative t h A ∈ V`,\nproved by `apply dualLogDerivative_mem_of_invariant U V hUV (polynomialFirstJetHom t h A)` followed by `rw [dualEvalLie_base]` (resp. `rw [dualEvalLie_tangent]`) and the hypothesis, with `polynomialLogDerivative` definitionally `dualLogDerivative (polynomialFirstJetHom t h A)`. Keep the current coefficientwise statement as a corollary, deriving `eval t A.coord ∈ U` from `hAU` via `eval_mem_iff_coefficients` and `eval t (directionalDerivative h A.coord) ∈ V` from `hAV` via `directionalDerivative_mem_coefficientSubmodule` and `eval_mem_iff_coefficients` (the existing proof steps). The same pointwise hypotheses should be offered for `polynomial_removal_preserves_derivative_layers`. For empty σ these evaluations are still well defined (the empty function is the unique `σ → ℚ`), and the statement reduces to the base cases of `dualLogDerivative_mem_of_invariant`.",
+      "benefit": "Callers that know only the first-jet data at the point t (the form in which tangent hypotheses already appear elsewhere, e.g. `(MvPolynomial.pderiv i).toLinearMap.rTensor L P.coord ∈ V`) can apply the result without proving coefficientwise membership for every multi-index, while the structural coefficientwise version remains available unchanged.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "OAI.Erdos3.VectorPolynomial.dualEvalLie_base",
+          "excerpt": "theorem dualEvalLie_base (t h : σ → ℚ) (p : VectorPolynomial σ ℚ L) :\n    dualBaseLinear (dualEvalLie t h p) = eval t p"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "OAI.Erdos3.VectorPolynomial.dualEvalLie_tangent",
+          "excerpt": "theorem dualEvalLie_tangent [Fintype σ] (t h : σ → ℚ) (p : VectorPolynomial σ ℚ L) :\n    dualTangentLinear (dualEvalLie t h p) = eval t (directionalDerivative h p)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "OAI.Erdos3.NilpotentLieBCHGroup.polynomialLogDerivative",
+          "excerpt": "noncomputable def polynomialLogDerivative (t h : σ → ℚ) (P : PolynomialGroup σ hnil) : L :=\n  dualLogDerivative (polynomialFirstJetHom t h P)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Linear/DualIdealSteps.lean",
+          "declaration": "OAI.Erdos3.NilpotentLieBCHGroup.dualLogDerivative_mem_of_invariant",
+          "excerpt": "theorem dualLogDerivative_mem_of_invariant (U : LieSubalgebra ℚ L) (V : Submodule ℚ L)\n    (hUV : ∀ u ∈ U, ∀ v ∈ V, ⁅u, v⁆ ∈ V) (z : DualGroup hnil)\n    (hb : dualBaseLinear z.coord ∈ U) (ht : dualTangentLinear z.coord ∈ V) :\n    dualLogDerivative z ∈ V"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/ExtendedPolynomialValues.lean",
+          "declaration": "OAI.Erdos3.VectorPolynomial.eval_mem_iff_coefficients",
+          "excerpt": "theorem eval_mem_iff_coefficients (U : Submodule K V) (p : VectorPolynomial σ K V) :\n    (∀ x : σ → K, eval x p ∈ U) ↔ ∀ α, coefficients p α ∈ U"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1360680,
+    "cached_input_tokens": 1264384,
+    "output_tokens": 33389,
+    "reasoning_output_tokens": 26914
+  },
+  "cost_usd": 0.034513252,
+  "generation_ids": [
+    "gen-1792625953-2hq3OLFnWjbw7jSkDBNa",
+    "gen-1792625958-asUtd868ssVVn63dphW4",
+    "gen-1792625968-8uaKvKxbMx7sHknzvEm3",
+    "gen-1792625998-RGWAK8TIM8jtJXdyYP6E",
+    "gen-1792626005-5Q7Q7HqPnq2iKYnKWN6E",
+    "gen-1792626041-oyPH5ML8pfZalCOvNvwF",
+    "gen-1792626071-x6lzDnHXZSnwX7Gs29nR",
+    "gen-1792626078-fZgFdM1lmdyjQvAYz4hB",
+    "gen-1792626106-W0Wf1rTT51kPvDDcaNAU",
+    "gen-1792626111-3ShejlUsWhqdGGXi3mBB",
+    "gen-1792626131-2VLULVyoxGWvw8h0y5vP",
+    "gen-1792626148-pDAePtHMgVdtDQJKb6Vt",
+    "gen-1792626166-6oV9szFQtqS1v679iy4r",
+    "gen-1792626173-ZDvxJJ3STstUqagpG29Z",
+    "gen-1792626199-mB4nNlpqXHtLCjdk2T0x",
+    "gen-1792626206-exCJH8zqBbexnPzrVMDb",
+    "gen-1792626221-9tWMwEx5A8FrgT2YMnuv",
+    "gen-1792626264-2sTJjhDSBMVg2aGyHy8l",
+    "gen-1792626296-qnx7tYu9iiSAUbJtMYpT"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 19,
+  "duration_ms": 392944,
+  "judged": "2026-10-21T23:45:41+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "b2e8207b59a75174242e56fe2118ca15f24e76d29d476173872ffe792af84c08"
+}

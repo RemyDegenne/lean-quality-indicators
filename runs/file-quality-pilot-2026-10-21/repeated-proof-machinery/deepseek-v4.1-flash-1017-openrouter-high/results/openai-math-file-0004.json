@@ -1,0 +1,73 @@
+{
+  "id": "openai-math-file-0004",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 112 lines of the target file and inspected the supporting declarations it depends on: dualEvalLie_base/dualEvalLie_tangent and polynomialFirstJet_base/polynomialLogDerivative (RealPolynomialChartSubstitution.lean), dualLogDerivative_mem_of_invariant (DualIdealSteps.lean), coefficients_directionalDerivative (ShiftedGradedCalculus.lean), eval_mem_iff_coefficients (ExtendedPolynomialValues.lean) and derivative_removal_preserves_quotient_layers (DualDerivativeRemoval.lean). The two 'simpa only [polynomialFirstJet_base, polynomialLogDerivative]' transfers in polynomialDerivativeSystem_remove and the final transfer in polynomial_removal_preserves_derivative_layers are one-line restatements along defs, so they are not reported. The main reusable block is the computation of base/tangent membership of the first-jet coordinate from coefficient membership, which currently appears verbatim in the two bullets of polynomialLogDerivative_mem_of_coefficients and again four times inside polynomial_removal_preserves_derivative_layers. I did not compile the proposed helper; its `[Fintype σ]` requirement and the exact placement of the `omit [Fintype σ]` annotation are untested.",
+  "findings": [
+    {
+      "declaration": "polynomial_removal_preserves_derivative_layers",
+      "start_line": 72,
+      "end_line": 105,
+      "excerpt": "  have haV : dualTangentLinear (polynomialFirstJetHom t h A).coord ∈ V := by\n    change dualTangentLinear (dualEvalLie t h A.coord) ∈ V\n    rw [dualEvalLie_tangent]\n    exact (eval_mem_iff_coefficients V _).mpr\n      (directionalDerivative_mem_coefficientSubmodule V h A.coord hAV) t",
+      "problem": "The four `have` blocks at lines 84–101 (haU, hcU, haV, hcV) are verbatim copies of the two bullets at lines 38–44 in `polynomialLogDerivative_mem_of_coefficients`. Each copy performs the same nontrivial chain: rewrite `polynomialFirstJetHom` to `dualEvalLie` on the coordinate, use `dualEvalLie_base` / `dualEvalLie_tangent` to turn the dual-component into `eval t A.coord` / `eval t (directionalDerivative h A.coord)`, and then recover membership from coefficient membership via `eval_mem_iff_coefficients`, the tangent case additionally composing with `directionalDerivative_mem_coefficientSubmodule`. The block for `A` occurs three times (lines 38–44, 84–87 and 92–96) and the block for `C` twice (88–91, 97–101), so any change to the invariant-membership argument (for instance a change in the `dualEvalLie_base`/`tangent` normal form, or in the way derivative invariance is transported) must be made in five places.",
+      "proposed_change": "Extract one helper in `NilpotentLieBCHGroup` next to `polynomialFirstJet_coord`, e.g.\n\n```lean\ntheorem polynomialFirstJet_coord_mem (U : LieSubalgebra ℚ L) (V : Submodule ℚ L)\n    (A : PolynomialGroup σ hnil)\n    (hAU : ∀ α, coefficients A.coord α ∈ U)\n    (hAV : ∀ α, coefficients A.coord α ∈ V) (t h : σ → ℚ) :\n    dualBaseLinear (polynomialFirstJetHom t h A).coord ∈ U ∧\n      dualTangentLinear (polynomialFirstJetHom t h A).coord ∈ V := by\n  constructor\n  · change dualBaseLinear (dualEvalLie t h A.coord) ∈ U\n    rw [dualEvalLie_base]\n    exact (eval_mem_iff_coefficients U.toSubmodule A.coord).mpr hAU t\n  · change dualTangentLinear (dualEvalLie t h A.coord) ∈ V\n    rw [dualEvalLie_tangent]\n    exact (eval_mem_iff_coefficients V _).mpr\n      (directionalDerivative_mem_coefficientSubmodule V h A.coord hAV) t\n```\n\nThen `polynomialLogDerivative_mem_of_coefficients` becomes\n`obtain ⟨hbase, htangent⟩ := polynomialFirstJet_coord_mem U V A hAU hAV t h; exact dualLogDerivative_mem_of_invariant U V hUV _ hbase htangent`,\nand in `polynomial_removal_preserves_derivative_layers` the four `have`s collapse to\n`obtain ⟨haU, haV⟩ := polynomialFirstJet_coord_mem U V A hAU hAV t h` and\n`obtain ⟨hcU, hcV⟩ := polynomialFirstJet_coord_mem U V C hCU hCV t h`, feeding `haU hcU haV hcV` to `F.derivative_removal_preserves_quotient_layers` exactly as the hypotheses require. The helper only uses imports already present in the file and the `[Fintype σ]` supplied by the section variables; this has not been checked by compilation.",
+      "benefit": "The argument relating coefficient membership of `A.coord` to membership of both components of the first jet — the mathematical heart shared by both theorems — would live in a single, named, independently readable lemma with its own statement of hypotheses. Readers of the layer-removal theorem would see the reduction to `derivative_removal_preserves_quotient_layers` without re-reading five copies of the same `change`/`rw`/`eval_mem_iff_coefficients` chain, and future changes to the `dualEvalLie` API would need to be fixed once rather than in five places (including inside `polynomialLogDerivative_mem_of_coefficients`, where the two bullets would otherwise silently diverge from the copies below).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/PolynomialDerivativeInvariant.lean",
+          "declaration": "polynomialLogDerivative_mem_of_coefficients",
+          "excerpt": "  · change dualTangentLinear (dualEvalLie t h A.coord) ∈ V\n    rw [dualEvalLie_tangent]\n    exact (eval_mem_iff_coefficients V _).mpr\n      (directionalDerivative_mem_coefficientSubmodule V h A.coord hAV) t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Linear/DualIdealSteps.lean",
+          "declaration": "dualLogDerivative_mem_of_invariant",
+          "excerpt": "theorem dualLogDerivative_mem_of_invariant (U : LieSubalgebra ℚ L) (V : Submodule ℚ L)\n    (hUV : ∀ u ∈ U, ∀ v ∈ V, ⁅u, v⁆ ∈ V) (z : DualGroup hnil)\n    (hb : dualBaseLinear z.coord ∈ U) (ht : dualTangentLinear z.coord ∈ V) :\n    dualLogDerivative z ∈ V := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "dualEvalLie_tangent",
+          "excerpt": "theorem dualEvalLie_tangent [Fintype σ] (t h : σ → ℚ) (p : VectorPolynomial σ ℚ L) :\n    dualTangentLinear (dualEvalLie t h p) = eval t (directionalDerivative h p) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/ExtendedPolynomialValues.lean",
+          "declaration": "eval_mem_iff_coefficients",
+          "excerpt": "theorem eval_mem_iff_coefficients (U : Submodule K V) (p : VectorPolynomial σ K V) :\n    (∀ x : σ → K, eval x p ∈ U) ↔ ∀ α, coefficients p α ∈ U := by"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 119849,
+    "cached_input_tokens": 103040,
+    "output_tokens": 6226,
+    "reasoning_output_tokens": 3461
+  },
+  "cost_usd": 0.00528204,
+  "generation_ids": [
+    "gen-1792626566-uTPVPDWTvGe4GGBKOzp7",
+    "gen-1792626576-98XQ4HZWbeuog0Fm4R1Q",
+    "gen-1792626586-Rc4owMzH1tDYmQkaNTtb",
+    "gen-1792626591-mZzOOT8yLIO8ZBIotk43",
+    "gen-1792626596-BD0Zbccr1vv1ANQ9dzmk",
+    "gen-1792626598-RXQwI98nZmm3fktOBabo",
+    "gen-1792626612-dcDiMq9VnNDJpLleYLSR",
+    "gen-1792626619-X1sPHbSkgycEkZixAxhu"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 8,
+  "duration_ms": 84570,
+  "judged": "2026-10-21T23:50:44+00:00",
+  "unit": "file",
+  "rubric": "repeated-proof-machinery",
+  "source_sha256": "b2e8207b59a75174242e56fe2118ca15f24e76d29d476173872ffe792af84c08"
+}

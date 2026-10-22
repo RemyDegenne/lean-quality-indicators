@@ -1,0 +1,141 @@
+{
+  "id": "openai-math-file-0005",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 794 lines of the target file and the supporting sources Walsh.lean, Encoding/ThreeBitTest.lean, and the Mathlib lemmas used for the proposals (Finset.prod_bij/sum_bij in Algebra/BigOperators/Group/Finset/Defs.lean, List.nodup_iff_count_le_one in Data/List/Nodup.lean, and Init/Data/List/Count.lean for length_eq_countP_add_countP and count_eq_countP). I checked every declaration in the four namespaces for assumptions stronger than their proofs use. The hard-coded 48/24/6912 bounds in the CloneGap section are intentional parameters of the concrete construction, so I did not ask for a fully parametrized counting argument. Proposals below were reasoned through by hand; Lean was not run, so the exact `simp`/`simpa` invocations are not machine-checked. Remaining uncertainty is limited to the precise tactic scripts for the suggested general lemmas and to whether the project prefers to keep the very small (but zero-cost) codomain generalization in finding 4.",
+  "findings": [
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.conditioned_coefficient_zero_invalid (with conditioned_coefficient_support)",
+      "start_line": 154,
+      "end_line": 162,
+      "excerpt": "theorem conditioned_coefficient_zero_invalid (valid : I → Bool)\n    (B : Cube {i : I // valid i = true} → ℝ) (s : Cube I) (i : I)\n    (hi : valid i = false) (hs : s i = true) :\n    coefficient (fun f => B (restrictQuery valid f)) s = 0 := by",
+      "problem": "The statement only covers the special form F = fun f => B (restrictQuery valid f) with `valid i = false`. The proof (lines 158-162) uses nothing about this form except its invariance under `cubeToggle i`, supplied by `restrictQuery_cubeToggle`; together with `walsh_cubeToggle` this is exactly the general Fourier fact that any function invariant under toggling a coordinate has vanishing coefficient at characters supported on that coordinate. Users who have such a flip-invariant function not literally written as a restriction along `valid` must reproduce the whole argument (the sibling files in the repository contain copies of this exact pattern).",
+      "proposed_change": "Prove the general lemma\n\n  theorem coefficient_zero_of_toggle_invariant (i : I) (F : Cube I → ℝ)\n      (hF : ∀ f, F (cubeToggle i f) = F f) (s : Cube I) (hs : s i = true) :\n      coefficient F s = 0\n\nwith the same proof: take `sum_cubeToggle i (fun f => F f * walsh s f)`, rewrite with `hF` and `walsh_cubeToggle s i _ hs`, and conclude the sum is zero. Recover the current declaration by supplying `hF := restrictQuery_cubeToggle valid i hi`. Similarly state the support version generally as `(hne : coefficient F s ≠ 0) (i : I) (hi : s i = true) : ∃ f, F (cubeToggle i f) ≠ F f`, from which `conditioned_coefficient_support` (lines 164-172) follows by the same case split on `valid i`. Degenerate cases are unchanged: when `s i = false` nothing is claimed, and when `I` is empty neither lemma has an instance.",
+      "benefit": "It exposes the actual hypothesis (invariance under one coordinate flip) and makes the Fourier-support statement reusable for other flip-invariant real-valued functions, instead of locking it to the particular `restrictQuery` encoding. The existing conditioning lemmas then become short corollaries, and readers can see why the coefficient vanishes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "restrictQuery_cubeToggle",
+          "excerpt": "theorem restrictQuery_cubeToggle (valid : I → Bool) (i : I)\n    (hi : valid i = false) (f : Cube I) :\n    restrictQuery valid (cubeToggle i f) = restrictQuery valid f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "sum_cubeToggle",
+          "excerpt": "theorem sum_cubeToggle (i : I) (F : Cube I → ℝ) :\n    (∑ f, F (cubeToggle i f)) = ∑ f, F f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "conditioned_coefficient_zero_invalid",
+          "excerpt": "  simp_rw [restrictQuery_cubeToggle valid i hi, walsh_cubeToggle s i _ hs,\n    mul_neg, Finset.sum_neg_distrib] at hsum"
+        }
+      ]
+    },
+    {
+      "declaration": "MinUncutGames.Reduction.CloneGap.count_index_eq_le",
+      "start_line": 276,
+      "end_line": 284,
+      "excerpt": "theorem count_index_eq_le (i : Index) : indices.countP (fun j => i == j) ≤ 1 := by\n  have h := List.count_range (a := i) (n := 48)",
+      "problem": "The statement is a fact about nodup lists in general, but it is phrased only for the concrete list `indices = List.range 48`, and its proof is tied to `List.count_range` and `split <;> omega`. Any other index list requires a separate copy of the lemma, which is why other reductions in this repository restate it verbatim.",
+      "proposed_change": "State the general lemma, for example\n\n  theorem countP_beq_le_one {α : Type*} [BEq α] [LawfulBEq α] {l : List α}\n      (h : l.Nodup) (i : α) : l.countP (fun j => i == j) ≤ 1\n\nproved by replacing `fun j => i == j` with `fun j => j == i` using `Bool.beq_comm` and applying `List.nodup_iff_count_le_one` (with `List.count_eq_countP`). Then `count_index_eq_le i` is the specialization `l := List.range 48`, obtained from `List.nodup_range` by `simpa [indices]`. Degenerate cases: for `l = []` the count is `0` and for a nodup list the bound is attained exactly once.",
+      "benefit": "The lemma becomes reusable for any nodup index list (e.g. the other CloneGap constructions), its statement no longer contains a magic constant, and the proof is a one-line consequence of an existing Mathlib characterization of `Nodup` instead of a bespoke `count_range`/`split` argument. `count_collision_le` (lines 286-313) is unaffected once the specialization is proved.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "indices",
+          "excerpt": "def indices : List Index := List.range 48"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Data/List/Nodup.lean",
+          "declaration": "List.nodup_iff_count_le_one",
+          "excerpt": "theorem nodup_iff_count_le_one [BEq α] [LawfulBEq α] {l : List α} : Nodup l ↔ ∀ a, count a l ≤ 1 :="
+        },
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.34.1/src/lean/Init/Data/List/Count.lean",
+          "declaration": "List.count_eq_countP",
+          "excerpt": "theorem count_eq_countP {a : α} {l : List α} : count a l = countP (· == a) l := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "MinUncutGames.Reduction.CloneGap.majority_exists (and majorityBit_count)",
+      "start_line": 315,
+      "end_line": 327,
+      "excerpt": "theorem majority_exists (g : Index → Bool) :\n    ∃ b : Bool, 24 ≤ indices.countP (fun i => g i == b) := by\n  have h := List.length_eq_countP_add_countP g (l := indices)",
+      "problem": "This is the pigeonhole principle for a list of length 48 and threshold 24, but it is stated only for the fixed list `indices`. The proof uses only `List.length_eq_countP_add_countP`, a rewrite of `decide (¬ g i = true)` to `!g i`, and `omega`; nothing depends on `indices` itself. `majorityBit_count` (lines 403-413) proves the same pigeonhole statement again, so the underlying combinatorial content is hidden behind the concrete constants.",
+      "proposed_change": "Prove the general version\n\n  theorem exists_bool_majority {α : Type*} (xs : List α) (g : α → Bool) {m : ℕ}\n      (hm : 2 * m ≤ xs.length) : ∃ b : Bool, m ≤ xs.countP (fun i => g i == b)\n\nby `List.length_eq_countP_add_countP g (l := xs)`, rewriting `decide (¬ g i = true)` to `!g i`, then `by_cases h : m ≤ xs.countP g` and `omega` in the negative case. Then `majority_exists g` is the specialization `xs := indices`, `m := 24` with `hm` discharged from `length_indices`. The same generalized statement can replace the doubling in `majorityBit_count` (with the bit defined as `decide (m ≤ xs.countP g)`). Degenerate cases: `xs = []` forces `m = 0`, where any bit works; `m = 0` is trivial for every list.",
+      "benefit": "It makes explicit that the lemma is just the majority/pigeonhole principle and allows reuse for other list lengths and thresholds (other cloning constructions use the same argument with different constants). It also removes the appearance that the result depends on the particular numbers 48 and 24.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "majorityBit_count",
+          "excerpt": "theorem majorityBit_count (g : Index → Bool) :\n    24 ≤ indices.countP (fun i => g i == majorityBit g) := by\n  have h := List.length_eq_countP_add_countP g (l := indices)"
+        },
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.34.1/src/lean/Init/Data/List/Count.lean",
+          "declaration": "List.length_eq_countP_add_countP",
+          "excerpt": "theorem length_eq_countP_add_countP (p : α → Bool) {l : List α} : length l = countP p l + countP (fun a => ¬p a) l := by"
+        }
+      ]
+    },
+    {
+      "declaration": "MinUncutGames.Foundations.Hastad.sum_cubeFlip (and sum_cubeToggle)",
+      "start_line": 25,
+      "end_line": 35,
+      "excerpt": "theorem sum_cubeFlip (F : Cube I → ℝ) : (∑ f, F (cubeFlip f)) = ∑ f, F f := by\n  refine Finset.sum_bij (fun f _ => cubeFlip f) ?_ ?_ ?_ ?_",
+      "problem": "Both reindexing identities are stated with values in ℝ, although their proofs are pure `Finset.sum_bij` manipulations plus `rfl` (lines 25-35 and 126-137). No field, order, subtraction, or negation structure on the codomain is used; `cubeFlip` and `cubeToggle` are involutions, so the identity holds for sums in any additive commutative monoid. The same proof therefore establishes a strictly more general statement at no cost.",
+      "proposed_change": "State\n\n  theorem sum_cubeFlip {M : Type*} [AddCommMonoid M] (F : Cube I → M) :\n      (∑ f, F (cubeFlip f)) = ∑ f, F f\n\nand analogously `sum_cubeToggle {M : Type*} [AddCommMonoid M] (i : I) (F : Cube I → M)`. The existing proofs carry over verbatim because `Finset.sum_bij` is available in any `AddCommMonoid`; the current ℝ uses at lines 41 and 158 are then obtained by unification. Degenerate case `I = ∅`: the cube is a singleton and both sides are the single term, so the general statement still holds.",
+      "benefit": "The involution reindexing identities become usable for ℤ-valued, ℝ≥0-valued, or other monoid-valued functions without duplicating the `sum_bij` proof, and the statement advertises exactly the structure the proof needs. The real-valued consumers in this file are unaffected.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MinUncut/PCP/Folding.lean",
+          "declaration": "sum_cubeToggle",
+          "excerpt": "theorem sum_cubeToggle (i : I) (F : Cube I → ℝ) :\n    (∑ f, F (cubeToggle i f)) = ∑ f, F f := by\n  refine Finset.sum_bij (fun f _ => cubeToggle i f) ?_ ?_ ?_ ?_"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/BigOperators/Group/Finset/Defs.lean",
+          "declaration": "Finset.prod_bij",
+          "excerpt": "section CommMonoid\n\nvariable [CommMonoid M]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 788105,
+    "cached_input_tokens": 645888,
+    "output_tokens": 27144,
+    "reasoning_output_tokens": 21609
+  },
+  "cost_usd": 0.030116464,
+  "generation_ids": [
+    "gen-1792627133-xMKx7CoY7qQiDd1V7wyt",
+    "gen-1792627137-LPXfZvN8fUmKgPCqFvY9",
+    "gen-1792627144-FUYFoyAuqOfExIdzu54m",
+    "gen-1792627158-kyDiEtmYmZQPn9kHLgmw",
+    "gen-1792627184-UXU5NQzVkB1sQqfDdH7J",
+    "gen-1792627190-NGPeQEUxqV22RlLIwdOQ",
+    "gen-1792627206-BBnQwT3dqugnRbprRkyl",
+    "gen-1792627234-LBgGCGjaLbrJz3y34jc8",
+    "gen-1792627256-gaZO78Zpi9kUJ8R5dNzc",
+    "gen-1792627258-S6VWECSFw5DQtSPiMjX8",
+    "gen-1792627286-sAnMj7TLaHlY9Tfc56HE",
+    "gen-1792627320-NoXXJVqS9e1GYkJeCvmy",
+    "gen-1792627332-lQA2vtEfdSVJQtloVXRF"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 13,
+  "duration_ms": 224391,
+  "judged": "2026-10-22T00:02:35+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "864a699a6e222a51d612d32d422bfa823b547fe0bf6b21f567be1aa1e64d5034"
+}

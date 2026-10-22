@@ -1,0 +1,127 @@
+{
+  "id": "mathlib-file-0003",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1-415) and cross-checked the lemmas used by the three findings: Real.log_pos and Real.tendsto_log_nhdsLT_zero in Mathlib/Analysis/SpecialFunctions/Log/Basic.lean, Real.zero_rpow in Mathlib/Analysis/SpecialFunctions/Pow/Real.lean, and Tendsto.congr' in Mathlib/Order/Filter/Tendsto.lean. The sibling lemma tendsto_rpow_atTop_of_base_gt_one in the same target file already uses `exact log_pos hb` for an identical subgoal. Replacements were not compiled. Other candidate simplifications (e.g. in IsTheta.rpow, the duplicated natCast proof of IsBigO.mul_atTop_rpow_natCast_of_isBigO_rpow, and the isLittleO_log_rpow_rpow_atTop calc) were considered but not flagged, since shorter versions would generalize declarations or differ only in taste with uncertain readability.",
+  "findings": [
+    {
+      "declaration": "tendsto_rpow_atBot_of_base_gt_one",
+      "start_line": 89,
+      "end_line": 93,
+      "excerpt": "  refine tendsto_exp_atBot.comp <| (tendsto_const_mul_atBot_of_pos ?_).mpr tendsto_id\n  exact (log_pos_iff (by positivity)).mpr <| by aesop",
+      "problem": "The remaining goal here is `0 < log b` under `hb : 1 < b`. It is closed through the order characterization `log_pos_iff` (requiring a positivity side goal) and then `aesop` to recover `1 < b` from `hb`. This is an indirect, opaque route to a fact with a direct named lemma, and it is inconsistent with the sibling lemma `tendsto_rpow_atTop_of_base_gt_one` in the same file, which handles the identical subgoal with `exact log_pos hb` (line 87).",
+      "proposed_change": "Replace the last line with `exact log_pos hb` (or fold the two lines into `exact tendsto_exp_atBot.comp ((tendsto_const_mul_atBot_of_pos (log_pos hb)).mpr tendsto_id)`).",
+      "benefit": "The reader sees immediately that the constant multiplier is `log b`, positive because `b > 1`, without an intermediate order equivalence or `aesop`. It also matches the style of the analogous lemma a few lines above.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Log/Basic.lean",
+          "declaration": "Real.log_pos",
+          "excerpt": "theorem log_pos (hx : 1 < x) : 0 < log x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "tendsto_rpow_atTop_of_base_gt_one",
+          "excerpt": "  exact log_pos hb"
+        }
+      ]
+    },
+    {
+      "declaration": "tendsto_log_mul_self_nhdsLT_zero",
+      "start_line": 410,
+      "end_line": 415,
+      "excerpt": "  refine nhdsWithin_mono 0 (fun x hx ↦ ?_)\n  push _ ∈ _ at hx\n  simp only [Set.mem_compl_iff, Set.mem_singleton_iff, hx.ne, not_false_eq_true]",
+      "problem": "The inclusion `Iio 0 ⊆ {0}ᶜ` needed by `nhdsWithin_mono` is proved by pushing the membership and then a `simp only` with four set/membership lemmas to extract `x ≠ 0` from `x < 0`. This is more machinery than the fact warrants and obscures why `𝓝[<] 0 ≤ 𝓝[≠] 0`.",
+      "proposed_change": "Use the order lemma directly: `refine nhdsWithin_mono 0 (fun x hx ↦ ne_of_lt hx)`.",
+      "benefit": "The one-line term states the actual reason: a point below zero is nonzero, hence lies in the punctured neighbourhood. The same idiom is already used in the library for this exact filter inclusion, so a reader familiar with `nhdsWithin_mono` can follow it at a glance.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Log/Basic.lean",
+          "declaration": "Real.tendsto_log_nhdsLT_zero",
+          "excerpt": "  tendsto_log_nhdsNE_zero.mono_left <| nhdsWithin_mono _ fun _ h ↦ ne_of_lt h"
+        }
+      ]
+    },
+    {
+      "declaration": "tendsto_rpow_atTop_of_base_lt_one",
+      "start_line": 67,
+      "end_line": 71,
+      "excerpt": "  case inr.inl => -- b = 0\n    refine Tendsto.mono_right ?_ (Iff.mpr pure_le_nhds_iff rfl)\n    rw [tendsto_pure]\n    filter_upwards [eventually_ne_atTop 0] with _ hx\n    simp [hx]",
+      "problem": "In the case `b = 0` the goal is `Tendsto (fun x => (0:ℝ) ^ x) atTop (𝓝 0)`. The proof reduces to the pure filter `pure 0`, converts `pure_le_nhds` into a `Tendsto.mono_right`, rewrites `tendsto_pure`, and finally uses `simp` with the fact that the base is nonzero. This is a three-step detour through pure-filter machinery for the elementary observation that `0 ^ x = 0` for `x ≠ 0` eventually.",
+      "proposed_change": "Replace the case body with a direct eventually-equal-to-a-constant argument:\n```\n  case inr.inl => -- b = 0\n    refine Tendsto.congr' ((eventually_ne_atTop (0 : ℝ)).mono fun x hx => ?_) tendsto_const_nhds\n    exact (Real.zero_rpow hx).symm\n```\nThis shows the function equals `0` eventually via the named lemma `Real.zero_rpow`, and constants tend to their own limit.",
+      "benefit": "The reader sees the mathematical content (`0 ^ x = 0` away from `x = 0`, so the limit is the limit of the constant zero function) instead of decoding `pure_le_nhds_iff`/`tendsto_pure`. It also replaces an unnamed `simp` step by an explicit use of `Real.zero_rpow`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Real.lean",
+          "declaration": "Real.zero_rpow",
+          "excerpt": "theorem zero_rpow {x : ℝ} (h : x ≠ 0) : (0 : ℝ) ^ x = 0 := by simp [rpow_def, *]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Order/Filter/Tendsto.lean",
+          "declaration": "Tendsto.congr'",
+          "excerpt": "theorem Tendsto.congr' {f₁ f₂ : α → β} {l₁ : Filter α} {l₂ : Filter β} (hl : f₁ =ᶠ[l₁] f₂)"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 2578901,
+    "cached_input_tokens": 2405376,
+    "output_tokens": 38537,
+    "reasoning_output_tokens": 29481
+  },
+  "cost_usd": 0.052393508,
+  "generation_ids": [
+    "gen-1792625221-Szc85T8YECjFN2f4Cmg8",
+    "gen-1792625236-wnqL5zDqqVdUvCjDSVTv",
+    "gen-1792625251-MIFQ4imdDMOfwso2OM66",
+    "gen-1792625281-EIoZDprSzvzdoXfLlOZu",
+    "gen-1792625296-1zdcEXfvchFdiBwnsYKF",
+    "gen-1792625324-on4s9IrXrF6RQCMp9CTS",
+    "gen-1792625334-RaUdMPji2Xd1n0r1UQPZ",
+    "gen-1792625341-pmfDlEpHK3qkkJcGsnzc",
+    "gen-1792625369-Uer3GlhhEoHuyBYbYEvm",
+    "gen-1792625399-gw41NDj6DXq5HZvMwB5u",
+    "gen-1792625409-cJCbl996jcYfRCxnoNgX",
+    "gen-1792625421-CmFZIgd1Xa8v3zlrV9jE",
+    "gen-1792625446-LJ3FslZe0hyCnK6G4zoI",
+    "gen-1792625459-KvMbjYs8I6r0S7YqiYzr",
+    "gen-1792625469-RMZyO5rv06XbhPJj5VVY",
+    "gen-1792625484-bDkp5vtaVRc3ysHSuBSh",
+    "gen-1792625492-TsGqc8DtXyTO4Sh4TtSG",
+    "gen-1792625534-9oZmUfayayW0tJ3lhbhT",
+    "gen-1792625552-4TIuGDRTchXGmwdS1fOH",
+    "gen-1792625579-bgxsnLhGxaJXss2Qrohw",
+    "gen-1792625634-YqBnsC6DXvJEhqjnICby",
+    "gen-1792625639-Ziw6ViEwXP0Wsy4rzw58",
+    "gen-1792625680-770pVwGMCX4Y3ClBjn4X",
+    "gen-1792625712-FfxJ4s1hTSoV8AsoxWTh",
+    "gen-1792625785-KqhAenGhx9ux7D5IPGMn",
+    "gen-1792625807-SHDaLBzgNW1UNM1BCgEj",
+    "gen-1792625840-A6H4TeeL2YSxaMSJVRLb",
+    "gen-1792625848-feYrpvVCqLrIZ0osweTq",
+    "gen-1792625888-Ouva7OwdbUc3NzhZ3h6g",
+    "gen-1792625893-3hMUOipL6Cd6bLbRaArJ",
+    "gen-1792625915-jjae722F9qbZwVgM2YvP",
+    "gen-1792625923-fwbBEjDuOWvDGmyeT1Jb",
+    "gen-1792625935-hvz5Wvsexb0bG0vNvZxL",
+    "gen-1792626023-OagYTlZijECK0zUnWhf8",
+    "gen-1792626051-xaBtpv2thyWB1oZ9wBKF"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 35,
+  "duration_ms": 852005,
+  "judged": "2026-10-21T23:41:02+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "f736afe5ee0e392168895c13ce258c142fdc5d3b45ecb5d3dd12af9299a8ee42"
+}

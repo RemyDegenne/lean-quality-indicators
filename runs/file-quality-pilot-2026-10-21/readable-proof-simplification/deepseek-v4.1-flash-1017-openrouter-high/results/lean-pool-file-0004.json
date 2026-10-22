@@ -1,0 +1,152 @@
+{
+  "id": "lean-pool-file-0004",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 1272 lines of the target file, plus the local API in LeanPool/Odlyzko/TestFunction/TartarDerivativeBounds.lean and the relevant Mathlib facts about Real.sinh/Real.cosh and HasDerivAt.congr_deriv. The findings concern redundant goal-restating intermediates, duplicated positivity work, use of opaque grind where the arithmetic is simple, one reflexive calc step, and one proof that can use existing Mathlib sinh/cosh lemmas. I did not run Lean; replacements are untested.",
+  "findings": [
+    {
+      "declaration": "NumberField.Odlyzko.abs_sinh_le_cosh",
+      "start_line": 200,
+      "end_line": 206,
+      "excerpt": "theorem abs_sinh_le_cosh (x : ℝ) :\n    |Real.sinh x| ≤ Real.cosh x := by\n  have hid := Real.cosh_sq_sub_sinh_sq x\n  have hsq : Real.sinh x ^ 2 ≤ Real.cosh x ^ 2 := by\n    nlinarith\n  have habssq : |Real.sinh x| ^ 2 ≤ Real.cosh x ^ 2 := by simp_all\n  exact ((sq_le_sq₀ (abs_nonneg _) (Real.cosh_pos x).le)).mp habssq",
+      "problem": "The proof re-derives the inequality through squares using nlinarith and simp_all, even though Mathlib already has |sinh x| = sinh |x| and sinh y < cosh y. The squared-inequality detour obscures the short argument.",
+      "proposed_change": "Replace the body with:\n\n  rw [Real.abs_sinh]\n  simpa using (Real.sinh_lt_cosh (x := |x|)).le",
+      "benefit": "A reader sees immediately that |sinh| is sinh of |x|, dominated by cosh at |x|, which simplifies to cosh x.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Trigonometric/DerivHyp.lean",
+          "declaration": "Real.abs_sinh",
+          "excerpt": "theorem abs_sinh (x : ℝ) : |sinh x| = sinh |x| := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Complex/Trigonometric.lean",
+          "declaration": "Real.sinh_lt_cosh",
+          "excerpt": "theorem sinh_lt_cosh : sinh x < cosh x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Complex/Trigonometric.lean",
+          "declaration": "Real.cosh_abs",
+          "excerpt": "theorem cosh_abs : cosh |x| = cosh x := by"
+        }
+      ]
+    },
+    {
+      "declaration": "NumberField.Odlyzko.hasDerivAt_poitouKernelDerivative",
+      "start_line": 628,
+      "end_line": 644,
+      "excerpt": "  have he :\n      HasDerivAt (poitouKernelDerivative f f')\n        (poitouKernelSecondDerivative f f' f'' x) x := by\n    have hevent :\n        poitouKernelDerivative f f' =ᶠ[𝓝 x]\n          (f' / c - (f * sh) / (fun z ↦ 2 * (c * c) z)) :=\n      Filter.Eventually.of_forall fun z ↦ by\n        unfold poitouKernelDerivative\n        dsimp [c, sh]\n        ring\n    have hfun := h.congr_of_eventuallyEq hevent\n    refine hfun.congr_deriv ?_\n    unfold poitouKernelSecondDerivative\n    dsimp [c, sh]\n    field_simp [(Real.cosh_pos (x / 2)).ne']\n    ring\n  grind",
+      "problem": "The `have he` block states exactly the theorem's goal and proves it, but the proof closes with `grind` instead of using `he`. The goal-restating wrapper plus opaque automation hides that the goal was already built. The same pattern appears in `hasDerivAt_poitouVerticalProfileDerivative` (lines 736-755), whose proof ends in `exact h'`.",
+      "proposed_change": "Inline the body at the outer level:\n\n  have hevent :\n      poitouKernelDerivative f f' =ᶠ[𝓝 x]\n        (f' / c - (f * sh) / (fun z ↦ 2 * (c * c) z)) :=\n    Filter.Eventually.of_forall fun z ↦ by\n      unfold poitouKernelDerivative\n      dsimp [c, sh]\n      ring\n  refine (h.congr_of_eventuallyEq hevent).congr_deriv ?_\n  unfold poitouKernelSecondDerivative\n  dsimp [c, sh]\n  field_simp [(Real.cosh_pos (x / 2)).ne']\n  ring\n\nMinimal alternative: replace the final `grind` with `exact he`.",
+      "benefit": "The proof ends with an explicit derivative calculation, and the target type appears only once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/Deriv/Basic.lean",
+          "declaration": "HasDerivAt.congr_deriv",
+          "excerpt": "theorem HasDerivAt.congr_deriv (h : HasDerivAt f f' x) (h' : f' = g') : HasDerivAt f g' x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "NumberField.Odlyzko.hasDerivAt_poitouVerticalProfileDerivative",
+          "excerpt": "    have hfun := h.congr_of_eventuallyEq hevent\n    refine hfun.congr_deriv ?_\n    unfold poitouVerticalProfileSecondDerivative\n    push_cast\n    ring\n  exact h'"
+        }
+      ]
+    },
+    {
+      "declaration": "NumberField.Odlyzko.hasDerivAt_regularizedScaledTartarDerivative",
+      "start_line": 800,
+      "end_line": 811,
+      "excerpt": "  have hinside :\n      HasDerivAt (fun z ↦ f' z - 2 * δ * z * f z)\n        (y ^ 2 * tartarTestFunctionSecondDerivative (y * x) -\n          2 * δ * f x - 2 * δ * x * f' x) x := by\n    have h := hf'.sub ((((hasDerivAt_id x).const_mul (2 * δ)).mul hf))\n    have he :\n        HasDerivAt (fun z ↦ f' z - 2 * δ * z * f z)\n          (y ^ 2 * tartarTestFunctionSecondDerivative (y * x) -\n            (2 * δ * 1 * f x + 2 * δ * x * f' x)) x :=\n      h.congr_of_eventuallyEq\n        (Filter.Eventually.of_forall fun z ↦ rfl)\n    grind",
+      "problem": "`he` states the same derivative fact with `2 * δ * 1 * f x` instead of `2 * δ * f x`, and `grind` bridges the single multiplication-by-one difference. The `congr_of_eventuallyEq ... rfl` step only realigns the function expression; the content is the arithmetic between the two derivative values.",
+      "proposed_change": "Keep the function realignment and use `congr_deriv` with an explicit ring step:\n\n  have hinside :\n      HasDerivAt (fun z ↦ f' z - 2 * δ * z * f z)\n        (y ^ 2 * tartarTestFunctionSecondDerivative (y * x) -\n          2 * δ * f x - 2 * δ * x * f' x) x := by\n    have h := hf'.sub ((((hasDerivAt_id x).const_mul (2 * δ)).mul hf))\n    exact (h.congr_of_eventuallyEq\n      (Filter.Eventually.of_forall fun z ↦ rfl)).congr_deriv (by ring)",
+      "benefit": "The reader sees that only a multiplication by one has to be disposed of, rather than trusting `grind` to discover it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/Deriv/Basic.lean",
+          "declaration": "HasDerivAt.congr_deriv",
+          "excerpt": "theorem HasDerivAt.congr_deriv (h : HasDerivAt f f' x) (h' : f' = g') : HasDerivAt f g' x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "NumberField.Odlyzko.hasDerivAt_scaledTartarTestFunctionDerivative",
+          "excerpt": "  exact h.const_mul y |>.congr_deriv (by ring)"
+        }
+      ]
+    },
+    {
+      "declaration": "NumberField.Odlyzko.norm_poitouVerticalProfileSecondDerivative_regularized_le",
+      "start_line": 1064,
+      "end_line": 1122,
+      "excerpt": "      have hP :\n          0 ≤\n            (D₂ + 8 * δ * |y| * tartarAmplitudeDerivativeBound * |x| +\n                4 * δ ^ 2 * x ^ 2 + D₁ + 2 * δ * |x| + 3 / 4) +\n              2 * a * (D₁ + 2 * δ * |x| + 1 / 2) + a ^ 2 := by\n        exact add_nonneg\n          (add_nonneg hP₂\n            (mul_nonneg (mul_nonneg (by norm_num) ha) hP₁))\n          (sq_nonneg a)",
+      "problem": "The same nonnegativity proposition `hP` is proved twice: once inside the first calc step via local `hP₂`/`hP₁`, and again at lines 1108-1122 from scratch. The second proof does not use the local `P₂`/`P₁` abbreviations, so a single copy suffices.",
+      "proposed_change": "Hoist the self-contained proof at lines 1108-1122 to just after `hk''` (before `unfold poitouVerticalProfileSecondDerivative`), and reuse that one `hP` at both places. In the first calc step, use the hoisted `hP` in `exact mul_nonneg hP ...` and delete the local `hP₂`, `hP₁`, `hP` block; in the second calc step, replace the duplicate block with the hoisted `hP`.",
+      "benefit": "There is one clearly stated positivity fact instead of two parallel proofs, reducing duplication and preventing the copies from drifting apart.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "NumberField.Odlyzko.norm_poitouVerticalProfileSecondDerivative_regularized_le",
+          "excerpt": "      have hP :\n          0 ≤\n            (D₂ + 8 * δ * |y| * tartarAmplitudeDerivativeBound * |x| +\n                4 * δ ^ 2 * x ^ 2 + D₁ + 2 * δ * |x| + 3 / 4) +\n              2 * a * (D₁ + 2 * δ * |x| + 1 / 2) + a ^ 2 := by\n        have hP₂ :\n            0 ≤ D₂ + 8 * δ * |y| * tartarAmplitudeDerivativeBound * |x| +\n              4 * δ ^ 2 * x ^ 2 + D₁ + 2 * δ * |x| + 3 / 4 := by\n          have hA := tartarAmplitudeDerivativeBound_nonneg\n          positivity\n        have hP₁ : 0 ≤ D₁ + 2 * δ * |x| + 1 / 2 := by positivity\n        exact add_nonneg\n          (add_nonneg hP₂\n            (mul_nonneg (mul_nonneg (by norm_num) ha) hP₁))\n          (sq_nonneg a)"
+        }
+      ]
+    },
+    {
+      "declaration": "NumberField.Odlyzko.abs_poitouKernelSecondDerivative_le",
+      "start_line": 681,
+      "end_line": 687,
+      "excerpt": "            calc\n              |f' x| * |sh| ≤ |f' x| * c :=\n                mul_le_mul_of_nonneg_left hsh (abs_nonneg _)\n              _ ≤ |f' x| * c ^ 2 := by\n                gcongr\n                nlinarith\n              _ = |f' x| * c ^ 2 := rfl",
+      "problem": "The final step of this calc is a reflexive equality between syntactically identical expressions. The preceding step already reaches `|f' x| * c ^ 2`, the goal of the surrounding `div_le_iff₀` reduction, so the last line is redundant.",
+      "proposed_change": "Delete the line\n\n              _ = |f' x| * c ^ 2 := rfl\n\nand let the calc end at the `≤ |f' x| * c ^ 2` step.",
+      "benefit": "The calc ends directly at the required inequality, with no spurious reflexive step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "NumberField.Odlyzko.abs_poitouKernelSecondDerivative_le",
+          "excerpt": "            apply (div_le_iff₀ (sq_pos_of_pos hcpos)).2\n            calc\n              |f' x| * |sh| ≤ |f' x| * c :="
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 963450,
+    "cached_input_tokens": 849664,
+    "output_tokens": 43284,
+    "reasoning_output_tokens": 33545
+  },
+  "cost_usd": 0.037542192,
+  "generation_ids": [
+    "gen-1792626627-sgJvCBSWMS0Q771hjiBZ",
+    "gen-1792626629-I4fishzacbXRfsLqHSM3",
+    "gen-1792626652-ks5gyF3rahmESImzJhHK",
+    "gen-1792626667-exosbtxKx17kVWistLSF",
+    "gen-1792626689-YQprTtfBX1Yfo7HIPDEf",
+    "gen-1792626726-uwtZxSAAMdcNTgqeSsSq",
+    "gen-1792626730-tz26SgSmH7N3iLXc1bnG",
+    "gen-1792626742-uVX9V8RrzzYAhwDdWJXH",
+    "gen-1792626746-ZnCstIDNqhLtSZ4tBf0F",
+    "gen-1792626754-J33PNxA2gt88hA5ruezL",
+    "gen-1792626776-w6s3S99xZUwSibVuhyOB",
+    "gen-1792626820-8fipNox1ZC3TyZf88wjX",
+    "gen-1792626832-2ws3KMMGX2mnvfbnAywN",
+    "gen-1792626840-Zh6tJXHEWyLVTJNM5ByF",
+    "gen-1792626867-zlwEvVOEpz5uhF69v0FT",
+    "gen-1792626923-e0UXgW30e2j2PIOEjbzE",
+    "gen-1792626967-T8efOPRVjqGs4Kb2P7GK",
+    "gen-1792627023-facWtPVMsxszam2XOGa7"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 18,
+  "duration_ms": 415942,
+  "judged": "2026-10-21T23:57:15+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "56ef8d471d0ee3f0b24a9cdf7f0d1a043ae91df828c144b9a95b83891efe9b66"
+}

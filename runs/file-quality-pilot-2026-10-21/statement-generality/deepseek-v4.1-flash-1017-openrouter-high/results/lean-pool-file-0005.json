@@ -1,0 +1,126 @@
+{
+  "id": "lean-pool-file-0005",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 438 lines of Tail.lean (in two passes) and the definitions it depends on in the sibling files: Basic.lean (ParabolicPoint, cylinderPowerIntegral, morreyCell, morreyNorm) and Kernel.lean (parabolicRho₂, parabolicRieszKernel, parabolicRieszShell, exists_shell_of_pos_lt, pairwise_disjoint_parabolicRieszShells, shell_power_identity, shell_kernel_integral_le, negativeShell, local_kernel_integral_le_shell_sum). I also checked downstream uses (Adams.lean calls parabolicRieszKernel_tail_le) only to judge whether a generalisation is usable. The findings below are all cases where a hypothesis or index type is stronger than the argument needs; none of them require new mathematics. I did not report the many strictly unused binders (`0 < β`, `β * q < 5`, `AEMeasurable f volume`, and the `y ≠ 0`/`y ≠ ∞` arguments of `ennreal_mul_rpow`), since deleting an unused binder is the separate unnecessary-hypotheses experiment and is insufficient on its own here. I could not compile, so the proposed replacement statements and proofs are argued from the source text (the proof bodies' only uses of the relevant hypotheses) rather than verified by Lean; this is the main remaining uncertainty.",
+  "findings": [
+    {
+      "declaration": "positive_shell_cylinder_subset",
+      "start_line": 67,
+      "end_line": 91,
+      "excerpt": "private lemma positive_shell_cylinder_subset {R : ℝ} (hR : 0 < R)\n    (k : ℕ) (z : ParabolicPoint) :\n    parabolicRieszShell R (k : ℤ) z ⊆\n      parabolicCylinder z.1\n        (z.2 + (2 * ((2 : ℝ) ^ ((k : ℝ) + 1) * R)) ^ 2 / 2)\n        (2 * ((2 : ℝ) ^ ((k : ℝ) + 1) * R)) := by",
+      "problem": "The index is restricted to `k : ℕ`, but the statement only mentions `parabolicRieszShell R (k : ℤ) z` and the outer radius `2^(k+1) * R`, and the proof (lines 73–91) only uses that `b := 2^(k+1) * R` is positive (`positivity`) plus `parabolicRho₂_lt_subset_metricBall hw.2` and `metricBall_subset_parabolicCylinder`. Nothing uses `k ≥ 0`, so the same proof covers every integer index. The sibling file Kernel.lean states the corresponding facts at general integer index (`measurableSet_parabolicRieszShell R (k : ℤ) z`, `volume_parabolicRieszShell_le {k : ℤ}`, `exists_shell_of_pos_lt` producing negative `k`), so this ℕ-only version is the odd one out.",
+      "proposed_change": "State it at general integer index, e.g. `private lemma parabolicRieszShell_subset_cylinder {R : ℝ} (hR : 0 < R) (k : ℤ) (z : ParabolicPoint) : parabolicRieszShell R k z ⊆ parabolicCylinder z.1 (z.2 + (2 * ((2 : ℝ) ^ ((k : ℝ) + 1) * R)) ^ 2 / 2) (2 * ((2 : ℝ) ^ ((k : ℝ) + 1) * R))`, keeping the proof verbatim (only the cast `(k : ℤ)` is replaced by `k`; `b = 2^(k+1) * R` is still positive because `2^x > 0` and `R > 0`, and `hw.2 : parabolicRho₂ z w < b` is unchanged). Degenerate cases: `R = 0`/`R < 0` remain excluded by `hR`, and for negative `k` the outer radius is still positive.",
+      "benefit": "The lemma then applies to the negative-index shells (`negativeShell R n z = parabolicRieszShell R (Int.negSucc n) z`) used by the local part of the theory in Kernel.lean and to arbitrary integer shells, giving one geometric containment lemma instead of an ℕ-specific one; a reader comparing Tail.lean and Kernel.lean no longer has to work out why the index type differs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "volume_parabolicRieszShell_le",
+          "excerpt": "theorem volume_parabolicRieszShell_le {z : ParabolicPoint} {R : ℝ} {k : ℤ}\n    (hR : 0 < R) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "parabolicRieszShell",
+          "excerpt": "def parabolicRieszShell (R : ℝ) (k : ℤ) (z : ParabolicPoint) : Set ParabolicPoint :="
+        }
+      ]
+    },
+    {
+      "declaration": "positiveShell_pairwise",
+      "start_line": 138,
+      "end_line": 160,
+      "excerpt": "private lemma positiveShell_pairwise {R : ℝ} (hR : 0 < R) (z : ParabolicPoint) :\n    Pairwise (Function.onFun Disjoint (fun n => positiveShell R n z)) := by\n  intro n m hnm\n  change Disjoint (positiveShell R n z) (positiveShell R m z)",
+      "problem": "The disjointness of dyadic shells is stated here for ℕ-indexed shells, but the proof (`lt_or_gt_of_ne`, `Nat.succ_le_of_lt`, cast to ℤ and ℝ, `Real.rpow_le_rpow_of_exponent_le`, multiplication by `hR.le`, contradiction with the shell inequalities) is exactly the integer-index argument. The repository already contains the same proof restricted to negative integer indices as `pairwise_disjoint_parabolicRieszShells` (Kernel.lean, lines 217–235) and then again as `negativeShell_pairwise` (Kernel.lean, lines 384–406). So the general fact is proved three times in restricted index ranges.",
+      "proposed_change": "State the general lemma once, e.g. `private lemma parabolicRieszShell_pairwise {R : ℝ} (hR : 0 < R) (z : ParabolicPoint) : Pairwise (Function.onFun Disjoint (fun k : ℤ => parabolicRieszShell R k z))`. Proof: `intro k l hkl; rw [Set.disjoint_left]; intro w hwk hwl; rcases lt_or_gt_of_ne hkl with hlt | hgt`, then in each case get `k + 1 ≤ l` (resp. `l + 1 ≤ k`) by `Int.add_one_le_iff.mpr hlt`, push to ℝ by `exact_mod_cast`, apply `Real.rpow_le_rpow_of_exponent_le (by norm_num)`, multiply by `hR.le`, and contradict the strict upper/lower shell bounds — precisely the pattern already used in `pairwise_disjoint_parabolicRieszShells`. The ℕ-indexed version needed here and the negative-index version in Kernel.lean then follow by restricting the index type.",
+      "benefit": "One proof of a general geometric fact instead of three copies, and a statement users can apply to any integer-indexed family of shells (mixed signs, or unions over ℤ) rather than having to re-derive disjointness for each index type.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "pairwise_disjoint_parabolicRieszShells",
+          "excerpt": "private lemma pairwise_disjoint_parabolicRieszShells {R : ℝ} (hR : 0 < R)\n    (z : ParabolicPoint) :\n    Pairwise (Function.onFun Disjoint (fun k : {k : ℤ // k < 0} =>\n      parabolicRieszShell R k.1 z)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "negativeShell_pairwise",
+          "excerpt": "private lemma negativeShell_pairwise {R : ℝ} (hR : 0 < R) (z : ParabolicPoint) :\n    Pairwise (Function.onFun Disjoint (fun n => negativeShell R n z)) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "tail_integral_le_shell_sum",
+      "start_line": 350,
+      "end_line": 380,
+      "excerpt": "private lemma tail_integral_le_shell_sum {β : ℝ} {R : ℝ} (hR : 0 < R)\n    {f : ParabolicPoint → ℝ} (_ : AEMeasurable f volume) (z : ParabolicPoint) :\n    (∫⁻ w in {w | R ≤ parabolicRho₂ z w},\n      parabolicRieszKernel β z w * ENNReal.ofReal |f w|) ≤\n      ∑' n : ℕ, ∫⁻ w in positiveShell R n z,\n        parabolicRieszKernel β z w * ENNReal.ofReal |f w| := by",
+      "problem": "The lemma is a pure dyadic-covering statement: the proof only uses `positiveShell_measurable`, `positiveShell_pairwise`, `positive_shell_cover` and `lintegral_iUnion`, and the integrand `parabolicRieszKernel β z w * ENNReal.ofReal |f w|` is carried along unchanged (the second calc step is `lintegral_iUnion hs hspair _` and the last step is `rfl`). Neither `β` nor `f` nor the measurability of `f` plays any role, so the statement is specialised to one particular kernel times one particular density when the same covering decomposition holds for an arbitrary nonnegative integrand.",
+      "proposed_change": "State it for an arbitrary extended-nonnegative integrand, e.g. `private lemma tail_integral_le_shell_sum {R : ℝ} (hR : 0 < R) (z : ParabolicPoint) (g : ParabolicPoint → ℝ≥0∞) : (∫⁻ w in {w | R ≤ parabolicRho₂ z w}, g w) ≤ ∑' n : ℕ, ∫⁻ w in positiveShell R n z, g w`. The proof body carries over with `g` in place of the product, `lintegral_iUnion hs hspair g` for `hunion`, and the final `rfl` step removed; `parabolicRieszKernel_tail_le` then instantiates `g := fun w => parabolicRieszKernel β z w * ENNReal.ofReal |f w|` at line 396. No summability or measurability assumption is needed: `lintegral` is defined for arbitrary functions into `ℝ≥0∞`, and the `⊆`-cover already handles the `parabolicRho₂ z z = 0` case.",
+      "benefit": "The covering/summation step becomes reusable independently of the order-β Riesz kernel and of the Morrey development (for instance for weighted integrands or the local/negative-shell analogue), and the lemma no longer advertises hypotheses (`f`-measurability) that the statement does not need.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Tail.lean",
+          "declaration": "tail_integral_le_shell_sum",
+          "excerpt": "  have hunion :\n      ∫⁻ w in ⋃ n, s n,\n          parabolicRieszKernel β z w * ENNReal.ofReal |f w| =\n        ∑' n, ∫⁻ w in s n,\n          parabolicRieszKernel β z w * ENNReal.ofReal |f w| :=\n    lintegral_iUnion hs hspair _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "local_kernel_integral_le_shell_sum",
+          "excerpt": "private lemma local_kernel_integral_le_shell_sum {β : ℝ} (_ : 0 < β)\n    (_ : β < 5) {R : ℝ} (hR : 0 < R) (z : ParabolicPoint) :"
+        }
+      ]
+    },
+    {
+      "declaration": "positive_shell_integral_le",
+      "start_line": 192,
+      "end_line": 269,
+      "excerpt": "private lemma positive_shell_integral_le {β q : ℝ} (_ : 0 < β)\n    (hβ5 : β < 5) (hq : 1 ≤ q) (_ : β * q < 5)\n    {R : ℝ} (hR : 0 < R) {f : ParabolicPoint → ℝ}\n    (hf : AEMeasurable f volume) (n : ℕ) (z : ParabolicPoint) :",
+      "problem": "The strict bound `hβ5 : β < 5` is used exactly once, in the kernel comparison at line 219, and only through `hβ5.le` to obtain `0 ≤ 5 - β` for monotonicity of `ENNReal.rpow_le_rpow`; the endpoint `β = 5` (kernel `ρ^0 = 1`, bound `ρ^0 ≤ a^0`) goes through the same argument. The same `.le`-only pattern is repeated in `parabolicRieszKernel_tail_le` (which merely forwards `hβ5` at line 403) and in `shell_kernel_integral_le` in Kernel.lean, while `shell_power_identity` in Kernel.lean already states its endpoint condition as `(_ : β ≤ 5)`.",
+      "proposed_change": "Replace `(hβ5 : β < 5)` by `(hβ5 : β ≤ 5)` in `positive_shell_integral_le` (and correspondingly in `parabolicRieszKernel_tail_le` and in `Kernel.shell_kernel_integral_le`), using `hβ5` instead of `hβ5.le` at line 219 and leaving the call at line 403 unchanged apart from the hypothesis type. Degenerate case: at `β = 5` the shell estimate reads `∫_s |f| ≤ (2b)^(5(1-1/q)) * morreyNorm 1 q f`, which is still the genuine cylinder bound; only the final tail theorem becomes vacuous at `β = 5` because `parabolicTailKernelConstant 5 q = ∑' n, 1 = ∞`, so that endpoint can be documented as trivial.",
+      "benefit": "The hypothesis becomes the mathematically natural one (`5 - β ≥ 0`) and is uniform across the shell/power lemmas of Tail.lean and Kernel.lean, so a user proving an endpoint (`β = 5`) or borderline instance can apply the shell estimate directly instead of having to re-derive it with a limiting argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Tail.lean",
+          "declaration": "positive_shell_integral_le",
+          "excerpt": "    rw [parabolicRieszKernel, ENNReal.rpow_neg, ENNReal.rpow_neg,\n      ENNReal.inv_le_inv]\n    apply ENNReal.rpow_le_rpow (ENNReal.ofReal_le_ofReal hrho)\n    exact sub_nonneg.mpr hβ5.le"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Morrey/Kernel.lean",
+          "declaration": "shell_power_identity",
+          "excerpt": "theorem shell_power_identity {a β : ℝ} (ha : 0 < a) (hβ : 0 ≤ β)\n    (_ : β ≤ 5) :"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 302821,
+    "cached_input_tokens": 253184,
+    "output_tokens": 24568,
+    "reasoning_output_tokens": 19706
+  },
+  "cost_usd": 0.018280432,
+  "generation_ids": [
+    "gen-1792627077-BOnaU4TWZdxIeEia35OE",
+    "gen-1792627103-ZB7Sqy2w9MGUXdJYuFaj",
+    "gen-1792627117-LIH46HHtxecOf7hGXlVo",
+    "gen-1792627123-JIt6AogYUoDBDvZmPqw1",
+    "gen-1792627148-smtG37nMiXeqPxOlOC6h",
+    "gen-1792627176-yg6pQTTKElXDCu8j8gWo",
+    "gen-1792627196-FCLkuzEsK6ICGl0xdX6n",
+    "gen-1792627230-V72tmPGbU3u6YMHH3ACh"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 8,
+  "duration_ms": 207787,
+  "judged": "2026-10-22T00:00:58+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "d887bac2a8cb1a61b5f7a93914422e13484394d7568dcb01574bd1e1ce9e6d64"
+}

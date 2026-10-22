@@ -1,0 +1,114 @@
+{
+  "id": "tauceti-file-0004",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the full target file lines 1-269, plus the supporting Edge.lean results (notably exists_tendsto_schwarzChristoffelPrimitive_sub_eq, exists_tendsto_schwarzChristoffelPrimitive_injOn_collinear, and continuousOn_schwarzChristoffelDensity), the Vertex.lean boundary-limit theorem, and the cited Mathlib lemmas Set.image_congr and ContinuousOn.stronglyMeasurableAtFilter. I also checked TauCeti's Rigidity.lean and MultipleEnds/SeparatedEdge.lean, which use the same idioms proposed below. The three replacements preserve the intended statements, including the empty-interval cases. None of the proposed replacements was compiled or executed; the only residual uncertainty is exact tactic elaboration, especially the dot-notation use of ContinuousOn.stronglyMeasurableAtFilter, which is nevertheless already used in Rigidity.lean.",
+  "findings": [
+    {
+      "declaration": "collinear_schwarzChristoffelBoundary_image",
+      "start_line": 242,
+      "end_line": 248,
+      "excerpt": "  convert hLcol using 1\n  ext z\n  constructor\n  · rintro ⟨x, hx, rfl⟩\n    exact ⟨x, hx, (schwarzChristoffelBoundary_eq_of_tendsto a e z₀ x (hL x hx)).symm⟩\n  · rintro ⟨x, hx, rfl⟩\n    exact ⟨x, hx, schwarzChristoffelBoundary_eq_of_tendsto a e z₀ x (hL x hx)⟩",
+      "problem": "The equality of the two images is proved by a manual `ext z` double-inclusion. This repeats the pointwise identification of `schwarzChristoffelBoundary` with `L` in both directions and requires a `.symm` rewrite in the first branch, although the only mathematical input is that the two functions agree on `Ioo p q`.",
+      "proposed_change": "Replace the `convert`/`ext`/`constructor` block with an explicit image-congruence step:\n\n```lean\n  obtain ⟨L, hL, -, -, hLcol⟩ :=\n    exists_tendsto_schwarzChristoffelPrimitive_injOn_collinear a e z₀ ha\n  have himg : schwarzChristoffelBoundary a e z₀ '' Ioo p q = L '' Ioo p q :=\n    Set.image_congr fun x hx =>\n      schwarzChristoffelBoundary_eq_of_tendsto a e z₀ x (hL x hx)\n  rwa [himg]\n```\n\nThis uses the existing lemma `Set.image_congr`; the empty-interval case is handled by the same equality of images.",
+      "benefit": "The proof now states the key idea directly: the images agree because the boundary map and the local limit function `L` agree on every point of `Ioo p q`. It removes the manual membership argument and the `.symm` bookkeeping, while keeping the dependence on `hL` fully visible.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Data/Set/Image.lean",
+          "declaration": "Set.image_congr",
+          "excerpt": "theorem image_congr {f g : α → β} {s : Set α} (h : ∀ a ∈ s, f a = g a) : f '' s = g '' s := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean",
+          "declaration": "collinear_schwarzChristoffelBoundary_image",
+          "excerpt": "  obtain ⟨L, hL, -, -, hLcol⟩ :=\n    exists_tendsto_schwarzChristoffelPrimitive_injOn_collinear a e z₀ ha"
+        }
+      ]
+    },
+    {
+      "declaration": "hasDerivAt_schwarzChristoffelBoundary",
+      "start_line": 205,
+      "end_line": 207,
+      "excerpt": "    intervalIntegral.integral_hasDerivAt_right (by simp)\n      (ContinuousAt.stronglyMeasurableAtFilter isOpen_Ioo\n        (fun y hy ↦ (hdcontOn y hy).continuousAt (isOpen_Ioo.mem_nhds hy)) x hx) hdcont",
+      "problem": "The measurability side condition for the fundamental theorem of calculus is discharged by re-deriving pointwise continuity from `hdcontOn` and then applying `ContinuousAt.stronglyMeasurableAtFilter`. This wraps a standard implication `ContinuousOn → StronglyMeasurableAtFilter` in an auxiliary pointwise function, obscuring the fact that continuity of the density on `Ioo p q` is the only input needed.",
+      "proposed_change": "Use the `ContinuousOn` form of the same Mathlib lemma directly:\n\n```lean\n    intervalIntegral.integral_hasDerivAt_right (by simp)\n      (hdcontOn.stronglyMeasurableAtFilter isOpen_Ioo x hx) hdcont\n```\n\nThe `ContinuousOn.stronglyMeasurableAtFilter` lemma is already available in the imported Mathlib files; the same dot-notation pattern appears in TauCeti's `Rigidity.lean`.",
+      "benefit": "The FTC application becomes a three-line, direct use of `hdcontOn` as a strong measurability hypothesis. A reader no longer has to check an auxiliary function `fun y hy => ...` that merely repackages continuity already known on the whole interval.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/MeasureTheory/Integral/IntegrableOn.lean",
+          "declaration": "ContinuousOn.stronglyMeasurableAtFilter",
+          "excerpt": "theorem ContinuousOn.stronglyMeasurableAtFilter [TopologicalSpace α] [OpensMeasurableSpace α]\n    [TopologicalSpace β] [PseudoMetrizableSpace β] [SecondCountableTopologyEither α β] {f : α → β}\n    {s : Set α} {μ : Measure α} (hs : IsOpen s) (hf : ContinuousOn f s) :\n    ∀ x ∈ s, StronglyMeasurableAtFilter f (𝓝 x) μ := fun _x hx =>\n  ⟨s, IsOpen.mem_nhds hs hx, hf.aestronglyMeasurable hs.measurableSet⟩"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Geometry/Manifold/Riemannian/Geodesic/Gauss/Rigidity.lean",
+          "declaration": "hasDerivAt_of_norm_eq_add_integral",
+          "excerpt": "      ((hσ.mono Ioo_subset_Icc_self).stronglyMeasurableAtFilter isOpen_Ioo t ht)"
+        }
+      ]
+    },
+    {
+      "declaration": "continuousOn_schwarzChristoffelBoundary",
+      "start_line": 170,
+      "end_line": 173,
+      "excerpt": "  obtain ⟨L, hL, hLcont, -⟩ :=\n    exists_tendsto_schwarzChristoffelPrimitive_sub_eq a e z₀ ha\n  refine hLcont.congr fun x hx => ?_\n  exact schwarzChristoffelBoundary_eq_of_tendsto a e z₀ x (hL x hx)",
+      "problem": "The proof introduces a particular boundary limit function `L` and its continuity from `exists_tendsto_schwarzChristoffelPrimitive_sub_eq`, even though the general theorem `continuousOn_schwarzChristoffelBoundary_of_exponent_sum_gt_neg_one` is already available. On `Ioo p q`, its exponent-sum hypothesis is exactly supplied by `sum_filter_eq_zero_of_mem_Ioo`, the helper defined earlier in this file.",
+      "proposed_change": "Replace the extraction of `L` with a direct application of the general continuity criterion:\n\n```lean\n  refine continuousOn_schwarzChristoffelBoundary_of_exponent_sum_gt_neg_one a e z₀ fun x hx => ?_\n  rw [sum_filter_eq_zero_of_mem_Ioo a e ha hx]\n  norm_num\n```\n\nThis is the same pattern used by `continuousOn_schwarzChristoffelBoundary_Icc` later in the file and by `SeparatedEdge.lean` when deriving the inequality `-1 < ∑ i with a i = x, e i`.",
+      "benefit": "The open-interval statement becomes a short corollary of the named exponent-sum continuity theorem, with no auxiliary function `L` or `hLcont` to follow. It also makes the relationship between the open-interval and closed-interval continuity results explicit and avoids duplicating the boundary-limit machinery in this declaration.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/Boundary.lean",
+          "declaration": "continuousOn_schwarzChristoffelBoundary_of_exponent_sum_gt_neg_one",
+          "excerpt": "theorem continuousOn_schwarzChristoffelBoundary_of_exponent_sum_gt_neg_one (a e : ι → ℝ)\n    (z₀ : UpperHalfPlane) {s : Set ℝ} (he : ∀ x ∈ s, -1 < ∑ i with a i = x, e i) :\n    ContinuousOn (schwarzChristoffelBoundary a e z₀) s := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/Complex/Conformal/SchwarzChristoffel/MultipleEnds/SeparatedEdge.lean",
+          "declaration": "eq_coe_of_schwarzChristoffelSphereBoundary_eq_of_separated_edge",
+          "excerpt": "  have hxsum : -1 < ∑ i with a i = x, e i := by\n    rw [sum_filter_eq_zero_of_mem_Ioo a e ha hx]\n    norm_num"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 660024,
+    "cached_input_tokens": 611968,
+    "output_tokens": 24690,
+    "reasoning_output_tokens": 19926
+  },
+  "cost_usd": 0.021085224,
+  "generation_ids": [
+    "gen-1792626659-LQ3EkJEHLatRXiKIdHen",
+    "gen-1792626697-GZjPeZGlZl6NTYAigDV9",
+    "gen-1792626702-v24tDNUBdXf80zic9jpV",
+    "gen-1792626707-2cvkBklotILZOz8rzeIc",
+    "gen-1792626756-EpVmuExUAyc8XlwSPEbf",
+    "gen-1792626774-eI19ZPyCkAOQFmOBlpKZ",
+    "gen-1792626780-DWrfJDpncrTrokHA3x3C",
+    "gen-1792626786-Z0iaKYYPGR4b8swkOZEM",
+    "gen-1792626802-dUb6aIrmSdzwm65ceZbj",
+    "gen-1792626818-pPlqgFYTxcCSTfKAmZ3z",
+    "gen-1792626838-muFbp1W2QPUe2LiVp2jC",
+    "gen-1792626881-0lGuzSDBiZXTNcVlVuEC",
+    "gen-1792626895-wUOzI0hdxUADNnHGrajG",
+    "gen-1792626907-MlHj91HTH91jW03Ppl7n",
+    "gen-1792626933-P9OuHjGqTIkJCNgwOijt",
+    "gen-1792626961-Ec6O4NROWNbO72dozUQW",
+    "gen-1792626969-mUE9hUt0G77TdRWacTDC"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 17,
+  "duration_ms": 349781,
+  "judged": "2026-10-21T23:56:45+00:00",
+  "unit": "file",
+  "rubric": "readable-proof-simplification",
+  "source_sha256": "30437bcec435f1274e5a08244d562e275214f72055eaf976b49eefc79ddd4b64"
+}

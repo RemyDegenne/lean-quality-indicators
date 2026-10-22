@@ -1,0 +1,92 @@
+{
+  "id": "openai-math-file-0004",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 112 lines of the target file and the definitions it uses in the same directory: RealPolynomialChartSubstitution.lean (dualEvalLie, directionalDerivative, polynomialFirstJetHom, polynomialFirstJet_base, polynomialLogDerivative), ShiftedGradedCalculus.lean (coefficients_directionalDerivative), DualDerivativeRemoval.lean (dualDerivativeSystem_remove, dualLogDerivative_mul), DualIdealSteps.lean (map_coord, dualLogDerivative_mem_of_invariant), DualAdjointAction.lean, DualLieAlgebra.lean and ExtendedPolynomialValues.lean (eval_mem_iff_coefficients). I also grepped all OAI uses of the four declarations in the target: only directionalDerivative_mem_coefficientSubmodule has downstream uses, all inside this file, while the related jet/dualEvalLie interface is used in GradedNormalizedRelativeLog.lean. The target contains no `@[simp]` attributes and no sanity-problematic general `simp` calls; its only `simp` uses are `simpa only` with explicit lists, so the main simp-interface issue is the missing canonical projection/normal-form lemmas for first jets, evidenced by four hand-written `change`+`rw` blocks. I did not find evidence of an actual rewrite cycle or competing simp rules. Because I cannot run Lean, the exact simp-normal forms of the proposed replacements are unverified; the finding is phrased as a concrete proposal, not a claim about compilation.",
+  "findings": [
+    {
+      "declaration": "polynomialLogDerivative_mem_of_coefficients",
+      "start_line": 38,
+      "end_line": 44,
+      "excerpt": "  · change dualBaseLinear (dualEvalLie t h A.coord) ∈ U\n    rw [dualEvalLie_base]\n    exact (eval_mem_iff_coefficients U.toSubmodule A.coord).mpr hAU t\n  · change dualTangentLinear (dualEvalLie t h A.coord) ∈ V\n    rw [dualEvalLie_tangent]\n    exact (eval_mem_iff_coefficients V _).mpr\n      (directionalDerivative_mem_coefficientSubmodule V h A.coord hAV) t",
+      "problem": "There is no simp lemma that turns a first-jet coordinate projection into its `dualEvalLie` value, and the two lemmas that do compute the base and tangent projections are not simp lemmas. The target therefore has to use the definitional `change` at lines 38/41 to replace `(polynomialFirstJetHom t h A).coord` by `dualEvalLie t h A.coord`, and then `rw [dualEvalLie_base]`/`rw [dualEvalLie_tangent]`; the same four-line block is duplicated for `A` and `C` and for the `U` and `V` goals at lines 84–101. Desired normal forms are: `dualBaseLinear (polynomialFirstJetHom t h P).coord = eval t P.coord` and `dualTangentLinear (polynomialFirstJetHom t h P).coord = eval t (directionalDerivative h P.coord)`. The relevant existing rules are `@[simp] polynomialFirstJet_base` (which already normalises the analogous `dualBaseHom` projection); `dualEvalLie_base` and `dualEvalLie_tangent`, which state exactly the needed underlying equalities but carry no attribute; and `NilpotentLieBCHGroup.map_coord`, a `rfl` projection lemma (`(map f g).coord = f g.coord`) that is neither annotated nor syntactically applicable here, since `polynomialFirstJetHom` is a plain `noncomputable def` that `simp` will not unfold to expose `map`.",
+      "proposed_change": "In RealPolynomialChartSubstitution.lean, next to `@[simp] polynomialFirstJet_base`, add the `rfl` projection lemma `@[simp] theorem polynomialFirstJet_coord_eq (t h : σ → ℚ) (P : PolynomialGroup σ hnil) : (polynomialFirstJetHom t h P).coord = dualEvalLie t h P.coord := rfl`, and mark `dualEvalLie_base` and `dualEvalLie_tangent` `@[simp]` (their left-hand sides are distinct projection patterns reducing to `eval t p` and `eval t (directionalDerivative h p)`, with the existing `dualEvalLie_tmul`/`directionalDerivative_tmul` rules rewriting the arguments, so they fit the existing normal-form direction). The two bullets at lines 38–44 (and the four blocks at lines 84–101) would then become single `simpa only [polynomialFirstJet_coord_eq, dualEvalLie_base, eval_mem_iff_coefficients] using hAU`-style lines, with the tangent version using `dualEvalLie_tangent` and `directionalDerivative_mem_coefficientSubmodule`. This should be compile-checked before adopting.",
+      "benefit": "Users would no longer need to reproduce the definitional equality behind `polynomialFirstJetHom`'s `.coord` field with `change` in order to reason about a first jet; `simp`/`simpa` would carry the two layer-membership goals (`U` for the base, `V` for the tangent) to `eval t P.coord ∈ _` and `eval t (directionalDerivative h P.coord) ∈ _` uniformly, removing the four duplicated `change`/`rw` blocks in this file and making the jet projection interface consistent with the already-`@[simp]` `polynomialFirstJet_base`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "polynomialFirstJetHom",
+          "excerpt": "noncomputable def polynomialFirstJetHom (t h : σ → ℚ) : PolynomialGroup σ hnil →* DualGroup hnil :=\n  NilpotentLieBCHGroup.map (dualEvalLie t h)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "polynomialFirstJet_base",
+          "excerpt": "@[simp] theorem polynomialFirstJet_base (t h : σ → ℚ) (P : PolynomialGroup σ hnil) :\n    dualBaseHom (polynomialFirstJetHom t h P) = polynomialValueHom t P := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "dualEvalLie_base",
+          "excerpt": "theorem dualEvalLie_base (t h : σ → ℚ) (p : VectorPolynomial σ ℚ L) :\n    dualBaseLinear (dualEvalLie t h p) = eval t p := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Polynomial/RealPolynomialChartSubstitution.lean",
+          "declaration": "dualEvalLie_tangent",
+          "excerpt": "theorem dualEvalLie_tangent [Fintype σ] (t h : σ → ℚ) (p : VectorPolynomial σ ℚ L) :\n    dualTangentLinear (dualEvalLie t h p) = eval t (directionalDerivative h p) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Linear/DualIdealSteps.lean",
+          "declaration": "map_coord",
+          "excerpt": "theorem map_coord (f : L →ₗ⁅ℚ⁆ M) (g : NilpotentLieBCHGroup L s hL) :\n    (map (hM := hM) f g).coord = f g.coord := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/GradedNormalizedRelativeLog.lean",
+          "declaration": "adaptedGradedJet_evaluation",
+          "excerpt": "  · rw [dualLinearLift_base, F.adaptedPolynomialJet_base, dualEvalLie_base]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/GradedNormalizedRelativeLog.lean",
+          "declaration": "shiftedGradedEvaluation_logDerivative",
+          "excerpt": "  have hz : dualTangentLinear (F.adaptedPolynomialJet h p).coord ∈\n      F.shiftedPolynomialIdeal (fun _ : σ => 1) 1 := by\n    rw [F.adaptedPolynomialJet_tangent]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 472864,
+    "cached_input_tokens": 423552,
+    "output_tokens": 16336,
+    "reasoning_output_tokens": 12987
+  },
+  "cost_usd": 0.015501376,
+  "generation_ids": [
+    "gen-1792626425-b1S1uNkvREASAZOl0hta",
+    "gen-1792626448-p2hODhMJuAMYxMymID3T",
+    "gen-1792626458-wkTcArdVshoCEr8cKgmu",
+    "gen-1792626481-Zgff8ExItdkaJWxma1sd",
+    "gen-1792626488-os1qZPyORCSFJ9AvCGou",
+    "gen-1792626506-k03fC4QlTpwubpmBZ6vo",
+    "gen-1792626513-CcebaZKnl9lYihpTnOzd",
+    "gen-1792626521-w5cVuhUpLnPt5EEKWf7Q",
+    "gen-1792626543-jc34d9T2QBJkmgGco6eS",
+    "gen-1792626548-zmoQy7x23CYrtbnqPuEZ",
+    "gen-1792626553-wUOpLQGlVwh8Lv7SUhg3",
+    "gen-1792626578-zewbJBrsdB7jFveimAoQ"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 12,
+  "duration_ms": 187289,
+  "judged": "2026-10-21T23:50:03+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "b2e8207b59a75174242e56fe2118ca15f24e76d29d476173872ffe792af84c08"
+}

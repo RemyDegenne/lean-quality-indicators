@@ -1,0 +1,98 @@
+{
+  "id": "lean-pool-file-0004",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file (1272 lines), plus the related sources PoitouTransform.lean (poitouKernel, poitouTransformIntegrand), RegularizedTartarTransform.lean (the Gaussian bounds and integrability lemmas reused here), TestFunction/TartarDerivativeBounds.lean and PoitouEstimate.lean (the main consumer of the profile bounds). Checked Mathlib for `div_le_self` (Mathlib/Algebra/Order/Field/Basic.lean:84) and `Real.one_le_cosh` (Mathlib/Analysis/SpecialFunctions/Trigonometric/DerivHyp.lean:439) to make sure the proposed generalisations have usable ingredients, and confirmed Mathlib has no real `abs_sinh_le_cosh`. Hypotheses were checked for possible weakening: the `0 < δ` assumptions in the integrability/Fourier statements are genuinely needed (1/(2δ) and `exp_neg_mul_sq_add_mul_le` require δ > 0), and `abs_regularizedScaledTartarSecondDerivative_le` already uses the weaker `0 ≤ δ`. The generic real-analysis lemmas (`abs_poitouKernelDerivative_le`, `abs_poitouKernelSecondDerivative_le`, `integrable_quadratic_abs_mul_exp_neg_mul_sq`) are already stated for arbitrary functions/coefficients. The two findings below concern statements that are phrased for the concrete `regularizedScaledTartar` even though their proofs only use pointwise Gaussian bounds on the Poitou kernel; the proposed replacements are untested and would need compiling.",
+  "findings": [
+    {
+      "declaration": "abs_poitouKernel_regularizedScaledTartar_le_gaussian",
+      "start_line": 316,
+      "end_line": 326,
+      "excerpt": "theorem abs_poitouKernel_regularizedScaledTartar_le_gaussian\n    (y δ x : ℝ) :\n    |poitouKernel (regularizedScaledTartar y δ) x| ≤\n      Real.exp (-δ * x ^ 2) := by",
+      "problem": "The lemma is stated only for `regularizedScaledTartar y δ`, but the proof uses nothing about the Tartar amplitude or about the scaling except the already extracted bound `|regularizedScaledTartar y δ x| ≤ exp (-δ * x^2)` and the elementary fact `1 ≤ Real.cosh (x / 2)`. The same division-by-cosh step is re-proved inline in the imported file `RegularizedTartarTransform.lean` (lines 93–101), where the AstutelyMeasuable/integrability of the Poitou transform integrand is derived from `|regularizedScaledTartar y δ x| / |Real.cosh (x / 2)| ≤ exp (-δ * x^2)`. So every new test function or majorant forces the user to redo this `abs_div`/`div_le_iff₀` computation.",
+      "proposed_change": "Add a kernel-level lemma to the Poitou kernel API (e.g. next to `poitouKernel` in `PoitouTransform.lean`, or in this file next to the definition):\n\n```\ntheorem abs_poitouKernel_le {f : ℝ → ℝ} {C x : ℝ} (hf : |f x| ≤ C) :\n    |poitouKernel f x| ≤ C := by\n  rw [poitouKernel, abs_div, abs_of_pos (Real.cosh_pos _)]\n  exact (div_le_self (abs_nonneg _) (Real.one_le_cosh _)).trans hf\n```\n\nand then derive the present lemma as\n\n```\ntheorem abs_poitouKernel_regularizedScaledTartar_le_gaussian (y δ x : ℝ) :\n    |poitouKernel (regularizedScaledTartar y δ) x| ≤ Real.exp (-δ * x ^ 2) :=\n  abs_poitouKernel_le (abs_regularizedScaledTartar_le_gaussian y δ x)\n```\n\nThe supporting facts are `Real.cosh_pos`, `Real.one_le_cosh` (Mathlib, `DerivHyp.lean:439`) and `div_le_self` (Mathlib, `Algebra/Order/Field/Basic.lean:84`). Degenerate cases: at `x = 0` we have `cosh 0 = 1`, so the inequality is an equality `|f 0| ≤ C`; `C` may be any real (nonnegativity follows from `hf`), and no positivity of `δ` is needed. The generalisation also lets `RegularizedTartarTransform.lean` replace its inline `hquot` block by the same lemma.",
+      "benefit": "Users get a reusable statement `|f x| / cosh (x/2) ≤ C` for an arbitrary real function `f` bounded by `C`, which is exactly the shape needed whenever an integrand/integrability estimate for a Poitou-type profile is set up; the current specialised version hides this general fact and duplicates the computation in a second file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedTartarTransform.lean",
+          "declaration": "norm_poitouTransformIntegrand_regularizedScaledTartar_le",
+          "excerpt": "  have hquot :\n      |regularizedScaledTartar y δ x| / |Real.cosh (x / 2)| ≤\n        Real.exp (-δ * x ^ 2) := by\n    rw [abs_of_pos (Real.cosh_pos _)]\n    exact (div_le_iff₀ (Real.cosh_pos _)).2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Algebra/Order/Field/Basic.lean",
+          "declaration": "div_le_self",
+          "excerpt": "theorem div_le_self (ha : 0 ≤ a) (hb : 1 ≤ b) : a / b ≤ a := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/SpecialFunctions/Trigonometric/DerivHyp.lean",
+          "declaration": "Real.one_le_cosh",
+          "excerpt": "theorem one_le_cosh (x : ℝ) : 1 ≤ cosh x :="
+        }
+      ]
+    },
+    {
+      "declaration": "norm_poitouVerticalProfileDerivative_regularized_le",
+      "start_line": 328,
+      "end_line": 428,
+      "excerpt": "theorem norm_poitouVerticalProfileDerivative_regularized_le\n    {δ : ℝ} (hδ : 0 < δ) (y σ x : ℝ) :\n    ‖poitouVerticalProfileDerivative\n        (regularizedScaledTartar y δ)\n        (regularizedScaledTartarDerivative y δ) σ x‖ ≤\n      Real.exp (|σ - 1 / 2| ^ 2 / (2 * δ)) *\n        ((2 * |y| * tartarAmplitudeDerivativeBound +\n            2 * δ * |x| + 1 / 2 + |σ - 1 / 2|) *\n          Real.exp (-(δ / 2) * x ^ 2)) := by",
+      "problem": "The statement fixes `f := regularizedScaledTartar y δ` and `f' := regularizedScaledTartarDerivative y δ` and bakes the Tartar-specific constant `2 * |y| * tartarAmplitudeDerivativeBound` into the conclusion, although the proof first derives the two pointwise kernel bounds `hk : |poitouKernel (regularizedScaledTartar y δ) x| ≤ exp (-δ * x^2)` (lines 344–345) and `hkd : |poitouKernelDerivative … x| ≤ (C + 2 * δ * |x| + 1 / 2) * exp (-δ * x^2)` (lines 348–355), and then performs a computation (lines 356–428) that mentions only those two bounds and `poitouVerticalProfileDerivative`. Nothing about differentiability or about the Tartar amplitude enters after that point. The second-order analogue `norm_poitouVerticalProfileSecondDerivative_regularized_le` (lines 943–1133) repeats the same phase estimate and the same Young inequality step (`exp_neg_mul_sq_add_mul_le`) for the three-term expression, so the analytic core exists twice in specialised form.",
+      "proposed_change": "State the analytic core for arbitrary real functions `f f'` and an arbitrary nonnegative bound `P`:\n\n```\ntheorem norm_poitouVerticalProfileDerivative_le {f f' : ℝ → ℝ} {δ P : ℝ}\n    (hδ : 0 < δ) (σ x : ℝ) (hP : 0 ≤ P)\n    (hk : |poitouKernel f x| ≤ Real.exp (-δ * x ^ 2))\n    (hk' : |poitouKernelDerivative f f' x| ≤ P * Real.exp (-δ * x ^ 2)) :\n    ‖poitouVerticalProfileDerivative f f' σ x‖ ≤\n      Real.exp (|σ - 1 / 2| ^ 2 / (2 * δ)) *\n        ((P + |σ - 1 / 2|) * Real.exp (-(δ / 2) * x ^ 2))\n```\n\nThe proof is the existing calculation with `P := 2 * |y| * tartarAmplitudeDerivativeBound + 2 * δ * |x| + 1 / 2`: unfold `poitouVerticalProfileDerivative`, apply `norm_add_le` and `Complex.norm_exp`, use `mul_le_mul` with `hk` and `hk'`, combine the two exponentials via `Real.exp_add`, and finish with `exp_neg_mul_sq_add_mul_le hδ` (RegularizedTartarTransform.lean:44), exactly as in lines 362–428. The current theorem then becomes an instance with `hP` obtained from `tartarAmplitudeDerivativeBound_nonneg`, `hk` from `abs_poitouKernel_regularizedScaledTartar_le_gaussian` and `hk'` from `abs_poitouKernelDerivative_le` combined with `abs_regularizedScaledTartarDerivative_le` (lines 346–355). Degenerate cases: `δ > 0` is still required by the factor `1 / (2 * δ)` and by the Young step; `P = 0` is allowed; no differentiability, measurability or integrability of `f` is needed. The same template can be instantiated for the second-order bound by adding the third summand `Q * exp (-δ * x^2)` for `|poitouKernelSecondDerivative f f' f'' x|`.",
+      "benefit": "The phase/Young estimate is the only technical core here, and it is currently locked to the regularized Tartar function. A general statement lets anyone bounding the vertical profile of a different test function (or a different majorant) obtain the same quadratic/sub-Gaussian decay from Gaussian bounds on `poitouKernel f` and `poitouKernelDerivative f f'`, which is exactly how the library derives the first-order bound (lines 344–355) and how the second-order theorem reuses the same reasoning. It also removes the duplicated `exp_neg_mul_sq_add_mul_le` argument between lines 423–428 and 1123–1133.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "norm_poitouVerticalProfileDerivative_regularized_le",
+          "excerpt": "  have hk :=\n    abs_poitouKernel_regularizedScaledTartar_le_gaussian y δ x\n  have hfd :=\n    abs_regularizedScaledTartarDerivative_le hδ.le y x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedPoitouQuadraticDecay.lean",
+          "declaration": "norm_poitouVerticalProfileSecondDerivative_regularized_le",
+          "excerpt": "        _ ≤ _ := mul_le_mul_of_nonneg_left\n          (exp_neg_mul_sq_add_mul_le hδ a x) hP"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/ExplicitFormula/RegularizedTartarTransform.lean",
+          "declaration": "exp_neg_mul_sq_add_mul_le",
+          "excerpt": "theorem exp_neg_mul_sq_add_mul_le\n    {δ : ℝ} (hδ : 0 < δ) (a x : ℝ) :"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 577068,
+    "cached_input_tokens": 519424,
+    "output_tokens": 23936,
+    "reasoning_output_tokens": 19162
+  },
+  "cost_usd": 0.020734912,
+  "generation_ids": [
+    "gen-1792625810-56NCMC69aex2lelcKAze",
+    "gen-1792625830-bxiRnAlVzmuMSQjjaStf",
+    "gen-1792625853-r2gp3SpWfOKA1OjlomxU",
+    "gen-1792625863-YHyZNfe6UX6KHCPylTRd",
+    "gen-1792625878-m8Ue3W5gphVMGMDdNncK",
+    "gen-1792625908-JWV38rblPtPk2OCFGD7N",
+    "gen-1792625918-2dnxonakJIfTpl8BVeqK",
+    "gen-1792625945-iDSmcrmPLOeAEhstqNGF",
+    "gen-1792625993-dxg4Y455RlVqekj9hT33",
+    "gen-1792626013-e9SEzxDaman5B9Kb3uGi",
+    "gen-1792626036-yy8OPrfQzHVTKcfv8GWc",
+    "gen-1792626066-r1ZwxbBp4T52rCLbNYpk"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 12,
+  "duration_ms": 275538,
+  "judged": "2026-10-21T23:41:20+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "56ef8d471d0ee3f0b24a9cdf7f0d1a043ae91df828c144b9a95b83891efe9b66"
+}
