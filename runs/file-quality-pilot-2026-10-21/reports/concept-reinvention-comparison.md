@@ -1,6 +1,6 @@
 # concept-reinvention
 
-Generated 2026-10-22T05:37:10+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-22T05:54:56+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## Library comparison
 
