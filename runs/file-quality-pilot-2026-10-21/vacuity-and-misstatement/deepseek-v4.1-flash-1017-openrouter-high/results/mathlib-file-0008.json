@@ -1,0 +1,100 @@
+{
+  "id": "mathlib-file-0008",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 362 lines of the target and checked each statement for vacuity or a mismatch with its docstring: the `foldr'`/`foldr` recursion data (`contractLeftAux_contractLeftAux`, `changeFormAux_changeFormAux`), the linearity fields of `contractLeft`, the right-contraction definition via `reverse`, the contraction computation rules, the `changeForm` proof obligations (`zero_proof`, `add_proof`, `neg_proof`, `associated_neg_proof`), the `changeFormEquiv` round trips, `equivExterior`, and the `Nontrivial` instance. I also inspected the supporting API: `CliffordAlgebra/foldr'` and `left_induction` in Fold.lean, `QuadraticMap.associatedHom`/`associated_eq_self_apply`/`toQuadraticMap_associated` and the `Invertible (2 : Module.End R M)` instance in QuadraticForm/Basic.lean, `ExteriorAlgebra := CliffordAlgebra 0` and its `Nontrivial` instance in ExteriorAlgebra/Basic.lean, and `Function.Injective.nontrivial` in Basic/Nontrivial/Defs.lean. I found no empty-domain or false statement: the `0 - Q` form in `changeForm.associated_neg_proof` is exactly the `Q' - Q` shape that `changeForm` demands with `Q' = 0`, and the `Nontrivial` proof is not circular because `Function.Injective.nontrivial` transports nontriviality *forward* along the injection. The two findings below concern (1) a documented spelling for vector contraction that is not expressible in the generality of `contractLeft` and is not backed by any lemma, and (2) the known-broken `simp` registration of the file's key definition `equivExterior`. Uncertainty: I could not run Lean, so I have not verified the exact normal form of `equivExterior.eq_1`, nor whether the proposed `equivExterior_apply`/`equivExterior_ι` lemmas elaborate as written; I also did not verify whether the new `Nontrivial (CliffordAlgebra Q)` instance interacts badly with `ExteriorAlgebra.nontrivial` (since `ExteriorAlgebra R M` is definitionally `CliffordAlgebra 0`), which is a typeclass-search question outside this rubric.",
+  "findings": [
+    {
+      "declaration": "CliffordAlgebra.contractLeft",
+      "start_line": 77,
+      "end_line": 79,
+      "excerpt": "/-- Contract an element of the Clifford algebra with an element `d : Module.Dual R M` from the left.\n\nNote that $v ⌋ x$ is spelt `contractLeft (Q.associated v) x`.",
+      "problem": "The note advertises an unconditional spelling of vector contraction by `v : M`, but the dual element `Q.associated v` cannot even be formed in the generality in which `contractLeft` is declared (`[CommRing R]` only). `QuadraticMap.associated` is `associatedHom R` and carries the section variable `[Invertible (2 : Module.End R N)]`; for `N = R` the only Mathlib instance producing `Invertible (2 : Module.End R R)` requires `[Invertible (2 : R)]`. So in a ring with `2 = 0` (e.g. `R = ZMod 2`), or in `ℤ`, the advertised term is not well typed, while `contractLeft` itself is perfectly available. Moreover the identification `(Q.associated v) v = Q v` that makes `contractLeft (Q.associated v)` behave as `v ⌋ ·` is nowhere stated in the file, so the claim in the docstring (and the parallel one for `contractRight` at lines 105-110) is not backed by any result. The only characteristic-free dual attached to a vector is `Q.polarBilin v` (with `(Q.polarBilin v) v = 2 * Q v`), which is available for every `CommRing`.",
+      "proposed_change": "Add a section `variable [Invertible (2 : R)]` containing the lemma that makes the note true, e.g. `theorem contractLeft_associated_ι_mul (v : M) (x : CliffordAlgebra Q) : (Q.associated v)⌋(ι Q v * x) = Q v • x - ι Q v * ((Q.associated v)⌋x)` proved by `contractLeft_ι_mul` together with `QuadraticMap.associated_eq_self_apply`; optionally also a characteristic-free companion using `Q.polarBilin v` stating the analogous identity with `2 • Q v`. Reword the docstring to `Note that in characteristic not two, $v ⌋ x$ is spelt ...` (same for `contractRight`), or cite the new lemma directly.",
+      "benefit": "The docstring would no longer advertise a spelling that users cannot state at the level of generality of the declaration, and the claimed inclusion of Grinberg's vector contraction would be supported by an actual usable lemma rather than by an unverifiable comment.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/QuadraticForm/Basic.lean",
+          "declaration": "QuadraticMap.associatedHom",
+          "excerpt": "variable [Invertible (2 : Module.End R N)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/QuadraticForm/Basic.lean",
+          "declaration": "QuadraticMap.associated_eq_self_apply",
+          "excerpt": "theorem associated_eq_self_apply (x : M) : associatedHom S Q x x = Q x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/QuadraticForm/Basic.lean",
+          "declaration": "QuadraticMap.instInvertibleModuleEnd",
+          "excerpt": "instance [Invertible (2 : R)] : Invertible (2 : Module.End R M) where"
+        }
+      ]
+    },
+    {
+      "declaration": "CliffordAlgebra.equivExterior",
+      "start_line": 350,
+      "end_line": 356,
+      "excerpt": "@[simp]\ndef equivExterior [Invertible (2 : R)] : CliffordAlgebra Q ≃ₗ[R] ExteriorAlgebra R M :=\n  changeFormEquiv changeForm.associated_neg_proof\n\n#adaptation_note /-- As of nightly-2026-04-29, the simpNF linter is failing here.\nAssistance investigating this would be appreciated. -/\nattribute [nolint simpNF] equivExterior.eq_1",
+      "problem": "`equivExterior` is the file's stated key result (module description, line 15) and is the only way to compare `CliffordAlgebra Q` with `ExteriorAlgebra R M`, yet no usable computation rule is exported for it: the `@[simp]` on the `def` registers the generated equation `equivExterior.eq_1`, which the file's own adaptation note reports as failing the `simpNF` linter and which is then silenced with `nolint simpNF`. A simp lemma outside simp normal form is precisely a rewrite rule that does not do what `@[simp]` documents, so a user cannot rely on `simp` to evaluate `equivExterior Q` on generators (`equivExterior Q (ι Q m)`), even though the ingredients exist (`changeFormEquiv` carries `@[simps apply]`, and `changeForm_ι` gives the value on generators).",
+      "proposed_change": "Remove `@[simp]` from the `def`, delete the `#adaptation_note` and the `attribute [nolint simpNF] equivExterior.eq_1` suppression, and instead provide explicit simp lemmas, e.g. `@[simp] theorem equivExterior_apply (x : CliffordAlgebra Q) : equivExterior Q x = changeForm changeForm.associated_neg_proof x` (from `changeFormEquiv_apply`) and `@[simp] theorem equivExterior_ι (m : M) : equivExterior Q (ι Q m) = ι R m` (from `changeForm_ι`). If the generated equality is kept in the simp set, first determine why its normal form fails and restate it in normal form.",
+      "benefit": "The key definition would come with working, linter-clean simp rules, `simp`/`norm_num`-style automation could actually reduce `equivExterior` on generators, and the leaking `#adaptation_note` plus the linter suppression would disappear from a finished file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.equivExterior",
+          "excerpt": "#adaptation_note /-- As of nightly-2026-04-29, the simpNF linter is failing here."
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.changeForm_ι",
+          "excerpt": "theorem changeForm_ι (m : M) : changeForm h (ι (M := M) Q m) = ι (M := M) Q' m :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.changeFormEquiv",
+          "excerpt": "@[simps apply]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 609766,
+    "cached_input_tokens": 570624,
+    "output_tokens": 45111,
+    "reasoning_output_tokens": 41024
+  },
+  "cost_usd": 0.030251852,
+  "generation_ids": [
+    "gen-1792630071-lirqkr3SoqXKtw9Vr6IG",
+    "gen-1792630080-a0N2sRMPihKge09xLXZX",
+    "gen-1792630092-k953gT5fkp00kq4R7Hzv",
+    "gen-1792630128-ZvOpUuLkBEXp3ZArDRwP",
+    "gen-1792630141-IrOxq5Wig4r4sl7LG036",
+    "gen-1792630143-4jjT9pqs2AjkmvzxATk8",
+    "gen-1792630163-uzxQqlDo3XFaotYY4IRG",
+    "gen-1792630169-slneeD1yvg3B2WrFVMq4",
+    "gen-1792630171-LXXFkB6sUf5Jko4BSinN",
+    "gen-1792630183-OtS3JHXD3q7SjPWg0NlB",
+    "gen-1792630209-Hi8V0YXLDUaxspGQhUMf",
+    "gen-1792630212-TIZzrn0TikkDwZgTWDOS",
+    "gen-1792630215-CRaGXJhdyAGigGjEIIm5",
+    "gen-1792630237-x1OsNWqZZXYa8naMiALx"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 14,
+  "duration_ms": 311453,
+  "judged": "2026-10-22T00:52:56+00:00",
+  "unit": "file",
+  "rubric": "vacuity-and-misstatement",
+  "source_sha256": "0e9df2a660667e608c5016ab18fe99c1a8c04651dbdff95dbee5f4b53b1352ab"
+}

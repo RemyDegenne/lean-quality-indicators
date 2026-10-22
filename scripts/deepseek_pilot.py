@@ -19,6 +19,7 @@ from source_tools import Sources
 ROOT = Path(__file__).resolve().parent.parent
 BASE = ROOT / "runs/deepseek-pilot-2026-10-21"
 LABEL = "deepseek-v4.1-flash-1017-openrouter-high"
+MAX_JOBS = 16
 AUDITS = corpus_pilot.AUDITS
 ORIGINAL_DIRS = judge.judge_dirs
 
@@ -217,8 +218,8 @@ def main():
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--accept-harness-update", action="store_true")
     args = parser.parse_args()
-    if not 1 <= args.jobs <= 8:
-        parser.error("jobs must be between one and eight")
+    if not 1 <= args.jobs <= MAX_JOBS:
+        parser.error(f"jobs must be between one and {MAX_JOBS}")
     if args.update_runner_only:
         update_runner()
         return

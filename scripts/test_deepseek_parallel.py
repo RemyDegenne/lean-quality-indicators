@@ -14,6 +14,8 @@ import deepseek_pilot as pilot
 import file_audits
 import openrouter_judge as backend
 
+PARALLELISM = 16
+
 
 class ParallelTests(unittest.TestCase):
     def test_parallel_requests_share_atomic_pacing_and_accounting(self):
@@ -22,23 +24,23 @@ class ParallelTests(unittest.TestCase):
             state=budget.read()
             state['request_spacing_seconds']=.02
             backend.write_json(budget.path,state)
-            barrier=threading.Barrier(8)
+            barrier=threading.Barrier(PARALLELISM)
             def reserve(index):
                 barrier.wait()
                 number=budget.reserve({'max_tokens':1},str(index),pace=True)
                 budget.settle(number,{'id':str(number),'usage':{'cost':'.0001'}})
-            with ThreadPoolExecutor(8) as workers:
-                list(workers.map(reserve,range(8)))
+            with ThreadPoolExecutor(PARALLELISM) as workers:
+                list(workers.map(reserve,range(PARALLELISM)))
             state=budget.read()
             timestamps=[datetime.datetime.fromisoformat(r['utc']).timestamp() for r in state['requests']]
             self.assertTrue(all(b-a>=.015 for a,b in zip(timestamps,timestamps[1:])))
-            self.assertEqual(Decimal(state['billed_usd']),Decimal('.0008'))
+            self.assertEqual(Decimal(state['billed_usd']),Decimal('.0001')*PARALLELISM)
             self.assertTrue(all(r['billed_usd'] is not None for r in state['requests']))
 
     def test_parallel_admission_cannot_overcommit_budget(self):
         with tempfile.TemporaryDirectory() as tmp:
             budget=backend.Budget(Path(tmp)/'budget.json','.03')
-            barrier=threading.Barrier(8)
+            barrier=threading.Barrier(PARALLELISM)
             def reserve(index):
                 barrier.wait()
                 try:
@@ -46,8 +48,8 @@ class ParallelTests(unittest.TestCase):
                     return True
                 except backend.BudgetExhausted:
                     return False
-            with ThreadPoolExecutor(8) as workers:
-                accepted=list(workers.map(reserve,range(8)))
+            with ThreadPoolExecutor(PARALLELISM) as workers:
+                accepted=list(workers.map(reserve,range(PARALLELISM)))
             self.assertEqual(sum(accepted),1)
             self.assertEqual(len(budget.read()['requests']),1)
 
@@ -57,14 +59,14 @@ class ParallelTests(unittest.TestCase):
             (root/'protocol').mkdir()
             (root/'protocol/schema.json').write_bytes((file_audits.SUITE/'schema.json').read_bytes())
             tasks=[]
-            for i in range(8):
+            for i in range(PARALLELISM):
                 text=f'theorem target{i} : True := by trivial\n'
                 (root/f'{i}.lean').write_text(text)
                 row={'id':f'test-file-{i:04d}','lib':'test','file':f'{i}.lean',
                      'source_sha256':hashlib.sha256(text.encode()).hexdigest()}
                 tasks.append({'row':row,'unit':'file','run':'.','indicator':'protocol','output':'judge',
                               'audit':'concept-reinvention'})
-            barrier=threading.Barrier(8)
+            barrier=threading.Barrier(PARALLELISM)
             def judge(row,ind,*args):
                 validate=args[-1]
                 expected=(root/row['file']).read_text()
@@ -77,10 +79,10 @@ class ParallelTests(unittest.TestCase):
             with patch.object(pilot,'ROOT',root), \
                  patch.object(file_audits,'build_message',return_value=(root,{},'source')), \
                  patch.object(backend,'judge',judge):
-                with ThreadPoolExecutor(8) as workers:
+                with ThreadPoolExecutor(PARALLELISM) as workers:
                     results=list(workers.map(lambda task:pilot.evaluate(task,'key',None),tasks))
             self.assertEqual({r['id'] for r in results},{t['row']['id'] for t in tasks})
-            self.assertEqual(len(list((root/'judge/results').glob('*.json'))),8)
+            self.assertEqual(len(list((root/'judge/results').glob('*.json'))),PARALLELISM)
 
 
 if __name__=='__main__':

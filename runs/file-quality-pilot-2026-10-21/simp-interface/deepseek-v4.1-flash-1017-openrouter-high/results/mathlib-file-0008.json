@@ -1,0 +1,102 @@
+{
+  "id": "mathlib-file-0008",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 362 lines of the target, plus the neighbouring API in Mathlib/LinearAlgebra/CliffordAlgebra/Fold.lean (foldr/foldr' simp lemmas) and the only external consumer of the target declarations, Mathlib/LinearAlgebra/CliffordAlgebra/Inversion.lean (line 64). Grepped Mathlib for uses of contractLeft/contractRight/equivExterior (only Inversion.lean and this file) and for changeFormEquiv_apply/equivExterior_apply (no hits, i.e. there is no application lemma for equivExterior anywhere). The main finding is the simp attribute on the def equivExterior together with the silenced simpNF failure; the second is the missing simp rules for the nilpotency composites of the two contractions. I could not execute Lean, so I do not claim to have observed a simpNF failure, a loop, or that the proposed `@[simps! apply]`/`[simp]` attributes compile; the benefit of adding `[simp]` to contractLeft_contractLeft/contractRight_contractRight is based on the orientation (LHS strictly larger, RHS a literal 0) and on the absence of any competing simp rule (contractLeft_comm/contractRight_comm are not simp), not on a test. The direction of the remaining changeForm lemmas (changeForm_ι_mul, changeForm_contractLeft, changeForm_changeForm) was considered and judged reasonably left non-simp because they expand the term.",
+  "findings": [
+    {
+      "declaration": "CliffordAlgebra.equivExterior",
+      "start_line": 350,
+      "end_line": 356,
+      "excerpt": "@[simp]\ndef equivExterior [Invertible (2 : R)] : CliffordAlgebra Q ≃ₗ[R] ExteriorAlgebra R M :=\n  changeFormEquiv changeForm.associated_neg_proof",
+      "problem": "The `@[simp]` attribute is placed on the definition, so the rule that enters the global simp set is the definition-unfolding equation `equivExterior.eq_1` (exactly the name used by the `nolint` on line 356), whose left-hand side is the bare constant `equivExterior`. Such a rule rewrites `equivExterior Q` to `changeFormEquiv changeForm.associated_neg_proof` in every context, e.g. inside `(equivExterior Q).toLinearMap` (Inversion.lean:64) and `(equivExterior Q).symm` (line 360), instead of performing the intended single step on an application; the normal form is only reached after a further rewrite by `changeFormEquiv_apply`, which `@[simps apply]` on `changeFormEquiv` (line 327) already provides. There is no application lemma `equivExterior_apply`/`equivExterior_symm_apply`, and the file acknowledges the interface is unverified (`#adaptation_note` plus `attribute [nolint simpNF] equivExterior.eq_1`), i.e. a linter failure is suppressed rather than fixed.",
+      "proposed_change": "Remove `@[simp]` from the def and delete the `#adaptation_note` and `attribute [nolint simpNF] equivExterior.eq_1`; instead annotate the def so that a specific application rewrite is generated, e.g. `@[simps! apply] def equivExterior ...`, or add explicit lemmas (suggested statements, untested) `@[simp] theorem equivExterior_apply (x : CliffordAlgebra Q) : equivExterior Q x = changeForm changeForm.associated_neg_proof x` and the analogous symm lemma, and check that any downstream `by simp` (Inversion.lean:64) still closes through them.",
+      "benefit": "The simp set then contains a canonical, checkable rewrite with an application-shaped left-hand side instead of a wholesale definition unfolding; the simpNF suppression and its adaptation note disappear, and users get an `equivExterior_apply` lemma to compute the isomorphism on elements rather than having to unfold the whole `LinearEquiv`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.equivExterior",
+          "excerpt": "#adaptation_note /-- As of nightly-2026-04-29, the simpNF linter is failing here.\nAssistance investigating this would be appreciated. -/\nattribute [nolint simpNF] equivExterior.eq_1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.changeFormEquiv",
+          "excerpt": "@[simps apply]\ndef changeFormEquiv : CliffordAlgebra Q ≃ₗ[R] CliffordAlgebra Q' :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Inversion.lean",
+          "declaration": "CliffordAlgebra.invertibleOfInvertibleι",
+          "excerpt": ".algebraMapOfInvertibleAlgebraMap (equivExterior Q).toLinearMap (by simp) <|"
+        }
+      ]
+    },
+    {
+      "declaration": "CliffordAlgebra.contractLeft_contractLeft / CliffordAlgebra.contractRight_contractRight (pattern)",
+      "start_line": 185,
+      "end_line": 195,
+      "excerpt": "/-- This is [grinberg_clifford_2016] Theorem 7 -/\ntheorem contractLeft_contractLeft (x : CliffordAlgebra Q) : d⌋(d⌋x) = 0 := by",
+      "problem": "The simp interface of the contraction API covers the base cases (`contractLeft_ι`, `contractLeft_algebraMap`, `contractLeft_one`, and the `contractRight` analogues, lines 153-181) but not the nilpotency composites, so for an abstract multivector `x` an expression such as `d⌋(d⌋x)` or `x⌊d⌊d` does not reduce under `simp`, although `0` is the obvious normal form. The file itself has to fall back on `rw` for this: `changeFormAux_changeFormAux` needs `contractLeft_contractLeft` explicitly (line 230). Both statements are genuine reductions (the left-hand side is strictly larger than the right-hand side `0`), and there is no competing rule: `contractLeft_comm`/`contractRight_comm` (lines 198, 207) are not simp lemmas, so adding these rules cannot create a cycle.",
+      "proposed_change": "Add `@[simp]` to `contractLeft_contractLeft` (line 186) and to `contractRight_contractRight` (line 194), leaving the statements unchanged. The rest of the file uses `simp only`/`simp_rw` with explicit lemma lists (lines 188, 200, 203, 291, 294) or `simpa only` (line 177), so its proofs are not exposed to the new rules; the single unrestricted `simp` (line 264) is about `QuadraticMap.toQuadraticMap_associated` and does not mention contractions.",
+      "benefit": "Goals of the form `d⌋(d⌋x) = 0` and `x⌊d⌊d = 0` for abstract multivectors, which are exactly the computations one performs with the contraction operators (and which the file currently closes by explicit `rw`), become closable by `simp`, completing the existing generator/scalar/`1` simp lemmas with the matching nilpotency step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.contractLeft_ι",
+          "excerpt": "@[simp]\ntheorem contractLeft_ι (x : M) : d⌋ι Q x = algebraMap R _ (d x) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.contractRight_contractRight",
+          "excerpt": "theorem contractRight_contractRight (x : CliffordAlgebra Q) : x⌊d⌊d = 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.contractLeft_comm",
+          "excerpt": "theorem contractLeft_comm (x : CliffordAlgebra Q) : d⌋(d'⌋x) = -(d'⌋(d⌋x)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.changeFormAux_changeFormAux",
+          "excerpt": "    ← Algebra.smul_def, sub_self, sub_zero, contractLeft_contractLeft, add_zero, sub_smul]"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 386331,
+    "cached_input_tokens": 340224,
+    "output_tokens": 28627,
+    "reasoning_output_tokens": 25015
+  },
+  "cost_usd": 0.020723852,
+  "generation_ids": [
+    "gen-1792630308-IkWTayLTZz7vv59eqz1z",
+    "gen-1792630311-XiwQZ2WYWhHMqQpUUEG1",
+    "gen-1792630314-qUUD36XWJlbmHaAaCAoE",
+    "gen-1792630340-mcHTwxtPRV2VoZnX3KLY",
+    "gen-1792630354-L40M2dg7DnotQxfWICme",
+    "gen-1792630369-VlxLydnv5RyqufLh8L6y",
+    "gen-1792630389-bh5J43IfykPDKMGkw4d6",
+    "gen-1792630414-idiuxGzPqx2kTFhxyJeM",
+    "gen-1792630431-ZjGRGgxuKSCfovDpJGHV",
+    "gen-1792630434-Cg5XKYA6ciiEX2nxlFLi",
+    "gen-1792630481-ACrAd79cfy3lJnOhDuOd"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 11,
+  "duration_ms": 186416,
+  "judged": "2026-10-22T00:54:54+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "0e9df2a660667e608c5016ab18fe99c1a8c04651dbdff95dbee5f4b53b1352ab"
+}

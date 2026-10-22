@@ -1,0 +1,100 @@
+{
+  "id": "mathlib-file-0008",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read all 362 lines of the target and inspected the definitions used by it: foldr/foldr'/left_induction in CliffordAlgebra/Fold.lean; ι_sq_scalar and the CommRing/AddCommGroup assumptions of CliffordAlgebra in Basic.lean; QuadraticMap.associated and toQuadraticMap_associated in QuadraticForm/Basic.lean; QuadraticMap.toBilin, toQuadraticMap_toBilin and LinearMap.BilinMap.toQuadraticMap_surjective in QuadraticForm/Basis.lean; the definition of ExteriorAlgebra as CliffordAlgebra 0 in ExteriorAlgebra/Basic.lean; and a use of equivExterior in Inversion.lean. The contraction lemmas and the changeForm API appear already stated at the natural level of generality (CommRing R, AddCommGroup M, Module R M, arbitrary BilinForm). The only concrete over-specialisation I found is equivExterior's [Invertible (2 : R)] assumption, discussed in the finding. The proposed general proof terms were not compiled. The optional free-module version needs an import of QuadraticForm/Basis; its direct imports do not mention Clifford or exterior algebras, so no import cycle is apparent, but this was not build-tested either. I also considered the Nontrivial instance at lines 358-360; its current statement is a straightforward wrapper around equivExterior, so I did not report it separately.",
+  "findings": [
+    {
+      "declaration": "CliffordAlgebra.equivExterior",
+      "start_line": 350,
+      "end_line": 352,
+      "excerpt": "@[simp]\ndef equivExterior [Invertible (2 : R)] : CliffordAlgebra Q ≃ₗ[R] ExteriorAlgebra R M :=\n  changeFormEquiv changeForm.associated_neg_proof",
+      "problem": "`equivExterior` is the named module isomorphism to the exterior algebra, but it is restricted to `[Invertible (2 : R)]`, although the construction it calls, `changeFormEquiv`, only needs a bilinear form `B` with `B.toQuadraticMap = Q' - Q`. The invertibility assumption is used only to manufacture `B = QuadraticMap.associated (-Q)` in `changeForm.associated_neg_proof`; it does not enter the definition or proof of `changeFormEquiv`. Hence the named result is unavailable in cases where such a `B` exists but `2` is not invertible, for example over `ℤ` or over a field of characteristic two. Over a free module, `LinearMap.BilinMap.toQuadraticMap_surjective` produces a `B` for every quadratic form, so the current statement is unnecessarily specialised even for vector spaces. The docstring itself records that a more general version exists, but says it would be more awkward to use; adding a general lemma avoids choosing between the two.",
+      "proposed_change": "Add a general version before `equivExterior` (with `variable (Q)` in scope):\n\n/-- The module isomorphism to the exterior algebra, for a quadratic form that is\nthe self-pairing of a bilinear form. -/\ndef equivExteriorOf (B : BilinForm R M)\n    (h : B.toQuadraticMap = (0 : QuadraticForm R M) - Q) :\n    CliffordAlgebra Q ≃ₗ[R] ExteriorAlgebra R M :=\n  changeFormEquiv (Q' := (0 : QuadraticForm R M)) (B := B) h\n\nKeep the existing declaration as the convenience corollary\n\n@[simp]\ndef equivExterior [Invertible (2 : R)] : CliffordAlgebra Q ≃ₗ[R] ExteriorAlgebra R M :=\n  equivExteriorOf (Q := Q) (QuadraticMap.associated (R := R) (M := M) (-Q))\n    changeForm.associated_neg_proof\n\n(leaving the current body unchanged is also fine, since it is definitionally the same).\nFor the free-module result, add `public import Mathlib.LinearAlgebra.QuadraticForm.Basis` and\n\nnoncomputable def equivExteriorOfFree [Module.Free R M] :\n    CliffordAlgebra Q ≃ₗ[R] ExteriorAlgebra R M := by\n  classical\n  obtain ⟨B, hB⟩ := LinearMap.BilinMap.toQuadraticMap_surjective (N := R) (-Q)\n  exact changeFormEquiv (Q' := (0 : QuadraticForm R M)) (B := B) (by rw [hB, zero_sub])\n\nThe proof of `equivExteriorOf` is just `changeFormEquiv` with `Q' := 0`; `ExteriorAlgebra R M` is definitionally `CliffordAlgebra (0 : QuadraticForm R M)`, so the expected type matches. For the free version, `toQuadraticMap_surjective` gives `B.toQuadraticMap = -Q`, and `zero_sub` turns that into `B.toQuadraticMap = 0 - Q`, the hypothesis of `changeFormEquiv`. The existing `equivExterior` follows with `B = QuadraticMap.associated (-Q)` and `changeForm.associated_neg_proof`. These proof terms are proposed and untested.",
+      "benefit": "Users over `ℤ`, `ℤ/2`, or any ring in which `2` is not invertible can use the key isomorphism whenever `Q` is represented by a bilinear form, for example `Q(x,y)=x*y` on `ℤ²` with `B((x,y),(x',y'))=x*y'`. The free-module version covers every quadratic form on a vector space, including characteristic two, which is a standard setting not covered by the current statement. The convenient `[Invertible (2 : R)]` version remains available, so there is no breakage. The same general equivalence also supplies the ingredient needed to state the `Nontrivial` instance at lines 358-360 for free modules (with appropriate instance priority if both versions are kept).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.changeForm",
+          "excerpt": "def changeForm (h : B.toQuadraticMap = Q' - Q) : CliffordAlgebra Q →ₗ[R] CliffordAlgebra Q' :=\n  foldr Q (changeFormAux Q' B)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.changeFormEquiv",
+          "excerpt": "@[simps apply]\ndef changeFormEquiv : CliffordAlgebra Q ≃ₗ[R] CliffordAlgebra Q' :=\n  { changeForm h with"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.changeForm.associated_neg_proof",
+          "excerpt": "theorem changeForm.associated_neg_proof [Invertible (2 : R)] :\n    (QuadraticMap.associated (R := R) (M := M) (-Q)).toQuadraticMap = 0 - Q := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/CliffordAlgebra/Contraction.lean",
+          "declaration": "CliffordAlgebra.equivExterior",
+          "excerpt": "Note that this holds more generally when `Q` is divisible by two, rather than only when `1` is\ndivisible by two; but that would be more awkward to use. -/"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/QuadraticForm/Basis.lean",
+          "declaration": "LinearMap.BilinMap.toQuadraticMap_surjective",
+          "excerpt": "theorem _root_.LinearMap.BilinMap.toQuadraticMap_surjective [Module.Free R M] :\n    Function.Surjective (LinearMap.BilinMap.toQuadraticMap : LinearMap.BilinMap R M N → _) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/ExteriorAlgebra/Basic.lean",
+          "declaration": "ExteriorAlgebra",
+          "excerpt": "abbrev ExteriorAlgebra :=\n  CliffordAlgebra (0 : QuadraticForm R M)"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 1168683,
+    "cached_input_tokens": 1119872,
+    "output_tokens": 45907,
+    "reasoning_output_tokens": 41432
+  },
+  "cost_usd": 0.035817356,
+  "generation_ids": [
+    "gen-1792629881-kw4HmdYwxspKNyWEUMPR",
+    "gen-1792629903-Jnrln72XvyYIAdxccrvv",
+    "gen-1792629918-iLpcXHKEzHuCehpI5r06",
+    "gen-1792629931-arRHKGN6ce5Ri2htuNE4",
+    "gen-1792629940-VODYmeiu8TJfGSHdxpfn",
+    "gen-1792629943-PNkg7j3fObFBgpBRKDvw",
+    "gen-1792629976-yiULHDGcvMwbW0TaOr00",
+    "gen-1792629979-uCu6cXLlXogi9CdYfVia",
+    "gen-1792629997-pFrAyhzPlQd0xO17XBpl",
+    "gen-1792630006-GhGyw1gQUjarZ1oIcAXQ",
+    "gen-1792630014-RnOptwhm539W7RmVUxVU",
+    "gen-1792630029-5R8WzjGOEEanSTLMWp5E",
+    "gen-1792630044-2nFtd7quaBhRjAXUwDKv",
+    "gen-1792630055-rqgR4ddOXbToDRszVIlh",
+    "gen-1792630067-ntYvcDdSpddgsH6BM0nW",
+    "gen-1792630070-IU1WMSWOV0jZWEyD3g5v",
+    "gen-1792630095-GDxBIx5VotSMXaYslnJk",
+    "gen-1792630103-o9WmPBpMONT69BeLvNRq",
+    "gen-1792630111-8kjT4jIYfRapJ0PnvWG8",
+    "gen-1792630129-TLRGKvJxa7hck8TPJd28",
+    "gen-1792630191-AezCAuI4gBxIibIcaw0y",
+    "gen-1792630208-8PuL9HrlK6bJ6LCmrExx",
+    "gen-1792630214-gndbCYeXiyigT7PnCSK6",
+    "gen-1792630233-ZaV6m6TDcPiYM9Br91Y5",
+    "gen-1792630234-eOXKZxyqTHQgjJnIYFTg"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 25,
+  "duration_ms": 421448,
+  "judged": "2026-10-22T00:51:39+00:00",
+  "unit": "file",
+  "rubric": "statement-generality",
+  "source_sha256": "0e9df2a660667e608c5016ab18fe99c1a8c04651dbdff95dbee5f4b53b1352ab"
+}

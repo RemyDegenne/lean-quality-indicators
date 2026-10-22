@@ -1,0 +1,83 @@
+{
+  "id": "tauceti-file-0008",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the entire target file (151 lines) and its relevant neighbours: TauCeti/ModelTheory/BackAndForth/Equivalence.lean (the @[simp] BFEquiv.zero/one/add_one/limit/refl lemmas), BackAndForth/Graph.lean (sameAtomicType_iff), Scott/Rank.lean (mem_orbitStable_iff, internalScottRank_le_iff), plus the closely analogous Scott/CompleteGraphSum.lean, Scott/PureSet.lean and Scott/DenseLinearOrder.lean, and Mathlib's SimpleGraph.fromRel_adj and SimpleGraph.irrefl. The file's only simp annotation is rigidSixGraph_adj; the BFEquiv/Ordinal reasoning in the rest of the file uses the already-@[simp] library rules correctly (rw [BFEquiv.one], rw [BFEquiv.add_one], rw [mem_orbitStable_iff]) and does not add questionable attributes. I found one justified simp-interface issue, about the shape and global registration of rigidSixGraph_adj. I could not run Lean, so I do not claim that any particular simp invocation fails, loops or is shadowed; the reasoning is based on the lemma shape, the absence of in-file consumers of the attribute, and the fromRel-adj shape used elsewhere. I deliberately did not recommend simp attributes for the rank/rigidity theorems: orbitRank_rigidSixGraph, internalScottRank_rigidSixGraph and bfEquiv_two_rigidSixGraph_iff involve letI-bound concrete structure instances and would compete with the general @[simp] BFEquiv one/add_one rules, and the library leaves analogous concrete-graph computations unannotated in CompleteGraphSum.lean.",
+  "findings": [
+    {
+      "declaration": "TauCeti.rigidSixGraph_adj",
+      "start_line": 44,
+      "end_line": 53,
+      "excerpt": "@[simp]\ntheorem rigidSixGraph_adj (i j : Fin 6) : rigidSixGraph.Adj i j ↔\n    (i = 0 ∧ j = 1) ∨ (i = 1 ∧ j = 0) ∨",
+      "problem": "This is the file's only simp lemma and it is oriented as an expansion: for variables i j : Fin 6 it replaces the atomic fact rigidSixGraph.Adj i j by a twelve-way disjunction of equality conjunctions, none of which simp can further reduce (there is no simp decision procedure for Fin numeral equalities with variables). It also is not the canonical shape of a fromRel adjacency: Mathlib's @[simp] SimpleGraph.fromRel_adj gives `(fromRel r).Adj v w ↔ v ≠ w ∧ (r v w ∨ r w v)`, and the twelve disjuncts here drop the `i ≠ j` conjunct, so the same proposition has two incompatible normal forms depending on whether `simp [rigidSixGraph]` unfolds the definition: `i ≠ j ∧ (r i j ∨ r j i)` versus the pure twelve-disjunct list. Adjacency therefore no longer exposes disequality, which is exactly the conjunct that downstream SimpleGraph lemmas (e.g. SimpleGraph.irrefl, adjacency-based injectivity arguments) consume. The attribute has no in-file consumer: line 53's proof uses `simp [rigidSixGraph]` (the lemma does not exist yet at that point), and the only other use, at lines 64-65, is the explicit `decidable_of_iff _ (rigidSixGraph_adj i j).symm` for the local DecidableRel instance, which works without the attribute. Registering the twelve-disjunct expansion globally means every importing file that mentions rigidSixGraph.Adj gets the blow-up. The analogous private lemma in the sibling Scott file, CompleteGraphSum.adj_iff, is deliberately private and not a simp lemma.",
+      "proposed_change": "Remove `@[simp]` from line 45 while keeping `rigidSixGraph_adj` as a public theorem for the `decidable_of_iff` instance (or, if a simp lemma is wanted, declare a private/local copy with the attribute). If a public simplification lemma in normal form is desired, state it in the `SimpleGraph.fromRel_adj` shape, deriving it from `SimpleGraph.fromRel_adj` after unfolding `rigidSixGraph`, e.g. `rigidSixGraph.Adj i j ↔ i ≠ j ∧ ((i = 0 ∧ j = 1) ∨ (i = 1 ∧ j = 0) ∨ … ∨ (i = 5 ∧ j = 3))`, so that the RHS keeps the structural `i ≠ j` conjunct and matches the library's adjacency normal form. (I have not compiled the replacement.)",
+      "benefit": "A user importing this file no longer has the concrete graph's adjacency globally expanded into twelve unreduced disjuncts, and there is a single canonical form for `rigidSixGraph.Adj` that agrees with Mathlib's `fromRel_adj` and exposes `i ≠ j` for ordinary SimpleGraph reasoning. In-file behaviour is unchanged because the decidable instance and the `decide`-based proofs use the lemma explicitly, not through the simp set.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Combinatorics/SimpleGraph/Basic.lean",
+          "declaration": "SimpleGraph.fromRel_adj",
+          "excerpt": "@[simp]\ntheorem SimpleGraph.fromRel_adj {V : Type u} (r : V → V → Prop) (v w : V) :\n    (SimpleGraph.fromRel r).Adj v w ↔ v ≠ w ∧ (r v w ∨ r w v)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Combinatorics/SimpleGraph/Basic.lean",
+          "declaration": "SimpleGraph.irrefl",
+          "excerpt": "@[simp]\nprotected theorem irrefl {v : V} : ¬G.Adj v v"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/ModelTheory/Scott/CompleteGraphSum.lean",
+          "declaration": "adj_iff",
+          "excerpt": "private theorem adj_iff (x y : Fin 2 ⊕ Fin 3) : K.Adj x y ↔ x ≠ y ∧ x.isLeft = y.isLeft := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/ModelTheory/Scott/RigidGraph.lean",
+          "declaration": "DecidableRel rigidSixGraph.Adj",
+          "excerpt": "private local instance : DecidableRel rigidSixGraph.Adj := fun i j =>\n  decidable_of_iff _ (rigidSixGraph_adj i j).symm"
+        }
+      ]
+    }
+  ],
+  "backend": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "InferenceNet",
+  "providers": [
+    "InferenceNet"
+  ],
+  "effort": "high",
+  "usage": {
+    "input_tokens": 538892,
+    "cached_input_tokens": 500608,
+    "output_tokens": 23109,
+    "reasoning_output_tokens": 18932
+  },
+  "cost_usd": 0.018622084,
+  "generation_ids": [
+    "gen-1792630370-rxkyuk7i2YjTMda8MxlW",
+    "gen-1792630372-9fn4SzA4FhkbsrJ7NyUb",
+    "gen-1792630375-Wk2dAF9rYaEV8rwF5Fwu",
+    "gen-1792630378-J1BFcNyioNKv0nQYyxZv",
+    "gen-1792630381-nic6L0DxqLnvyWuoH6Aj",
+    "gen-1792630386-BfawfLXWg62yNur5fqIJ",
+    "gen-1792630393-R7M8JBAvclKGQPtVAFPS",
+    "gen-1792630411-p3DtQSMNmyHnEAen0TOu",
+    "gen-1792630416-4XesdTx7lv0ADBslz7rn",
+    "gen-1792630422-lWOSGJGdKpcty8m7kHQI",
+    "gen-1792630462-Q5R9CMhGAUdrKpvZZNIk",
+    "gen-1792630474-eGR4B7bUcKSwSRK1HVgZ",
+    "gen-1792630476-4DCe7YPJSfg1gwYiiyo3",
+    "gen-1792630484-eARFvacb6T02Ejr98h5i",
+    "gen-1792630512-0VY4ltw7EvwnIOTZTrfK",
+    "gen-1792630514-rmqlUlLBAjUighNFwaDb",
+    "gen-1792630516-vjaVlHiovgLvEZggsjDP",
+    "gen-1792630522-vuWWYciH7woBoKkOmKdT"
+  ],
+  "attempts": 1,
+  "harness_version": 2,
+  "max_tool_turns": 32,
+  "turns": 18,
+  "duration_ms": 174467,
+  "judged": "2026-10-22T00:55:44+00:00",
+  "unit": "file",
+  "rubric": "simp-interface",
+  "source_sha256": "03472193d057c0321ffb3b7899a7c30ab8ea09194b63b83dffeaf9b5504dbfc1"
+}
