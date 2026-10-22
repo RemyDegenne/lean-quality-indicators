@@ -1,6 +1,6 @@
 # repeated-proof-machinery
 
-Generated 2026-10-22T02:32:36+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-22T02:40:42+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## Library comparison
 
