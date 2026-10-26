@@ -2,6 +2,8 @@ import copy
 import json
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -49,6 +51,25 @@ class SubscriptionTests(unittest.TestCase):
                 value['accountLabel'] = 'another-account'; path.write_text(json.dumps(value))
                 with self.assertRaisesRegex(RuntimeError, 'lean-fro'):
                     audits.credentials()
+
+    def test_refuses_extra_usage(self):
+        result = subprocess.CompletedProcess([], 0, json.dumps({'extra_usage': {'is_enabled': True}}), '')
+        with patch.object(audits.subprocess, 'run', return_value=result):
+            with self.assertRaisesRegex(RuntimeError, 'Extra usage'):
+                audits.quota()
+
+    def test_timeout_keeps_partial_paid_output_as_an_attempt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / 'window.json').write_text(json.dumps({'deadline': '2099-01-01T00:00:00+00:00'}))
+            audits.LOCAL.output = base / 'live.jsonl'
+            audits.LOCAL.errors = base / 'live.log'
+            audits.LOCAL.attempt_output = base / 'target.attempt-1.transcript.jsonl'
+            audits.LOCAL.attempt_errors = base / 'target.attempt-1.stderr.log'
+            with patch.object(audits, 'BASE', base), patch.object(audits, 'credentials', return_value=audits.os.environ.copy()):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    audits.process([sys.executable, '-c', 'import time; print("saved response", flush=True); time.sleep(30)'], '', base, .2)
+            self.assertIn('saved response', audits.LOCAL.attempt_output.read_text())
 
 
 if __name__ == '__main__':

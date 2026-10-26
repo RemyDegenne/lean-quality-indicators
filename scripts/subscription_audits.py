@@ -151,6 +151,10 @@ def process(cmd, message, cwd, timeout):
                     p.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     os.killpg(p.pid, signal.SIGKILL)
+                    p.wait()
+                out.flush(); err.flush()
+                LOCAL.attempt_output.write_text(LOCAL.output.read_text())
+                LOCAL.attempt_errors.write_text(LOCAL.errors.read_text())
                 raise
     return subprocess.CompletedProcess(cmd, p.returncode, LOCAL.output.read_text(), LOCAL.errors.read_text())
 
@@ -159,6 +163,9 @@ def review(row, audit):
     directory = BASE / audit / LABEL / 'results'
     LOCAL.output = directory / (row['id'] + '.live.jsonl')
     LOCAL.errors = directory / (row['id'] + '.live.stderr.log')
+    attempt = judge.codex_judge.next_attempt(directory, row['id'])
+    LOCAL.attempt_output = directory / f"{row['id']}.attempt-{attempt}.transcript.jsonl"
+    LOCAL.attempt_errors = directory / f"{row['id']}.attempt-{attempt}.stderr.log"
     args = argparse.Namespace(backend='claude', model='claude-sonnet-5-5', effort='high',
                              claude='claude', timeout=1200, retries=0, max_budget=5)
     result = file_audits.review(row, audit, BASE, LABEL, args)
@@ -190,7 +197,7 @@ def report(rows):
             cell = f'{flags/n:.1%} [{lo:.1%}, {hi:.1%}]' if n else '—'
             lines.append(f'| {lib} | {flags}/{n} | {cell} |')
         lines.append('')
-    (BASE / 'library-comparison.md').write_text('\n'.join(lines) + '\n')
+    (BASE / 'library-comparison.md').write_text('\n'.join(lines).rstrip() + '\n')
     save(BASE / 'library-comparison.json', totals)
     return totals
 
@@ -303,8 +310,8 @@ def main():
                     print(json.dumps({'admission_paused': str(e)}), flush=True)
             allowed = admission_allowed(q, config, now)
             allowed &= now >= rate_limited_until
-            if allowed and now >= next_ramp and config['jobs'] < 32 and len(attempted) >= 4:
-                config['jobs'] = min(32, config['jobs'] + 4)
+            if allowed and now >= next_ramp and config['jobs'] < config.get('max_jobs', 64) and len(attempted) >= 4:
+                config['jobs'] = min(config.get('max_jobs', 64), config['jobs'] + 8)
                 save(BASE / 'window.json', config)
                 print(json.dumps({'concurrency_increased': config['jobs']}), flush=True)
                 next_ramp = now + 180
@@ -327,7 +334,7 @@ def main():
                     save(BASE / a / LABEL / 'results' / (r['id'] + '.failure.json'), failure)
                     print(json.dumps({'failed': failure}), flush=True)
                     if attempts[a, r['id']] < 3:
-                        tasks.append((r, a)); attempted.discard((a, r['id']))
+                        tasks.insert(0, (r, a)); attempted.discard((a, r['id']))
                     # Rate or quota failures stop new admissions until a fresh quota check.
                     if any(x in str(e).lower() for x in ['rate', 'limit', 'quota', '429']):
                         q = None; next_quota = now + 300
@@ -342,7 +349,7 @@ def main():
                  'pid': os.getpid(), 'stage': 'running' if allowed else 'admission-paused',
                  'new_completed': sum(p.stem.rsplit('-', 1)[-1].isdigit() for p in BASE.glob('*/*/results/*.json')),
                  'active': len(pending), 'remaining': len(tasks),
-                 'failures': [f for f in failures if not (BASE / f['audit'] / LABEL / 'results' / (f['id'] + '.json')).exists()],
+                 'failures': [json.loads(p.read_text()) for p in BASE.glob('*/*/results/*.failure.json')],
                  'failure_history': failures, 'coverage': totals,
                  'deadline': config['deadline'], 'jobs': config['jobs']})
             if now >= next_dashboard:
@@ -365,5 +372,5 @@ def main():
 
 
 if __name__ == '__main__':
-    with ThreadPoolExecutor(32) as POOL:
+    with ThreadPoolExecutor(64) as POOL:
         main()
