@@ -1,6 +1,6 @@
 # repeated-proof-machinery
 
-Generated 2026-10-22T05:54:56+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-26T22:31:18+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## Library comparison
 
@@ -8,7 +8,9 @@ Generated 2026-10-22T05:54:56+00:00 · [Methods and notation](../../../AUDIT_MET
 |---|---:|---:|---:|---:|---:|
 | Mathlib | — | — | 2/10<br>20.0% [5.7%, 51.0%] | 2/10<br>20.0% [5.7%, 51.0%] | 2/10<br>20.0% [5.7%, 51.0%] |
 | Tau Ceti | — | — | 2/10<br>20.0% [5.7%, 51.0%] | 0/10<br>0.0% [0.0%, 27.8%] | 3/10<br>30.0% [10.8%, 60.3%] |
+| Formal Frontier | — | — | 1/6<br>16.7% [3.0%, 56.4%] | — | — |
 | Lean Pool | — | — | 6/10<br>60.0% [31.3%, 83.2%] | 3/10<br>30.0% [10.8%, 60.3%] | 7/10<br>70.0% [39.7%, 89.2%] |
+| FLT (Anthropic) | — | — | 3/6<br>50.0% [18.8%, 81.2%] | — | — |
 | OpenAI Math | 48/100<br>48.0% [38.5%, 57.7%] | 20/100<br>20.0% [13.3%, 28.9%] | 38/100<br>38.0% [29.1%, 47.8%] | 20/100<br>20.0% [13.3%, 28.9%] | 5/10<br>50.0% [23.7%, 76.3%] |
 
 ## All libraries
@@ -19,7 +21,7 @@ Full-pass reference: **130 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 100 | 1/1 | 100/100 | 48 | 48 | 48.0% [38.5%, 57.7%] | $26.18 / $34.04 |
 | Sol | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $8.15 / $10.60 |
-| Sonnet | 130 | 1/1 | 130/130 | 48 | 48 | 36.9% [29.1%, 45.5%] | $11.00 / $11.00 |
+| Sonnet | 3000 | 0/1 | 142/3000 | 52 | 52 | 36.6% [29.1%, 44.8%] | $12.00 / $10.99 |
 | Luna | 130 | 1/1 | 130/130 | 25 | 25 | 19.2% [13.4%, 26.8%] | $0.46 / $0.46 |
 | DeepSeek | 40 | 1/1 | 40/40 | 17 | 17 | 42.5% [28.5%, 57.8%] | $0.55 / $1.79 |
 
@@ -43,7 +45,7 @@ Full-pass reference: **10 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
-| Sonnet | 10 | 1/1 | 10/10 | 2 | 2 | 20.0% [5.7%, 51.0%] | $0.55 / $0.55 |
+| Sonnet | 500 | 0/1 | 10/500 | 2 | 2 | 20.0% [5.7%, 51.0%] | $0.55 / $0.55 |
 | Luna | 10 | 1/1 | 10/10 | 2 | 2 | 20.0% [5.7%, 51.0%] | $0.03 / $0.03 |
 | DeepSeek | 10 | 1/1 | 10/10 | 2 | 2 | 20.0% [5.7%, 51.0%] | $0.15 / $0.15 |
 
@@ -67,7 +69,7 @@ Full-pass reference: **10 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
-| Sonnet | 10 | 1/1 | 10/10 | 2 | 2 | 20.0% [5.7%, 51.0%] | $0.46 / $0.46 |
+| Sonnet | 500 | 0/1 | 10/500 | 2 | 2 | 20.0% [5.7%, 51.0%] | $0.46 / $0.46 |
 | Luna | 10 | 1/1 | 10/10 | 0 | 0 | 0.0% [0.0%, 27.8%] | $0.03 / $0.03 |
 | DeepSeek | 10 | 1/1 | 10/10 | 3 | 3 | 30.0% [10.8%, 60.3%] | $0.13 / $0.13 |
 
@@ -83,6 +85,30 @@ Full-pass reference: **10 targets**.
 
 Coverage annotations: Opus: 0 partial, 0 not applicable; Sol: 0 partial, 0 not applicable; Sonnet: 0 partial, 0 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
 
+## Formal Frontier
+
+Full-pass reference: **0 targets**.
+
+| Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
+| Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
+| Sonnet | 500 | 0/1 | 6/500 | 1 | 1 | 16.7% [3.0%, 56.4%] | $0.29 / $0.00 |
+| Luna | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
+| DeepSeek | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
+
+### Correlation matrix
+
+| Model | Opus | Sol | Sonnet | Luna | DeepSeek |
+|---|---:|---:|---:|---:|---:|
+| Opus | — | — | — | — | — |
+| Sol | — | — | — | — | — |
+| Sonnet | — | — | — | — | — |
+| Luna | — | — | — | — | — |
+| DeepSeek | — | — | — | — | — |
+
+Coverage annotations: Opus: 0 partial, 0 not applicable; Sol: 0 partial, 0 not applicable; Sonnet: 0 partial, 0 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
+
 ## Lean Pool
 
 Full-pass reference: **10 targets**.
@@ -91,7 +117,7 @@ Full-pass reference: **10 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
-| Sonnet | 10 | 1/1 | 10/10 | 6 | 6 | 60.0% [31.3%, 83.2%] | $1.05 / $1.05 |
+| Sonnet | 500 | 0/1 | 10/500 | 6 | 6 | 60.0% [31.3%, 83.2%] | $1.05 / $1.05 |
 | Luna | 10 | 1/1 | 10/10 | 3 | 3 | 30.0% [10.8%, 60.3%] | $0.04 / $0.04 |
 | DeepSeek | 10 | 1/1 | 10/10 | 7 | 7 | 70.0% [39.7%, 89.2%] | $0.16 / $0.16 |
 
@@ -107,6 +133,30 @@ Full-pass reference: **10 targets**.
 
 Coverage annotations: Opus: 0 partial, 0 not applicable; Sol: 0 partial, 0 not applicable; Sonnet: 0 partial, 0 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
 
+## FLT (Anthropic)
+
+Full-pass reference: **0 targets**.
+
+| Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
+| Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
+| Sonnet | 500 | 0/1 | 6/500 | 3 | 3 | 50.0% [18.8%, 81.2%] | $0.71 / $0.00 |
+| Luna | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
+| DeepSeek | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
+
+### Correlation matrix
+
+| Model | Opus | Sol | Sonnet | Luna | DeepSeek |
+|---|---:|---:|---:|---:|---:|
+| Opus | — | — | — | — | — |
+| Sol | — | — | — | — | — |
+| Sonnet | — | — | — | — | — |
+| Luna | — | — | — | — | — |
+| DeepSeek | — | — | — | — | — |
+
+Coverage annotations: Opus: 0 partial, 0 not applicable; Sol: 0 partial, 0 not applicable; Sonnet: 0 partial, 0 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
+
 ## OpenAI Math
 
 Full-pass reference: **100 targets**.
@@ -115,7 +165,7 @@ Full-pass reference: **100 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 100 | 1/1 | 100/100 | 48 | 48 | 48.0% [38.5%, 57.7%] | $26.18 / $26.18 |
 | Sol | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $8.15 / $8.15 |
-| Sonnet | 100 | 1/1 | 100/100 | 38 | 38 | 38.0% [29.1%, 47.8%] | $8.94 / $8.94 |
+| Sonnet | 500 | 0/1 | 100/500 | 38 | 38 | 38.0% [29.1%, 47.8%] | $8.94 / $8.94 |
 | Luna | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $0.36 / $0.36 |
 | DeepSeek | 10 | 1/1 | 10/10 | 5 | 5 | 50.0% [23.7%, 76.3%] | $0.11 / $1.07 |
 

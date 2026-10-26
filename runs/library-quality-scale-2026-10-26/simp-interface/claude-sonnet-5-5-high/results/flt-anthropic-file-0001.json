@@ -1,0 +1,110 @@
+{
+  "id": "flt-anthropic-file-0001",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and focused on the simp calls and the private defs they unfold (ev0, \u03ba, g, \u03c8). I did not read Mathlib simp sets in depth, and I cannot run Lean. The proposals below are untested. Details such as which simp normal form the result takes are uncertain. I found no loop or competing-rule problems.",
+  "findings": [
+    {
+      "declaration": "g (and its uses isUnit_g_X0, p_toSpecZero, \u03c8_tX)",
+      "start_line": 77,
+      "end_line": 81,
+      "excerpt": "private def g (f : C.functionField) : A K \u2192+* C.functionField := MvPolynomial.eval\u2082Hom (\u03ba c) ![1, f]",
+      "problem": "The key map `g` has no simp lemmas of its own. Its three evaluation facts are `g c f (X 0) = 1`, `g c f (X 1) = f` and `g c f (C r) = \u03ba c r`. Each use re-proves them by unfolding the definition with `simp [g]`, at lines 81, 119 and 275. This depends on how `eval\u2082Hom` and `Matrix.cons_val` unfold. Unfolding `g` also exposes `eval\u2082Hom (\u03ba c) ![1,f]` to the simp set, so the goal's normal form is not controlled by the file.",
+      "proposed_change": "Add small private lemmas `g_C (r : K) : g c f (MvPolynomial.C r) = \u03ba c r`, `g_X_zero : g c f (MvPolynomial.X 0) = 1` and `g_X_one : g c f (MvPolynomial.X 1) = f`. Each can be proved by `simp [g]`, and each can be marked `@[simp]` (the lemma names here are proposed, not existing). Then isUnit_g_X0, the final step of p_toSpecZero (`rw [ha]; simp [g]`) and \u03c8_tX can use `simp [g_X_zero, g_X_one, g_C]` or plain `simp`. Unfolding is then done in one place, and `g` can stay irreducible for later proofs.",
+      "benefit": "The simp normal form of `g c f _` on generators is stated once and used uniformly. The proofs no longer depend on how `eval\u2082Hom` and `Matrix.cons_val` unfold. A change to the definition of `g` would only need the three lemmas reproved.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_exists_isFinite_hom_proj_of_isProper.lean",
+          "declaration": "isUnit_g_X0",
+          "excerpt": "IsUnit (g c f (MvPolynomial.X 0)) := by\n  simp [g]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_exists_isFinite_hom_proj_of_isProper.lean",
+          "declaration": "p_toSpecZero",
+          "excerpt": "rw [ha]\n    simp [g]"
+        }
+      ]
+    },
+    {
+      "declaration": "ev0 / ev0_algebraMap / \u03ba",
+      "start_line": 52,
+      "end_line": 57,
+      "excerpt": "simp [ev0, MvPolynomial.algebraMap_eq]",
+      "problem": "`ev0` is a private def (`constantCoeff` composed with `algebraMap`), and its basic evaluation lemma `ev0_algebraMap` is not tagged `@[simp]`. Later goals contain `ev0 K a`, for example the `change ... \u03ba c (ev0 K a)` at lines 114\u2013115 and the `key` statement, which is stated with `(\u03ba c).comp (ev0 K)`. These goals are handled by manual `change`/`rw` steps and by unfolding definitions, not by simp lemmas for `ev0`. There is also no `ev0_apply` lemma saying `ev0 K a = MvPolynomial.constantCoeff (a : A K)`. That is why line 117 needs `change g c f (a : A K) = \u03ba c (MvPolynomial.constantCoeff (a : A K))`.",
+      "proposed_change": "Add `@[simp] private lemma ev0_apply (a : \ud835\udc9c K 0) : ev0 K a = MvPolynomial.constantCoeff (a : A K) := rfl`, and tag `ev0_algebraMap` with `@[simp]`. Then the `change` at line 117 can be replaced by a `simp`/`rw [ev0_apply]` step, and `simp` can close such goals without unfolding `ev0`.",
+      "benefit": "There is one canonical simp form for `ev0` applications. The `change` steps that depend on defeq unfolding can be replaced by simp rewrites. The file would no longer need to unfold the private definition by name in each proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_exists_isFinite_hom_proj_of_isProper.lean",
+          "declaration": "p_toSpecZero",
+          "excerpt": "change g c f (a : A K) = \u03ba c (MvPolynomial.constantCoeff (a : A K))"
+        }
+      ]
+    },
+    {
+      "declaration": "p_toSpecZero (final step)",
+      "start_line": 125,
+      "end_line": 127,
+      "excerpt": "  simp at key \u22a2\n  exact key",
+      "problem": "The unannotated `simp at key \u22a2` is non-terminal and rewrites both the hypothesis `key` and the goal with the full default simp set. The goal is then closed by `exact key`, which requires both sides to be normalised to exactly the same shape. This is fragile: a new simp lemma in a dependency, such as one about `fromZeroRingHom`, `RingHom.comp` or `ofHom`, could normalise the two sides differently. The file already shows the same pattern of unspecified simp output: `try rfl` after `simp only` at lines 150 and 218.",
+      "proposed_change": "Replace the two lines with a direct step such as `exact key` after `apply CommRingCat.hom_ext`. This may need an `ext`/`RingHom.ext` style step or `simpa using key`. If simp is needed, use `simp only [...]` with the explicit lemmas (`CommRingCat.hom_ofHom`, `CommRingCat.hom_comp`) so the target shape is documented.",
+      "benefit": "The proof stops depending on the default simp set's normal form for `CommRingCat` homs, so it is more stable under library simp changes. It also records which rewrites the argument uses.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_exists_isFinite_hom_proj_of_isProper.lean",
+          "declaration": "p_toSpecZero",
+          "excerpt": "apply CommRingCat.hom_ext\n  simp at key \u22a2\n  exact key"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 14026,
+    "cache_read_input_tokens": 36510,
+    "output_tokens": 3385,
+    "output_tokens_details": {
+      "thinking_tokens": 554
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14026,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2463,
+        "cache_read_input_tokens": 17667,
+        "cache_creation_input_tokens": 372,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 372
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.093617,
+  "duration_ms": 36386,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T22:29:01",
+  "unit": "file",
+  "source_sha256": "0a9c075df336ce64c702ff52e510605e684c48c3a987b0606cde58892745a407",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

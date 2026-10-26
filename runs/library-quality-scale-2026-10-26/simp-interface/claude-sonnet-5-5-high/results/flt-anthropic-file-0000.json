@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0000",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked how the small API lemmas (tr_one, tr_neg, mat_mul, mat_one) are used. I also looked at Mathlib's centralizer lemma. I did not run Lean. The claims about simp coverage and the effect of adding @[simp] are untested. Both findings are about missing simp lemmas, and I found no rewrite cycles or competing rules. I did not report the large arithmetic section or the lemmas that are used only through explicit rw (coe_inv_eq, conjSL_coe, mem_torus_iff), because making them simp lemmas could expand terms unhelpfully.",
+  "findings": [
+    {
+      "declaration": "tr_one / tr_neg",
+      "start_line": 31,
+      "end_line": 33,
+      "excerpt": "lemma tr_one : tr (1 : \ud835\udd44) = 2 := by simp [tr]; norm_num\n\nlemma tr_neg (a : \ud835\udd44) : tr (-a) = -tr a := by simp [tr]; ring",
+      "problem": "`tr` is a plain `def` and the trace identities `tr 1 = 2` and `tr (-a) = -tr a` are not simp lemmas. Every use rewrites by hand and then closes the numeric goal with `norm_num`, for example `rw [tr_one]; norm_num` and `rw [tr_neg, tr_one]; norm_num`. The same pattern appears in Zsub.inv_mem', not_mem_Zsub_of_isSS, the \u03a8 membership proof in card_not_isSS, and hmy. A normal form `tr (\u00b11)` is reached only through explicit `rw`. `simp` cannot reduce `tr (mat \u03c1 x)` once `mat \u03c1 x` has been rewritten to `1` or `-1`, and `simp [tr]` unfolds the definition instead.",
+      "proposed_change": "Mark `tr_neg` as `@[simp]`. It is a terminating rewrite that pushes `tr` inward. Mark `tr_one` as `@[simp]` too. Add a small simp lemma `tr (-1) = -2`, or let `tr_neg` and `tr_one` combine. The goals of the form `(tr (mat \u03c1 h))^2 \u2260 4` after `rw [e]` could then close with `simp` plus `h2`/`norm_num`, replacing the repeated two-step `rw [...]; norm_num` blocks. Alternatively, state the `Zsub` facts (`tr = \u00b12`) once as lemmas and reuse them.",
+      "benefit": "This removes the duplicated `rw [tr_one]; norm_num` and `rw [tr_neg, tr_one]; norm_num` blocks and lets `simp` close trace goals automatically. It also gives one canonical form for traces of `1` and `-a`, so later proofs do not need to unfold `tr`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_Matrix_SpecialLinearGroup_card_sylow_eq_card_add_one_of_finite.lean",
+          "declaration": "not_mem_Zsub_of_isSS",
+          "excerpt": "\u00b7 rw [tr_one]; norm_num\n  \u00b7 rw [tr_neg, tr_one]; norm_num"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_Matrix_SpecialLinearGroup_card_sylow_eq_card_add_one_of_finite.lean",
+          "declaration": "card_not_isSS",
+          "excerpt": "\u00b7 rw [tr_one]; norm_num\n        \u00b7 rw [tr_neg, tr_one]; norm_num\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "mat_mul / mat_one",
+      "start_line": 45,
+      "end_line": 48,
+      "excerpt": "lemma mat_mul (a b : H) : mat \u03c1 (a * b) = mat \u03c1 a * mat \u03c1 b := by\n  simp [mat, map_mul]\n\nlemma mat_one : mat \u03c1 (1 : H) = 1 := by simp [mat]",
+      "problem": "`mat \u03c1` is the coercion of a monoid hom, and `mat_mul` and `mat_one` are its homomorphism lemmas. They are not marked `@[simp]`. Downstream proofs therefore use them only through manual `rw [mat_mul, mat_mul, ...]` / `rw [mat_one, ...]`, or they redo the work with `simp [mat, map_mul]` (in mem_torus_iff_mat) and `simp only [Set.mem_setOf_eq, mat, map_mul, Matrix.SpecialLinearGroup.coe_mul]` (in Zsub). The two lemmas are also the exact ones the file's own proofs need, for example `simp only [mat_mul] at this` and `rw [mat_mul, mat_mul, tr_conj ...]`, so the file has an ad-hoc simp interface.",
+      "proposed_change": "Mark `mat_mul` and `mat_one` as `@[simp]`. The left-hand side `mat \u03c1 (a * b)` is more specific than anything that rewrites it, and the right-hand side is in terms of smaller group elements, so the rewrite terminates. Replace the re-derivations `simpa [mat, map_mul] using ...` in `mem_torus_iff_mat` with `simpa using ...`. Replace the chained `rw [mat_mul, mat_mul, ...]` with `simp only [mat_mul]` or plain `simp`.",
+      "benefit": "`simp` normalizes `mat \u03c1 (g * h)` and `mat \u03c1 1` the same way everywhere. The `simp [mat, map_mul]` and `simp [mat]` calls, which unfold the abbreviation and rely on global simp lemmas, become shorter and less fragile. Proofs also no longer need to count `mat_mul` rewrites by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_Matrix_SpecialLinearGroup_card_sylow_eq_card_add_one_of_finite.lean",
+          "declaration": "mem_torus_iff_mat",
+          "excerpt": "simpa [mat, map_mul] using this"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_Matrix_SpecialLinearGroup_card_sylow_eq_card_add_one_of_finite.lean",
+          "declaration": "tr_eq_two_of_mem_sylow",
+          "excerpt": "rw [\u2190 e, mat_mul, mat_mul, tr_conj (mat_inv_mul s), ht]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_Matrix_SpecialLinearGroup_card_sylow_eq_card_add_one_of_finite.lean",
+          "declaration": "isSS_of_mem_classSet",
+          "excerpt": "rw [mat_mul, mat_mul, tr_conj (mat_inv_mul s)]; exact hh"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 40181,
+    "cache_read_input_tokens": 162091,
+    "output_tokens": 5357,
+    "output_tokens_details": {
+      "thinking_tokens": 1478
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40181,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2536,
+        "cache_read_input_tokens": 41964,
+        "cache_creation_input_tokens": 1335,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1335
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.23052309999999998,
+  "duration_ms": 40576,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T22:27:25",
+  "unit": "file",
+  "source_sha256": "6b6b4bcc577450a1aaab21c19be3180c21d4ff383ed809bc7540885bdc10f645",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

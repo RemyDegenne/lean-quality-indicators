@@ -1,0 +1,76 @@
+/-
+Copyright (c) 2026 The Tau Ceti contributors. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: The Tau Ceti contributors
+-/
+module
+
+public import Mathlib.Combinatorics.Quiver.Symmetric
+public import Mathlib.Basic.Finite.Defs
+public import Mathlib.Data.Fintype.Sum
+
+/-!
+# Symmetrified quivers
+
+Mathlib's `Quiver.Symmetrify` doubles a quiver by adjoining a formal reverse to every arrow,
+with the same vertices as the original quiver. This file transfers finiteness and decidable
+equality to the doubled vertex type, supplies finite arrow types from those of the original
+quiver, and records that the inclusion is bijective on vertices. These facts let path-algebra
+constructions on the doubled quiver reuse the original finite vertex and arrow data.
+
+## Main results
+
+* `TauCeti.symmetrify_of_obj`: the doubling inclusion is the identity on vertices.
+* `TauCeti.symmetrify_of_obj_bijective`: the doubling inclusion is bijective on vertices.
+-/
+
+public section
+
+namespace TauCeti
+
+open _root_.Quiver
+
+universe u v
+
+/-- Typeclass search does not unfold the `Symmetrify` type synonym to reuse `Finite Q`. -/
+instance instFiniteSymmetrify (Q : Type u) [Finite Q] : Finite (Symmetrify Q) :=
+  inferInstanceAs (Finite Q)
+
+/-- Typeclass search does not unfold the `Symmetrify` type synonym to reuse `DecidableEq Q`. -/
+instance instDecidableEqSymmetrify (Q : Type u) [DecidableEq Q] : DecidableEq (Symmetrify Q) :=
+  inferInstanceAs (DecidableEq Q)
+
+/-- Typeclass search does not unfold the `Symmetrify` type synonym to reuse `Fintype Q`. -/
+instance instFintypeSymmetrify (Q : Type u) [Fintype Q] : Fintype (Symmetrify Q) :=
+  inferInstanceAs (Fintype Q)
+
+/-- The arrows of the doubled quiver between two vertices are the arrows of `Q` in either
+direction, so there are finitely many whenever `Q` has finitely many between each pair. -/
+instance instFintypeSymmetrifyHom (Q : Type u) [Quiver.{v} Q] [∀ i j : Q, Fintype (i ⟶ j)]
+    (x y : Symmetrify Q) : Fintype (x ⟶ y) :=
+  inferInstanceAs (Fintype (((show Q from x) ⟶ (show Q from y)) ⊕
+    ((show Q from y) ⟶ (show Q from x))))
+
+/-- The arrows of the doubled quiver from `i` to `j` are the arrows of `Q` from `i` to `j` together
+with the formal reverses of the arrows of `Q` from `j` to `i`. -/
+theorem card_symmetrify_hom (Q : Type u) [Quiver.{v} Q] [∀ i j : Q, Fintype (i ⟶ j)] (i j : Q) :
+    Fintype.card (Symmetrify.of.obj i ⟶ Symmetrify.of.obj j) =
+      Fintype.card (i ⟶ j) + Fintype.card (j ⟶ i) :=
+  -- Mathlib defines the arrows of `Symmetrify Q` as this sum, and `instFintypeSymmetrifyHom`
+  -- is the sum instance.
+  Fintype.card_sum (α := i ⟶ j) (β := j ⟶ i)
+
+/-- The inclusion `Quiver.Symmetrify.of` of a quiver in its doubled quiver is the identity on
+vertices.  Deliberately not a `simp` lemma: the two vertex types are definitionally equal, so
+rewriting `Quiver.Symmetrify.of` away erases the only record of which of the two quiver structures
+a vertex was meant to carry. -/
+theorem symmetrify_of_obj {Q : Type u} [Quiver.{v} Q] (x : Q) :
+    (Symmetrify.of (V := Q)).obj x = x := rfl
+
+/-- The inclusion `Quiver.Symmetrify.of` of a quiver in its doubled quiver is the identity on
+vertices, hence bijective on them. -/
+theorem symmetrify_of_obj_bijective {Q : Type u} [Quiver.{v} Q] :
+    Function.Bijective (Symmetrify.of (V := Q)).obj :=
+  Function.bijective_id
+
+end TauCeti

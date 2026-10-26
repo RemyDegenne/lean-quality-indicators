@@ -1,0 +1,102 @@
+/-
+Copyright (c) 2026 The Tau Ceti contributors. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: The Tau Ceti contributors
+-/
+module
+
+public import Mathlib.RingTheory.Artinian.Module
+public import TauCeti.RepresentationTheory.Quiver.Acyclic.FinitePaths
+public import TauCeti.RepresentationTheory.Quiver.PathAlgebra.Basic
+
+/-!
+# The path algebra of an acyclic quiver
+
+A finite quiver with finitely many arrows between any two vertices has finitely many paths when it
+is acyclic, and the paths are a basis of its path algebra; so the path algebra of such a quiver is
+finite-dimensional over a division ring.
+
+Acyclicity is not merely sufficient but **necessary**: an oriented cycle contributes its infinitely
+many powers to the path basis, so a path algebra that is a finite module over a nonzero base ring
+has no oriented cycle, whatever the quiver. For a finite quiver with finite arrow types the two
+conditions therefore agree, and finite-dimensionality of `kQ` *is* acyclicity of `Q`. The loop
+quiver is the boundary case, where the path algebra is the additive monoid algebra of `ℕ` — the
+polynomial ring, over a commutative base — and
+`TauCeti.not_module_finite_pathAlgebra_oneLoop` records the failure directly.
+
+This is the only place the generic path algebra of
+`TauCeti.RepresentationTheory.Quiver.PathAlgebra.Basic` meets acyclicity, which is why it is a
+module of its own: the path algebra itself needs nothing from the theory of acyclic quivers.
+
+## Main results
+
+* `TauCeti.finiteDimensional_pathAlgebra_of_isAcyclic`: the path algebra of a finite acyclic
+  quiver with finite arrow types is finite-dimensional.
+* `TauCeti.isAcyclic_of_module_finite_pathAlgebra`: **a path algebra that is a finite module over
+  a nonzero base ring comes from an acyclic quiver**, with no finiteness assumed of the quiver.
+* `TauCeti.finite_hom_of_module_finite_pathAlgebra`: such a quiver has finite arrow types.
+* `TauCeti.module_finite_pathAlgebra_iff_isAcyclic`: the two together, for a finite quiver with
+  finite arrow types over a nonzero base semiring, and
+  `TauCeti.finiteDimensional_pathAlgebra_iff_isAcyclic` its reading over a division ring.
+* `TauCeti.isArtinianRing_pathAlgebra`: a finite-dimensional path algebra is an Artinian ring.
+
+## References
+
+See Assem--Simson--Skowroński, *Elements of the Representation Theory of Associative Algebras I*,
+Ch. II.
+-/
+
+public section
+
+namespace TauCeti
+
+open _root_.Quiver
+
+universe u v w
+
+/-- The path algebra of a finite acyclic quiver is finite-dimensional. -/
+theorem finiteDimensional_pathAlgebra_of_isAcyclic (k : Type w) (Q : Type u) [DivisionRing k]
+    [Quiver.{v} Q] [Finite Q] [∀ a b : Q, Finite (a ⟶ b)] (h : Quiver.IsAcyclic Q) :
+    FiniteDimensional k (pathAlgebra k Q) :=
+  letI := finite_paths_of_isAcyclic h
+  module_finite_pathAlgebra k Q
+
+/-- A finite-dimensional path algebra is an Artinian ring. -/
+instance isArtinianRing_pathAlgebra (k : Type w) (Q : Type u) [DivisionRing k] [Quiver.{v} Q]
+    [Finite Q] [FiniteDimensional k (pathAlgebra k Q)] : IsArtinianRing (pathAlgebra k Q) :=
+  IsArtinianRing.of_finite k (pathAlgebra k Q)
+
+/-- **A finite path algebra comes from an acyclic quiver.**  Over a nonzero base ring the paths are
+a basis, so finitely many of them are available; an oriented cycle would already contribute its
+infinitely many powers.  Neither the vertices nor the arrows are assumed finite: it is the path
+algebra that carries the finiteness. -/
+theorem isAcyclic_of_module_finite_pathAlgebra (k : Type w) (Q : Type u) [Semiring k]
+    [Nontrivial k] [Quiver.{v} Q] (h : Module.Finite k (pathAlgebra k Q)) :
+    Quiver.IsAcyclic Q :=
+  isAcyclic_of_finite_paths ((module_finite_pathAlgebra_iff k Q).mp h)
+
+/-- **A finite path algebra has finite arrow types.** The arrows between two vertices are among the
+basis paths, of which there are finitely many. -/
+theorem finite_hom_of_module_finite_pathAlgebra (k : Type w) (Q : Type u) [Semiring k]
+    [Nontrivial k] [Quiver.{v} Q] (h : Module.Finite k (pathAlgebra k Q)) (a b : Q) :
+    Finite (a ⟶ b) :=
+  have : Finite (Σ a b : Q, Path a b) := (module_finite_pathAlgebra_iff k Q).mp h
+  Finite.of_injective (fun e : a ⟶ b ↦ (⟨a, b, Path.nil.cons e⟩ : Σ a b : Q, Path a b))
+    fun _ _ he ↦ by simpa using he
+
+/-- **Finiteness of the path algebra as a module is acyclicity of the quiver**, for a finite quiver
+with finite arrow types over a nonzero base semiring.  This is the extensional reading of "no
+oriented cycle" that the finite-dimensional-algebra theory of a quiver runs on. -/
+theorem module_finite_pathAlgebra_iff_isAcyclic (k : Type w) (Q : Type u) [Semiring k]
+    [Nontrivial k] [Quiver.{v} Q] [Finite Q] [∀ a b : Q, Finite (a ⟶ b)] :
+    Module.Finite k (pathAlgebra k Q) ↔ Quiver.IsAcyclic Q :=
+  (module_finite_pathAlgebra_iff k Q).trans isAcyclic_iff_finite_paths.symm
+
+/-- **Finite-dimensionality of the path algebra is acyclicity of the quiver**, the reading of
+`TauCeti.module_finite_pathAlgebra_iff_isAcyclic` over a division ring. -/
+theorem finiteDimensional_pathAlgebra_iff_isAcyclic (k : Type w) (Q : Type u) [DivisionRing k]
+    [Quiver.{v} Q] [Finite Q] [∀ a b : Q, Finite (a ⟶ b)] :
+    FiniteDimensional k (pathAlgebra k Q) ↔ Quiver.IsAcyclic Q :=
+  module_finite_pathAlgebra_iff_isAcyclic k Q
+
+end TauCeti

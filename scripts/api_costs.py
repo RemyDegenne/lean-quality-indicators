@@ -104,6 +104,9 @@ def main():
     for unit in ("theorems", "files"):
         selected += [(manifest.parent.parent.name, manifest.parent)
                      for manifest in (extra / unit).glob("*/*/judge.json")]
+    expansion = ROOT / 'runs/library-quality-scale-2026-10-26'
+    selected += [(manifest.parent.parent.name, manifest.parent)
+                 for manifest in expansion.glob('*/*/judge.json')]
     for source_audit, directory in selected:
         audit = "duplicates-mathlib-inclusive" if source_audit == "duplicates-mathlib" else source_audit
         directory_completed = 0

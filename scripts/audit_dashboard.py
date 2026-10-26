@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FILES = ROOT / "runs/file-quality-pilot-2026-10-21"
 MAIN = ROOT / "runs/main"
 EXTRA = ROOT / "runs/openai-math-2026-10-21"
+EXPANSION = ROOT / "runs/library-quality-scale-2026-10-26"
 MODEL_NAMES = {"claude-opus-5-5": "Opus", "gpt-6.1-sol": "Sol", "claude-sonnet-5-5": "Sonnet",
                "gpt-6-luna": "Luna", "deepseek/deepseek-v4.1-flash-1017": "DeepSeek"}
 LIBRARY_ORDER = ["mathlib", "tauceti", "formal-frontier", "lean-pool", "flt-anthropic"]
@@ -276,6 +277,28 @@ def ordered_libraries(libraries):
     return [lib for lib in LIBRARY_ORDER if lib in libraries] + sorted(set(libraries) - set(LIBRARY_ORDER))
 
 
+def add_expansion(audit, samples, models):
+    path = EXPANSION / audit / 'claude-sonnet-5-5-high' / 'judge.json'
+    if not path.exists():
+        return samples, models
+    protocol = json.loads(path.read_text())['protocol']
+    selected = set(protocol['sample_ids'])
+    rows = {r['id']: r for r in map(json.loads, (EXPANSION / 'samples.jsonl').read_text().splitlines())}
+    for sid in set(samples) & set(rows):
+        if target_key(samples[sid], 'file') != target_key(rows[sid], 'file'):
+            raise ValueError('Expansion sample identity changed')
+    samples = {**samples, **rows}
+    directory = path.parent
+    extra = {'label': directory.name, 'directory': directory, 'selected': selected, 'results': load(directory)}
+    first = models['Sonnet'][0]
+    if set(first['results']) & set(extra['results']):
+        raise ValueError('Expansion repeats an existing first-pass judgment')
+    components = first.get('components', [first.copy()]) + [extra]
+    first.update(selected=first['selected'] | selected, results={**first['results'], **extra['results']},
+                 components=components, directories=[c['directory'] for c in components])
+    return samples, models
+
+
 def target_key(sample, unit):
     """Match source targets across audits independently of sample numbering."""
     return json.dumps([unit, sample["lib"], sample.get("dir"), sample.get("commit"),
@@ -433,6 +456,8 @@ def main():
         samples = {s["id"]: s for s in map(json.loads, (run / "samples.jsonl").read_text().splitlines())}
         models = models_for(audit, run / audit, samples, is_file)
         samples, models = add_extra_corpus(audit, is_file, samples, models)
+        if is_file:
+            samples, models = add_expansion(audit, samples, models)
         path = make_report(audit, run / audit, samples, is_file, args.resamples, models)
         bundles.append({"audit": audit, "unit": "file" if is_file else "theorem", "samples": samples,
                         "models": models, "report": json.loads(path.with_suffix(".json").read_text())})

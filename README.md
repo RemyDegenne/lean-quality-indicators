@@ -420,6 +420,25 @@ searched) are not in the repository; ask for them if you need them.
   Mathlib and Lean core: for `unnecessary-hypotheses` the pinned Mathlib master commit, for
   `duplicates-mathlib` the Mathlib and Batteries versions each library depends on.
 
+## Subscription-funded library expansion
+
+The three audits **concept reinvention**, **repeated proof machinery**, and **simp
+interface** are expanding under Sonnet 5.5 at high effort, comparing Mathlib, Tau Ceti,
+Formal Frontier, Lean Pool, FLT and OpenAI Math. The
+[library comparison](runs/library-quality-scale-2026-10-26/library-comparison.md)
+includes existing first-pass judgments; new sessions skip those targets. Source
+selection extends the original seed-zero SHA256 file ordering to 500 files per library.
+This is a queue ceiling, not a promise to complete every selected file in this window.
+
+`scripts/subscription_audits.py` uses only the `lean-fro` OAuth credential and refuses
+new work if extra usage is enabled. It pauses near either quota limit, can resume
+after the session reset, and stops at the original weekly reset on 2026-10-27 at
+05:00 UTC. Concurrency increases gradually in the absence of rate limits; a rate limit
+reduces concurrency and pauses admissions. It never switches to another account or
+uses an API key. Costs in the comparison reports remain API equivalents; these
+sessions consume the subscription. Reports refresh every five minutes, and final
+results are verified and pushed when the window finishes or weekly quota is used.
+
 ## DeepSeek pilot
 
 The matched eight-audit pilot uses DeepSeek V4.1 Flash via OpenRouter on InferenceNet FP8,
