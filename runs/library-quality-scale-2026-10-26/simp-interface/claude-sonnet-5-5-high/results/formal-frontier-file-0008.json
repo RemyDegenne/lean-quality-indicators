@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0008",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. It has no @[simp] declarations and no simp-set attributes, and no rewrite cycle is credible. The main simp-interface issues are in the hand-built isomorphisms, which have no simp lemmas for their components. The naturality lemmas are correctly not simp. I checked Mathlib's `AddEquiv.toAddCommGrpIso`, which is `@[simps]`-generated through `to_additive`, and `HomologicalComplex.homologyMapIso`, which is `@[simps]`. I did not run Lean, so I have not checked that the replacements compile or that the `rfl`/`simp` steps still go through. I did not look at downstream uses outside this file.",
+  "findings": [
+    {
+      "declaration": "HPrimeIsoGlobalResolutionHomComplexHomology",
+      "start_line": 133,
+      "end_line": 157,
+      "excerpt": "hom := AddCommGrpCat.ofHom\n    ((CategoryTheory.Abelian.Ext.AcyclicResolution.ofInjectiveResolution",
+      "problem": "The isomorphism is assembled field by field, with `hom`, `inv` and two hand-written `ext x; exact ...symm_apply_apply` proofs. This repeats what Mathlib's `AddEquiv.toAddCommGrpIso` already provides, and that definition is `@[simps]`-generated, so it has simp lemmas for `hom` and `inv`. Because the bespoke `Iso` has no such lemmas, nothing in the file lets `simp` or `dsimp` reduce `.hom`/`.inv` to `ofHom (equiv.toAddMonoidHom)` and then to `equiv x`. The same file already uses `.toAddCommGrpIso` in `cohomologySourceCoyonedaIsoSections` and in `HPrimeEquivRestrictedResolutionSectionsHomology`, so the style is inconsistent.",
+      "proposed_change": "Define the isomorphism as `(AddCommGrpCat.\u2026 extPositiveIsoHomology q hq).toAddCommGrpIso`, applied to the `AddEquiv`, and drop the manual `hom`/`inv`/`hom_inv_id`/`inv_hom_id` fields. The result is then definitionally the same data with Mathlib's `toAddCommGrpIso_hom`/`toAddCommGrpIso_inv` simp lemmas available. If the type needs adjusting to match the declared `H' G q U`, state the target through the same equivalence.",
+      "benefit": "Readers and downstream proofs get canonical simp lemmas for the component maps. This avoids unfolding with `dsimp [HPrimeIsoGlobalResolutionHomComplexHomology]`, as the naturality lemmas do, and removes about 20 lines of duplicated boilerplate.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/Category/Grp/Basic.lean",
+          "declaration": "MulEquiv.toGrpIso",
+          "excerpt": "@[to_additive (attr := simps)]\ndef MulEquiv.toGrpIso {X Y : GrpCat} (e : X \u2243* Y) : X \u2245 Y where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/sheaf-cohomology/SheafCohomology/OpenCohomologyPushforwardResolution.lean",
+          "declaration": "cohomologySourceCoyonedaIsoSections",
+          "excerpt": "(fun F => (cohomologySourceHomAddEquivSections U F).toAddCommGrpIso)"
+        }
+      ]
+    },
+    {
+      "declaration": "restrictedAcyclicResolutionExtPositiveIso",
+      "start_line": 699,
+      "end_line": 720,
+      "excerpt": "hom := AddCommGrpCat.ofHom\n    ((restrictedAcyclicResolution ((Opens.map f).obj V) G\n      ).extPositiveIsoHomology q hq).toAddMonoidHom",
+      "problem": "This is the same pattern as `HPrimeIsoGlobalResolutionHomComplexHomology`. The `AddEquiv`-to-`AddCommGrpCat`-iso conversion is written out manually instead of through the `@[simps]`-generated `toAddCommGrpIso`. As a result no `hom`/`inv` simp lemmas exist for this iso, and `restrictedAcyclicResolution_extPositiveIsoHomology_hom_naturality` has to start from `ext x` and a direct appeal to `extPositiveIsoHomology_naturality`.",
+      "proposed_change": "Replace the body with `(\u2026 extPositiveIsoHomology q hq).toAddCommGrpIso`. The theorem statements that mention `.hom` then continue to work. The naturality proof can use the generated `toAddCommGrpIso_hom` simp lemma before `ext`.",
+      "benefit": "There is one canonical normal form for the iso components, the proof boilerplate is shorter, and the two ext-positive isomorphisms in the file are built in the same way.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/Category/Grp/Basic.lean",
+          "declaration": "MulEquiv.toGrpIso",
+          "excerpt": "hom := GrpCat.ofHom e.toMonoidHom\n  inv := GrpCat.ofHom e.symm.toMonoidHom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/sheaf-cohomology/SheafCohomology/OpenCohomologyPushforwardResolution.lean",
+          "declaration": "HPrimeEquivRestrictedResolutionSectionsHomology",
+          "excerpt": "(HomologicalComplex.homologyMapIso\n        (restrictedResolutionHomComplexIsoSections U G) q).addCommGroupIsoToAddEquiv"
+        }
+      ]
+    },
+    {
+      "declaration": "HPrimeIsoGlobalResolutionHomComplexHomology_hom_open_naturality \u2026 (and the other `homologyMapIso` naturality lemmas)",
+      "start_line": 309,
+      "end_line": 312,
+      "excerpt": "dsimp [HomologicalComplex.homologyMapIso]\n  rw [\u2190 HomologicalComplex.homologyMap_comp,",
+      "problem": "Six lemmas (lines 309, 692, 905, 1073, 1234 and the pattern around them) turn a `homologyMapIso` naturality square into a `homologyMap` square by unfolding the definition with `dsimp [HomologicalComplex.homologyMapIso]`. They then run `rw [\u2190 homologyMap_comp, <chain-level naturality>, homologyMap_comp]`. Mathlib marks `HomologicalComplex.homologyMapIso` as `@[simps]`, so its `hom` and `inv` simp lemmas are the intended interface. Unfolding the definition bypasses that interface and exposes the internal structure of the iso. The same chain-level-to-homology argument is repeated five times with no reusable lemma.",
+      "proposed_change": "Use the generated `HomologicalComplex.homologyMapIso_hom` simp lemma in place of unfolding the definition. Better, factor out a single general lemma of the form `homologyMap \u03c6 q \u226b (homologyMapIso e' q).hom = (homologyMapIso e q).hom \u226b homologyMap \u03c8 q` from `\u03c6 \u226b e'.hom = e.hom \u226b \u03c8`, as a `@[reassoc]` statement, and instantiate it at each site. The existing `Functor.map` lemmas `HomologicalComplex.homologyMap_comp` and `homologyMapIso_hom` would then be rewritten once rather than re-proved at five call sites.",
+      "benefit": "The proofs stop depending on how `homologyMapIso` is defined internally. The repeated rewrite sequences in five lemmas become short one-line applications.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/Homology/ShortComplex/HomologicalComplex.lean",
+          "declaration": "HomologicalComplex.homologyMapIso",
+          "excerpt": "@[simps]\nnoncomputable def homologyMapIso : K.homology i \u2245 L.homology i where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/sheaf-cohomology/SheafCohomology/OpenCohomologyPushforwardResolution.lean",
+          "declaration": "globalResolutionHomComplexIsoSectionsHomology_hom_open_naturality",
+          "excerpt": "dsimp [HomologicalComplex.homologyMapIso]\n  rw [\u2190 HomologicalComplex.homologyMap_comp,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 35029,
+    "cache_read_input_tokens": 184660,
+    "output_tokens": 5824,
+    "output_tokens_details": {
+      "thinking_tokens": 1355
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35029,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3173,
+        "cache_read_input_tokens": 38341,
+        "cache_creation_input_tokens": 701,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 701
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.216846,
+  "duration_ms": 47187,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T22:33:11",
+  "unit": "file",
+  "source_sha256": "f4bfce11a9d7337fbe8243327a306549928f1a36771a6d6e6ecaf855e05cd04b",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

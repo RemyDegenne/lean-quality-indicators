@@ -1,6 +1,6 @@
 # API-equivalent costs
 
-Generated 2026-10-26T22:31:21+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-26T22:38:27+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 | Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |
 |---|---|---:|---:|---:|---:|
@@ -16,7 +16,7 @@ Generated 2026-10-26T22:31:21+00:00 · [Methods and notation](../../AUDIT_METHOD
 | duplicates-mathlib-inclusive | DeepSeek | 600 | 5100 | $2.26 / $19.25 | $3.77 |
 | concept-reinvention | Opus | 100 | 130 | $15.66 / $20.36 | $156.59 |
 | concept-reinvention | Sol | 100 | 130 | $8.47 / $11.02 | $84.75 |
-| concept-reinvention | Sonnet | 142 | 130 | $10.08 / $9.22 | $70.95 |
+| concept-reinvention | Sonnet | 165 | 130 | $11.48 / $9.04 | $69.56 |
 | concept-reinvention | Luna | 130 | 130 | $0.65 / $0.65 | $5.04 |
 | concept-reinvention | DeepSeek | 40 | 130 | $0.67 / $2.17 | $16.71 |
 | statement-generality | Opus | 100 | 130 | $32.26 / $41.93 | $322.57 |
@@ -31,12 +31,12 @@ Generated 2026-10-26T22:31:21+00:00 · [Methods and notation](../../AUDIT_METHOD
 | vacuity-and-misstatement | DeepSeek | 40 | 130 | $1.15 / $3.73 | $28.70 |
 | simp-interface | Opus | 100 | 130 | $24.70 / $32.11 | $246.97 |
 | simp-interface | Sol | 100 | 130 | $9.98 / $12.97 | $99.78 |
-| simp-interface | Sonnet | 141 | 130 | $13.67 / $12.60 | $96.93 |
+| simp-interface | Sonnet | 162 | 130 | $15.19 / $12.19 | $93.79 |
 | simp-interface | Luna | 130 | 130 | $0.59 / $0.59 | $4.57 |
 | simp-interface | DeepSeek | 40 | 130 | $1.12 / $3.65 | $28.09 |
 | repeated-proof-machinery | Opus | 100 | 130 | $26.18 / $34.04 | $261.84 |
 | repeated-proof-machinery | Sol | 100 | 130 | $8.15 / $10.60 | $81.55 |
-| repeated-proof-machinery | Sonnet | 142 | 130 | $12.00 / $10.99 | $84.51 |
+| repeated-proof-machinery | Sonnet | 165 | 130 | $13.86 / $10.92 | $84.03 |
 | repeated-proof-machinery | Luna | 130 | 130 | $0.46 / $0.46 | $3.57 |
 | repeated-proof-machinery | DeepSeek | 40 | 130 | $0.55 / $1.79 | $13.76 |
 | readable-proof-simplification | Opus | 100 | 130 | $34.58 / $44.96 | $345.81 |
@@ -51,10 +51,10 @@ Generated 2026-10-26T22:31:21+00:00 · [Methods and notation](../../AUDIT_METHOD
 |---|---:|
 | Opus | $641.84 |
 | Sol | $534.09 |
-| Sonnet | $321.24 |
+| Sonnet | $326.03 |
 | Luna | $26.56 |
 | DeepSeek | $12.60 |
-| **Total** | **$1536.33** |
+| **Total** | **$1541.12** |
 
 ## Rate sources
 
