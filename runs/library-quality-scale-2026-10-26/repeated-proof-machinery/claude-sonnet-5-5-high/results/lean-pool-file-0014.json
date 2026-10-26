@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0014",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (lines 1\u2013129). I also read the related declarations: contDiffOn_spatialSlice, differentiableAt_spatialSlice, contDiffOn_component, spatialPartial_eq_multiPartial_single, multiPartial_single_eq_spatialPartial, slice_spatialPartial_iterate, multiPartial_slice, axisDeriv_multiPartial_slice_eq, curlComp, and the import graph. The only importers of the target are RecedingPairingIntegrability and Imports, so importing LaplacianMultiPartialBridge (which only needs IsClassicalSolutionOn and AxisDeriv) cannot create a cycle. Nothing was compiled. The rewrites are sketches, and the cast and `simp` details of the finding 2 helper are the least certain part. I did not report hG1/hG2 (lines 118\u2013125) or the two short public smoothness theorems (lines 15\u201344). They are one-line applications of existing API and too small to count under the rubric.",
+  "findings": [
+    {
+      "declaration": "CIV.axisDeriv_curlComp_eq_multiPartial (h_rewrite1 / h_rewrite2)",
+      "start_line": 83,
+      "end_line": 116,
+      "excerpt": "refine congrArg (fun f => axisDeriv k f x) (funext fun y => ?_)",
+      "problem": "`h_rewrite1` (lines 83\u201399) and `h_rewrite2` (lines 100\u2013116) repeat the same argument, with (u\u00b7(i+2), i+1) swapped for (u\u00b7(i+1), i+2). Each block sets `G := g(\u00b7,t)`. It then proves `spatialPartial g j (y,t) = axisDeriv j G y` from `slice_spatialPartial_iterate` plus `Function.iterate_one`. It proves `multiPartial g (Pi.single j 1) (y,t) = axisDeriv j G y` from `multiPartial_slice` plus `fin_cases` and `simpa`. The two facts are then chained by `rw`. This is exactly the statement `spatialPartial g j (x,t) = multiPartial g (Pi.single j 1) (x,t)`, which is already proved as `spatialPartial_eq_multiPartial_single` in LaplacianMultiPartialBridge.lean, with a line-for-line identical proof. So the same machinery exists in three places: the two blocks here and that lemma. Notably, the `fin_cases i` in the multi-index step is on the shifted index `i`, and only works because `Pi.single (i+1) 1` reduces after case-splitting. The generic lemma does the case split on `j` itself, which is the clearer form.",
+      "proposed_change": "Add `public import LeanPool.CIVAxisymmetric.Reduction.LaplacianMultiPartialBridge` to the imports. This is safe: that file imports only IsClassicalSolutionOn and AxisDeriv, and the target is imported only by downstream files. Alternatively, move the lemma to AxisDeriv.lean so both files share it. Then replace both blocks by:\n```\nhave h_rewrite1 : axisDeriv k (fun y : Vec3 => spatialPartial (fun w => u w (i + 2)) (i + 1) (y, t)) x\n    = axisDeriv k (fun y : Vec3 => multiPartial (fun w => u w (i + 2)) (Pi.single (i + 1) 1) (y, t)) x :=\n  congrArg (fun f => axisDeriv k f x)\n    (funext fun y => spatialPartial_eq_multiPartial_single (fun w => u w (i + 2)) (i + 1) y t)\n```\nand likewise `h_rewrite2` with `(fun w => u w (i + 1))` and `(i + 2)`. Better still, state the pointwise equality as a `funext` rewrite once, e.g. `have hfun : \u2200 g j, (fun y => spatialPartial g j (y,t)) = fun y => multiPartial g (Pi.single j 1) (y,t)`, and `rw` with it twice. Hypotheses are unchanged. The lemma needs no smoothness, only `g`, `j`, `x`, `t`.",
+      "benefit": "About 34 lines of duplicated slice and iterate reasoning shrink to about 6. The curl-specific proof then shows only its real content: linearity of `axisDeriv` and the order shift. The `spatialPartial`-to-`multiPartial` bridge is maintained in one place instead of three.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Reduction/LaplacianMultiPartialBridge.lean",
+          "declaration": "CIV.spatialPartial_eq_multiPartial_single",
+          "excerpt": "have h_iter := slice_spatialPartial_iterate g i 1 t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Reduction/LaplacianMultiPartialBridge.lean",
+          "declaration": "CIV.spatialPartial_eq_multiPartial_single",
+          "excerpt": "fin_cases i <;> simpa [G] using h_eq"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Reduction/CurlCompMultiPartialBridge.lean",
+          "declaration": "CIV.axisDeriv_curlComp_eq_multiPartial",
+          "excerpt": "have h_iter := slice_spatialPartial_iterate (fun w => u w (i + 1)) (i + 2) 1 t"
+        }
+      ]
+    },
+    {
+      "declaration": "CIV.axisDeriv_curlComp_eq_multiPartial (h_diff1 / h_diff2)",
+      "start_line": 54,
+      "end_line": 73,
+      "excerpt": "contDiffOn_spatialSlice h_spatial ht",
+      "problem": "`h_diff1` (lines 54\u201363) and `h_diff2` (lines 64\u201373) repeat the same three-step proof for two components. Each proves `ContDiffOn \u22a4` of `spatialPartial g j` on the cylinder via `contDiffOn_spatialPartial`. Each restricts it to the time slice via `contDiffOn_spatialSlice`. Each then converts to `DifferentiableAt` using `differentiableOn` and `hUo.mem_nhds hx`. Only `g` and `j` differ. This fact is general and does not use the curl: a time slice of a spatial partial of a smooth scalar field is differentiable at interior points. It could also be reused by the sibling `contDiffOn_curlComp_slice_public` and by other consumers.",
+      "proposed_change": "State one helper in this file or in Axisymmetric.lean:\n```\ntheorem differentiableAt_spatialPartial_slice {g : ParabolicPoint \u2192 \u211d}\n    (hg : ContDiffOn \u211d (\u22a4 : \u2115\u221e) (fun z : Vec3 \u00d7 \u211d => g z) unitCylinder) (j : Fin 3)\n    {t : \u211d} (ht : t \u2208 Ioo (-1 : \u211d) 0) {x : Vec3} (hx : x \u2208 vec3Ball 0 1) :\n    DifferentiableAt \u211d (fun y : Vec3 => spatialPartial g j (y, t)) x :=\n  ((contDiffOn_spatialSlice (contDiffOn_spatialPartial hg j) ht).differentiableOn (by simp)).differentiableAt\n    ((isOpen_vec3Ball 0 1).mem_nhds hx)\n```\nThe body is the existing proof, unchanged. Then `h_diff1 := differentiableAt_spatialPartial_slice (contDiffOn_component hu (i + 2)) (i + 1) ht hx` and `h_diff2 := differentiableAt_spatialPartial_slice (contDiffOn_component hu (i + 1)) (i + 2) ht hx`. Only `hUo` is still needed later, for `axisDeriv_multiPartial_slice_eq`.",
+      "benefit": "Two 10-line blocks become two one-line applications. The smoothness-to-differentiability step is stated once with its real hypotheses, so a change to the slice or smoothness API is made in one place. The main theorem then reads as: differentiate the difference, rewrite to `multiPartial`, shift the order.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Reduction/CurlCompMultiPartialBridge.lean",
+          "declaration": "CIV.axisDeriv_curlComp_eq_multiPartial",
+          "excerpt": "exact (h_slice.differentiableOn (by simp)).differentiableAt (hUo.mem_nhds hx)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Identities/Axisymmetric.lean",
+          "declaration": "contDiffOn_spatialSlice",
+          "excerpt": "ContDiffOn \u211d n (fun y : Vec3 => v (y, t)) (vec3Ball 0 1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Identities/VorticityEquation.lean",
+          "declaration": "contDiffOn_spatialPartial",
+          "excerpt": "ContDiffOn \u211d (\u22a4 : \u2115\u221e) (fun z : Vec3 \u00d7 \u211d => spatialPartial g i z) unitCylinder"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 24942,
+    "cache_read_input_tokens": 132052,
+    "output_tokens": 7458,
+    "output_tokens_details": {
+      "thinking_tokens": 2059
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24942,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4732,
+        "cache_read_input_tokens": 27930,
+        "cache_creation_input_tokens": 941,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 941
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1875812,
+  "duration_ms": 55026,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-26T22:40:53",
+  "unit": "file",
+  "source_sha256": "387b5d1eb4f5a7a1d800ed893c56f0980754339a9d51daf5a7739cc09c932d6d",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

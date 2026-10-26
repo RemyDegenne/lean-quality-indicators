@@ -1,0 +1,93 @@
+{
+  "id": "tauceti-file-0013",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. Its two theorems have unrelated proofs, and nothing repeats inside the file. The repeated machinery is across files: the target's Lyndon-map construction duplicates blocks in FractionRing.lean and TateCohomology/RelationModule.lean. I read those two and Basic.lean, which holds the existing API, and grepped for other uses of range_linearCombination_le_ker_augmentation. LocalRing.lean uses the range lemmas differently, so I did not count it. I did not compile any replacement. The proposed lemma names are new, and the sketch assumes `\u039b` is `MonoidAlgebra R G` for a general commutative ring R, as in Basic.lean. Moving the definition into Basic.lean would shift its import footprint slightly. Whether the TateCohomology file can import it was not checked.",
+  "findings": [
+    {
+      "declaration": "TauCeti.exists_relationModule_surjective_of_exact",
+      "start_line": 82,
+      "end_line": 88,
+      "excerpt": "let c' := c.codRestrict (RingHom.ker (augmentation \u2124_[p] G)) fun x \u21a6",
+      "problem": "The proof rebuilds the Lyndon map `c' : \u039b^\u03b9 \u2192 I_G` by `codRestrict` and then proves it surjective. That means rewriting `range_codRestrict`, `range_linearCombination_eq_ker_augmentation` and `comap_subtype_self`. The same construction is done again in `nonempty_relationModule_tensor_linearEquiv` (FractionRing.lean 72-85), where `c'` is built the same way, `hc''` is proved by the identical three-lemma `rw`, and the exactness of `relationModule.subtype` against `c'` is proved by `ker_codRestrict`. It is done a third time as `relationModuleToKer` in TateCohomology/RelationModule.lean, with `exact_relationModuleToKer` and a hand-written surjectivity argument in `relationModuleShortComplex_shortExact`. Each copy repeats the same facts: the map lands in `I_G`, its kernel is the relation module, and it is onto `I_G` when `g` generates `G`. `Basic.lean` has only the range lemmas, not the codomain-restricted map, so each user has to rebuild it. This also forces the target proof to convert `relationModule` to `ker (\u03c0 \u2218 \u03c6)` through `ofEq`, `ker_codRestrict` and `relationModule_def` by hand (lines 100-101).",
+      "proposed_change": "Add to `TauCeti/Algebra/MonoidAlgebra/RelationModule/Basic.lean`, in the group section, a definition `relationModuleToKer g : (\u03b9 \u2192 R[G]) \u2192\u2097[R[G]] RingHom.ker (augmentation R G)`. It is `(Fintype.linearCombination R[G] fun i \u21a6 single (g i) 1 - 1).codRestrict _ fun x \u21a6 range_linearCombination_le_ker_augmentation g (LinearMap.mem_range_self _ x)`. Add three lemmas: `ker_relationModuleToKer : LinearMap.ker (relationModuleToKer g) = relationModule R G g`; `exact_relationModuleToKer : Function.Exact (relationModule R G g).subtype (relationModuleToKer g)`; and `relationModuleToKer_surjective (hg : closure (range g) = \u22a4) : Function.Surjective (relationModuleToKer g)`. The proofs are the existing ones: `LinearMap.ker_codRestrict` with `relationModule_def` for the first, `exact_subtype_ker_map` for the second, and `range_codRestrict` plus `range_linearCombination_eq_ker_augmentation` plus `comap_subtype_self` for the third (via `range_eq_top`). Use sites: in the target, replace lines 82-88 by `hc' := (LinearMap.range_eq_top).mpr (relationModuleToKer_surjective hg)`, pass it to `nonempty_ker_linearEquiv_of_range_eq`, and get `E` as `.ofEq _ _ (ker_relationModuleToKer g).symm \u226a\u226b\u2097 e`. In FractionRing.lean, drop lines 75-82 and use `exact_relationModuleToKer g` and `relationModuleToKer_surjective hg` directly. In the TateCohomology file, remove the private `relationModuleToKer` and `exact_relationModuleToKer` and keep the `ShortComplex` wrapper. The target and FractionRing already import `Basic`. The TateCohomology file already refers to the same `TauCeti.MonoidAlgebra` API.",
+      "benefit": "The one-line statement 'Lyndon's map is exact and onto `I_G`' is proved once instead of three times. Readers of the target no longer have to read a `codRestrict`/`range_codRestrict` side argument before the real Schanuel and Krull\u2013Schmidt step. A later change to `relationModule` or the map is made in one place. The target's `E` is also built from a named kernel equality instead of ad hoc `ofEq` rewriting.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/MonoidAlgebra/RelationModule/FractionRing.lean",
+          "declaration": "TauCeti.MonoidAlgebra.nonempty_relationModule_tensor_linearEquiv",
+          "excerpt": "have hc'' : Function.Surjective c' := by\n    rw [\u2190 LinearMap.range_eq_top, LinearMap.range_codRestrict,\n      range_linearCombination_eq_ker_augmentation hg, Submodule.comap_subtype_self]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/MonoidAlgebra/RelationModule/FractionRing.lean",
+          "declaration": "TauCeti.MonoidAlgebra.nonempty_relationModule_tensor_linearEquiv",
+          "excerpt": "let c' : (\u03b9 \u2192 \u039b) \u2192\u2097[\u039b] I := c.codRestrict I fun x \u21a6\n    range_linearCombination_le_ker_augmentation g (LinearMap.mem_range_self c x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/Homological/TateCohomology/RelationModule.lean",
+          "declaration": "TauCeti.TateCohomology.relationModuleToKer",
+          "excerpt": "fun i \u21a6 MonoidAlgebra.single (g i) (1 : k) - 1).codRestrict _ fun c \u21a6\n      TauCeti.MonoidAlgebra.range_linearCombination_le_ker_augmentation g \u27e8c, rfl\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/Homological/TateCohomology/RelationModule.lean",
+          "declaration": "TauCeti.TateCohomology.exact_relationModuleToKer",
+          "excerpt": "rwa [relationModuleToKer, LinearMap.ker_codRestrict,\n    \u2190 TauCeti.MonoidAlgebra.relationModule_def] at h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/MonoidAlgebra/RelationModule/Basic.lean",
+          "declaration": "TauCeti.MonoidAlgebra.range_linearCombination_eq_ker_augmentation",
+          "excerpt": "theorem range_linearCombination_eq_ker_augmentation {g : \u03b9 \u2192 G}"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 16717,
+    "cache_read_input_tokens": 98381,
+    "output_tokens": 4443,
+    "output_tokens_details": {
+      "thinking_tokens": 534
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16717,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2758,
+        "cache_read_input_tokens": 20159,
+        "cache_creation_input_tokens": 487,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 487
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1211641,
+  "duration_ms": 39885,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T22:39:40",
+  "unit": "file",
+  "source_sha256": "1fa5705b945cf7dcf532f7278da204ca44d04f0f66c20ee38e57f0ddd688c718",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,135 @@
+{
+  "id": "flt-anthropic-file-0013",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the local quaternion definitions (Def_QuaternionAlgebra_ReducedNorm: nrd_zero/one/neg/star/coe are @[simp], nrd_mul is absent) and Mathlib for nrd lemmas. I also looked at other files in the repo that redefine the same helpers. Not checked: I did not run Lean, so I cannot say whether the proposed simp attributes would loop or clash with other rules. The proposals are chosen to be terminating, but they are untested. Overall the file uses rw almost everywhere, so most gaps are missing simp lemmas for hatQ and barT. I did not report the top-level `attribute [-simp]` line because it looks like a deliberate fix for competing tensor simp rules.",
+  "findings": [
+    {
+      "declaration": "hatQ (and its component-wise uses hatQ_star, nrd_hatQ, barT_tmul)",
+      "start_line": 122,
+      "end_line": 123,
+      "excerpt": "def hatQ (w : HeightOneSpectrum (\ud835\udcde \u211a)) (x : \u210d[\u211a, a, b]) : \u210d[w.adicCompletion \u211a, cst w a, cst w b] :=",
+      "problem": "hatQ is a plain def with no component simp lemmas (no `@[simps]` or `hatQ_re`, `hatQ_imI`, etc.). Every proof that needs its components has to unfold the definition with `simp [hatQ]`. Examples are `ext <;> simp [hatQ, map_neg]` in hatQ_star, `simp [hatQ, QuaternionAlgebra.nrd, ...]` in nrd_hatQ, and `ext <;> simp [hatQ]` in barT_tmul. IsCoord also restates hatQ's body by hand, so IsCoord.tmul has to close the gap with `rfl`. This leaves the simp interface for hatQ to ad hoc unfolding, and the unfolding can also expose `cst`/`algebraMap` forms.",
+      "proposed_change": "Mark the definition with `@[simps]`, or add `@[simp] hatQ_re/hatQ_imI/hatQ_imJ/hatQ_imK : (hatQ w x).re = cst w x.re` and so on. Optionally add a `hatQ_mk` lemma and simp lemmas for `hatQ_add` and `hatQ_one`. Then replace `simp [hatQ, ...]` with plain `simp`, and state IsCoord via hatQ (`\u03c6 (z \u2297\u209c r) = r \u2022 hatQ w z`) so the `rfl` bridge in IsCoord.tmul goes away. Other files in the repo already define `hatQ_one` next to `hatQ_star`.",
+      "benefit": "Callers get a stable normal form (components of hatQ are `cst` of the components), and proofs no longer unfold a definition. This also guards against unfolding hatQ to raw `algebraMap` terms by accident.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_QuaternionAlgebra_IsOrder_forall_exists_nrd_eq_one_tmul_eq_add_smul_of_exists_ne_neg_one_of_ne_zero.lean",
+          "declaration": "hatQ_star",
+          "excerpt": "ext <;> simp [hatQ, map_neg]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_QuaternionAlgebra_IsOrder_forall_exists_nrd_eq_one_tmul_eq_add_smul_of_exists_ne_neg_one_of_ne_zero.lean",
+          "declaration": "barT_tmul",
+          "excerpt": "ext <;> simp [hatQ]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_QuaternionAlgebra_IsOrder_forall_exists_nrd_eq_one_tmul_eq_add_smul_of_exists_ne_neg_one_of_ne_zero.lean",
+          "declaration": "IsCoord.tmul",
+          "excerpt": "rw [h\u03c6]; rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "\u03c6_barT (together with barT_add, barT_neg, barT_zero, barT_one, barT_mul, barT_barT)",
+      "start_line": 177,
+      "end_line": 178,
+      "excerpt": "theorem \u03c6_barT (x : \u210d[\u211a, a, b] \u2297[\u211a] w.adicCompletion \u211a) : \u03c6 (barT \u03c6 x) = star (\u03c6 x) := by",
+      "problem": "\u03c6_barT is the defining characterisation of barT, and it reduces a term built from barT to one with fewer barT occurrences. It is not tagged simp. The following barT lemmas are also not simp, although each is a standard structural identity (additivity, zero, one, negation, involution). Because of this, every downstream proof has to spell the rewrite chain by hand, repeating the same lemma several times: `rw [RingEquiv.map_add, \u03c6_barT, \u03c6_barT, \u03c6_barT, RingEquiv.map_add, star_add]` in barT_add, and `rw [RingEquiv.map_mul, \u03c6_barT, \u03c6_barT, \u03c6_barT, RingEquiv.map_mul, star_mul]` in barT_mul. In papprox_barT and papprox_conj_local the chain `rw [..., barT_add, barT_one, barT_natCast_smul h\u03c6']` is also written out by hand.",
+      "proposed_change": "Tag `\u03c6_barT` with `@[simp]` (it is oriented to eliminate barT inside \u03c6 and cannot loop). Tag `barT_add`, `barT_neg`, `barT_zero`, `barT_one`, `barT_barT` and `barT_tmul` (which needs the hypothesis `h\u03c6`; simp can discharge it from a local hypothesis) with `@[simp]`. Leave `barT_mul` out of the simp set or keep it orientation-safe, since it reverses the factors. The injectivity proofs `apply \u03c6.injective; rw [...]` then become `apply \u03c6.injective; simp`. Alternatively, package barT as an `AddEquiv`/`RingEquiv.toOpposite`-style map, so that the generic `map_add`, `map_neg`, `map_zero` simp lemmas apply.",
+      "benefit": "The proofs of the barT algebra, and the callers in papprox_barT and papprox_conj_local, can use `simp` instead of long hand-counted `rw` chains such as three `\u03c6_barT` copies in a row. Those chains break whenever the term shape changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_QuaternionAlgebra_IsOrder_forall_exists_nrd_eq_one_tmul_eq_add_smul_of_exists_ne_neg_one_of_ne_zero.lean",
+          "declaration": "barT_add",
+          "excerpt": "rw [RingEquiv.map_add, \u03c6_barT, \u03c6_barT, \u03c6_barT, RingEquiv.map_add, star_add]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_QuaternionAlgebra_IsOrder_forall_exists_nrd_eq_one_tmul_eq_add_smul_of_exists_ne_neg_one_of_ne_zero.lean",
+          "declaration": "barT_mul",
+          "excerpt": "rw [RingEquiv.map_mul, \u03c6_barT, \u03c6_barT, \u03c6_barT, RingEquiv.map_mul, star_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_QuaternionAlgebra_IsOrder_forall_exists_nrd_eq_one_tmul_eq_add_smul_of_exists_ne_neg_one_of_ne_zero.lean",
+          "declaration": "nrd_\u03c6_barT",
+          "excerpt": "rw [\u03c6_barT, QuaternionAlgebra.nrd_star]"
+        }
+      ]
+    },
+    {
+      "declaration": "nrd_mul' and nrd_smul'",
+      "start_line": 134,
+      "end_line": 139,
+      "excerpt": "theorem nrd_mul' {K : Type*} [CommRing K] {c\u2081 c\u2083 : K} (x y : \u210d[K, c\u2081, c\u2083]) :",
+      "problem": "The reduced-norm simp set is incomplete. The definitions file marks nrd_zero, nrd_one, nrd_neg, nrd_star and nrd_coe as `@[simp]` but has no multiplicativity lemma. This file proves `nrd_mul'` (and `nrd_smul'`) locally, without simp, as primed copies, and uses them only through `rw`. Many other files in the repo re-prove the same lemma under various names, which suggests the canonical simp lemma is missing from the nrd interface. This file's own uses are `rw [nrd_mul', h\u03b2\u2081, h\u03b2\u2082, one_mul]` and `rw [nrd_mul', nrd_mul', QuaternionAlgebra.nrd_star, h\u03b2, h\u03b3]; ring`. Because nrd_mul is not simp, `simp` cannot use the existing nrd_star/nrd_one simp lemmas to normalise `nrd (\u03b3 * \u03b2 * star \u03b3)`.",
+      "proposed_change": "Move a single unprimed `QuaternionAlgebra.nrd_mul` (`nrd (x * y) = nrd x * nrd y`) into Def_QuaternionAlgebra_ReducedNorm, next to nrd_star, and mark it `@[simp]` (it is terminating and similar in shape to `det_mul`/`norm_mul`). Likewise add `nrd_smul` as `@[simp]`, stated for a general commutative ring. Delete the local `nrd_mul'`/`nrd_smul'`. The two goals above then reduce to `by simp [h\u03b2\u2081, h\u03b2\u2082]` and `by simp [h\u03b2, h\u03b3]`.",
+      "benefit": "Gives a single canonical simp normal form for reduced norms. `simp` can then push `nrd` through products and conjugates, the duplicated per-file lemmas disappear, and calls like `rw [nrd_mul', nrd_mul', nrd_star, ...]` no longer depend on the exact bracketing.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_QuaternionAlgebra_ReducedNorm.lean",
+          "declaration": "nrd_star",
+          "excerpt": "@[simp] theorem nrd_star (x : \u210d[R, a, b]) : nrd (star x) = nrd x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_QuaternionAlgebra_IsOrder_forall_exists_nrd_eq_one_tmul_eq_add_smul_of_exists_ne_neg_one_of_ne_zero.lean",
+          "declaration": "papprox_conj_global",
+          "excerpt": "rw [nrd_mul', nrd_mul', QuaternionAlgebra.nrd_star, h\u03b2, h\u03b3]; ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CerednikDrinfeld_CosetGraph_exists_mem_awayUnits_nrd_eq.lean",
+          "declaration": "nrd_mul",
+          "excerpt": "theorem nrd_mul {K : Type*} [CommRing K] {a' b' : K} (x y : \u210d[K, a', b']) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 37177,
+    "cache_read_input_tokens": 143737,
+    "output_tokens": 7114,
+    "output_tokens_details": {
+      "thinking_tokens": 1728
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37177,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4300,
+        "cache_read_input_tokens": 39083,
+        "cache_creation_input_tokens": 2107,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2107
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.23424169999999997,
+  "duration_ms": 50793,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T22:40:18",
+  "unit": "file",
+  "source_sha256": "a37dbc9d6e1dbdb7083d53222ef57768553af50c8ab6a122ad1b26477263d141",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

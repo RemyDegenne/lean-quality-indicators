@@ -1,0 +1,99 @@
+{
+  "id": "formal-frontier-file-0016",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. It has no simp attributes. Its public API is stalkTensorEquiv, stalkTensorEquiv_germ_tmul, stalkMapLinear, stalkMapLinear_apply_stalkFunctor, stalkMapLinear_germ and stalkTensorEquiv_naturality. I checked Mathlib's germ/stalkFunctor simp conventions in Topology/Sheaves/Stalks.lean. I also read the downstream uses in ModuleTensorAffine.lean, which use `change`, `exact` and `rw` for these rewrites. I could not run Lean. Whether the `show ... from p \u2297\u209c q` LHS matches syntactically under simp is unverified. I deliberately did not recommend @[simp] on stalkMapLinear_apply_stalkFunctor: it is rfl-true, and its RHS would compete with stalkMapLinear_germ and the Mathlib simp lemma stalkFunctor_map_germ_apply'. The private helper lemmas are internal and I did not review them for simp.",
+  "findings": [
+    {
+      "declaration": "PresheafOfModulesOfCommRing.stalkMapLinear_germ",
+      "start_line": 635,
+      "end_line": 640,
+      "excerpt": "theorem stalkMapLinear_germ (f : P \u27f6 Q) (U : TopologicalSpace.Opens X) (hx : x \u2208 U)\n    (p : P.obj (op U)) :\n    stalkMapLinear A P Q x f (TopCat.Presheaf.germ P.presheaf U x hx p) =\n      TopCat.Presheaf.germ Q.presheaf U x hx (f.app (op U) p)",
+      "problem": "This is the canonical computation rule for the new definition `stalkMapLinear` on germs. Its LHS is headed by the new constant `stalkMapLinear`, and the RHS is strictly smaller (the map is gone). It is not a simp lemma, and nothing else in the file's simp set unfolds `stalkMapLinear`. Mathlib's analogous rule `stalkFunctor_map_germ_apply'` is @[simp], but it does not fire on `stalkMapLinear`, because that is an opaque def. So `simp` cannot compute `stalkMapLinear ... (germ ...)`. Downstream users must invoke the lemma by name, e.g. via `rw [PresheafOfModulesOfCommRing.stalkMapLinear_germ, hpqmap]` in `stalkTensorEquiv_naturality`, and similarly in the affine file.",
+      "proposed_change": "Mark it `@[simp]`: `@[simp] theorem stalkMapLinear_germ ...`. The rewrite is terminating and non-looping. It does not conflict with `stalkMapLinear_apply_stalkFunctor`, which is not simp and which should stay non-simp. If it were simp, its RHS would compete with `stalkFunctor_map_germ_apply'`. Then `rw [stalkMapLinear_germ, ...]` in `stalkTensorEquiv_naturality` can be replaced by `simp` or `simp only [stalkMapLinear_germ]`.",
+      "benefit": "Germ-level computations about stalk maps normalise to `germ Q (f.app (op U) p)`, which is the same form Mathlib's simp set uses for `stalkFunctor.map`. This removes manual `rw`/`exact` invocations in this file and in dependent files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Topology/Sheaves/Stalks.lean",
+          "declaration": "TopCat.Presheaf.stalkFunctor_map_germ_apply'",
+          "excerpt": "-- a variant of `stalkFunctor_map_germ_apply` that makes simpNF happy.\n@[simp]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/PresheafModuleTensorStalk.lean",
+          "declaration": "PresheafOfModulesOfCommRing.stalkTensorEquiv_naturality",
+          "excerpt": "rw [PresheafOfModulesOfCommRing.stalkMapLinear_germ, hpqmap]"
+        }
+      ]
+    },
+    {
+      "declaration": "PresheafOfModulesOfCommRing.stalkTensorEquiv_germ_tmul",
+      "start_line": 565,
+      "end_line": 572,
+      "excerpt": "theorem stalkTensorEquiv_germ_tmul (V : Opens X) (hx : x \u2208 V)\n    (p : P.obj (op V)) (q : Q.obj (op V)) :\n    stalkTensorEquiv A P Q x\n        (TopCat.Presheaf.germ (P \u2297 Q).presheaf V x hx\n          (show (P \u2297 Q).obj (op V) from p \u2297\u209c q)) =",
+      "problem": "This is the defining evaluation rule of the comparison equivalence `stalkTensorEquiv` on pure-tensor germs. The rewrite is directional, terminating and has a strictly simpler RHS (a tensor of germs). It has no simp attribute. The only way to use it is by name, as in the proof of `stalkTensorEquiv_naturality` and in ModuleTensorAffine.lean, where it is applied via a `change ... :=` plus an explicit call. The statement also relies on `show (P \u2297 Q).obj (op V) from p \u2297\u209c q` to coerce the tensor into the right type. That makes it hard to use with `rw`/`simp` unless the user reproduces the same elaboration.",
+      "proposed_change": "Add `@[simp]` to `stalkTensorEquiv_germ_tmul`. This is the only evaluation rule for the equiv, so no competing rule exists. Check with `simpNF` that the LHS is syntactically matchable. If the `show` coercion makes the LHS unmatchable, restate the LHS with the instance-explicit `TensorProduct.tmul` form that `simp` produces. Optionally add the symm-image `stalkTensorEquiv.symm (germ \u2297\u209c germ) = germ (p \u2297\u209c q)` as a companion simp lemma.",
+      "benefit": "Downstream proofs such as the `calc` step in `stalkTensorEquiv_naturality` and the affine comparison proof could close the step with `simp` instead of a hand-written `exact`/`change`. This gives users a canonical normal form (tensor of germs) for the equiv on pure tensors.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/ModuleTensorAffine.lean",
+          "declaration": "stalk comparison proof using stalkTensorEquiv_germ_tmul",
+          "excerpt": "PresheafOfModulesOfCommRing.stalkTensorEquiv_germ_tmul\n        (Spec R).presheaf (tilde M).val (tilde N).val x \u22a4 trivial"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/PresheafModuleTensorStalk.lean",
+          "declaration": "PresheafOfModulesOfCommRing.stalkTensorEquiv_naturality",
+          "excerpt": "exact PresheafOfModulesOfCommRing.stalkTensorEquiv_germ_tmul\n            A P' Q' x U hxU (f.app (op U) p) (g.app (op U) q)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 25669,
+    "cache_read_input_tokens": 79221,
+    "output_tokens": 4504,
+    "output_tokens_details": {
+      "thinking_tokens": 951
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25669,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2719,
+        "cache_read_input_tokens": 27274,
+        "cache_creation_input_tokens": 2408,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2408
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.15565410000000002,
+  "duration_ms": 35654,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T22:41:59",
+  "unit": "file",
+  "source_sha256": "037e1ce75c0eb8066541bd0a4a2b6964d2fcd1fab25b7254188b5951ef6d9e94",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

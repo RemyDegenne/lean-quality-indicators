@@ -1,0 +1,83 @@
+{
+  "id": "mathlib-file-0018",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, with close attention to sum_smul, sum_mul_smul and variance, and to the derivative and evaluation lemmas. I did not run Lean. The derivative-at-0 and derivative-at-1 lemmas share only short steps, so I did not report them. The one clear repetition is the MvPolynomial machinery in sum_smul and sum_mul_smul. The proposed lemma is a sketch that I have not compiled. The exact simp sets would need adjusting, and the second-derivative case needs the Leibniz expansion for `pderiv true (pderiv true _)`.",
+  "findings": [
+    {
+      "declaration": "bernsteinPolynomial.sum_smul / bernsteinPolynomial.sum_mul_smul",
+      "start_line": 284,
+      "end_line": 360,
+      "excerpt": "let x : MvPolynomial Bool R := MvPolynomial.X true\n  let y : MvPolynomial Bool R := MvPolynomial.X false\n  have pderiv_true_x : pderiv true x = 1 := by rw [pderiv_X]; rfl\n  have pderiv_true_y : pderiv true y = 0 := by rw [pderiv_X]; rfl\n  let e : Bool \u2192 R[X] := fun i => cond i X (1 - X)",
+      "problem": "The two proofs repeat the same argument almost line for line.\n\n1. Both set up `x`, `y`, `pderiv_true_x`, `pderiv_true_y` and `e`.\n2. Both multiply the m-th `x`-derivative of `(x+y)^n`, evaluated at `x=X, y=1-X`, by `X^m`. This is a `trans` on `aeval e (pderiv true^m ((x+y)^n)) * X^m`.\n3. Both expand `(x+y)^n` with `add_pow`.\n4. Both push `pderiv`/`aeval` through the sum with `map_sum` and `Finset.sum_mul`.\n5. Both use `Finset.sum_congr` with a `w` lemma that rewrites `k \u2022 bernstein n k` (or `(k*(k-1)) \u2022 \u2026`) into `choose * (1-X)^(n-k) * (falling factorial of k) * X^(k-m) * X^m`.\n6. Both finish with a long, nearly identical `simp only` list.\n\nThe two `w` lemmas share the same `rintro` and cases split, the same `rw [bernsteinPolynomial]` and the same `simp only [\u2190 natCast_mul, Nat.add_succ_sub_one, add_zero, pow_succ]; push_cast; ring` finish.\n\nThe right-hand side computation is also duplicated. It computes the m-th partial derivative of `(x+y)^n` after substituting `x+y \u21a6 1`.\n\nFixing a bug or changing the simp set means editing two ~35-line proofs. The structure of the argument, which is the binomial theorem plus differentiating in `x`, is buried under the repeated boilerplate.",
+      "proposed_change": "Factor the common part into one lemma stated for a general order `m`, then derive the two identities from it. A sketch:\n\n`private theorem sum_descFactorial_smul (n m : \u2115) : (\u2211 \u03bd \u2208 Finset.range (n + 1), (\u03bd.descFactorial m) \u2022 bernsteinPolynomial R n \u03bd) = (n.descFactorial m) \u2022 X ^ m`\n\nProof sketch:\n1. Set up `x y e` once, with `pderiv_true_x` and `pderiv_true_y`.\n2. Prove `aeval e ((pderiv true)^[m] ((x+y)^n)) = (n.descFactorial m : R[X]) * (aeval e (x+y))^(n-m)`. This is by induction on `m` using `Derivation.leibniz_pow`, and `aeval e (x+y) = 1`.\n3. Prove the termwise lemma `\u03bd.descFactorial m \u2022 bernsteinPolynomial R n \u03bd = aeval e ((pderiv true)^[m] (choose n \u03bd \u2022 x^\u03bd * y^(n-\u03bd))) * X^m`. The case split is `\u03bd < m` (both sides 0) versus `\u03bd = j + m`, and it is done once.\n4. Combine with `add_pow`, `map_sum` and `Finset.sum_mul`.\n\nThen `sum_smul` is the case `m = 1`. It uses `Nat.descFactorial_one`, which should rewrite `\u03bd.descFactorial 1` to `\u03bd`. `sum_mul_smul` is the case `m = 2`. It needs `Nat.descFactorial_succ` (or a small lemma) to turn `\u03bd.descFactorial 2` into `\u03bd * (\u03bd - 1)`. Both final statements keep their current forms under the same hypotheses `[CommRing R]` and `n : \u2115`.\n\nNo new imports are needed: `Mathlib.Algebra.MvPolynomial.PDeriv` is already imported and `Nat.descFactorial` is in core Mathlib.\n\nA lower-risk alternative is to extract only the shared setup and the `trans`/`add_pow`/`map_sum`/`sum_congr` skeleton into a lemma parameterized by an arbitrary derivation order. The per-case `w` lemmas then become the only differing hypotheses.",
+      "benefit": "Each identity shrinks to a few lines. The two proofs can no longer drift apart. A third identity, such as the third moment, becomes a one-line corollary. Readers see the derivation once: the binomial theorem differentiated m times in `x`, then substituting `y = 1 - x`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/Polynomial/Bernstein.lean",
+          "declaration": "bernsteinPolynomial.sum_smul",
+          "excerpt": "trans MvPolynomial.aeval e (pderiv true ((x + y) ^ n)) * X"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/Polynomial/Bernstein.lean",
+          "declaration": "bernsteinPolynomial.sum_mul_smul",
+          "excerpt": "trans MvPolynomial.aeval e (pderiv true (pderiv true ((x + y) ^ n))) * X ^ 2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/Polynomial/Bernstein.lean",
+          "declaration": "bernsteinPolynomial.sum_mul_smul",
+          "excerpt": "rw [add_pow, map_sum (pderiv true), map_sum (pderiv true), map_sum (MvPolynomial.aeval e),"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 13354,
+    "cache_read_input_tokens": 34667,
+    "output_tokens": 3131,
+    "output_tokens_details": {
+      "thinking_tokens": 416
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13354,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2689,
+        "cache_read_input_tokens": 16859,
+        "cache_creation_input_tokens": 424,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 424
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0882047,
+  "duration_ms": 23790,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T22:43:58",
+  "unit": "file",
+  "source_sha256": "ae4175dc8d24c8f3344b66b026230a4d5a310c9dc387a2a2aa55cc43aeacd0e4",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

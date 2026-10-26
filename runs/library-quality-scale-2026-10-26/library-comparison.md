@@ -8,31 +8,31 @@ Cells are files flagged / reviewed, with Wilson 95% intervals. Flags remain judg
 
 | Library | Flagged / reviewed | Rate (95% CI) |
 |---|---:|---:|
-| mathlib | 2/13 | 15.4% [4.3%, 42.2%] |
-| tauceti | 0/13 | 0.0% [0.0%, 22.8%] |
-| formal-frontier | 2/13 | 15.4% [4.3%, 42.2%] |
-| lean-pool | 4/13 | 30.8% [12.7%, 57.6%] |
-| flt-anthropic | 3/13 | 23.1% [8.2%, 50.3%] |
+| mathlib | 2/21 | 9.5% [2.7%, 28.9%] |
+| tauceti | 0/20 | 0.0% [0.0%, 16.1%] |
+| formal-frontier | 3/21 | 14.3% [5.0%, 34.6%] |
+| lean-pool | 4/21 | 19.0% [7.7%, 40.0%] |
+| flt-anthropic | 4/21 | 19.0% [7.7%, 40.0%] |
 | openai-math | 6/100 | 6.0% [2.8%, 12.5%] |
 
 ## repeated-proof-machinery
 
 | Library | Flagged / reviewed | Rate (95% CI) |
 |---|---:|---:|
-| mathlib | 3/13 | 23.1% [8.2%, 50.3%] |
-| tauceti | 2/13 | 15.4% [4.3%, 42.2%] |
-| formal-frontier | 6/13 | 46.2% [23.2%, 70.9%] |
-| lean-pool | 6/13 | 46.2% [23.2%, 70.9%] |
-| flt-anthropic | 5/13 | 38.5% [17.7%, 64.5%] |
+| mathlib | 4/21 | 19.0% [7.7%, 40.0%] |
+| tauceti | 3/20 | 15.0% [5.2%, 36.0%] |
+| formal-frontier | 8/20 | 40.0% [21.9%, 61.3%] |
+| lean-pool | 11/20 | 55.0% [34.2%, 74.2%] |
+| flt-anthropic | 7/19 | 36.8% [19.1%, 59.0%] |
 | openai-math | 38/100 | 38.0% [29.1%, 47.8%] |
 
 ## simp-interface
 
 | Library | Flagged / reviewed | Rate (95% CI) |
 |---|---:|---:|
-| mathlib | 4/13 | 30.8% [12.7%, 57.6%] |
-| tauceti | 5/13 | 38.5% [17.7%, 64.5%] |
-| formal-frontier | 5/12 | 41.7% [19.3%, 68.0%] |
-| lean-pool | 7/12 | 58.3% [32.0%, 80.7%] |
-| flt-anthropic | 6/12 | 50.0% [25.4%, 74.6%] |
+| mathlib | 8/20 | 40.0% [21.9%, 61.3%] |
+| tauceti | 9/19 | 47.4% [27.3%, 68.3%] |
+| formal-frontier | 9/20 | 45.0% [25.8%, 65.8%] |
+| lean-pool | 11/20 | 55.0% [34.2%, 74.2%] |
+| flt-anthropic | 10/20 | 50.0% [29.9%, 70.1%] |
 | openai-math | 55/100 | 55.0% [45.2%, 64.4%] |
