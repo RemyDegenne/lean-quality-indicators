@@ -312,6 +312,7 @@ def main():
             allowed &= now >= rate_limited_until
             if allowed and now >= next_ramp and config['jobs'] < config.get('max_jobs', 64) and len(attempted) >= 4:
                 config['jobs'] = min(config.get('max_jobs', 64), config['jobs'] + 8)
+                config['admission_gap_seconds'] = max(.5, config.get('admission_gap_seconds', 2) / 1.5)
                 save(BASE / 'window.json', config)
                 print(json.dumps({'concurrency_increased': config['jobs']}), flush=True)
                 next_ramp = now + 180
@@ -322,7 +323,10 @@ def main():
                     attempts[a, r['id']] += 1
                     pending[POOL.submit(review, r, a)] = task
                     next_start = now + config.get('admission_gap_seconds', 3)
-            done, _ = wait(pending, timeout=3, return_when=FIRST_COMPLETED) if pending else (set(), None)
+            # Fill free slots at the configured admission cadence rather than
+            # imposing a separate three-second wait after every new session.
+            poll = max(.05, min(3, next_start - time.time())) if allowed and tasks and len(pending) < config['jobs'] else 3
+            done, _ = wait(pending, timeout=poll, return_when=FIRST_COMPLETED) if pending else (set(), None)
             for future in done:
                 r, a = pending.pop(future)
                 try:
