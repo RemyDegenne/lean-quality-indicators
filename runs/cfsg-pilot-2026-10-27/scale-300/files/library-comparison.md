@@ -8,6 +8,6 @@ Cells are files flagged / reviewed, with Wilson 95% intervals. Flags remain judg
 
 | Library | Flagged / reviewed | Rate (95% CI) |
 |---|---:|---:|
-| axiom-cfsg | 107/199 | 53.8% [46.8%, 60.6%] |
+| axiom-cfsg | 112/209 | 53.6% [46.8%, 60.2%] |
 
 These counts cover the 270 additional targets. The main library comparisons combine them with the original 30.
