@@ -4,7 +4,7 @@ We have run audits of formalization quality across seven major Lean corpora. **M
 
 These are local measures of formalization quality: unnecessary assumptions, overlap with existing results, and repeated reasoning. They provide evidence about particular aspects of library design and maintenance. They do not measure the mathematical importance, difficulty, coverage, or overall fidelity of a formalization. The findings are evaluated by AI judges; it would be good, but expensive, to test correlation with human judgements. Note that the judges can read the library, but can not compile Lean or use tools (this is necessary for cheaply auditing the large libraries).
 
-We sample theorems or complete source files from pinned library snapshots, and give judges access to the source and relevant dependencies. The tables show **Opus 5.5 high** and **Sonnet 5.5 high**, using first passes. Rémy’s Opus unnecessary-hypothesis samples cover 1,000 theorems from each of the original five libraries. Coverage varies elsewhere. Cross-model and repeated-pass checks support the broad unnecessary-hypothesis pattern (Opus/Sonnet flag correlation is 0.86 on 1,600 shared targets) but model independence is less established for the other measures.
+We sample theorems or complete source files from pinned library snapshots, and give judges access to the source and relevant dependencies. The first two tables show **Opus 5.5 high** and **Sonnet 5.5 high**; the repeated-machinery table shows Sonnet alone. All use first passes. Rémy’s Opus unnecessary-hypothesis samples cover 1,000 theorems from each of the original five libraries. Coverage varies elsewhere. Cross-model and repeated-pass checks support the broad unnecessary-hypothesis pattern (Opus/Sonnet flag correlation is 0.86 on 1,600 shared targets) but model independence is less established for the other measures.
 
 Each cell shows flagged / sampled, the flag rate, and a 95% interval for sampling uncertainty. A dash means no judgments. CFSG figures use its completed 30-target pilots; an expansion to 300 targets per audit is running.
 
@@ -43,14 +43,14 @@ Anthropic FLT stands out here with a high flag rate; the differences among the o
 
 This audit searches a complete file for substantial mathematical reasoning repeated across at least two proofs. A finding must propose a shared lemma and show how both proofs would use it, with an improvement in readability and maintenance. Routine calculations and thin wrappers are excluded.
 
-| Library | Opus | Sonnet |
-|---|---:|---:|
-| Mathlib | — | 60/372 · **16.1%** [12.7%, 20.2%] |
-| Tau Ceti | — | 64/372 · **17.2%** [13.7%, 21.4%] |
-| Formal Frontier | — | 128/372 · **34.4%** [29.8%, 39.4%] |
-| Lean Pool | — | 180/372 · **48.4%** [43.4%, 53.5%] |
-| Anthropic FLT | — | 189/372 · **50.8%** [45.7%, 55.9%] |
-| OpenAI Math | 48/100 · **48.0%** [38.5%, 57.7%] | 154/372 · **41.4%** [36.5%, 46.5%] |
-| AxiomMath CFSG | — | 12/30 · **40.0%** [24.6%, 57.7%] |
+| Library | Sonnet |
+| --- | ---: |
+| Mathlib | 60/372 · **16.1%** [12.7%, 20.2%] |
+| Tau Ceti | 64/372 · **17.2%** [13.7%, 21.4%] |
+| Formal Frontier | 128/372 · **34.4%** [29.8%, 39.4%] |
+| Lean Pool | 180/372 · **48.4%** [43.4%, 53.5%] |
+| Anthropic FLT | 189/372 · **50.8%** [45.7%, 55.9%] |
+| OpenAI Math | 154/372 · **41.4%** [36.5%, 46.5%] |
+| AxiomMath CFSG | 12/30 · **40.0%** [24.6%, 57.7%] |
 
 The initial Sonnet flags put Mathlib and Tau Ceti together, Formal Frontier in the middle, and the remaining corpora higher. The judges are *not* asked to compile their proposals, so these flag rates only represent potential refactorings. File length and organization affect opportunities to find repetition, and compiling proposed refactorings remains an important next step. We ran a small scale pilot that checked proposed refactorings more carefully; fewer survived scrutiny at Tau Ceti relative to all the other libraries. [Detailed results](https://github.com/kim-em/lean-quality-indicators/blob/b235c6613/runs/file-quality-pilot-2026-10-21/reports/repeated-proof-machinery-comparison.md), [follow-up validation](https://github.com/kim-em/lean-quality-indicators/blob/b235c6613/runs/repeated-machinery-validation-2026-10-27/validation-report.md).
