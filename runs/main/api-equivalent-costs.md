@@ -1,6 +1,6 @@
 # API-equivalent costs
 
-Generated 2026-10-27T20:17:09+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-27T20:21:36+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 Definition fidelity groups automatic missing-docstring flags with its Opus protocol; rule-only decisions cost $0. Repeated-machinery validation is a separate check, excluded from the original first-pass judgment and coverage counts.
 
