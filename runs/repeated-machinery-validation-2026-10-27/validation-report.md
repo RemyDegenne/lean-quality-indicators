@@ -4,12 +4,12 @@ Sonnet 5.5 high, lean-fro subscription. Twenty flagged and ten unflagged files p
 
 | Library | Original flags / reviewed | Flagged checked | Supported | Unsupported | Uncertain | Unflagged checked | Misses found | API-equivalent USD |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| mathlib | 60/372 | 6/20 | 3 | 2 | 1 | 3/10 | 0 | $0.89 |
-| tauceti | 64/372 | 5/20 | 1 | 4 | 0 | 3/10 | 0 | $0.73 |
-| formal-frontier | 128/372 | 6/20 | 4 | 2 | 0 | 3/10 | 0 | $0.58 |
-| lean-pool | 180/372 | 6/20 | 4 | 2 | 0 | 3/10 | 0 | $1.06 |
-| flt-anthropic | 189/372 | 5/20 | 3 | 2 | 0 | 3/10 | 0 | $1.25 |
-| openai-math | 154/372 | 6/20 | 5 | 1 | 0 | 3/10 | 0 | $1.00 |
+| mathlib | 60/372 | 9/20 | 4 | 4 | 1 | 4/10 | 0 | $1.43 |
+| tauceti | 64/372 | 8/20 | 1 | 7 | 0 | 4/10 | 0 | $1.09 |
+| formal-frontier | 128/372 | 9/20 | 7 | 2 | 0 | 4/10 | 0 | $0.90 |
+| lean-pool | 180/372 | 9/20 | 7 | 2 | 0 | 4/10 | 0 | $1.55 |
+| flt-anthropic | 189/372 | 7/20 | 3 | 4 | 0 | 4/10 | 0 | $1.72 |
+| openai-math | 154/372 | 7/20 | 5 | 2 | 0 | 4/10 | 0 | $1.26 |
 
 Supported means at least one supplied claim is confirmed or a new qualifying finding is found. Unsupported requires all supplied claims refuted and complete coverage; uncertainty is separate. The JSON report includes Wilson intervals for conditional support and missed-finding fractions. These measure small-sample uncertainty, not correctness or inter-model agreement.
 
