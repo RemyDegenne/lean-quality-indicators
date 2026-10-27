@@ -1,6 +1,6 @@
 # duplicates-mathlib-inclusive
 
-Generated 2026-10-27T15:19:10+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T15:25:27+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 Opus uses the earlier prompt on four libraries, without Mathlib targets.
 

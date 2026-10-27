@@ -1,6 +1,6 @@
 # repeated-proof-machinery
 
-Generated 2026-10-27T15:19:16+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T15:25:34+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 [Separate validation: 20 flagged and 10 unflagged targets per library](../../repeated-machinery-validation-2026-10-27/validation-report.md). These checks do not enter the first-pass counts.
 
@@ -14,7 +14,7 @@ Generated 2026-10-27T15:19:16+00:00 · [Methods and notation](../../../AUDIT_MET
 | Lean Pool | — | — | 180/372<br>48.4% [43.4%, 53.5%] | 3/10<br>30.0% [10.8%, 60.3%] | 7/10<br>70.0% [39.7%, 89.2%] |
 | FLT (Anthropic) | — | — | 189/372<br>50.8% [45.7%, 55.9%] | — | — |
 | OpenAI Math | 48/100<br>48.0% [38.5%, 57.7%] | 20/100<br>20.0% [13.3%, 28.9%] | 154/372<br>41.4% [36.5%, 46.5%] | 20/100<br>20.0% [13.3%, 28.9%] | 5/10<br>50.0% [23.7%, 76.3%] |
-| CFSG (AxiomMath) | — | — | 5/9<br>55.6% [26.7%, 81.1%] | — | — |
+| CFSG (AxiomMath) | — | — | 8/20<br>40.0% [21.9%, 61.3%] | — | — |
 
 ## All libraries
 
@@ -24,7 +24,7 @@ Full-pass reference: **130 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 100 | 1/1 | 100/100 | 48 | 48 | 48.0% [38.5%, 57.7%] | $26.18 / $34.04 |
 | Sol | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $8.15 / $10.60 |
-| Sonnet | 3030 | 0/1 | 2241/3030 | 780 | 780 | 34.8% [32.9%, 36.8%] | $187.15 / $10.86 |
+| Sonnet | 3030 | 0/1 | 2252/3030 | 783 | 783 | 34.8% [32.8%, 36.8%] | $188.07 / $10.86 |
 | Luna | 130 | 1/1 | 130/130 | 25 | 25 | 19.2% [13.4%, 26.8%] | $0.46 / $0.46 |
 | DeepSeek | 40 | 1/1 | 40/40 | 17 | 17 | 42.5% [28.5%, 57.8%] | $0.55 / $1.79 |
 
@@ -192,7 +192,7 @@ Full-pass reference: **30 targets** (planned; no completed pass yet).
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
-| Sonnet | 30 | 0/1 | 9/30 | 5 | 5 | 55.6% [26.7%, 81.1%] | $1.01 / $3.36 |
+| Sonnet | 30 | 0/1 | 20/30 | 8 | 8 | 40.0% [21.9%, 61.3%] | $1.93 / $2.90 |
 | Luna | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | DeepSeek | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 
