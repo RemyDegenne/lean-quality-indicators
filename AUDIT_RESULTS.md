@@ -1,6 +1,6 @@
 # Audit results
 
-Generated 2026-10-27T18:13:27+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
+Generated 2026-10-27T18:15:27+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
 
 [Appendix: simp interface and concept reinvention — not ready for use](AUDIT_APPENDIX.md). These audits do not contribute to the summaries below.
 
@@ -54,7 +54,7 @@ Contributing audits: [statement-generality](#statement-generality), [vacuity-and
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 7/7 | 5100 | 5000 | 100 | 8/8 | 749/4100 | 1095/5000 | 95/100 | 16100/16100 | $1165.07 / $1142.01 |
 | Sol | 6/7 | 5100 | 0 | 100 | 7/7 | 624/1600 | — | 93/100 | 8600/8600 | $515.64 / $622.87 |
-| Sonnet | 6/7 | 5600 | 0 | 3300 | 4/7 | 303/1734 | — | 119/130 | 11205/12890 | $496.05 / $373.69 |
+| Sonnet | 6/7 | 5600 | 0 | 3300 | 4/7 | 303/1734 | — | 119/130 | 11206/12890 | $496.38 / $373.71 |
 | Luna | 6/7 | 5100 | 0 | 130 | 7/7 | 545/1600 | — | 79/130 | 8720/8720 | $25.31 / $29.70 |
 | DeepSeek | 6/7 | 600 | 0 | 40 | 6/6 | 146/600 | — | 36/40 | 1360/1360 | $10.81 / $70.78 |
 
@@ -286,7 +286,7 @@ Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 0 not a
 | Lean Pool | — | — | 180/372<br>48.4% [43.4%, 53.5%] | 3/10<br>30.0% [10.8%, 60.3%] | 7/10<br>70.0% [39.7%, 89.2%] |
 | FLT (Anthropic) | — | — | 189/372<br>50.8% [45.7%, 55.9%] | — | — |
 | OpenAI Math | 48/100<br>48.0% [38.5%, 57.7%] | 20/100<br>20.0% [13.3%, 28.9%] | 154/372<br>41.4% [36.5%, 46.5%] | 20/100<br>20.0% [13.3%, 28.9%] | 5/10<br>50.0% [23.7%, 76.3%] |
-| CFSG (AxiomMath) | — | — | 58/115<br>50.4% [41.4%, 59.4%] | — | — |
+| CFSG (AxiomMath) | — | — | 59/116<br>50.9% [41.9%, 59.8%] | — | — |
 
 ### Model comparison
 
@@ -296,7 +296,7 @@ Full-pass reference: **130 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 100 | 1/1 | 100/100 | 48 | 48 | 48.0% [38.5%, 57.7%] | $26.18 / $34.04 |
 | Sol | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $8.15 / $10.60 |
-| Sonnet | 3300 | 0/1 | 2347/3300 | 833 | 833 | 35.5% [33.6%, 37.5%] | $198.54 / $11.00 |
+| Sonnet | 3300 | 0/1 | 2348/3300 | 834 | 834 | 35.5% [33.6%, 37.5%] | $198.87 / $11.01 |
 | Luna | 130 | 1/1 | 130/130 | 25 | 25 | 19.2% [13.4%, 26.8%] | $0.46 / $0.46 |
 | DeepSeek | 40 | 1/1 | 40/40 | 17 | 17 | 42.5% [28.5%, 57.8%] | $0.55 / $1.79 |
 
