@@ -1,0 +1,83 @@
+{
+  "id": "axiom-cfsg-file-0290",
+  "lib": "axiom-cfsg",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the imported CrossUniPlane, UnitaryBalPlane (the scalarU, rescale and nonsplit-pair material) and KD264LieInnGoodUnitaryDiag, and grepped the repo for the helper lemmas the target uses. I found one well-supported repeated-proof pattern, reported below. I also saw but did not report these smaller repeats, because they are short or thin:\n- `exists_pow_scalar_unitary` has the same statement and proof as the local `hpow` in UnitaryBalPlane's `localDeltaIn_eq_bot_of_unitary_plane`.\n- `norm_inv_unit_eq_one` repeats a one-line `simpa` that appears in several other files.\n- The three branches of `exists_split_heis_pair` each build a rescaled pair in the same way. Pulling that into a helper would only move the duplicated branch inside a helper, which the rubric says is insufficient.\nI did not compile anything. The proposed lemma and its two call sites are sketches that I did not test.",
+  "findings": [
+    {
+      "declaration": "CFSG.HardMathSupport.Timmesfeld.LocalTwo.exists_split_heis_pair (hbq / haq / hwn block in the third case)",
+      "start_line": 188,
+      "end_line": 194,
+      "excerpt": "have hbq : b ^ (\u2113 ^ f + 1) = 1 := (pow_succ_eq_one_iff_norm h b).mpr hbn",
+      "problem": "The proof that a p-th root `w` of `b * a ^ m` has norm 1 is repeated. Both `a` and `b` have norm 1 and `p` divides `\u2113 ^ f + 1`. The argument raises `w ^ p` to the power `\u2113 ^ f + 1`. It uses `mul_pow` and the power-commutation rewrite `pow_mul`/`mul_comm`/`pow_mul` to show that this power is 1. It then converts back with `pow_succ_eq_one_iff_norm` and finishes with `norm_eq_one_of_pow_norm`. The same argument is written out again for `d ^ p = b * a ^ (-k)` in `exists_nonsplit_pair_unitary` (`hdp1`/`hdn` in UnitaryBalPlane.lean). It appears a third time as `hd'n` in KD264LieInnGoodUnitaryDiag.lean. Each copy is a different `calc`/`rw` chain for the same fact, so a fix to one is easy to miss in the others.",
+      "proposed_change": "Add one lemma in UnitaryBalPlane.lean, right after `norm_eq_one_of_pow_norm` (line 159). The target already imports it transitively through CrossUniPlane \u2192 UnitaryBalOuter \u2192 UnitaryBalPlane. KD264LieInnGoodUnitaryDiag.lean also uses `norm_eq_one_of_pow_norm`, so it sees the lemma too.\n\n`theorem norm_eq_one_of_pow_eq_mul_zpow (hp : p.Prime) (hp2 : p \u2260 2) (hpq : p \u2223 \u2113 ^ f + 1) {a b d : K\u02e3} (han : h.norm (a : K) = 1) (hbn : h.norm (b : K) = 1) (k : \u2124) (hd : d ^ p = b * a ^ k) : h.norm (d : K) = 1`\n\nProof sketch:\n1. Show `(d ^ p) ^ (\u2113 ^ f + 1) = 1`. Rewrite with `hd`, `mul_pow` and `(pow_succ_eq_one_iff_norm h b).mpr hbn`. Then use `\u2190 zpow_natCast, \u2190 zpow_mul, mul_comm, zpow_mul, zpow_natCast`, `(pow_succ_eq_one_iff_norm h a).mpr han` and `one_zpow`. This is the existing UnitaryBalPlane `hdp1` proof, with `-k` replaced by `k`.\n2. Apply `(pow_succ_eq_one_iff_norm h (d ^ p)).mp` to get the norm of `d ^ p`.\n3. Apply `norm_eq_one_of_pow_norm hp hp2 hpq`.\n\nUses:\n- Target: delete `hbq` and `haq`, and replace the body of `hwn` with `norm_eq_one_of_pow_eq_mul_zpow hp hp2 hpq han hbn (m : \u2124) (by rw [hwp, zpow_natCast])`. The goal for the `by` block is `w ^ p = b * a ^ (m : \u2124)`.\n- UnitaryBalPlane `exists_nonsplit_pair_unitary`: `hdn` becomes `norm_eq_one_of_pow_eq_mul_zpow hp hp2 hpq han hbn (-k) hdp`.\n- KD264LieInnGoodUnitaryDiag: `hd'n` becomes `norm_eq_one_of_pow_eq_mul_zpow hp hp2 hpq han hbn (-k) hd'`.\n\nThe lemma holds under the actual hypotheses of all three uses: `p` prime, `p \u2260 2`, `p \u2223 \u2113 ^ f + 1`, and `a`, `b` of norm 1.",
+      "benefit": "The norm-one argument is stated once with a name, and the three proofs shrink from about 6\u201310 lines to one call each. The `m : \u2115` versus `-k : \u2124` exponent variants no longer appear as separate hand-written `rw` chains. In the target, `exists_split_heis_pair` loses the `hbq`/`haq`/`hwn` plumbing and reads as: construct `w`, show `w ^ p = b * a ^ m`, deduce the norm. Any change to how the unitary norm condition is expressed (`pow_succ_eq_one_iff_norm`) is fixed in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/CFSG/HardMathSupport/Timmesfeld/CrossChar/UnitaryBalPlane.lean",
+          "declaration": "CFSG.HardMathSupport.Timmesfeld.CrossChar.exists_nonsplit_pair_unitary (hdn)",
+          "excerpt": "rw [hdp, mul_pow, (pow_succ_eq_one_iff_norm h b).mpr hbn, one_mul, \u2190 zpow_natCast,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/CFSG/LocalAnalysis/GLTheoremA/CatC/KD264LieInnGoodUnitaryDiag.lean",
+          "declaration": "hd'n inside the unitary diagonal lemma",
+          "excerpt": "exact norm_eq_one_of_pow_norm hp hp2 hpq ((pow_succ_eq_one_iff_norm h (d' ^ p)).mp hdp1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/CFSG/HardMathSupport/Timmesfeld/LocalTwo/CrossUniHeisPair.lean",
+          "declaration": "exists_split_heis_pair (hwn)",
+          "excerpt": "rw [mul_pow, hbq, \u2190 pow_mul, mul_comm m, pow_mul, haq, one_pow, one_mul]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 36148,
+    "cache_read_input_tokens": 137887,
+    "output_tokens": 7355,
+    "output_tokens_details": {
+      "thinking_tokens": 3209
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36148,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2675,
+        "cache_read_input_tokens": 38429,
+        "cache_creation_input_tokens": 1648,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1648
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2319547,
+  "duration_ms": 65948,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T20:08:46",
+  "unit": "file",
+  "source_sha256": "b7771e7ff195a7c3a0832751925057ad09c0084110369f3c9b7e4fc37fd2904d",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}
