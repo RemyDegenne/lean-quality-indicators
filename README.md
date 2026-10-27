@@ -527,6 +527,18 @@ Fetch the pinned sources with `python3 scripts/fetch_cfsg.py`. Run
 `python3 scripts/cfsg_pilot.py --prepare-only` to prepare, or omit that option to
 resume the pilot. The pilot and publication monitor have service templates in `scripts/`.
 
+The [two theorem audits](runs/cfsg-pilot-2026-10-27/theorems/library-comparison.md)
+use a separate fixed selection of 2,000 targets drawn uniformly from 1,363,165 eligible
+public theorems and lemmas. Sonnet 5.5 high judges the same first 30 for unnecessary
+hypotheses and Mathlib duplication, alternating between audits with one session.
+The existing theorem protocols are unchanged: hypotheses checks use current-master
+Mathlib frozen at preparation, and duplication uses CFSG's pinned Mathlib. Both also
+have access to pinned Tau Ceti and the other dependencies. Results join the main
+library comparisons, including the combined theorem summary, with costs and intervals.
+Run `python3 scripts/cfsg_theorem_audits.py --prepare-only` to prepare, or omit the
+option to resume. This pilot has its own $20 API-equivalent ceiling, subscription-only
+billing, and worker/publication service templates in `scripts/`.
+
 ## Repeated proof machinery validation
 
 The [validation run](runs/repeated-machinery-validation-2026-10-27/validation-report.md)

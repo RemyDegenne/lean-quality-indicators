@@ -1,6 +1,6 @@
 # unnecessary-hypotheses
 
-Generated 2026-10-27T15:35:58+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T15:51:31+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 Original five libraries: Opus 1,000 then 300 targets/library; Sol, Sonnet and Luna 300 per pass.
 
@@ -14,6 +14,7 @@ Original five libraries: Opus 1,000 then 300 targets/library; Sol, Sonnet and Lu
 | Lean Pool | 150/1000<br>15.0% [12.9%, 17.3%] | 60/300<br>20.0% [15.9%, 24.9%] | 39/300<br>13.0% [9.7%, 17.3%] | 48/300<br>16.0% [12.3%, 20.6%] | 13/100<br>13.0% [7.8%, 21.0%] |
 | FLT (Anthropic) | 203/1000<br>20.3% [17.9%, 22.9%] | 78/300<br>26.0% [21.4%, 31.2%] | 52/300<br>17.3% [13.5%, 22.0%] | 61/300<br>20.3% [16.2%, 25.2%] | 21/100<br>21.0% [14.2%, 30.0%] |
 | OpenAI Math | 17/100<br>17.0% [10.9%, 25.5%] | 21/100<br>21.0% [14.2%, 30.0%] | 15/100<br>15.0% [9.3%, 23.3%] | 19/100<br>19.0% [12.5%, 27.8%] | 16/100<br>16.0% [10.1%, 24.4%] |
+| CFSG (AxiomMath) | — | — | 0/4<br>0.0% [0.0%, 49.0%] | — | — |
 
 ## All libraries
 
@@ -23,7 +24,7 @@ Full-pass reference: **5100 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 5100 | 2/2 | 6600/6600 | 653 | 510 | 9.9% [9.1%, 10.7%] | $491.63 / $379.90 |
 | Sol | 1600 | 2/2 | 3100/3100 | 395 | 210 | 13.0% [11.4%, 14.7%] | $145.80 / $239.87 |
-| Sonnet | 1600 | 2/2 | 3100/3100 | 260 | 152 | 8.5% [7.2%, 10.0%] | $110.14 / $181.20 |
+| Sonnet | 1630 | 1/2 | 3104/3130 | 260 | 152 | 8.5% [7.2%, 9.9%] | $110.45 / $181.48 |
 | Luna | 1600 | 2/2 | 3100/3100 | 329 | 212 | 10.9% [9.4%, 12.5%] | $6.81 / $11.20 |
 | DeepSeek | 600 | 1/1 | 600/600 | 59 | 59 | 9.8% [7.7%, 12.5%] | $4.52 / $38.46 |
 
@@ -168,3 +169,25 @@ Full-pass reference: **100 targets**.
 | Sonnet | 0.93 [0.82, 1.00]; n=100 | 0.81 [0.67, 0.94]; n=100 | — | 0.80 [0.62, 0.94]; n=100 | 0.89 [0.74, 1.00]; n=100 |
 | Luna | 0.87 [0.72, 0.97]; n=100 | 0.94 [0.84, 1.00]; n=100 | 0.80 [0.62, 0.94]; n=100 | — | 0.83 [0.67, 0.96]; n=100 |
 | DeepSeek | 0.96 [0.89, 1.00]; n=100 | 0.85 [0.71, 0.96]; n=100 | 0.89 [0.74, 1.00]; n=100 | 0.83 [0.67, 0.96]; n=100 | — |
+
+## CFSG (AxiomMath)
+
+Full-pass reference: **30 targets** (planned; no completed pass yet).
+
+| Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Opus | 0 | 0/2 | 0/0 | 0 | 0 | — | $0.00 / — |
+| Sol | 0 | 0/2 | 0/0 | 0 | 0 | — | $0.00 / — |
+| Sonnet | 30 | 0/2 | 4/30 | 0 | 0 | 0.0% [0.0%, 49.0%] | $0.31 / $2.36 |
+| Luna | 0 | 0/2 | 0/0 | 0 | 0 | — | $0.00 / — |
+| DeepSeek | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
+
+### Correlation matrix
+
+| Model | Opus | Sol | Sonnet | Luna | DeepSeek |
+|---|---:|---:|---:|---:|---:|
+| Opus | — | — | — | — | — |
+| Sol | — | — | — | — | — |
+| Sonnet | — | — | — | — | — |
+| Luna | — | — | — | — | — |
+| DeepSeek | — | — | — | — | — |

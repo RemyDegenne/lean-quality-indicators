@@ -323,12 +323,13 @@ def add_expansion(audit, samples, models):
     return samples, models
 
 
-def add_cfsg_pilot(audit, samples, models):
-    manifest = CFSG / audit / 'claude-sonnet-5-5-high' / 'judge.json'
+def add_cfsg_pilot(audit, samples, models, unit='file'):
+    base = CFSG / 'theorems' if unit == 'theorem' else CFSG
+    manifest = base / audit / 'claude-sonnet-5-5-high' / 'judge.json'
     if not manifest.exists():
         return samples, models
     selected = set(json.loads(manifest.read_text())['protocol']['sample_ids'])
-    rows = {r['id']: r for r in map(json.loads, (CFSG / 'samples.jsonl').read_text().splitlines())}
+    rows = {r['id']: r for r in map(json.loads, (base / 'samples.jsonl').read_text().splitlines())}
     if samples.keys() & rows.keys():
         raise ValueError('CFSG pilot overlaps another corpus')
     extra = {'label': manifest.parent.name, 'directory': manifest.parent,
@@ -513,7 +514,8 @@ def main():
             samples, models = add_extra_corpus(audit, is_file, samples, models)
         if is_file:
             samples, models = add_expansion(audit, samples, models)
-            samples, models = add_cfsg_pilot(audit, samples, models)
+        if unit in ('file', 'theorem'):
+            samples, models = add_cfsg_pilot(audit, samples, models, unit)
         path = make_report(audit, run / audit, samples, is_file, args.resamples, models, unit)
         bundles.append({"audit": audit, "unit": unit, "samples": samples,
                         "models": models, "report": json.loads(path.with_suffix(".json").read_text())})
