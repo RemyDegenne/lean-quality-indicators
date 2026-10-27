@@ -1,0 +1,126 @@
+{
+  "id": "formal-frontier-file-0123",
+  "lib": "formal-frontier",
+  "coverage": "complete",
+  "review_notes": "I read the whole file as supplied and used greps to confirm line numbers and that `oldPointwiseModule` and `pointwiseModule_eq_old` are used only inside this file. Nothing was compiled, so every rewrite below is untested. Candidate 0 is the clearest case. Candidate 1 is a real duplicated construction, but I could not rule out a module-system reason for the inlining. Candidate 2 shares only a short preamble. I found no further findings: `ringGenerator`/`groupGenerator` and `ringIso`/`groupIso` are parallel one-line wrappers around Mathlib API, and `pointwiseMap_id` and `pointwiseMap_comp` are routine.",
+  "claims": [
+    {
+      "finding_index": 0,
+      "assessment": "confirmed",
+      "reason": "`ring_map_\u03b9` (line 225) and `group_map_\u03b9` (line 236) have the same proof: `change (\u03b9 \u226b (pointwiseLeftKanExtension _).map g).hom _ = _`, then `erw [Functor.pointwiseLeftKanExtension_map, colimit.\u03b9_desc]`, then `rfl`. They differ only in which presheaf is used: `R` in `RingCat` or `M.presheaf` in `AddCommGrpCat`. The categorical content is that the generator map \u03b9_i followed by the Kan-extension map along g is \u03b9 at (CostructuredArrow.map g).obj i. That statement does not use ring or group structure. Both `RingCat.{v}` and `AddCommGrpCat.{v}` are `Type (v+1)` categories with `HasColimits`. The file already states `pointwiseToPullback` for a general `C : Type (v+1)` with `[HasColimits C]`, so the generic form fits the file's conventions. The proof is short, so this is borderline. The delicate `erw` part is repeated verbatim, though, and a generic lemma would also serve `pointwiseMap_\u03b9`, which uses the sibling `colimit.\u03b9_map` step. I have not compiled the refactor. The corollaries may need `erw` or `by exact` to match the `.hom` coercion.",
+      "shared_lemma": "private theorem \u03b9_pointwiseLeftKanExtension_map (C : Type (v+1)) [Category.{v} C] [HasColimits C] (F : Y.Presheaf C) {U V : Opens X} (g : op U \u27f6 op V) (i : index f U) :\n  colimit.\u03b9 (CostructuredArrow.proj (Opens.map f).op (op U) \u22d9 F) i \u226b ((Opens.map f).op.pointwiseLeftKanExtension F).map g =\n  colimit.\u03b9 (CostructuredArrow.proj (Opens.map f).op (op V) \u22d9 F) ((CostructuredArrow.map g).obj i) := by\n  erw [Functor.pointwiseLeftKanExtension_map, colimit.\u03b9_desc]; rfl",
+      "rewritten_uses": [
+        "theorem ring_map_\u03b9 ... := ConcreteCategory.congr_hom (\u03b9_pointwiseLeftKanExtension_map f RingCat.{v} R g i) r",
+        "theorem group_map_\u03b9 ... := ConcreteCategory.congr_hom (\u03b9_pointwiseLeftKanExtension_map f AddCommGrpCat.{v} M.presheaf g i) m"
+      ],
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "ring_map_\u03b9",
+          "excerpt": "change (colimit.\u03b9 (CostructuredArrow.proj (Opens.map f).op (op U) \u22d9 R) i \u226b\n    ((Opens.map f).op.pointwiseLeftKanExtension R).map g).hom r = _\n  erw [Functor.pointwiseLeftKanExtension_map, colimit.\u03b9_desc]\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "group_map_\u03b9",
+          "excerpt": "change (colimit.\u03b9 (CostructuredArrow.proj (Opens.map f).op (op U) \u22d9 M.presheaf) i \u226b\n    ((Opens.map f).op.pointwiseLeftKanExtension M.presheaf).map g).hom m = _\n  erw [Functor.pointwiseLeftKanExtension_map, colimit.\u03b9_desc]\n  rfl"
+        }
+      ]
+    },
+    {
+      "finding_index": 1,
+      "assessment": "confirmed",
+      "reason": "`pointwiseModule` (line 145) rebuilds `oldPointwiseModule` (line 130) in full. Both transport the native `ModuleColimit` module structure along `groupIso`, using `AddEquiv.module`, and then restrict scalars along `ringIso.symm` with `Module.compHom`. `pointwiseModule` re-inlines the `IsFiltered` instance, the `InitiallySmall` instance, `indexProj`, `indexedRing`, `indexedModule`, `ringIso` and `groupIso`. `pointwiseModule_eq_old` (line 188) proves the two are `rfl`-equal, and the greps show `oldPointwiseModule` and that theorem are used only in that bridge. So one transport construction is maintained twice. The likely reason for the inlining is that a public, exposed instance should not mention private helpers. I could not verify that, and I found no Lean error message for the case. If it is the reason, the fix is to make the helpers (`meetIndex`, `meetLeft`, `meetRight`, `ringIso`, `groupIso`, and the `IsFiltered` and `InitiallySmall` instances) non-private. That is a small visibility change, not a cycle. I have not compiled this.",
+      "shared_lemma": "Not a lemma: the shared object is the module structure itself. Define `pointwiseModule` once as `Module.compHom _ (ringIso f R U).symm.ringCatIsoToRingEquiv.toRingHom` over `AddEquiv.module _ (groupIso f R M U).symm.addCommGroupIsoToAddEquiv`, with the helpers made public.",
+      "rewritten_uses": [
+        "noncomputable instance pointwiseModule (R) (M) (U) : Module (\u2026\u2096.obj (op U)) (\u2026\u2096.obj (op U)) := (body of oldPointwiseModule, with ringIso/groupIso/IsFiltered/InitiallySmall no longer private)",
+        "delete `oldPointwiseModule` and `pointwiseModule_eq_old`. `pointwise_smul_\u03b9`, `restriction_smul` and the rest keep using `pointwiseModule` unchanged."
+      ],
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "oldPointwiseModule",
+          "excerpt": "letI : Module (colimit (indexedRing f R U) : RingCat.{v})\n      (((Opens.map f).op.pointwiseLeftKanExtension M.presheaf).obj (op U)) :=\n    AddEquiv.module _ (groupIso f R M U).symm.addCommGroupIsoToAddEquiv\n  exact Module.compHom _ (ringIso f R U).symm.ringCatIsoToRingEquiv.toRingHom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "pointwiseModule",
+          "excerpt": "letI : Module (colimit ringDiagram : RingCat.{v})\n      (((Opens.map f).op.pointwiseLeftKanExtension M.presheaf).obj (op U)) :=\n    AddEquiv.module _ groupComparison.symm.addCommGroupIsoToAddEquiv\n  exact Module.compHom _ ringComparison.symm.ringCatIsoToRingEquiv.toRingHom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "pointwiseModule_eq_old",
+          "excerpt": "pointwiseModule f R M U = oldPointwiseModule f R M U := rfl"
+        }
+      ]
+    },
+    {
+      "finding_index": 2,
+      "assessment": "refuted",
+      "reason": "The shared part of `restriction_smul` and `pointwiseMap_smul` is only a three-line preamble. It does `obtain \u27e8i,a,b,ha,hb\u27e9 := pointwise_jointly_surjective \u2026`, then `erw [\u2190 ha, \u2190 hb]`, then `erw [\u2190 pointwise_smul_\u03b9 \u2026]`. The real arguments after that are different: `group_map_\u03b9`/`ring_map_\u03b9` followed by `pointwise_smul_\u03b9` at V, versus `pointwiseMap_\u03b9` followed by `map_smul` and `pointwise_smul_\u03b9` at N. The proposed lemma would only move this preamble into a helper. It would be a thin wrapper over `pointwise_jointly_surjective` and `pointwise_smul_\u03b9`, which already hold the real content. The two proofs also work in different settings: one has a single module M and two opens, the other has two modules M and N over the same open. A single helper statement would have to be stated over `pointwiseSmul`, and the proofs would then have to be re-adapted from their `letI` instance selection to it. The saving is small and the risk to the instance-sensitive `erw` steps is real. This is not a nontrivial repeated argument.",
+      "shared_lemma": "",
+      "rewritten_uses": [],
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "restriction_smul",
+          "excerpt": "obtain \u27e8i, a, b, ha, hb\u27e9 := pointwise_jointly_surjective f R M U r m\n  erw [\u2190 ha, \u2190 hb]\n  erw [\u2190 pointwise_smul_\u03b9 f R M U i a b]\n  erw [group_map_\u03b9 f R M g i (a \u2022 b), ring_map_\u03b9 f R g i a,\n    group_map_\u03b9 f R M g i b]\n  exact pointwise_smul_\u03b9 f R M V ((CostructuredArrow.map g).obj i) a b"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "pointwiseMap_smul",
+          "excerpt": "erw [pointwiseMap_\u03b9 f \u03c6 U i (a \u2022 b), pointwiseMap_\u03b9 f \u03c6 U i b]\n  rw [map_smul, pointwise_smul_\u03b9 f R N U i]\n  rfl"
+        }
+      ]
+    }
+  ],
+  "missed_findings": [],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 22938,
+    "cache_read_input_tokens": 26102,
+    "output_tokens": 8051,
+    "output_tokens_details": {
+      "thinking_tokens": 3552
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22938,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5395,
+        "cache_read_input_tokens": 21841,
+        "cache_creation_input_tokens": 5358,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5358
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17488019999999999,
+  "duration_ms": 53471,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T14:34:01",
+  "unit": "file_validation",
+  "source_sha256": "3e65984a235a5a25eedf734c7a6ec449aec9fd3ca66588cfc272b785d640e7c1",
+  "baseline_sha256": "fdfd17f49b0014b5a3e4c5e11e887ab736290684f2b5e285e1a07cbe149495e6",
+  "baseline_stratum": "flagged",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}
