@@ -179,7 +179,13 @@ def run(kind):
                         failures.append(failure)
                         runner.save(base / audit / label / 'results' / (row['id'] + '.failure.json'), failure)
                         note = str(exc)
-                        runner.STOP.set()
+                        import judge
+                        attempts = judge.codex_judge.next_attempt(base / audit / label / 'results', row['id'])
+                        retryable = 'OAuth token revoked' in str(exc) or str(exc).startswith('Invalid verdict:')
+                        if retryable and attempts <= 3 and not (CONTROL / 'rate-limit-stop.json').exists():
+                            todo.append((row, audit))
+                        else:
+                            runner.STOP.set()
                 if time.time() - last_status >= 30:
                     status('running')
                     last_status = time.time()
