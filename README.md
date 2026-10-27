@@ -567,6 +567,14 @@ The saved prompts, source snapshots, selections, validators and spending ceiling
 are unchanged; each continuation records its controller hash and runtime settings
 in `runtime-control.json`.
 
+`scripts/watch_whitepaper.py` waits for every selected target in these Sonnet
+continuations to have an accepted judgment. It then verifies the results, refreshes
+the whitepaper's Sonnet cells and coverage text while preserving other edits, and
+regenerates and pushes the Markdown and two-page PDF. The durable service template is
+`scripts/whitepaper-monitor.service`; its log is `runs/main/whitepaper-monitor.log`.
+Rendering uses `scripts/render_whitepaper.py` with Python markdown-it-py, XeLaTeX and
+Poppler installed. A paused or failed target does not count as completion.
+
 ## Repeated proof machinery validation
 
 The [validation run](runs/repeated-machinery-validation-2026-10-27/validation-report.md)
