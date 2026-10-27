@@ -1,10 +1,10 @@
 # Auditing formalization quality in Lean libraries
 
-We have run audits of formalization quality across seven major Lean corpora. **Mathlib is the clear leader on the measures that compare all seven libraries**, with a substantial gap to Lean Pool, Anthropic’s FLT project, OpenAI’s released mathematics corpus, and—in preliminary results—AxiomMath’s CFSG. Tau Ceti sits close to Mathlib. Formal Frontier is also close on the theorem audits, although it falls between Mathlib and the other projects on repeated proof machinery.
+We have run audits of formalization quality across seven major Lean corpora. **Mathlib is the clear leader on the measures studied**, with a substantial gap to Lean Pool, Anthropic’s FLT project, OpenAI’s released mathematics corpus, and—in preliminary results—AxiomMath’s CFSG. Tau Ceti sits close to Mathlib on repeated machinery, but the larger Opus sample finds more than twice Mathlib’s unnecessary-hypothesis rate. Formal Frontier is close on the theorem audits, although it falls between Mathlib and the other projects on repeated proof machinery.
 
 These are local measures of formalization quality: unnecessary assumptions, overlap with existing results, and repeated reasoning. They provide evidence about particular aspects of library design and maintenance. They do not measure the mathematical importance, difficulty, coverage, or overall fidelity of a formalization. The findings are evaluated by AI judges; it would be good, but expensive, to test correlation with human judgements.
 
-We sample theorems or complete source files from pinned library snapshots, and give judges access to the source and relevant dependencies. Most evidence comes from Opus and Sonnet; the tables below consistently use **Sonnet 5.5 high, first passes**, keeping the judge fixed across libraries. Cross-model and repeated-pass checks support the broad unnecessary-hypothesis pattern (Opus/Sonnet flag correlation is 0.86 on 1,600 shared targets) but model independence is less established for the other measures.
+We sample theorems or complete source files from pinned library snapshots, and give judges access to the source and relevant dependencies. The unnecessary-hypothesis table uses **Opus 5.5 high**, including Rémy’s 1,000-theorem samples from the original five libraries. The other two tables use **Sonnet 5.5 high**. All tables use first passes and keep the judge fixed across libraries. Cross-model and repeated-pass checks support the broad unnecessary-hypothesis pattern (Opus/Sonnet flag correlation is 0.86 on 1,600 shared targets) but model independence is less established for the other measures.
 
 The tables report flagged targets, with 95% intervals for sampling uncertainty. CFSG figures use its completed 30-target pilots; an expansion to 300 targets per audit is running.
 
@@ -14,15 +14,15 @@ This audit asks whether an argument can be deleted while leaving the rest of a t
 
 | Library | Flagged / sampled | Rate [95% interval] |
 |---|---:|---:|
-| Mathlib | 6/300 | **2.0%** [0.9%, 4.3%] |
-| Tau Ceti | 12/300 | **4.0%** [2.3%, 6.9%] |
-| Formal Frontier | 12/300 | **4.0%** [2.3%, 6.9%] |
-| Lean Pool | 39/300 | **13.0%** [9.7%, 17.3%] |
-| Anthropic FLT | 52/300 | **17.3%** [13.5%, 22.0%] |
-| OpenAI Math | 15/100 | **15.0%** [9.3%, 23.3%] |
-| AxiomMath CFSG | 4/30 | **13.3%** [5.3%, 29.7%] |
+| Mathlib | 31/1,000 | **3.1%** [2.2%, 4.4%] |
+| Tau Ceti | 68/1,000 | **6.8%** [5.4%, 8.5%] |
+| Formal Frontier | 34/1,000 | **3.4%** [2.4%, 4.7%] |
+| Lean Pool | 150/1,000 | **15.0%** [12.9%, 17.3%] |
+| Anthropic FLT | 203/1,000 | **20.3%** [17.9%, 22.9%] |
+| OpenAI Math | 17/100 | **17.0%** [10.9%, 25.5%] |
+| AxiomMath CFSG | — | — |
 
-This is the clearest separation: Mathlib, Tau Ceti and Formal Frontier have substantially fewer flags than the other corpora. The small difference between Mathlib and TC/FF remains uncertain. This is also a relatively concrete maintenance question. Judges inspect sources but cannot compile proposed replacements. [Detailed results](https://github.com/kim-em/lean-quality-indicators/blob/b235c6613/runs/main/unnecessary-hypotheses/audit-comparison.md).
+The larger Opus sample shows a clearer gap between Tau Ceti (6.8%) and Mathlib (3.1%): about 2.2 times the flag rate, and their 95% intervals do not overlap. Formal Frontier (3.4%) remains close to Mathlib. Tau Ceti still has substantially fewer flags than Lean Pool and Anthropic FLT. OpenAI Math has a separate 100-theorem Opus pilot; CFSG has no Opus judgments for this audit yet. Judges inspect sources but cannot compile proposed replacements. [Detailed results](https://github.com/kim-em/lean-quality-indicators/blob/b235c6613/runs/main/unnecessary-hypotheses/audit-comparison.md).
 
 ## 2. Results already available in Mathlib
 
