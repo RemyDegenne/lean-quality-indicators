@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0354",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the upstream definitions in ConeLocalLength.lean and ConePrimeLocalization.lean. I also checked how coneAwayToLaurent_algebraMap and laurentPrime_comap are used. The file declares no simp lemmas itself. The findings concern missing simp-facing lemmas on the upstream API that this file works around with manual `change` and `rw` steps. I did not run Lean, so I don't claim any simp call fails. I did not flag laurentPrime_comap or the height lemmas for simp attributes. They are conditional or have non-canonical LHS forms, and the rubric warns against annotating on looks alone.",
+  "findings": [
+    {
+      "declaration": "PiExponentSiegel.W17.ConeLocalLength.conePrime_minimal_over_homogenized (hcomp / hI blocks)",
+      "start_line": 59,
+      "end_line": 74,
+      "excerpt": "rw [RingEquiv.symm_apply_apply]",
+      "problem": "`coneLaurentEquiv` is an opaque `def` built with `RingEquiv.ofRingHom`. There is no simp lemma saying its coercion agrees with `coneAwayToLaurent`, and none for `coneLaurentEquiv.toRingHom.comp (algebraMap ..) = coneToLaurent`. The existing `@[simp] coneAwayToLaurent_algebraMap` therefore cannot fire on terms stated with `coneLaurentEquiv`. The proof compensates with a hand-built `hcomp` (`RingHom.ext` and `.symm` of the simp lemma). It also needs `simp only [RingEquiv.toRingHom_eq_coe]` and an `Ideal.ext` with a `change` to expose `symm_apply_apply`.",
+      "proposed_change": "In ConeLocalLength.lean, next to `coneLaurentEquiv`, add two lemmas. The first is `@[simp] coneLaurentEquiv_apply (x : ConeAway k \u03c3) : coneLaurentEquiv k \u03c3 x = coneAwayToLaurent k \u03c3 x := rfl`. The second is `@[simp] coneLaurentEquiv_apply_algebraMap (p : ConeRing k \u03c3) : coneLaurentEquiv k \u03c3 (algebraMap _ _ p) = coneToLaurent k \u03c3 p`, or equivalently the `toRingHom.comp` form that `hcomp` states. Then `hcomp` becomes one line. The `Ideal.ext` plus `change` block in `hI` can then probably be replaced by `Ideal.comap_map_of_bijective`-style rewriting or a short simp.",
+      "benefit": "The equivalence and its underlying ring map normalise to the same form under simp. The existing simp lemma `coneAwayToLaurent_algebraMap` then applies to every statement written via `coneLaurentEquiv`, and downstream proofs stop repeating the `hcomp`/`change` boilerplate.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/LocalAlgebra/ConeLocalLength.lean",
+          "declaration": "coneLaurentEquiv",
+          "excerpt": "RingEquiv.ofRingHom (coneAwayToLaurent k \u03c3) (laurentToConeAway k \u03c3)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/LocalAlgebra/ConeLocalLength.lean",
+          "declaration": "coneAwayToLaurent_algebraMap",
+          "excerpt": "@[simp] theorem coneAwayToLaurent_algebraMap (p : ConeRing k \u03c3) :"
+        }
+      ]
+    },
+    {
+      "declaration": "PiExponentSiegel.W17.ConeLocalLength.conePrime_height_eq and conePrime_minimal_over_homogenized",
+      "start_line": 112,
+      "end_line": 119,
+      "excerpt": "change ((awayChartPrime k \u03c3 P).comap\n    (algebraMap (ConeRing k \u03c3) (ConeAway k \u03c3))).height = P.height",
+      "problem": "`conePrime` and `awayChartPrime` are plain `def`s with no unfolding or rewrite lemmas. The proofs repeatedly use `change` to expose the defining `comap` structure. This happens at lines 77\u201378 (`change awayChartPrime k \u03c3 P \u2208 ((H.map ..).comap ..).minimalPrimes`), at lines 113\u2013114 and at line 117. `rw`/`simp` cannot see through these definitions, so no rewriting rule connects `conePrime` and `awayChartPrime` to the `comap` lemmas (`IsLocalization.height_under`, `Ideal.minimalPrimes_comap_of_surjective`). Every consumer must restate the full `comap` expression.",
+      "proposed_change": "Next to the definitions, add equation lemmas `conePrime_eq_comap : conePrime k \u03c3 P = (awayChartPrime k \u03c3 P).comap (algebraMap (ConeRing k \u03c3) (ConeAway k \u03c3)) := rfl` and `awayChartPrime_eq_comap : awayChartPrime k \u03c3 P = (laurentPrime (AffineRing k \u03c3) P).comap (coneLaurentEquiv k \u03c3).toRingHom := rfl`. Use them with `rw`, or add a `@[simp]` membership lemma `mem_conePrime_iff`. Then `conePrime_height_eq` would be `rw [conePrime_eq_comap, IsLocalization.height_under .., awayChartPrime_eq_comap]` followed by the existing `exact`.",
+      "benefit": "The `change` steps that restate long terms go away. Rewrites become robust if the definitions of `conePrime` or `awayChartPrime` are later changed. The unfolding direction is fixed in one place, and it terminates because each rewrite strictly unfolds one definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/LocalAlgebra/ConePrimeLocalization.lean",
+          "declaration": "conePrime",
+          "excerpt": "def conePrime : Ideal (ConeRing k \u03c3) :=\n  (awayChartPrime k \u03c3 P).comap (algebraMap (ConeRing k \u03c3) (ConeAway k \u03c3))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/PiExponent/LocalAlgebra/ConePrimeLocalization.lean",
+          "declaration": "awayChartPrime",
+          "excerpt": "(laurentPrime (AffineRing k \u03c3) P).comap (coneLaurentEquiv k \u03c3).toRingHom"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19818,
+    "cache_read_input_tokens": 56885,
+    "output_tokens": 4105,
+    "output_tokens_details": {
+      "thinking_tokens": 919
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19818,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2678,
+        "cache_read_input_tokens": 21033,
+        "cache_creation_input_tokens": 2798,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2798
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.12602649999999999,
+  "duration_ms": 30935,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:58:30",
+  "unit": "file",
+  "source_sha256": "147d1b7e5463abd7d52be2407a6cac0090fd29151529edf2f546c5bee8a0c8e9",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

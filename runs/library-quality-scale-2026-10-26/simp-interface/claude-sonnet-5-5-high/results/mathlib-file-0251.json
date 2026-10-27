@@ -1,0 +1,130 @@
+{
+  "id": "mathlib-file-0251",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and the related simp attributes in Mathlib/Data/List/Cycle.lean and Mathlib/GroupTheory/Perm/List.lean. I searched Mathlib for uses of the toList lemmas. The existing @[simp] declarations look sound: toList_one, toList_eq_nil_iff, length_toList, mem_toCycle_iff_support, toCycle_next and Cycle.formPerm_coe. I found no loop or competing-rule problem. The two_le_length_toList_iff_mem_support, toList_formPerm_nil and toList_formPerm_singleton lemmas are already provable by plain simp, so I did not flag them. The findings are about missing simp lemmas, based on explicit simp arguments in this file. I could not run Lean. The reduction in explicit simp arguments is therefore my expectation, not an observed result. The unconditional nodup_toList should be low risk as a simp lemma. The formPerm_toList suggestion is slightly less certain, because I did not check for other lemmas about `formPerm (toList ..)` or `cycleOf` that might interact with it.",
+  "findings": [
+    {
+      "declaration": "Equiv.Perm.nodup_toList",
+      "start_line": 238,
+      "end_line": 238,
+      "excerpt": "theorem nodup_toList (p : Perm \u03b1) (x : \u03b1) : Nodup (toList p x) := by",
+      "problem": "`nodup_toList` is an unconditional fact about every `toList p x`, but it is not a simp lemma. `Cycle.nontrivial_coe_nodup_iff` is @[simp] and has the side condition `l.Nodup`. Simp therefore cannot use it on `toList f x` automatically. The file works around this by passing `nodup_toList` explicitly, both as a term argument and as the whole closing fact of a `simpa`.",
+      "proposed_change": "Mark `nodup_toList` with `@[simp]`. Its LHS is `List.Nodup (toList p x)`, so it cannot loop. The explicit instantiation `Cycle.nontrivial_coe_nodup_iff (nodup_toList _ _)` in `nontrivial_toCycle` can then become the bare lemma name or be dropped. Simp can discharge the `Nodup` side goal, and `nodup_toCycle` can likely be `simp [toCycle_eq_toList f hf x hx]`.",
+      "benefit": "Goals such as `Cycle.Nodup \u2191(toList f x)`, `Nontrivial \u2191(toList f x)` and `formPerm` side conditions would close under plain `simp`. Users would not have to remember to supply `nodup_toList` by hand. The proofs at lines 376 and 380 would shrink.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/Cycle/Concrete.lean",
+          "declaration": "Equiv.Perm.nontrivial_toCycle",
+          "excerpt": "simp [toCycle_eq_toList f hf x hx, hx, Cycle.nontrivial_coe_nodup_iff (nodup_toList _ _)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/Cycle/Concrete.lean",
+          "declaration": "Equiv.Perm.nodup_toCycle",
+          "excerpt": "simpa [toCycle_eq_toList f hf x hx] using nodup_toList _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/List/Cycle.lean",
+          "declaration": "Cycle.nontrivial_coe_nodup_iff",
+          "excerpt": "theorem nontrivial_coe_nodup_iff {l : List \u03b1} (hl : l.Nodup) :"
+        }
+      ]
+    },
+    {
+      "declaration": "Equiv.Perm.formPerm_toList",
+      "start_line": 336,
+      "end_line": 336,
+      "excerpt": "theorem formPerm_toList (f : Perm \u03b1) (x : \u03b1) : formPerm (toList f x) = f.cycleOf x := by",
+      "problem": "This is the canonical round-trip rewrite `formPerm (toList f x) \u21a6 f.cycleOf x`. The RHS is strictly simpler, and no reverse rule or loop is apparent. The lemma is not tagged simp, so it must be named explicitly in every simp call. The only two downstream uses in the file do exactly that. The sibling lemmas `formPerm_nil` and `formPerm_singleton` in Perm/List.lean are simp lemmas.",
+      "proposed_change": "Add `@[simp]` to `formPerm_toList`. Then drop the explicit `formPerm_toList` argument from the simp calls in `isoCycle.left_inv` and `IsCycle.existsUnique_cycle`.",
+      "benefit": "Simp would normalize `formPerm (toList f x)` to `cycleOf f x` everywhere. Downstream proofs would then reach existing `cycleOf` simp lemmas, such as `cycleOf_eq` with `hf.cycleOf_eq hx`, without extra arguments.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/Cycle/Concrete.lean",
+          "declaration": "Equiv.Perm.isoCycle",
+          "excerpt": "simpa [toCycle_eq_toList (f : Perm \u03b1) f.prop x hx, formPerm_toList, Subtype.ext_iff] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/Cycle/Concrete.lean",
+          "declaration": "Equiv.Perm.IsCycle.existsUnique_cycle",
+          "excerpt": "\u00b7 simp [formPerm_toList, hf.cycleOf_eq hx]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/List.lean",
+          "declaration": "List.formPerm_singleton",
+          "excerpt": "theorem formPerm_singleton (x : \u03b1) : formPerm [x] = 1 :="
+        }
+      ]
+    },
+    {
+      "declaration": "Equiv.Perm.getElem_toList",
+      "start_line": 219,
+      "end_line": 220,
+      "excerpt": "(toList p x)[n] = (p ^ n) x := by simp [toList, pull_end]",
+      "problem": "`toList` is an opaque def, so simp cannot unfold it. An indexed access `(toList p x)[n]` is therefore stuck unless `getElem_toList` is passed manually. The lemma's own proof needs `simp [toList, pull_end]`, and the later proofs rewrite it by hand several times. The special case `toList_getElem_zero` is a separate lemma, although it is just this lemma at `n = 0` followed by `pow_zero`.",
+      "proposed_change": "Mark `getElem_toList` with `@[simp]`. Its RHS `(p ^ n) x` is the canonical form, and the bound proof is a simp-dischargeable argument. The LHS head is `getElem` on `toList`, so it cannot loop. `toList_getElem_zero` would then follow from `pow_zero` and `one_apply`. It could become a simp-proved corollary or be dropped if unused. I found no use of it outside its own declaration.",
+      "benefit": "Index lookups into `toList` would normalize to permutation powers automatically. Downstream users and the proofs of `next_toList_eq_apply`, `toList_pow_apply_eq_rotate` and `nodup_toList` could then use plain `simp`. The `toList_getElem_zero` special case would no longer be needed as a separate rewrite rule.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/Cycle/Concrete.lean",
+          "declaration": "Equiv.Perm.next_toList_eq_apply",
+          "excerpt": "rw [next_getElem _ (nodup_toList _ _), getElem_toList, getElem_toList, \u2190 mul_apply, \u2190 pow_succ']"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/Cycle/Concrete.lean",
+          "declaration": "Equiv.Perm.toList_getElem_zero",
+          "excerpt": "(toList p x)[0]'(length_toList_pos_of_mem_support _ _ h) = x := by simp [toList]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 19535,
+    "cache_read_input_tokens": 39729,
+    "output_tokens": 6220,
+    "output_tokens_details": {
+      "thinking_tokens": 2298
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19535,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3352,
+        "cache_read_input_tokens": 19324,
+        "cache_creation_input_tokens": 4224,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4224
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1443249,
+  "duration_ms": 42445,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:41:35",
+  "unit": "file",
+  "source_sha256": "6200ceb8b52352ca6a22344c500b492571c819b5a4b77d9d7e86403c9a3dd492",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

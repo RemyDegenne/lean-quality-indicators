@@ -1,0 +1,110 @@
+{
+  "id": "mathlib-file-0155",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and compared its simp lemmas with the multilinear counterparts in Multilinear/Basic.lean. I also checked uses in Alternating/Curry.lean and Alternating/Uncurry/Fin.lean. The `norm_*` simp lemmas, the `@[simps]` LIE definitions and `norm_restrictScalars` mirror the multilinear and linear-map versions and look fine. I found no rewrite cycles. I did not run Lean, so all three findings are interface judgements, not observed simp failures. The first is the weakest, because it only concerns how the simp set is organized.",
+  "findings": [
+    {
+      "declaration": "ContinuousAlternatingMap.toContinuousMultilinearMapCLM_comp_fderivCompContinuousLinearMap",
+      "start_line": 484,
+      "end_line": 489,
+      "excerpt": "@[simp]\nlemma toContinuousMultilinearMapCLM_comp_fderivCompContinuousLinearMap",
+      "problem": "This `@[simp]` lemma is a definitional `rfl` unfolding of the private body of `fderivCompContinuousLinearMap`. It rewrites an unapplied composite `toContinuousMultilinearMapCLM \ud835\udd5c \u2218L f.fderivCompContinuousLinearMap g` into the multilinear derivative composed with `.pi fun _ \u21a6 .id _ _`. That moves the term from the alternating API into the multilinear one and adds a `.pi` of identities. The applied form is already covered by the simp lemma `fderivCompContinuousLinearMap_apply`. I found no use of this lemma outside its own declaration. It is a bridge lemma, not a normal-form rewrite, so it should not be in the default simp set.",
+      "proposed_change": "Drop `@[simp]` from this lemma and keep it as a plain `lemma`, to be used with `rw` or `simp [..]` when the multilinear form is wanted. The applied simp lemma `fderivCompContinuousLinearMap_apply` already gives the canonical normal form.",
+      "benefit": "Simp keeps `fderivCompContinuousLinearMap` terms in alternating form. They are not unfolded into a multilinear `.pi fun _ \u21a6 .id` composite, so goals stay readable and the simp set stays small.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Module/Alternating/Basic.lean",
+          "declaration": "ContinuousAlternatingMap.fderivCompContinuousLinearMap_apply",
+          "excerpt": "f.fderivCompContinuousLinearMap g dg v =\n      \u2211 i, f fun j \u21a6 Function.update (fun _ \u21a6 g) i dg j (v j)"
+        }
+      ]
+    },
+    {
+      "declaration": "ContinuousAlternatingMap.fderivCompContinuousLinearMap_of_isEmpty",
+      "start_line": 497,
+      "end_line": 500,
+      "excerpt": "@[nontriviality]\nlemma fderivCompContinuousLinearMap_of_isEmpty [IsEmpty \u03b9] :",
+      "problem": "The `@[nontriviality]` attribute puts this lemma in the simp set used by the `nontriviality` tactic. That tactic reduces goals to the case where a type is `Subsingleton` or `Nontrivial`. This lemma is conditioned on `IsEmpty \u03b9`, which is a different situation, and the equation holds unconditionally on `\u03b9`'s emptiness only. The only use I found is an explicit `simp [fderivCompContinuousLinearMap_of_isEmpty, ...]` in Uncurry/Fin.lean. The lemma is therefore in neither the default simp set nor a useful `nontriviality` set. The default simp set would not rewrite `f.fderivCompContinuousLinearMap g` here, because the statement is an unapplied function equality.",
+      "proposed_change": "Either remove `@[nontriviality]`, since the explicit `simp [..]` use does not need it, or restate the lemma in applied form: `f.fderivCompContinuousLinearMap g = 0` for `[IsEmpty \u03b9]`. With that form it could be `@[simp]`, because `IsEmpty \u03b9` is found by instance synthesis and the RHS `0` is a strictly simpler normal form.",
+      "benefit": "The attribute would then match the lemma's purpose. Simp could close empty-index derivative goals without callers having to name the lemma, which is what the `n = 0` case in `alternatizeUncurryFin_fderivCompContinuousLinearMap_eq_zero` currently does.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Module/Alternating/Uncurry/Fin.lean",
+          "declaration": "alternatizeUncurryFin_fderivCompContinuousLinearMap_eq_zero",
+          "excerpt": "simp [fderivCompContinuousLinearMap_of_isEmpty, \u2190 alternatizeUncurryFinCLM_apply]"
+        }
+      ]
+    },
+    {
+      "declaration": "AlternatingMap.mkContinuousLinear",
+      "start_line": 550,
+      "end_line": 559,
+      "excerpt": "def mkContinuousLinear (f : F \u2192\u2097[\ud835\udd5c] E [\u22c0^\u03b9]\u2192\u2097[\ud835\udd5c] G) (C : \u211d)",
+      "problem": "This file gives `mkContinuous` the simp lemma `coe_mkContinuous` and `mkContinuousAlternating` the simp lemma `mkContinuousAlternating_apply`. `mkContinuousLinear` has no application lemma at all, even though it is defined by a `LinearMap.mkContinuous` of a `toFun x := (f x).mkContinuous ..` structure. A term `mkContinuousLinear f C H x m` therefore has no simp-normal form `f x m`. A downstream user must unfold the definition or use `rfl`. Alternating/Curry.lean uses it to define `curryLeft`, and there the application is handled by a separate hand-written `curryLeft_apply_apply` proven by `rfl`.",
+      "proposed_change": "Add `@[simp] theorem mkContinuousLinear_apply_apply (f : F \u2192\u2097[\ud835\udd5c] E [\u22c0^\u03b9]\u2192\u2097[\ud835\udd5c] G) (C : \u211d) (H : \u2200 x m, \u2016f x m\u2016 \u2264 C * \u2016x\u2016 * \u220f i, \u2016m i\u2016) (x : F) (m : \u03b9 \u2192 E) : mkContinuousLinear f C H x m = f x m := rfl`. I expect `rfl` to work, since the underlying function of `LinearMap.mkContinuous` is the given linear map, but I have not checked this. Optionally add the matching `mkContinuousLinear_apply` in `ContinuousAlternatingMap` form, `(mkContinuousLinear f C H x : E [\u22c0^\u03b9]\u2192L[\ud835\udd5c] G).toAlternatingMap = f x`.",
+      "benefit": "The three constructors then expose the same simp interface. Callers and downstream definitions such as `curryLeft` get the normal form `f x m` from simp, without unfolding the definition or writing a one-off `rfl` lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Module/Alternating/Basic.lean",
+          "declaration": "AlternatingMap.mkContinuousAlternating_apply",
+          "excerpt": "\u21d1(mkContinuousAlternating f C H m) = f m :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Module/Alternating/Curry.lean",
+          "declaration": "ContinuousAlternatingMap.curryLeft_apply_apply",
+          "excerpt": "curryLeft f x v = f (Matrix.vecCons x v) :=\n  rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 39263,
+    "cache_read_input_tokens": 205785,
+    "output_tokens": 7633,
+    "output_tokens_details": {
+      "thinking_tokens": 2838
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 39263,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2830,
+        "cache_read_input_tokens": 39771,
+        "cache_creation_input_tokens": 3505,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3505
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2539885,
+  "duration_ms": 52759,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-26T23:13:18",
+  "unit": "file",
+  "source_sha256": "8b180977c1f964407241388eddc2866472a7df0270abc26cd2094d54bfbc55f2",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

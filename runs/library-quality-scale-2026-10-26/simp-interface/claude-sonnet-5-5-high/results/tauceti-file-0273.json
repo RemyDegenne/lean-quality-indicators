@@ -1,0 +1,104 @@
+{
+  "id": "tauceti-file-0273",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the simp-related parts of HomComplexData.lean, where `dgDifferential_toDGCategory`, `dgComp_toDGCategory` and `dgId_toDGCategory` are `@[simp]`. I also read the downstream uses in Yoneda.lean and EndAlgebra.lean, and the `simp\u2193` pattern in Extension.lean. I could not run Lean. Everything about how simp behaves is inferred from the sources. I did not claim a loop or a failure. The \ud835\udc9c n-valued form (the simp lemmas only mention the coerced `(\u2026 : A)` form) is a possible gap, but I found no downstream use that needs it, so I did not report it. Both findings are low severity and rest on indirect evidence: the downstream uses I found all use `rw`, and I did not find a `simp` call that exercises these lemmas. They are about interface clarity and robustness, not a demonstrated defect.",
+  "findings": [
+    {
+      "declaration": "TauCeti.DGSingleObj.homComplexData_d_apply / homComplexData_id / homComplexData_comp (private @[simp] lemmas)",
+      "start_line": 168,
+      "end_line": 194,
+      "excerpt": "@[simp]\nprivate theorem homComplexData_id (X : DGSingleObj h) :",
+      "problem": "The file tags two parallel sets of lemmas with `@[simp]`/`@[simp\u2193]` that have the same right-hand sides. The private `@[simp]` set is stated over the internal `(homComplexData h)` data. The public `@[simp\u2193]` set is stated over `dgDifferential`/`dgId`/`dgComp`. The generic `@[simp]` lemmas `DGCategoryData.dgId_toDGCategory` etc. rewrite `dgId R X` to `(homComplexData h).id X` as soon as a subterm is simplified. So a goal can reach the same normal form by two routes: the public `simp\u2193` lemma, or the generic unfolding followed by the private lemma. Nothing documents which route is intended, and the private lemmas are not nameable downstream, so they cannot be disabled with `simp [-\u2026]`. Nothing in the file calls `simp` with them. The public theorems call them through `exact`, so the `@[simp]` attribute on them is probably vestigial or an undocumented fallback.",
+      "proposed_change": "Decide which route is the interface. If the `simp\u2193` lemmas are meant to be canonical, drop `@[simp]` from the three private lemmas, since the public theorems use them by name. If the fallback is intended, say so in a comment and keep it. Either way, it would help to add a small `example` that exercises `simp` on `dgHomEquiv X X 0 (dgId R X)` to pin the behaviour.",
+      "benefit": "There is one documented path to the normal form `1` / `d _` / `\u00b1 (g * f)`. Users do not carry unreachable private simp lemmas on the internal `homComplexData` in their simp set, and the interface is easier to reason about.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/CategoryTheory/DG/HomComplexData.lean",
+          "declaration": "TauCeti.DGCategoryData.dgId_toDGCategory",
+          "excerpt": "theorem dgId_toDGCategory (X : C) :\n    letI := D.toDGCategory\n    dgId R X = D.id X :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/CategoryTheory/DG/SingleObj.lean",
+          "declaration": "TauCeti.DGSingleObj.dgHomEquiv_dgId",
+          "excerpt": "rw [(homComplexData h).dgId_toDGCategory X]\n  exact homComplexData_id X"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.DGSingleObj.dgHomEquiv_dgDifferential / dgHomEquiv_dgId / dgHomEquiv_dgComp (@[simp\u2193])",
+      "start_line": 196,
+      "end_line": 219,
+      "excerpt": "@[simp\u2193]\ntheorem dgHomEquiv_dgId (X : DGSingleObj h) : (dgHomEquiv X X 0 (dgId R X) : A) = 1 := by",
+      "problem": "These lemmas use pre-order `simp\u2193` with no comment explaining why. The reason is probably that the generic `@[simp]` lemmas `dgDifferential_toDGCategory`, `dgComp_toDGCategory` and `dgId_toDGCategory` would otherwise rewrite the inner `dgDifferential`/`dgComp`/`dgId` before the outer `dgHomEquiv` pattern can match. The file does not say this, and it does not say that the interface depends on firing order. A related file shows the same conflict being handled by disabling the generic lemma at call sites, for example `simp [-DGCategoryData.dgId_toDGCategory, \u2026]`. In this file's own downstream uses (Yoneda.lean and EndAlgebra.lean), these lemmas are only ever applied with `rw`. I found no downstream `simp` call that relies on them. The lemmas also leave the sign as a `\u2124\u02e3`-action `(p * q).negOnePow \u2022 \u2026`. Callers then unfold it by hand, for example `Units.smul_def` in Yoneda.lean and `smul_smul, Int.units_mul_self, one_smul` in EndAlgebra.lean.",
+      "proposed_change": "Add a short comment on the `simp\u2193` lemmas saying that they must fire before the generic `*_toDGCategory` simp lemmas, and why. Add a small test or `example` so that a change to the generic lemmas' attributes is caught. Consider also stating the composition lemma in a form where the sign cancels when composing with a degree-0 or even-degree factor, if that case occurs in `simp` calls.",
+      "benefit": "A reader or maintainer can tell why `simp\u2193` is needed and what it competes with. The interface is then less likely to break silently if the generic simp lemmas change. Downstream proofs can use `simp` instead of long `rw` chains.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/CategoryTheory/DG/HomComplexData.lean",
+          "declaration": "TauCeti.DGCategoryData.dgComp_toDGCategory",
+          "excerpt": "theorem dgComp_toDGCategory {X Y Z : C} {p q n : \u2124} (f : (D.hom X Y).X p) (g : (D.hom Y Z).X q)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Homology/DG/Module/Right/Yoneda.lean",
+          "declaration": "TauCeti.dgYonedaEmbedding",
+          "excerpt": "rw [dgYonedaEmbeddingHomEquiv_apply, DGSingleObj.dgHomEquiv_dgComp, Units.smul_def,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/CategoryTheory/DG/EndAlgebra.lean",
+          "declaration": "TauCeti.DGSingleObj (EndAlgebra section)",
+          "excerpt": "dgHomEquiv_dgComp, smul_smul, Int.units_mul_self, one_smul]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 40100,
+    "cache_read_input_tokens": 200424,
+    "output_tokens": 7926,
+    "output_tokens_details": {
+      "thinking_tokens": 3556
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40100,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2641,
+        "cache_read_input_tokens": 41136,
+        "cache_creation_input_tokens": 2977,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2977
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.25973040000000003,
+  "duration_ms": 61596,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T00:48:14",
+  "unit": "file",
+  "source_sha256": "2043bcf9b46996f913059fa4ac67c9beaf0e32213082a8caec2f3d5369d758e6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

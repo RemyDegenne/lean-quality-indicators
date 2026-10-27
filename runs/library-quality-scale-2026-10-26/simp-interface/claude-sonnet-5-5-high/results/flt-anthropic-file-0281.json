@@ -1,0 +1,94 @@
+{
+  "id": "flt-anthropic-file-0281",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. It has almost no simp attributes. Its own `simp` calls are small and local, with no visible loops or competing rules. The only simp-interface problems I found are missing unfolding lemmas for the non-reducible `def`s `placeMeasure` and `archMeasure`. Downstream code works around them with `unfold` and `split`. I judged that the many other small identities in the file, such as the `volume_image_mul_*` lemmas, should not be simp lemmas. I did not run Lean, so I did not observe any simp behaviour. The proposed lemmas would be of the form `dif_pos`/`dif_neg` and `Measure.pi_pi`, which I expect to be easy but have not compiled.",
+  "findings": [
+    {
+      "declaration": "placeMeasure (and users placeMeasure_image_mul, isAddHaarMeasure_placeMeasure)",
+      "start_line": 322,
+      "end_line": 339,
+      "excerpt": "  unfold placeMeasure\n  split\n  \u00b7 next hw =>",
+      "problem": "`placeMeasure` is defined by a `dite` on `w.IsReal`, but the file has no unfolding lemmas for the two cases. Two downstream proofs repeat `unfold placeMeasure; split; next hw => ...` and then re-derive `w.mult = 1` or `w.mult = 2` with local `simp [mult, hw]`. A user who has `hw : w.IsReal` cannot rewrite `placeMeasure F w` to `placeMeasureReal hw` with `simp`/`rw`. The alternative is `unfold`, which exposes the raw `dite` and its `not_isReal_iff_isComplex` proof term.",
+      "proposed_change": "Add case lemmas right after the definition, with the real case marked `@[simp]`. The first is `placeMeasure_of_isReal (hw : w.IsReal) : placeMeasure F w = placeMeasureReal hw`, proved by `dif_pos hw`. The second is `placeMeasure_of_isComplex (hw : w.IsComplex) : placeMeasure F w = placeMeasureComplex hw`, proved by `dif_neg` plus `not_isReal_iff_isComplex`. Both are hypothesis-guarded and cannot loop, because the right-hand side is a different head constant. Then rewrite `placeMeasure_image_mul` and `isAddHaarMeasure_placeMeasure` with `rcases w.isReal_or_isComplex` and `rw`/`simp [placeMeasure_of_isReal hw]` instead of `unfold` and `split`. If `placeMeasure_of_isComplex` is also made simp, its side goal `hw : w.IsComplex` must be dischargeable. It is not in general, so keep that case non-simp or accept that it only fires with `hw` in context.",
+      "benefit": "The `dite` is hidden behind a stable interface. The proofs no longer depend on `unfold`/`split` and the exact shape of the `dite`. Later files get a canonical way to reduce the place measure once the place type is known.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_NumberField_AdeleRing_distribHaarChar_eq_prod_norm_pow_mult_of_snd_eq_one.lean",
+          "declaration": "placeMeasure",
+          "excerpt": "  if hw : w.IsReal then placeMeasureReal hw\n  else placeMeasureComplex (not_isReal_iff_isComplex.mp hw)"
+        }
+      ]
+    },
+    {
+      "declaration": "archMeasure (users isAddLeftInvariant_archMeasure, adelicMeasure_refSet_ne_top, adelicMeasure_refSet_ne_zero, archMeasure_image_mul_pi)",
+      "start_line": 530,
+      "end_line": 563,
+      "excerpt": "      unfold archMeasure\n      rw [Measure.pi_pi]",
+      "problem": "`archMeasure F` is a plain `def` (`Measure.pi (fun w => placeMeasure F w)`) with no simp or rewrite lemma for its values on box sets. The file repeats `unfold archMeasure; rw [Measure.pi_pi]` in several proofs: `isAddLeftInvariant_archMeasure`, `archMeasure_image_mul_pi`, `adelicMeasure_refSet_ne_top` and `adelicMeasure_refSet_ne_zero`. Several of them also need `show archMeasure F _ \u2260 \u22a4` first, to expose the term. `infMeasure` is a second layer over `archMeasure` and `adelicMeasure` a third layer over `infMeasure`. The `hcompute` step in the main theorem likewise has to go through `Measure.prod_prod`, `unfold refSet` and `harch` by hand.",
+      "proposed_change": "State the box lemma once: `archMeasure_pi (B : \u2200 w, Set w.Completion) : archMeasure F (Set.pi Set.univ B) = \u220f w, placeMeasure F w (B w)`, proved by `unfold archMeasure; exact Measure.pi_pi _ _`, and mark it `@[simp]`. Its left-hand side has the specific head `archMeasure F (Set.pi univ _)`, so it cannot cycle with `Measure.pi_pi`. A companion `adelicMeasure_prod (A B)` would do the same for `adelicMeasure`. Use these in `adelicMeasure_refSet_ne_top` and `adelicMeasure_refSet_ne_zero`, and in the other users listed above. The `unfold`/`show` scaffolding then goes away.",
+      "benefit": "There is one canonical normal form, a product of place measures, instead of the same `unfold`+`rw [Measure.pi_pi]` repeated by hand. The `ne_top` and `ne_zero` proofs become `simp`-style one-liners.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_NumberField_AdeleRing_distribHaarChar_eq_prod_norm_pow_mult_of_snd_eq_one.lean",
+          "declaration": "archMeasure_image_mul_pi",
+          "excerpt": "  unfold archMeasure\n  rw [Measure.pi_pi, Measure.pi_pi]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_NumberField_AdeleRing_distribHaarChar_eq_prod_norm_pow_mult_of_snd_eq_one.lean",
+          "declaration": "adelicMeasure_refSet_ne_zero",
+          "excerpt": "  \u00b7 show archMeasure F _ \u2260 0\n    unfold archMeasure\n    rw [Measure.pi_pi]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 23635,
+    "cache_read_input_tokens": 52574,
+    "output_tokens": 4293,
+    "output_tokens_details": {
+      "thinking_tokens": 1071
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23635,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2460,
+        "cache_read_input_tokens": 25283,
+        "cache_creation_input_tokens": 2365,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2365
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1427394,
+  "duration_ms": 29423,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:56:49",
+  "unit": "file",
+  "source_sha256": "e858cf2e42abd5258b38760ac632f8703de2cb774082cac2c47d651483da00a7",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

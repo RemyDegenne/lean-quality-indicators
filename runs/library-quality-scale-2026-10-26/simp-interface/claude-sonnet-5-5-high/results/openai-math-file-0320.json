@@ -1,0 +1,83 @@
+{
+  "id": "openai-math-file-0320",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked how its definitions are used downstream: TraceCocycle.lean (eval_wordExpr, eval_sumExpr, eval_delta_encoded, map_eval), MomentFlow.lean, UnitaryEvaluation.lean and FiniteMoments.lean. The file has no @[simp] lemmas and no simp attributes, so I judged it on the missing-interface criterion. Every client proof unfolds the definitions by name (`simp only [delta, eval, ...]`), which works because they are structurally recursive. The weakness is therefore moderate: there is no named simp set. I did not find a loop, competing rules or an unsuitable rewrite direction. I did not look at whether `norm_algebraMap'` is simp in the pinned Mathlib, and I made no claim about how the non-terminal `simp ...; ring` on line 140 behaves. I could not run Lean, so the proposed lemmas are untested.",
+  "findings": [
+    {
+      "declaration": "NCPolynomial.eval / NCPolynomial.delta (definitions without simp equation lemmas)",
+      "start_line": 34,
+      "end_line": 44,
+      "excerpt": "  | .add p q => eval X p + eval X q\n  | .mul p q => eval X p * eval X q",
+      "problem": "The file defines the interpretation `eval` and the derivation `delta` by structural recursion but gives no simp interface for them. No `@[simp]` equation lemmas such as `eval_add`, `eval_mul`, `eval_gen`, `eval_scalar`, `delta_add`, `delta_mul`, `delta_gen` or `delta_scalar` are provided. Clients therefore name the raw definitions in each `simp`/`simp only` call. For example, TraceCocycle.lean repeats `simp only [delta, eval, hp, hq, map_add]`, `simp only [eval, map_add, hp, hq]` and `simp only [eval, map_mul, hp, hq]` in `eval_delta_encoded` and `map_eval`. Inside this file, `eval_delta`, `hasDerivAt_eval` and `norm_eval` rewrite the same four constructor cases by hand. Unfolding by name is more fragile than a stable lemma set, because it depends on the definitions being structurally recursive and unfoldable by the equation compiler. It also makes it impossible to simp `eval` and `delta` of a compound `Expr` without exposing the definition.",
+      "proposed_change": "Right after the definitions, add the constructor equation lemmas for `eval` and `delta`, for example `@[simp] theorem eval_add (X : \u03b9 \u2192 A) (p q : Expr \u03b9) : eval X (.add p q) = eval X p + eval X q := rfl`, and the analogous `eval_mul`, `eval_gen`, `eval_scalar` (`= algebraMap \u2102 A c`), `delta_add`, `delta_mul`, `delta_gen` and `delta_scalar` (`= .scalar 0`). Do the same for `degree` and `mass` if the unfolding there should also be controlled. Then downstream `simp [wordExpr, eval]` and `simp only [delta, eval, ...]` calls can use `simp [eval_add, eval_mul, ...]` or plain `simp`, and the definitions stay folded. Keep `Expr` reduction in the normal form `eval X (.add p q) = eval X p + eval X q`, which is terminating because the argument shrinks structurally.",
+      "benefit": "Callers get a named, terminating simp set that pushes `eval` and `delta` through `+` and `*` without unfolding the definitions. The repeated four-case inductions in TraceCocycle.lean (`eval_delta_encoded`, `map_eval`) and in this file become shorter and less sensitive to how the definitions are implemented.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeGroupFactor/TraceCocycle.lean",
+          "declaration": "OAI.FreeGroupFactorMain.AlgebraPolynomial.eval_delta_encoded",
+          "excerpt": "| add p q hp hq => simp only [delta, eval, hp, hq, map_add]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeGroupFactor/TraceCocycle.lean",
+          "declaration": "OAI.FreeGroupFactorMain.AlgebraPolynomial.map_eval",
+          "excerpt": "| mul p q hp hq => simp only [eval, map_mul, hp, hq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/FreeGroupFactor/TraceCocycle.lean",
+          "declaration": "OAI.FreeGroupFactorMain.AlgebraPolynomial.eval_sumExpr",
+          "excerpt": "| cons p ps ih => simp [sumExpr, eval, ih]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 27902,
+    "cache_read_input_tokens": 162574,
+    "output_tokens": 4585,
+    "output_tokens_details": {
+      "thinking_tokens": 1247
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27902,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 1834,
+        "cache_read_input_tokens": 30364,
+        "cache_creation_input_tokens": 1551,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1551
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1737474,
+  "duration_ms": 37825,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T01:35:27",
+  "unit": "file",
+  "source_sha256": "1d85fa2caa404c30cac00c1921d727017510ac7286f8792ca97d0b223b2b0c2d",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

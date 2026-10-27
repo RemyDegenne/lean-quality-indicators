@@ -1,0 +1,125 @@
+{
+  "id": "formal-frontier-file-0111",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related ScalarExtension.lean, Dual.lean and K0.lean (for hom_ext_ofClass and lift_ofClass). I grepped for existing ring-equivalence-induced additive equivalences on ProjectiveClass and found none, so a `mapEquiv` would be new API. I also checked for shared K\u2080 localization-transport lemmas and found none; the idiom is inlined in ScalarExtension.lean, in Dual.lean, and twice in this file. Short rfl wrappers and the symmetric fst/snd module-equivalence blocks in `prodEquiv_symm_of_module` were left out. They are asymmetric, and a helper there would mostly move duplicated branches. I did not compile the proposed lemmas, so the statements and proof sketches may need small adjustments such as universe or instance details.",
+  "findings": [
+    {
+      "declaration": "KTheory.K0.piEquiv and KTheory.K0.prodEquiv (bijectivity proofs)",
+      "start_line": 469,
+      "end_line": 516,
+      "excerpt": "qPi.ofAddEquivOfDom (k := ProjectiveClass.piEquiv Ri) htop",
+      "problem": "Both bijectivity proofs repeat the same argument: transport a K\u2080-localization map along a class-level additive equivalence, then compare with the target homomorphism on generators. Each one proves the `htop` surjectivity fact by hand and builds `qA := q.ofAddEquivOfDom ... htop`. Each then takes `AddLocalization.addEquivOfQuotient qA`, proves `hforward` with `hom_ext_ofClass`, `addEquivOfQuotient_addMonoidOf` and `map_ofClass`, and finishes with `rw [\u2190 hforward]; exact e.bijective`. The prod version is at lines 679\u2013709. ScalarExtension.lean's `map_bijective_of_projectiveClass_map_bijective` does the same with `addEquivOfAddEquiv`, so the pattern appears three times. Only the localization map `qPi` or `qRS` and the generator computation differ.",
+      "proposed_change": "Add one lemma (in ScalarExtension.lean or here). Statement: for `e : ProjectiveClass A \u2243+ P` with `P` an `AddCommMonoid`, `G` an `AddCommGroup`, `q : AddSubmonoid.LocalizationMap (\u22a4 : AddSubmonoid P) G`, `f : K0 A \u2192+ G`, and `hf : \u2200 a, f (ofClass A a) = q (e a)`, conclude `Function.Bijective f`. Proof sketch: `htop` from `e.symm`; `qA := q.ofAddEquivOfDom (k := e) htop`; `E := AddLocalization.addEquivOfQuotient qA`; `E.toAddMonoidHom = f` by `hom_ext_ofClass` plus `addEquivOfQuotient_addMonoidOf` plus `hf`; then `E.bijective`. Rewritten uses: in `K0.piEquiv`, `exact K0.bijective_of_localizationMap (ProjectiveClass.piEquiv Ri) qPi (piMap Ri) (fun a => funext fun i => map_ofClass (Pi.evalRingHom Ri i) a)`. In `K0.prodEquiv`, the same with `ProjectiveClass.prodEquiv R S`, `qRS` and `(map fst).prod (map snd)`, using `Prod.ext (map_ofClass _ a) (map_ofClass _ a)` for `hf`. Both uses keep their current hypotheses (`Finite \u03b9` for pi, and arbitrary rings for prod) and the same imports. Only the construction of `qPi` and `qRS` stays inline.",
+      "benefit": "This removes about 30 duplicated lines per use and gives one audited place for the transport argument. Each equivalence is then reduced to what is specific to it: the product localization map and the generator formula. The ScalarExtension lemma could be restated through the same helper.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/Product.lean",
+          "declaration": "KTheory.K0.prodEquiv",
+          "excerpt": "qRS.ofAddEquivOfDom (k := ProjectiveClass.prodEquiv R S) htop"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/ScalarExtension.lean",
+          "declaration": "KTheory.K0.map_bijective_of_projectiveClass_map_bijective",
+          "excerpt": "have hE : E.toAddMonoidHom = map f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/K0.lean",
+          "declaration": "KTheory.K0.hom_ext_ofClass",
+          "excerpt": "theorem hom_ext_ofClass {G : Type w} [AddCommGroup G] {f g : K0 R \u2192+ G}"
+        }
+      ]
+    },
+    {
+      "declaration": "KTheory.ProjectiveClass.prodEquiv (eA, eR, eS)",
+      "start_line": 212,
+      "end_line": 291,
+      "excerpt": "invFun := map dR.symm.toRingHom",
+      "problem": "The proof hand-builds three additive equivalences `eA`, `eR` and `eS` from ring equivalences `q`, `dR` and `dS`. Each is the same structure: `toFun := map e`, `invFun := map e.symm`, `left_inv` and `right_inv` by `map_comp`, `RingEquiv.*_toRingHom_comp_*` and `map_id`, and `map_add'`. That is six copies of the same functoriality argument, with only the ring equivalence changing. The `hforward` proof then repeats a three-step `map_comp` calculation for fst and for snd (lines 272\u2013291), differing only in the projection used.",
+      "proposed_change": "Add a general definition near `ProjectiveClass.map_comp` and `map_id` in ScalarExtension.lean. Statement: `ProjectiveClass.mapEquiv (e : R \u2243+* S) : ProjectiveClass R \u2243+ ProjectiveClass S` with `toFun := map e.toRingHom` and `invFun := map e.symm.toRingHom`. The inverse laws are the four-line `map_comp`/`map_id` argument currently inlined. Also add `mapEquiv_apply : mapEquiv e a = map e.toRingHom a`. In `prodEquiv`, replace `eA`, `eR` and `eS` by `mapEquiv q.symm`, `mapEquiv dR` and `mapEquiv dS`. For `hforward`, rewrite each component as `rw [\u2190 map_comp_apply, \u2190 map_comp_apply]` or `simp only [\u2190 map_comp_apply]` followed by `rw [hfst]`, which collapses the two calc blocks. This needs no extra imports. It works for arbitrary rings, including zero rings, since only functoriality is used.",
+      "benefit": "The proof shortens by roughly 40 lines. The ring-equivalence-to-class-equivalence step becomes reusable API; other files already build additive equivalences from ring equivalences ad hoc. `prodEquiv` then reads as a composite of named equivalences.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/Product.lean",
+          "declaration": "KTheory.ProjectiveClass.prodEquiv",
+          "excerpt": "invFun := map dS.symm.toRingHom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/ScalarExtension.lean",
+          "declaration": "KTheory.K0.map_bijective_of_projectiveClass_map_bijective",
+          "excerpt": "AddEquiv.ofBijective (ProjectiveClass.map f) hf"
+        }
+      ]
+    },
+    {
+      "declaration": "ProjectiveClass.piEquiv (surjectivity), ProjectiveClass.piEquiv_symm_of_module, K0.piEquiv_symm_of_module",
+      "start_line": 142,
+      "end_line": 156,
+      "excerpt": "(ModuleCat.RightExtension.piRecoverLinearEquiv Ri",
+      "problem": "The same module-level fact is proved three times, each time by spelling out the same `of_eq_of_equiv` linear equivalence `mapLinearEquiv (piLinearEquiv Ri Mi)` composed with `piRecoverLinearEquiv`. Coordinate `i` of the scalar extension of the product module is isomorphic to `Mi i`. The copies are in the surjectivity half of `ProjectiveClass.piEquiv` (lines 97\u2013104), in `ProjectiveClass.piEquiv_symm_of_module` (lines 152\u2013156), and in `K0.piEquiv_symm_of_module` (lines 560\u2013566). Each wraps the fact in a different context.",
+      "proposed_change": "State once, before `piEquiv`: `theorem ProjectiveClass.map_evalRingHom_of_pi (Mi : \u2200 i, ModuleCat.FiniteProjective.{uR, uM} (Ri i)\u1d50\u1d52\u1d56) (i : \u03b9) [Finite \u03b9] : map (Pi.evalRingHom Ri i) (of (\u2200 j, Ri j) (ModuleCat.FiniteProjective.pi Ri Mi)) = of (Ri i) (Mi i)`. The proof is `rw [map_of]; exact of_eq_of_equiv (Ri i) _ ((mapLinearEquiv ...).trans (piRecoverLinearEquiv ...))`. Then the surjectivity branch is `\u27e8of _ (pi Ri Mi), funext fun i => (this.trans (hMi i))\u27e9`. `ProjectiveClass.piEquiv_symm_of_module` becomes `(piEquiv Ri).injective (funext fun i => (this ..).symm)` after `apply_symm_apply`. `K0.piEquiv_symm_of_module` can use `simpa [piEquiv_apply, K0.map_of, ofClass_of]` with the lemma's `of` form, or the existing `rw [piEquiv_of_module]` followed by `congrArg (ofClass _)` of the class lemma. The statement holds with `uM = uR` in the surjectivity use. The `Finite \u03b9` variable is only needed for the equivalence-based applications.",
+      "benefit": "The linear-equivalence recipe, which is the only nontrivial mathematics in these proofs, is written and maintained once instead of three times. The three consumers shrink to a few lines each. A change to the recovery equivalence or its universe annotations no longer has to be repeated by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/Product.lean",
+          "declaration": "KTheory.ProjectiveClass.piEquiv",
+          "excerpt": "(ModuleCat.RightExtension.piRecoverLinearEquiv Ri\n                  (fun j => (Mi j).obj) i))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/Product.lean",
+          "declaration": "KTheory.K0.piEquiv_symm_of_module",
+          "excerpt": "rw [piEquiv_of_module]\n  exact (of_eq_of_equiv (Ri i) _"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 39314,
+    "cache_read_input_tokens": 161328,
+    "output_tokens": 8252,
+    "output_tokens_details": {
+      "thinking_tokens": 2580
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 39314,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4517,
+        "cache_read_input_tokens": 38486,
+        "cache_creation_input_tokens": 4757,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4757
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2559328,
+  "duration_ms": 64572,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T23:04:52",
+  "unit": "file",
+  "source_sha256": "853665869e2578b78f9c06d1a13b8acfec41c75775edcda2b08403640315ed9e",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

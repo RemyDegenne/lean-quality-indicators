@@ -1,0 +1,83 @@
+{
+  "id": "lean-pool-file-0314",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, checked the usages (CoulombPSD, CoulombFluxBound) of the lemmas involved, and looked at the helper lemma schwartz_pointwise_decay already in the file. Found one clear repetition: three proofs of \"pointwise polynomial decay implies integrability of a weighted function\" using the same domination by C/(1+\u2016v\u2016)^4, the same le_div_iff\u2080 step and the same pow_add calc. The proposed shared lemma is untested and was not compiled. The simp normal form of the hb hypotheses is the main uncertainty. Other near-duplicates, such as the pow_add calc in schwartz_poly_weighted_decay, are short and I judged them too small to report.",
+  "findings": [
+    {
+      "declaration": "VML.UniformSchwartzDecay.integrable / VML.UniformSchwartzDecay.integrable_poly_mul / schwartz_poly_mul_integrable",
+      "start_line": 73,
+      "end_line": 233,
+      "excerpt": "  rw [le_div_iff\u2080 hv_pos]\n  calc (1 + \u2016v\u2016) ^ M * |f x v| * (1 + \u2016v\u2016) ^ 4\n      = |f x v| * ((1 + \u2016v\u2016) ^ M * (1 + \u2016v\u2016) ^ 4) := by ring\n    _ = |f x v| * (1 + \u2016v\u2016) ^ (M + 4) := by rw [pow_add]\n    _ \u2264 C := hb",
+      "problem": "Three proofs repeat one argument: from a pointwise bound |f v| * (1+\u2016v\u2016)^(M+4) \u2264 C and continuity of f, dominate (1+\u2016v\u2016)^M * f v by C/(1+\u2016v\u2016)^4 using `inverse_poly_integrable C` and `Integrable.mono'`. Each proof re-proves the same measurability term, rewrites with abs_mul and abs_of_nonneg, applies le_div_iff\u2080 and repeats the same pow_add calc. `integrable` (lines 73\u201387) is the M = 0 case with exponent 4. `integrable_poly_mul` (89\u2013114) is the general case with hypotheses from `hDecay`. `schwartz_poly_mul_integrable` (lines ~210\u2013233) is the same case with hypotheses from `hf_decay`, and its `hf_pos` hypothesis is used only to replace |f v| by f v. Any change to the domination, for example the exponent 4 or the dimension, must be made in three places.",
+      "proposed_change": "Add one lemma before the three uses:\n\nlemma integrable_poly_mul_of_decay {f : (Fin 3 \u2192 \u211d) \u2192 \u211d} (hf : Continuous f) (M : \u2115) {C : \u211d}\n    (hb : \u2200 v, |f v| * (1 + \u2016v\u2016) ^ (M + 4) \u2264 C) :\n    Integrable (fun v => (1 + \u2016v\u2016) ^ M * f v)\n\nProof sketch: apply `(inverse_poly_integrable C).mono'` with measurability from `((continuous_const.add continuous_norm).pow M |>.mul hf).aestronglyMeasurable`. Pointwise, rewrite with `Real.norm_eq_abs, abs_mul, abs_of_nonneg (by positivity)` and `le_div_iff\u2080 (by positivity)`. Then `calc` through `|f v| * (1+\u2016v\u2016)^(M+4)` using `pow_add` and `ring`, and finish with `hb v`.\n\nUses:\n- `schwartz_poly_mul_integrable`: `obtain \u27e8C, _, hb\u27e9 := hf_decay (K + 4); exact integrable_poly_mul_of_decay hf_cont K hb`. The hypothesis `hf_pos` becomes unnecessary, and CoulombPSD.lean:102 and :390 and CoulombFluxBound.lean:434 still pass it, so keep it as an unused argument or remove it at those call sites.\n- `integrable_poly_mul`: `obtain \u27e8C, _, hbound\u27e9 := hS.hDecay (k := 0) (M + 4) (by omega); exact integrable_poly_mul_of_decay (hf_smooth x).continuous M (fun v => by simpa [iteratedFDeriv_zero_eq_comp] using hbound x v)`. This is the existing `simp only [...]` normalization of `hb` moved into the argument.\n- `integrable`: `obtain \u27e8C, _, hbound\u27e9 := hS.hDecay (k := 0) 4 (by omega)`. Then use `have := integrable_poly_mul_of_decay (hf_smooth x).continuous 0 (C := C) (fun v => by simpa [iteratedFDeriv_zero_eq_comp] using hbound x v)` with the exponent `0 + 4` normalized by `simpa`, and finish with `simpa using this`. Alternatively derive `integrable` from `integrable_poly_mul` at M = 0.\n\nThe two `iteratedFDeriv` extractions can also reuse the existing `schwartz_pointwise_decay`.",
+      "benefit": "The domination argument (continuity, absolute values, exponent bookkeeping) is written and checked once. The three lemmas shrink to extracting the decay bound, so their statements are easier to read. A later change to the integrability threshold or the ambient dimension touches one place. `schwartz_poly_mul_integrable` no longer needs positivity of f for its integrability argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Clawristotle/SchwartzDecayDefs.lean",
+          "declaration": "schwartz_poly_mul_integrable",
+          "excerpt": "    calc (1 + \u2016v\u2016) ^ K * f v * (1 + \u2016v\u2016) ^ 4\n        = f v * ((1 + \u2016v\u2016) ^ K * (1 + \u2016v\u2016) ^ 4) := by ring\n      _ = f v * (1 + \u2016v\u2016) ^ (K + 4) := by rw [pow_add]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Clawristotle/SchwartzDecayDefs.lean",
+          "declaration": "VML.UniformSchwartzDecay.integrable",
+          "excerpt": "  have hint := inverse_poly_integrable C\n  apply hint.mono' (hf_smooth x).continuous.aestronglyMeasurable"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Clawristotle/SchwartzDecayDefs.lean",
+          "declaration": "schwartz_pointwise_decay",
+          "excerpt": "    \u2200 N, \u2203 C > 0, \u2200 w, |f w| * (1 + \u2016w\u2016) ^ N \u2264 C :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 10483,
+    "cache_read_input_tokens": 15332,
+    "output_tokens": 3539,
+    "output_tokens_details": {
+      "thinking_tokens": 702
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10483,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3003,
+        "cache_read_input_tokens": 11403,
+        "cache_creation_input_tokens": 3009,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3009
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0788632,
+  "duration_ms": 29011,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T01:33:23",
+  "unit": "file",
+  "source_sha256": "aba16bac55739d9d91edaf591adc99b3f369a9a1f7bc1209997e17db7d77300a",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

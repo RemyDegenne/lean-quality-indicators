@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0254",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it relies on: AngleIndependentJet, history, velocityJet, knownJets, slowAdvection, fastAdvection and nonlinearGrade. I also grepped for other uses. The file has no @[simp] attributes of its own. The weakness is in the interface of the upstream definitions: there are no case or apply equation lemmas, so each proof re-unfolds the definitions with `simp only [knownJets, history, ...]` or `change`. I did not run Lean. Whether the proposed lemmas would be good simp lemmas depends on the hypothesis forms. I suggest `hi : i < p` as a side condition that simp can discharge, or `@[simp]` only on the unconditional equations. I did not claim any loop or simp failure.",
+  "findings": [
+    {
+      "declaration": "PrefixFields.knownJet_angleIndependent",
+      "start_line": 43,
+      "end_line": 55,
+      "excerpt": "simpa only [knownJets,history,hi,ite_true,velocityJet,hz,ite_false] using (ha.add hb).add hc",
+      "problem": "`knownJets`, `history` and `velocityJet` have no equation or case lemmas stating `knownJets O p a z i = velocityJet \u2026 i` for `i < p`, `= slicedJet \u2026 (a (p-1)).corrector z` for `i = p`, and `= 0` for `i > p`. Each of the three branches here therefore unfolds the definitions by hand with a different `simp only` list of `knownJets, history, velocityJet, ite_true, ite_false` and so on. The same unfolding lists are copied in PacketCylinderKnownJets.lean, PacketCylinderForcingParity.lean, PacketResidualTailFields.lean, PacketRecursiveCancellation.lean and PacketProfileTailGrade.lean. This unfolding also exposes the `if i=0 then 0 else \u2026` structure of `velocityJet` to the simplifier. The lists depend on the internal `if` layout, and `hz`, `hi` and `he` must be supplied by hand.",
+      "proposed_change": "In PacketProfileRecursion.lean, next to `history` and `knownJets`, add equation lemmas for the three cases. For example, `history_of_lt (h : i < p) : history p u c i = u i`, `history_self : history p u c p = c`, and `history_of_gt (h : p < i) : history p u c i = 0`. Add matching `knownJets` lemmas and `velocityJet_zero` and `velocityJet_of_ne_zero (h : i \u2260 0)`. Mark the hypothesis-conditioned ones @[simp] where side conditions are dischargeable by `simp`/`omega`, and state the `i = 0` and `i = p` cases without a side condition. The branches here can then be written as `rw [knownJets_of_lt hi, velocityJet_of_ne_zero hz]` or a plain `simp [hi, hz]`, with no `ite_true`/`ite_false` bookkeeping.",
+      "benefit": "There would be one canonical normal form for known jets. The several proofs that currently hand-unfold the `if` chains would shrink and would no longer break when `history` or `velocityJet` is restructured. The simp sets in downstream files would also become uniform.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketProfileRecursion.lean",
+          "declaration": "EulerPacketPointJets.history",
+          "excerpt": "if i<p then u i else if i=p then previousCorrector else 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketCylinderKnownJets.lean",
+          "declaration": "knownJet_angleIndependent (earlier copy of the same case split)",
+          "excerpt": "simp only [knownJets,history,hi,ite_true,velocityJet,hz,ite_false]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketResidualTailFields.lean",
+          "declaration": "assembledJets-related proof",
+          "excerpt": "simp only [knownJets,history,show \u00ac i < N+1 by omega,ite_false,he]"
+        }
+      ]
+    },
+    {
+      "declaration": "AngleIndependentJet.slowAdvection / AngleIndependentJet.fastAdvection_zero",
+      "start_line": 63,
+      "end_line": 69,
+      "excerpt": "change inner \u211d m J.1 \u2022 (K \u03b8).2 angleDirection = 0",
+      "problem": "`EulerPacketPointJets.slowAdvection` and `fastAdvection` are bundled `LinearMap`s built with anonymous constructors. They have no `_apply` simp lemmas, so their values cannot be rewritten by `simp` or `rw`. The proofs here work around this with `change` to a hand-written `K.2 (spatialInjection (A \u03b8 (J \u03b8).1))` or `inner \u211d m J.1 \u2022 (K \u03b8).2 angleDirection`. Elsewhere the same gap is handled with `simp only [fastAdvection, LinearMap.coe_mk, AddHom.coe_mk, hK, smul_zero]`, for example in `fastAdvection_angleConstant_right`. Here `fastAdvection_zero` repeats the content of `fastAdvection_angleConstant_right` (a vanishing angular derivative on the right gives 0), but it is proved by a separate `change` and not by that lemma.",
+      "proposed_change": "Next to the definitions in PacketPointJets.lean, add @[simp] lemmas `slowAdvection_apply (FInv J K) : slowAdvection FInv J K = K.2 (spatialInjection (FInv J.1))` and `fastAdvection_apply (m J K) : fastAdvection m J K = \u27eam, J.1\u27eb_\u211d \u2022 K.2 angleDirection`. Both are provable by `rfl`. Then `slowAdvection` here becomes `simp only [slowAdvection_apply, hA \u03b8, hJ.value \u03b8, hK.spatial \u03b8]`. `fastAdvection_zero` becomes `fastAdvection_angleConstant_right m J _ (hK.angular \u03b8)`. The `change` steps can be deleted.",
+      "benefit": "The bundled-linear-map definitions get a stable applied form. The proofs stop depending on defeq-through-`change`, and the `LinearMap.coe_mk, AddHom.coe_mk` clutter disappears from every call site. The duplicated lemma `fastAdvection_zero` collapses to the existing one.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketProfileRecursion.lean",
+          "declaration": "EulerPacketPointJets.fastAdvection_angleConstant_right",
+          "excerpt": "simp only [fastAdvection, LinearMap.coe_mk, AddHom.coe_mk, hK, smul_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketPointJets.lean",
+          "declaration": "EulerPacketPointJets.fastAdvection",
+          "excerpt": "{ toFun := fun K => \u27eam, J.1\u27eb_\u211d \u2022 K.2 angleDirection"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketPointJets.lean",
+          "declaration": "EulerPacketPointJets.slowAdvection",
+          "excerpt": "toFun J :=\n    { toFun := fun K => K.2 (spatialInjection (FInv J.1))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 23763,
+    "cache_read_input_tokens": 85283,
+    "output_tokens": 4943,
+    "output_tokens_details": {
+      "thinking_tokens": 461
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23763,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2921,
+        "cache_read_input_tokens": 25983,
+        "cache_creation_input_tokens": 1793,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1793
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1530343,
+  "duration_ms": 34711,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T00:42:24",
+  "unit": "file",
+  "source_sha256": "01418580a61a4654c9a4c95f4cf6052e101fa495debc1a13bcfb1c3543ad8d38",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0328",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, Basic.lean (the simp lemmas exponent_ofPNat, ofPNat_one, ofPNat_mul, and dvd_iff_le, which is not simp), and the client tests in SupernaturalNumbersTests/ReleaseClients.lean. I could not run Lean. The claims about simp's behaviour are therefore predictions from simp's subterm-first rewriting and from how Nat offset patterns like `n + 1` are indexed and unified. I did not observe any of them. I did not report that the exponent_ofNat `if` expansion is a problem. It looks like a deliberate trade-off, and I found no practical evidence against it.",
+  "findings": [
+    {
+      "declaration": "Supernatural.ofNat_succ",
+      "start_line": 41,
+      "end_line": 43,
+      "excerpt": "theorem ofNat_succ (n : \u2115) : ofNat (n + 1) = ofPNat \u27e8n + 1, Nat.succ_pos n\u27e9 := rfl",
+      "problem": "`ofNat_succ` is @[simp], and it rewrites the total embedding `ofNat` into `ofPNat` applied to an anonymous-constructor subtype term. Simp simplifies arguments first, so in `ofNat (m+1) \u2223 ofNat (n+1)`, `ofNat (m+1) * ofNat (n+1)`, or `ofNat 6 \u2223 ofNat 0`, the `ofNat` arguments are probably turned into `ofPNat \u27e8_, _\u27e9` before the simp lemmas `ofNat_dvd_ofNat_iff` and `ofNat_mul` can match. The pattern `n + 1` is a Nat offset pattern, so it probably also matches numerals such as `ofNat 6`, which would expand every literal into `ofPNat \u27e85+1, _\u27e9`. That is unwanted expansion. The resulting term has no simp lemma back to a canonical form: `ofPNat_eq_ofNat` is not simp, and making it simp while `ofNat_succ` is simp would give a credible rewrite cycle. The tests (`natural_divisibility_zero`) use `rw [ofNat_dvd_ofNat_iff, ...]` instead of `simp`, which suggests the simp set is not relied on here.",
+      "proposed_change": "Remove @[simp] from `ofNat_succ`, keeping it as a plain unfolding lemma. Make `ofPNat_eq_ofNat` the canonical simp normal form instead, either as `@[simp] ofPNat n = ofNat n.val` or as a `@[simp] ofNat_pnat_val`-style lemma. Then everything normalises to `ofNat`, where `ofNat_mul`, `ofNat_dvd_ofNat_iff`, `ofNat_zero` and `exponent_ofNat` all apply. `ofNat_succ` must stay non-simp so the two do not form a cycle.",
+      "benefit": "Simp keeps `ofNat` terms in the form the file's simp lemmas (`ofNat_mul`, `ofNat_dvd_ofNat_iff`, `exponent_ofNat`) are stated for. It no longer expands literals into subtype constructor terms. It also removes the latent cycle with `ofPNat_eq_ofNat`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/NatEmbedding.lean",
+          "declaration": "Supernatural.ofNat_dvd_ofNat_iff",
+          "excerpt": "theorem ofNat_dvd_ofNat_iff {m n : \u2115} : ofNat m \u2223 ofNat n \u2194 m \u2223 n := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbersTests/ReleaseClients.lean",
+          "declaration": "natural_divisibility_zero",
+          "excerpt": "rw [ofNat_dvd_ofNat_iff, ofNat_dvd_ofNat_iff]"
+        }
+      ]
+    },
+    {
+      "declaration": "Supernatural.ofNat_one",
+      "start_line": 51,
+      "end_line": 53,
+      "excerpt": "theorem ofNat_one : ofNat 1 = 1 := by\n  exact ofPNat_one",
+      "problem": "The sibling lemmas `ofNat_zero` and `ofPNat_one` are @[simp], but `ofNat_one` is not. The canonical simp form of `ofNat 1` is therefore left to the competing simp lemma `ofNat_succ`. That lemma rewrites it to `ofPNat \u27e80 + 1, _\u27e9`, which is syntactically not `ofPNat 1`. Whether `simp` reaches `1` then depends on defeq or instance-reducibility accidents rather than on an explicit rule. The test `natural_one_simp` shows this is an intended simp use. It needs a stable lemma behind it, and it breaks if `ofNat_succ` loses its simp attribute.",
+      "proposed_change": "Mark `ofNat_one` with @[simp], so `ofNat 1 = 1` is an explicit rule. Drop @[simp] from `ofNat_succ`, as in the previous finding, so the two rules do not compete. Optionally also add a `@[simp]` lemma for `ofNat (OfNat.ofNat n)`-style numerals if literal handling is wanted.",
+      "benefit": "The one-embedding simp behaviour becomes explicit and robust. It matches the zero case and the `ofPNat_one` convention in Basic.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbersTests/ReleaseClients.lean",
+          "declaration": "natural_one_simp",
+          "excerpt": "theorem natural_one_simp : ofNat 1 = (1 : Supernatural) := by simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Basic.lean",
+          "declaration": "Supernatural.ofPNat_one",
+          "excerpt": "theorem ofPNat_one : ofPNat 1 = 1 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "Supernatural.ofNat_le_ofNat_iff / Supernatural.ofNat_injective",
+      "start_line": 88,
+      "end_line": 112,
+      "excerpt": "theorem ofNat_le_ofNat_iff {m n : \u2115} : ofNat m \u2264 ofNat n \u2194 m \u2223 n := by",
+      "problem": "`ofNat_dvd_ofNat_iff` is @[simp], but its order counterpart `ofNat_le_ofNat_iff` is not. `dvd_iff_le` is not simp either, so `ofNat m \u2264 ofNat n` has no simp normal form. The file also has no simp-usable equality lemmas. `ofNat_injective` is stated only as `Function.Injective`, so simp cannot rewrite `ofNat m = ofNat n` to `m = n`. There is also no simp lemma for `ofNat n = \u22a4 \u2194 n = 0`, although the `\u22a4` case is the main non-obvious convention of this file. The only related simp fact is `ofPNat_ne_top` for `ofPNat`. A user writing `ofNat m = \u22a4` or `ofNat m = ofNat n` has to chain several lemmas by hand.",
+      "proposed_change": "Add @[simp] to `ofNat_le_ofNat_iff`. Check that its own proof still goes through, since it uses `simp [ofNat, hnot]` on the same statement shape. Add `@[simp] theorem ofNat_inj : ofNat m = ofNat n \u2194 m = n`, proved from `ofNat_injective.eq_iff`. Add `@[simp] theorem ofNat_eq_top_iff : ofNat n = \u22a4 \u2194 n = 0`, proved by cases on `n` using `ofNat_zero` and `ofPNat_ne_top`.",
+      "benefit": "Order, equality and top-ness of embedded naturals normalise to ordinary natural-number statements, consistently with the simp lemma `ofNat_dvd_ofNat_iff`. This removes the manual `dvd_iff_le`/injectivity plumbing in downstream goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/NatEmbedding.lean",
+          "declaration": "Supernatural.ofNat_dvd_ofNat_iff",
+          "excerpt": "rw [dvd_iff_le, ofNat_le_ofNat_iff]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Basic.lean",
+          "declaration": "Supernatural.dvd_iff_le",
+          "excerpt": "theorem dvd_iff_le {m n : Supernatural} : m \u2223 n \u2194 m \u2264 n := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 13188,
+    "cache_read_input_tokens": 37005,
+    "output_tokens": 6803,
+    "output_tokens_details": {
+      "thinking_tokens": 2888
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13188,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4561,
+        "cache_read_input_tokens": 15982,
+        "cache_creation_input_tokens": 1219,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1219
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.12449850000000001,
+  "duration_ms": 50504,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:37:25",
+  "unit": "file",
+  "source_sha256": "939364c7dda228285eefc18d79e2d31294fce4cb15d2c190ddd02bae6f5719e7",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

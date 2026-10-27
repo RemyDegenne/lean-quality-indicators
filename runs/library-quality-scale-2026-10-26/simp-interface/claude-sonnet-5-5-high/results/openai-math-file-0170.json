@@ -1,0 +1,120 @@
+{
+  "id": "openai-math-file-0170",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file plus downstream uses of goeBilinear/unitRow/goeBlockResidual (GOEResidualCov, ConditionalMiddleNorm, GOEBlockExpansion) and the upstream goe_entry_observation_cov. I did not run Lean, so the findings are about interface design, not observed simp failures. The only simp-interface problems I could support are the missing unfolding/evaluation lemmas for goeBilinear and unitRow, and the non-terminal simp calls with ite-distribution lemmas. I judged the dot-product identities (unitRow_dot etc.) to be fine as hypothesis-bearing rewrite lemmas and made no annotation recommendation for them. I did not look for a Mathlib lemma covering the Pi.single/ite shape.",
+  "findings": [
+    {
+      "declaration": "goeBilinear (definition lacking an unfolding/simp lemma)",
+      "start_line": 42,
+      "end_line": 43,
+      "excerpt": "def goeBilinear (r : \u211d) (x y : \u03b9 \u2192 \u211d) (g : MatrixCoordinates \u03b9 \u2192 \u211d) : \u211d :=\n  x\u2b1d\u1d65(goeMatrix r g*\u1d65y)",
+      "problem": "goeBilinear is a bare def with no equation lemma exposed as part of the interface. Every consumer unfolds it by hand: `change cov[fun g => \u2211 i, x i*(goeMatrix r g*\u1d65y) i, ...]` in goe_bilinear_cov, `change ... at hh` in goeBilinear_norm_bound, and `simp only [..., goeBilinear, ...]` in blockCoefficient_sample and goeBlockResidual_expand. There is no stable lemma saying that goeBilinear r x y g equals x \u2b1d\u1d65 (goeMatrix r g *\u1d65 y), nor one that gives the sum-over-rows form. The `change` calls rely on defeq of the exact term shape.",
+      "proposed_change": "Add an explicit unfolding lemma next to the def, e.g. `lemma goeBilinear_apply (r) (x y) (g) : goeBilinear r x y g = x \u2b1d\u1d65 (goeMatrix r g *\u1d65 y) := rfl`. Also consider a companion `goeBilinear_eq_sum` giving `\u2211 i, x i * (goeMatrix r g *\u1d65 y) i`. Then replace the `change` steps with `simp only [goeBilinear_apply]` or `rw`. Whether to mark it @[simp] depends on whether callers want the expanded form, so a plain named lemma may be better than an attribute. Because the lemma is stated for the fully applied function, it could also be used with `funext`/`simp_rw` inside `cov[...]` binders.",
+      "benefit": "Callers get a named, direction-fixed rewrite instead of repeating `change` with long hand-written terms that break if the definition body changes. Downstream proofs become shorter and robust.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKGap/Matrix/ConditionalMiddleNorm.lean",
+          "declaration": "goeBilinear_norm_bound",
+          "excerpt": "change |goeBilinear r u.ofLp u.ofLp g| \u2264 opNorm (goeMatrix r g)*(u.ofLp\u2b1d\u1d65u.ofLp) at hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKGap/Matrix/GOEResidualCov.lean",
+          "declaration": "blockCoefficient_sample",
+          "excerpt": "simp only [mulVec,dotProduct,blockCoefficient,goeBlockResidual,goeBilinear,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKGap/Matrix/GOEBilinearCov.lean",
+          "declaration": "goe_bilinear_cov",
+          "excerpt": "change cov[fun g => \u2211 i,x i*(goeMatrix r g*\u1d65y) i,"
+        }
+      ]
+    },
+    {
+      "declaration": "unitRow / goeBlockResidual (definitions lacking evaluation lemmas)",
+      "start_line": 89,
+      "end_line": 105,
+      "excerpt": "def unitRow (\u03ba : \u211d) (u : \u03b9 \u2192 \u211d) (i : \u03b9) : \u03b9 \u2192 \u211d :=\n  Pi.single i 1+((\u03ba-1)*u i) \u2022 u",
+      "problem": "unitRow and goeBlockResidual are defs used through `simp only [unitRow, ...]` or `change`, but there are no entry-level lemmas (unitRow \u03ba u i j, goeBlockResidual ... g i k as a goeBilinear expression). goeBlockResidual_cov begins with a long `change cov[goeBilinear ... + (fun g => ...*goeBilinear r u u g), ...]` that replicates the definition body twice. The unfolding is spread across files (GOEBlockExpansion, GOEResidualCov), each picking its own simp set. The two dot-product lemmas are the only simp-style interface.",
+      "proposed_change": "Add `unitRow_apply : unitRow \u03ba u i j = Pi.single i 1 j + ((\u03ba-1)*u i) * u j` and `goeBlockResidual_apply : goeBlockResidual r \u03ba ell u g i k = goeBilinear r (unitRow \u03ba u i) (unitRow \u03ba u k) g + ((ell-\u03ba^2)*u i*u k)*goeBilinear r u u g` (both by rfl or simp). Use the second to state the covariance rewrite instead of the 4-line `change`.",
+      "benefit": "One canonical unfolding per definition replaces the repeated `change`/`simp only [def]` pattern, so later edits to the definition body need changing in a single place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKGap/Matrix/GOEBlockExpansion.lean",
+          "declaration": "goeBlockResidual_expand",
+          "excerpt": "simp only [goeBlockResidual,goeBilinear,unitRow,Matrix.mulVec_add,Matrix.mulVec_smul,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKGap/Matrix/GOEBilinearCov.lean",
+          "declaration": "goeBlockResidual_cov",
+          "excerpt": "change cov[goeBilinear r (unitRow \u03ba u i) (unitRow \u03ba u k)+"
+        }
+      ]
+    },
+    {
+      "declaration": "goe_mulVec_cross_cov (non-terminal bare simp with ite-distribution lemmas)",
+      "start_line": 38,
+      "end_line": 40,
+      "excerpt": "  \u00b7 simp [hil,mul_ite,ite_mul]\n    ring",
+      "problem": "The proof ends with unrestricted `simp [hil, mul_ite, ite_mul]` followed by `ring`, and similarly `simp [mul_ite,ite_mul,mul_assoc]` at line 38 and `simp [mul_ite]; ring` in goe_bilinear_cov. Pushing ite outward with mul_ite/ite_mul in a full simp set, then relying on `ring` for the leftover, depends on the unspecified output of the whole default simp set. Statements encode Kronecker deltas as raw `if i=l then _ else 0`, so each use needs this ad hoc simp-plus-ring cleanup. There is no shared lemma for sums of the form \u2211 k, u k * (if i = k then a else 0) or Pi.single sums.",
+      "proposed_change": "Replace the non-terminal simp calls with `simp only [hil, if_false, ...]` or use `Finset.sum_ite_eq`/`Finset.sum_ite_eq'`-style lemmas explicitly so the goal after the simp is predictable. Alternatively state the delta terms with `Pi.single` or `(1 : Matrix \u03b9 \u03b9 \u211d) i l` and rely on existing simp lemmas for those.",
+      "benefit": "The proofs become less fragile under changes to Mathlib's default simp set, and reading them shows which rewrites matter. A fixed normal form for the delta terms avoids repeated mul_ite/ite_mul pushing.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKGap/Matrix/GOEBilinearCov.lean",
+          "declaration": "goe_bilinear_cov",
+          "excerpt": "    simp [mul_ite]\n    ring"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19196,
+    "cache_read_input_tokens": 56640,
+    "output_tokens": 5185,
+    "output_tokens_details": {
+      "thinking_tokens": 1315
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19196,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3077,
+        "cache_read_input_tokens": 20781,
+        "cache_creation_input_tokens": 2428,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2428
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.13431400000000002,
+  "duration_ms": 38476,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:16:06",
+  "unit": "file",
+  "source_sha256": "976d37c49bcf11b84e0776f37351b5edd13ac98648d02bd3116bc6f6c3a86bc0",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

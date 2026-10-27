@@ -1,0 +1,93 @@
+{
+  "id": "lean-pool-file-0370",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Submodular/ReducedFact API for `ge_star_iff_ge_lres`, `ge_star_iff_ge_rres`, `ler_of_lres` and `ReducedFact.of_ler_rres`. I checked these candidates:\n- `star_left_witness` and `star_right_witness`. The right witness is already derived from the left one, so there is no duplication.\n- `starGreedy_alpha`, `starGreedy_beta` and `starGreedy`. These are short, routine and structural.\n- `lres_inv_mono_alpha` and `lres_inv_antimono_beta`. These are short parallel lemmas with different monotonicity directions.\n- `lres_stingy_alpha`. It uses the left-residual route, which differs from the right-residual route.\n- The `mul_assoc, mul_inv_cancel` and `chi_*` rewrite chains. These are short calculations and not worth extracting alone.\n\nThe one finding is the shared residual-witness block in `reduce_witness` (lines 130\u2013139) and `lres_stingy_beta` (lines 256\u2013273). I have not compiled the proposed lemma. The `\u03c7` rewrites in its proof are copied from `lres_stingy_beta`, whose own proof closes them with `ring`.",
+  "findings": [
+    {
+      "declaration": "Reduction.reduce_witness / Reduction.lres_stingy_beta",
+      "start_line": 256,
+      "end_line": 273,
+      "excerpt": "set \u03b2\u2081 := \u03b4\u207b\u00b9 \u25b9 \u03b1 with h\u03b2\u2081_def\n  have h_ler : \u03b4 \u2264R \u03b1 := by\n    rw [h\u03b4_def]\n    exact Submodular.ler_of_lres \u03b1 \u03b2\u207b\u00b9\n  have rf : ReducedFact \u03b4 \u03b2\u2081 \u03b1 :=\n    ReducedFact.of_ler_rres h_ler h\u03b2\u2081_def.symm",
+      "problem": "The two proofs repeat the same argument. Take the left residual \u03b4 = \u03c4 \u25c3 \u03b2\u207b\u00b9 and set \u03b2\u2081 = \u03b4\u207b\u00b9 \u25b9 \u03c4. Get \u03b4 \u2264R \u03c4 from `Submodular.ler_of_lres`. Build `ReducedFact \u03b4 \u03b2\u2081 \u03c4` with `ReducedFact.of_ler_rres`. Show \u03b2\u2081 \u2264 \u03b2 by chaining `ge_star_iff_ge_lres` (applied to `le_refl`) with `ge_star_iff_ge_rres`. In `reduce_witness` this is lines 130\u2013139, with \u03c4 = \u03b3. In `lres_stingy_beta` this is lines 256\u2013273, with \u03c4 = \u03b1. The only difference is the name of the target permutation. The \u03c7-bookkeeping for \u03b2\u2081 (`chi_rres`, `chi_dual`, `chi_lres`) is also derived separately in `lres_stingy_beta` (line 265) and in `reduce_witness_chi` (`h_chi_beta`). Maintenance risk: any change to the `ReducedFact` or residual API has to be fixed in both places, and the reader has to re-derive that the two blocks are the same.",
+      "proposed_change": "Add one lemma before `reduce_witness`:\n\nlemma lres_rres_witness (\u03c4 \u03b2 : AspPerm) :\n    let \u03b4 := \u03c4 \u25c3 \u03b2\u207b\u00b9\n    let \u03b2\u2081 := \u03b4\u207b\u00b9 \u25b9 \u03c4\n    \u03b4 * \u03b2\u2081 = \u03c4 \u2227 \u03b4 \u22c6 \u03b2\u2081 = \u03c4 \u2227 \u03b2\u2081 \u2264 \u03b2 \u2227 \u03b2\u2081.\u03c7 = \u03b2.\u03c7\n\nProof sketch (the existing code, moved):\n- `ler_of_lres \u03c4 \u03b2\u207b\u00b9` gives \u03b4 \u2264R \u03c4.\n- `ReducedFact.of_ler_rres` gives `rf`, which supplies the first two conjuncts through `rf.mul_eq` and `rf.star_eq`.\n- \u03b2\u2081 \u2264 \u03b2 comes from `(ge_star_iff_ge_rres \u03b4 \u03b2 \u03c4).mpr ((ge_star_iff_ge_lres \u03b4 \u03b2 \u03c4).mp (le_refl _))`.\n- The \u03c7 identity is the `rw [chi_rres, chi_dual, chi_lres, chi_dual]; ring` already at lines 266\u2013268.\n\nRewritten uses:\n- `reduce_witness`: `obtain \u27e8hm, hs, hb, -\u27e9 := lres_rres_witness \u03b3 \u03b2; exact \u27e8hm, hs, (ge_star_iff_ge_lres \u03b1 \u03b2 \u03b3).mpr h, hb\u27e9`.\n- `reduce_witness_chi`: `h_chi_beta` becomes the fourth component of the same lemma. It no longer needs `h\u03c7` or `h_chi_alpha`, because the identity \u03b2\u2081.\u03c7 = \u03b2.\u03c7 holds unconditionally. Only `h_chi_alpha` still uses `h\u03c7`.\n- `lres_stingy_beta`: `obtain \u27e8hm, -, hle, hchi\u27e9 := lres_rres_witness \u03b1 \u03b2`. Then supply `\u27e8\u03b2\u2081, \u27e8hle, hchi\u27e9, _\u27e9`, where the membership equation \u03b1 * \u03b2\u2081\u207b\u00b9 = \u03b4 follows from `hm` by the existing `rw [\u2190 hm, mul_assoc, mul_inv_cancel, mul_one]`. The lower-bound part is unchanged.\n\nNo new imports are needed, since all the ingredients are already used in this file.",
+      "benefit": "The residual/reduced-product witness is proved once, in the same place as the other `*_witness` lemmas. Both Theorem C and Theorem 6.1(\u03b2) then read as short applications. `reduce_witness_chi` also drops a redundant dependence on `h_chi_alpha`. Changes to the `ReducedFact` interface have a single place to update.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BrillNoetherGraphs/Demazure/Reduction.lean",
+          "declaration": "Reduction.reduce_witness",
+          "excerpt": "have : \u03b1\u2081 \u2264R \u03b3 := Submodular.ler_of_lres \u03b3 \u03b2\u207b\u00b9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BrillNoetherGraphs/Demazure/Reduction.lean",
+          "declaration": "Reduction.reduce_witness",
+          "excerpt": "have rf := ReducedFact.of_ler_rres this h\u03b2\u2081_def"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BrillNoetherGraphs/Demazure/Reduction.lean",
+          "declaration": "Reduction.lres_stingy_beta",
+          "excerpt": "apply (ge_star_iff_ge_rres \u03b4 \u03b2 \u03b1).mpr\n    apply (ge_star_iff_ge_lres \u03b4 \u03b2 \u03b1).mp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BrillNoetherGraphs/Demazure/Reduction.lean",
+          "declaration": "Reduction.reduce_witness_chi",
+          "excerpt": "rw [h\u03b2\u2081_def, AspPerm.chi_rres, AspPerm.chi_dual, h_chi_alpha]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BrillNoetherGraphs/Demazure/Submodular.lean",
+          "declaration": "Submodular.ge_star_iff_ge_rres",
+          "excerpt": "\u03b2 \u2265 \u03b1\u207b\u00b9 \u25b9 \u03c4 \u2194 \u03b1 \u22c6 \u03b2 \u2265 \u03c4"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 17987,
+    "cache_read_input_tokens": 37930,
+    "output_tokens": 5551,
+    "output_tokens_details": {
+      "thinking_tokens": 2257
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17987,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3602,
+        "cache_read_input_tokens": 19821,
+        "cache_creation_input_tokens": 2095,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2095
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.13126300000000002,
+  "duration_ms": 38993,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T02:10:00",
+  "unit": "file",
+  "source_sha256": "ed6fd703cc3cce78e159ea7aaa837a4f299f0d463446348056f74a7a13ddbbf5",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

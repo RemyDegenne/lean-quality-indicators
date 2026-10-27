@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0341",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I compared its definitions with the related PlaneComplex.lean and LineSubdivision.lean, and I searched for Mathlib counterparts. Mathlib has no comparable mesh or edge notion, and convexHull and AffineBasis are used directly. The only competing concepts I found are the ones the file's own library already provides: `PlaneComplex.edges` and `PlaneComplex.cellCarrier`, which `TriangleMesh` reaches through `toPlaneComplex`. `PlaneComplex.edges` and `M.edges` are not definitionally equal. They are propositionally equal because `faces` is the set of nonempty subfaces of the maximal triangles. I did not find an equality lemma linking them. `triangleCarrier` is widely used, with about 400 hits for the searched names across 15 files. Replacing it would be a large refactor, so I made that finding tentative. I also noticed that `triangleAffineBasis` overlaps with `affineBasisOfTriangle`. I did not report it because it is a small internal variant and I could not show a concrete cost.",
+  "findings": [
+    {
+      "declaration": "TriangleMesh.edges",
+      "start_line": 35,
+      "end_line": 37,
+      "excerpt": "def edges : Finset (Finset M.Vertex) :=\n  M.triangles.biUnion fun t => t.powersetCard 2",
+      "problem": "`TriangleMesh.edges` is a second definition of the mesh's edge set, next to `PlaneComplex.edges` (`K.simplexes.filter fun s => s.card = 2`). `M.toPlaneComplex` has simplexes `M.faces`, the nonempty subsets of maximal triangles, so its edge set is the same set. No lemma in the file or in PlaneComplex.lean identifies the two. `PlaneComplex.edges` is the API that the generic complex layer, such as `oneSkeleton`, builds on. Because the two are unconnected, the file keeps rebuilding `e \u2208 M.toPlaneComplex.simplexes` from `e \u2208 M.edges` by hand. The same boilerplate appears in `edge_eq_of_nonvertex_mem_edgeCarriers` (`heFace`/`hfFace`), `edgeCarrier_inter_edgeCarrier` (`heFace`/`hfFace`) and `vertex_mem_edge_of_position_mem_edgeCarrier` (`heFace`). It uses `mem_biUnion`, `mem_powersetCard`, `card_pos` and `mem_faces_iff` each time.",
+      "proposed_change": "Either define `TriangleMesh.edges := M.toPlaneComplex.edges`, or add one lemma `mem_edges_iff : e \u2208 M.edges \u2194 e \u2208 M.toPlaneComplex.edges` or `M.edges = M.toPlaneComplex.edges`. Then add a single lemma `edges_mem_simplexes : e \u2208 M.edges \u2192 e \u2208 M.toPlaneComplex.simplexes`. Use it to replace the repeated `heFace`/`hfFace` blocks, and keep the name `M.edges` for downstream users in PolygonalSchoenflies, PolygonalCrosscut and FreeTriangleMove.",
+      "benefit": "There would be one notion of mesh edge shared with the PlaneComplex API. About four copies of the proof that an edge is a simplex would go away. The lemmas about `PlaneComplex.edges` and its one-skeleton would apply to `TriangleMesh.edges` without conversion.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/PlaneComplex.lean",
+          "declaration": "PlaneComplex.edges",
+          "excerpt": "def edges : Finset (Finset K.Vertex) :=\n  K.simplexes.filter fun s => s.card = 2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/PlaneComplex.lean",
+          "declaration": "TriangleMesh.faces",
+          "excerpt": "def faces : Finset (Finset M.Vertex) :=\n  M.triangles.biUnion fun t => t.powerset.filter (\u00b7.Nonempty)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.edgeCarrier_inter_edgeCarrier",
+          "excerpt": "have heFace : e \u2208 M.toPlaneComplex.simplexes := by\n    obtain \u27e8t, ht, het\u27e9 := Finset.mem_biUnion.mp he"
+        }
+      ]
+    },
+    {
+      "declaration": "TriangleMesh.triangleCarrier",
+      "start_line": 31,
+      "end_line": 33,
+      "excerpt": "def triangleCarrier (t : Finset M.Vertex) : Set Plane :=\n  convexHull \u211d (M.position '' (t : Set M.Vertex))",
+      "problem": "`triangleCarrier` has the same body as `PlaneComplex.cellCarrier` (`convexHull \u211d (K.position '' s)`), instantiated at `K := M.toPlaneComplex`. The `toPlaneComplex` positions are `M.position`, so the two should be definitionally the same. The file then keeps converting between the two. It rewrites with `toPlaneComplex_support`, whose support is a union of `cellCarrier`s, and then uses `simpa only [triangleCarrier]` or `unfold triangleCarrier` to match. This happens in `frontier_infinite_of_triangles_nonempty` and in `exists_boundaryEdge_through_frontier_point` (`simpa only [triangleCarrier] using hpFrontier`). Several statements spell the carrier as a raw `convexHull \u211d (M.position '' ...)` instead of using either name.",
+      "proposed_change": "Make `triangleCarrier` a reducible abbreviation for `M.toPlaneComplex.cellCarrier`, or add a `@[simp]` lemma `triangleCarrier_eq_cellCarrier`. State the support lemmas in terms of `cellCarrier` so the bridging `simpa only [triangleCarrier]` steps disappear. Keep the `triangleCarrier` name, because many files use it.",
+      "benefit": "The mesh and complex developments would share one carrier notion with its compactness and support lemmas (`isCompact_cellCarrier`, `cellCarrier_subset_support`). The file would no longer need to unfold one carrier to match the other. This is only moderately beneficial, since the two are already defeq and `triangleCarrier` is widely used.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/PlaneComplex.lean",
+          "declaration": "PlaneComplex.cellCarrier",
+          "excerpt": "def cellCarrier (s : Finset K.Vertex) : Set Plane :=\n  convexHull \u211d (K.position '' s)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/PlaneComplex.lean",
+          "declaration": "PlaneComplex.support",
+          "excerpt": "def support : Set Plane :=\n  \u22c3 s \u2208 K.simplexes, K.cellCarrier s"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.exists_boundaryEdge_through_frontier_point",
+          "excerpt": "simpa only [triangleCarrier] using hpFrontier"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 58864,
+    "cache_read_input_tokens": 452883,
+    "output_tokens": 6684,
+    "output_tokens_details": {
+      "thinking_tokens": 1573
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 58864,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3194,
+        "cache_read_input_tokens": 61866,
+        "cache_creation_input_tokens": 1079,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1079
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3476203,
+  "duration_ms": 56205,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-27T01:40:02",
+  "unit": "file",
+  "source_sha256": "fa9b828d612e5c979f01aa4bd6ee059c7cd0f9f84714957a7e74a135ffdfe1ee",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

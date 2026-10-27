@@ -1,0 +1,115 @@
+{
+  "id": "formal-frontier-file-0271",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related simp-relevant sources: QuotientMap.lean, Augmentation.lean, and coordinateExponent and rncMap_X in RationalNormalCurve.lean. I checked the existing @[simp] coverage for quotientMap_mk, quotientMap_X, quotientAugmentation_mk and rncMap_X. I did not run Lean. The findings are about missing or awkward simp-interface lemmas, so they are suggestions backed by the source text and not claims about observed simp behavior. I saw no looping or competing-rule problems. Most of the file's declarations are private, so the issues are local.",
+  "findings": [
+    {
+      "declaration": "originDerivativeQuotient_mul / originIdeal_le_ker (repeated h\u03b5 conversion for originEpsilon)",
+      "start_line": 112,
+      "end_line": 115,
+      "excerpt": "have h\u03b5 : originEpsilon R n = (quotientAugmentation R n).toRingHom :=\n    constantCoeff_comp_quotientMap R n hn",
+      "problem": "`originEpsilon` has no simp lemma on quotient representatives. Both `originDerivativeQuotient_mul` and `originIdeal_le_ker` rebuild the same `h\u03b5` rewrite. Each then needs a hand-picked `simp only` set (`AlgHom.toRingHom_eq_coe`, `AlgHom.coe_toRingHom`, `quotientAugmentation_mk`) to reach `constantCoeff f`. The only simp lemma the file has about this map is the generic `quotientAugmentation_mk`, and it is stated for a different function. `originEpsilon` is a private non-reducible def, so `simp` cannot see through it. Later proofs such as `beta` (line 229) and `originAlpha` unfold it by name instead.",
+      "proposed_change": "Add one private lemma, e.g. `@[simp] originEpsilon_mk (hn : 0 < n) (f : Source R n) : originEpsilon R n (Ideal.Quotient.mk (hankelIdeal R n) f) = MvPolynomial.constantCoeff f`. Prove it once from `constantCoeff_comp_quotientMap` and `quotientAugmentation_mk`. The `hn` hypothesis is needed because `constantCoeff_comp_quotientMap` states in its docstring that degree 0 is the exception. The lemma would be conditional, so use it by explicit `simp [originEpsilon_mk _ _ hn]` or `rw`. A global `@[simp]` is not appropriate. If it is stated without `hn` as a simp lemma it would be false at n = 0, so keep the hypothesis. Then `originDerivativeQuotient_mul` becomes `simpa [originEpsilon_mk R n hn] using originDerivative_mul R n f g`. The `rcases hq with rfl | rfl` step in `originIdeal_le_ker` also shrinks.",
+      "benefit": "The conversion from the quotient to `constantCoeff` is stated once and never re-derived. Both proofs lose their long `simp only` lists, and the lemma gives later users the normal form `constantCoeff f` instead of an opaque `originEpsilon`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/RationalNormalCurve/QuotientMapFlatness.lean",
+          "declaration": "originIdeal_le_ker",
+          "excerpt": "constantCoeff_comp_quotientMap R n (by omega : 0 < n)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/RationalNormalCurve/Augmentation.lean",
+          "declaration": "quotientAugmentation_mk",
+          "excerpt": "@[simp] theorem quotientAugmentation_mk"
+        }
+      ]
+    },
+    {
+      "declaration": "QuotientFlatness.beta (map_smul' proof)",
+      "start_line": 227,
+      "end_line": 229,
+      "excerpt": "simp [MvPolynomial.coeff_mul, Finsupp.antidiagonal_single,\n      Finset.Nat.antidiagonal_succ,\n      epsilon, originEpsilon, MvPolynomial.constantCoeff_eq, hlinear]",
+      "problem": "The `simp` call expands `coeff_mul` into an antidiagonal sum. It also unfolds `epsilon` and `originEpsilon` by name, and it rewrites `constantCoeff` into `coeff 0` with `constantCoeff_eq`. The fixed simp-set is fragile in the presence of the `private abbrev`s (`phi`, `epsilon`, `Q`), and it hides what the proof is doing: the coefficient of `X 1` in `q\u00b7p` is `q.coeff 0 \u00b7 p.coeff e\u2081 + q.coeff e\u2081 \u00b7 p.coeff 0`, and the second term is killed by `hlinear`. The file has no lemma for 'the coefficient of the single exponent `e\u2081` of a product', so each such computation goes through the generic antidiagonal expansion. The unfolding of `originEpsilon` here reflects the missing representative lemma from the previous finding.",
+      "proposed_change": "Factor out a private lemma `coeff_single_one_mul (a p : Target R) (j) : (a * p).coeff (Finsupp.single j 1) = a.coeff 0 * p.coeff (Finsupp.single j 1) + a.coeff (Finsupp.single j 1) * p.coeff 0`. Prove it once with the `coeff_mul`/antidiagonal expansion. Then `map_smul'` is `rw [coeff_single_one_mul, hlinear, zero_mul, add_zero]` plus a `constantCoeff`/`coeff 0` link for `epsilon`. Mathlib may already have a suitable lemma, such as `MvPolynomial.coeff_mul_X'` and its variants, but I did not find one that fits this shape. The proof should not depend on `Finset.Nat.antidiagonal_succ` and `Finsupp.antidiagonal_single` in a global `simp`.",
+      "benefit": "The proof no longer depends on a large simp set that unfolds private abbreviations and arithmetic antidiagonal facts. The key step, which is the vanishing of the linear coefficient of `phi q`, becomes visible. The same lemma could also serve `rncMap_coeff_linear_eq_zero`-style computations.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/RationalNormalCurve/QuotientMapFlatness.lean",
+          "declaration": "QuotientFlatness.beta",
+          "excerpt": "have hlinear : ((quotientMap R n) q).coeff (Finsupp.single (1 : Fin 2) 1) = 0 :="
+        }
+      ]
+    },
+    {
+      "declaration": "QuotientFlatness.quotientMap_coordinate_relation (ha, hb, hexp)",
+      "start_line": 259,
+      "end_line": 267,
+      "excerpt": "simp [phi, originA, quotientMap_mk, rncMap_X, coordinateExponent,\n      X_pow_eq_monomial]",
+      "problem": "`coordinateExponent` is a plain `def` with no simp-facing API, so every proof that needs a concrete exponent unfolds it. Here `ha` unfolds it for `i = 0`, and `hexp` unfolds it for `firstCoordinate`. `hb` then needs manual `change`, `monomial_mul_monomial` and `one_mul` steps. `quotientMap_X` and `rncMap_X` are already simp lemmas that produce `monomial (coordinateExponent n i) 1`. The simp normal form therefore stops at the opaque `coordinateExponent`, and each use site then has to unfold it. `firstCoordinate` is a private def, so it is also unfolded by name.",
+      "proposed_change": "In the file that defines `coordinateExponent`, add `coordinateExponent_zero : coordinateExponent n 0 = Finsupp.single 0 n` and a lemma for general `i`, such as `coordinateExponent_eq_add : coordinateExponent n i = Finsupp.single 0 (n - i) + Finsupp.single 1 i`, or an `_apply` lemma. Only the closed-form `_zero` lemma is a clear simp lemma. The general one would expand every use of `coordinateExponent`, so it should not be `@[simp]`. Add a local lemma `quotientMap_mk_X_zero`/`..._first` that gives `phi (originA) = X 0 ^ n` and `phi (originB) = X 0 ^ (n-1) * X 1` directly. Then `ha` and `hb` become one-liners and the `change` blocks on lines 268\u2013275 go away.",
+      "benefit": "The facts that the images of `x\u2080` and `x\u2081` are `a^n` and `a^(n-1)b` are stated once as reusable rewrite rules. The `change`/`fin_cases` boilerplate disappears from `quotientMap_coordinate_relation`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/RationalNormalCurve.lean",
+          "declaration": "coordinateExponent",
+          "excerpt": "def coordinateExponent (n : \u2115) (i : Fin (n + 1)) : Fin 2 \u2192\u2080 \u2115 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/RationalNormalCurve/QuotientMap.lean",
+          "declaration": "quotientMap_X",
+          "excerpt": "MvPolynomial.monomial (coordinateExponent n i) 1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 22466,
+    "cache_read_input_tokens": 103118,
+    "output_tokens": 6082,
+    "output_tokens_details": {
+      "thinking_tokens": 1312
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22466,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3510,
+        "cache_read_input_tokens": 24018,
+        "cache_creation_input_tokens": 2461,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2461
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1610198,
+  "duration_ms": 45919,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:47:33",
+  "unit": "file",
+  "source_sha256": "692dce1a76ee68b4eb3e769ab8afc1ed334dfb91c3266f995cd3dbe1cbe10734",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

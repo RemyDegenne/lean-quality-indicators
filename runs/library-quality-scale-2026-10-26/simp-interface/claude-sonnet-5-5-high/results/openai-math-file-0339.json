@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0339",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it relies on in SieveScale.lean (`level`, `exponent`, `cutoff`, `exponent_pos`, `cutoff_power`, `log_cutoff`, `cutoff_le_sqrt`). I grepped the Jacobsthal directory for other uses of these names. The file declares no simp lemmas or attributes of its own. The two findings below are about missing interface lemmas and about proofs that unfold or `change` definitions at use sites. Both are mild, and I did not run Lean. I did not look for the same patterns in other files that import SieveScale, so the benefit beyond this file is unconfirmed. I found no rewrite loops or competing simp rules.",
+  "findings": [
+    {
+      "declaration": "ErdosPrimeInputs.ProgressionPrimeUpper.progression_prime_upper (use of `level`)",
+      "start_line": 53,
+      "end_line": 56,
+      "excerpt": "have hexp : Real.exp (-level/96) \u2264 1 := Real.exp_le_one_iff.mpr (by norm_num [level])",
+      "problem": "`level` is an opaque `noncomputable def level : \u211d := 480024` with no interface lemmas beyond the `exponent` facts. Every consumer therefore has to unfold it with `norm_num [level]`. This file does so twice, at line 53 (`2 \u2264 level`, as the `by norm_num [level]` argument to `affine_sieve_error`) and at line 56 (`-level/96 \u2264 0`). SieveScale.lean does the same in `exponent_pos`, `exponent_le_half` and `cutoff_power`. Unfolding exposes the literal 480024 each time, so the proofs depend on the concrete value. There is no stable lemma like `level_pos` or `two_le_level` that a reader or a later `positivity`/`simp` call could use.",
+      "proposed_change": "In SieveScale.lean, state the facts used downstream once, for example `lemma two_le_level : (2:\u211d) \u2264 level := by norm_num [level]` and `lemma level_pos : 0 < level`. Optionally add `lemma exponent_mul_level : exponent * level = 1/2`, which `cutoff_power` currently proves inline. In this file, replace the two `norm_num [level]` calls with `two_le_level` and with `by linarith [level_pos]` (or `neg_div`/`div_nonpos_of_nonpos_of_nonneg` applied to `level_pos`). Do not make `level_eq : level = 480024` a simp lemma, because that would spread the literal everywhere.",
+      "benefit": "Callers no longer unfold the numeric constant. The value of `level` is then used only in SieveScale.lean, and any inequality about `level` is found by name instead of by `norm_num [level]`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Sieve/SieveScale.lean",
+          "declaration": "level / exponent_pos / cutoff_power",
+          "excerpt": "noncomputable def level : \u211d := 480024"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Sieve/SieveScale.lean",
+          "declaration": "cutoff_power",
+          "excerpt": "have h : exponent * level = 1/2 := by norm_num [exponent,level]"
+        }
+      ]
+    },
+    {
+      "declaration": "ErdosPrimeInputs.ProgressionPrimeUpper.progression_prime_upper (hmain / hcount steps using `let u := cutoff J`)",
+      "start_line": 65,
+      "end_line": 73,
+      "excerpt": "change 2*J*(K*R/Real.log (cutoff J)) = _\n        rw [log_cutoff hJ0]",
+      "problem": "The proof introduces `let u := cutoff J`, so the SieveScale rewrite lemmas `log_cutoff` and `cutoff_le_sqrt` do not fire syntactically on goals mentioning `u`. The proof compensates with two manual `change` steps: `change u \u2264 Real.sqrt J at hu` at line 63 and `change 2*J*(K*R/Real.log (cutoff J)) = _` at line 71. The `cutoff` interface therefore cannot be used through `rw` or `simp` directly. `log_cutoff` has a side condition `0 < J` and is not tagged `simp`, so the normal form `Real.log (cutoff J) = exponent * Real.log J` is applied only by hand.",
+      "proposed_change": "Replace `let u := cutoff J` with `set u := cutoff J with hu_def`, or add `obtain \u27e8u, hu_def\u27e9 : \u2203 u, u = cutoff J := \u27e8_, rfl\u27e9`, so that `u` rewrites back through `hu_def`. Then use `rw [hu_def, log_cutoff hJ0]` and `hu_def \u25b8 cutoff_le_sqrt hJ1.le` in place of the `change` lines. Alternatively, specialise `hEuler` to `cutoff J` once and rewrite with `log_cutoff`. If simp-style use is wanted, mark `log_cutoff` `@[simp]`. Its `0 < J` hypothesis is dischargeable when `hJ0` is in the simp set, but weigh that against rewriting `Real.log (cutoff J)` in other files.",
+      "benefit": "The proof uses the cutoff lemmas as stated instead of relying on definitional unfolding of a `let`. The normal form `exponent * Real.log J` is applied explicitly, and the `change` lines disappear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Sieve/SieveScale.lean",
+          "declaration": "log_cutoff",
+          "excerpt": "lemma log_cutoff {J : \u211d} (hJ : 0 < J) : Real.log (cutoff J) = exponent * Real.log J :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Primes/ProgressionPrimeUpper.lean",
+          "declaration": "progression_prime_upper",
+          "excerpt": "change u \u2264 Real.sqrt J at hu"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 23373,
+    "cache_read_input_tokens": 53541,
+    "output_tokens": 3889,
+    "output_tokens_details": {
+      "thinking_tokens": 850
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23373,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2820,
+        "cache_read_input_tokens": 24453,
+        "cache_creation_input_tokens": 2933,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2933
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1377521,
+  "duration_ms": 31368,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:39:24",
+  "unit": "file",
+  "source_sha256": "44952c5ab97e8192a71a05c42b1f73a128082c0b5a40db29d9a1fd9b07fd5add",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

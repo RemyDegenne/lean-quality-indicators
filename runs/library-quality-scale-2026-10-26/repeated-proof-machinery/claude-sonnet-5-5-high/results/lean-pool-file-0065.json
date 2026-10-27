@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0065",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I checked the helper lemmas `exists_nonzero_mem_open` (Periodic.lean:402) and `exists_iterate_eq_nonzero` (Covering.lean:274) to confirm their hypotheses. The escaping-set proofs are not repeated machinery. The duplication is in the countable-basis handling and the \"nonzero target, then pull back\" step. I did not compile any replacement. The helper statements below follow the signatures I read, but small elaboration details such as coercions and `Subtype` unfolding may need adjusting.",
+  "findings": [
+    {
+      "declaration": "dense_denseOrbitSet_exp / dense_denseOrbitSet_exp_diff_countable / mem_denseOrbitSetExp_iff_visit_countableBasis",
+      "start_line": 138,
+      "end_line": 146,
+      "excerpt": "(isOpen_dense_orbitVisitSet\n    (TopologicalSpace.isOpen_of_mem_countableBasis U.2)\n    (Set.nonempty_iff_ne_empty.mpr fun hU =>\n      TopologicalSpace.empty_notMem_countableBasis \u2102 (hU \u25b8 U.2))).1) fun U =>",
+      "problem": "The same argument is written out in full five times. It takes a member `U` of `countableBasis \u2102` and shows it is open, then non-empty via `empty_notMem_countableBasis`. For the orbit-visit set it feeds both into `isOpen_dense_orbitVisitSet`. The copies are at lines 119-122 (open and non-empty only), 138-142 and 143-146 (`.1` and `.2` of the same fact, so the pair is rebuilt twice in one term), and 162-165 and 169-172 (again `.1` and `.2`). The block is long and nested and drowns out the actual Baire argument. Any change to the basis API has to be made in all the copies.",
+      "proposed_change": "Add two helpers before `mem_denseOrbitSetExp_iff_visit_countableBasis`.\n\n1. `theorem nonempty_of_mem_countableBasis (U : TopologicalSpace.countableBasis \u2102) : (U : Set \u2102).Nonempty := Set.nonempty_iff_ne_empty.mpr fun hU => TopologicalSpace.empty_notMem_countableBasis \u2102 (hU \u25b8 U.2)`\n\n2. `theorem isOpen_dense_orbitVisitSet_basis (U : TopologicalSpace.countableBasis \u2102) : IsOpen (orbitVisitSet U) \u2227 Dense (orbitVisitSet U) := isOpen_dense_orbitVisitSet (TopologicalSpace.isOpen_of_mem_countableBasis U.2) (nonempty_of_mem_countableBasis U)`\n\nThen rewrite the uses.\n- Line 119: `hz.exists_mem_open (TopologicalSpace.isOpen_of_mem_countableBasis U.2) (nonempty_of_mem_countableBasis U)`.\n- `dense_denseOrbitSet_exp`: `apply (dense_iInter_of_isOpen (fun U => (isOpen_dense_orbitVisitSet_basis U).1) fun U => (isOpen_dense_orbitVisitSet_basis U).2).mono`.\n- `hGopen` and `hGdense`: the `inl` cases become `exact (isOpen_dense_orbitVisitSet_basis U).1` and `exact (isOpen_dense_orbitVisitSet_basis U).2`.\n\nThe hypotheses are unchanged, since `U` is still a subtype element of `countableBasis \u2102` and no new imports are needed.",
+      "benefit": "This removes about 25 lines of duplicated nested terms. The two Baire proofs then read as the Baire argument alone, and the basis facts are proved once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ExpChaotic/Dynamics.lean",
+          "declaration": "dense_denseOrbitSet_exp_diff_countable",
+          "excerpt": "\u00b7 exact (isOpen_dense_orbitVisitSet\n        (TopologicalSpace.isOpen_of_mem_countableBasis U.2)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ExpChaotic/Dynamics.lean",
+          "declaration": "mem_denseOrbitSetExp_iff_visit_countableBasis",
+          "excerpt": "(Set.nonempty_iff_ne_empty.mpr fun hU =>\n        TopologicalSpace.empty_notMem_countableBasis \u2102 (hU \u25b8 U.2))"
+        }
+      ]
+    },
+    {
+      "declaration": "topologically_transitive_exp and isOpen_dense_orbitVisitSet",
+      "start_line": 86,
+      "end_line": 89,
+      "excerpt": "obtain \u27e8w, hwV, hw0\u27e9 := exists_nonzero_mem_open hV hVne\n  obtain \u27e8n, _, z, hzU, hzw\u27e9 := exists_iterate_eq_nonzero hU hUne hw0",
+      "problem": "Both proofs do the same two-step reasoning. First pick a nonzero point `w` in one nonempty open set, using `exists_nonzero_mem_open`. Then use the covering result `exists_iterate_eq_nonzero` to find an `n` and a point `z` in the other nonempty open set with `expIterate n z = w`. The only difference is the names. `topologically_transitive_exp` does this at lines 87-88, and the density part of `isOpen_dense_orbitVisitSet` does it at lines 102-103 with the roles of the sets swapped. The shared fact is that for nonempty open `A` and `B` there are `n`, `z \u2208 A` and `w \u2208 B` with `expIterate n z = w`. It is never stated, so each proof re-derives it by hand.",
+      "proposed_change": "Add a lemma\n`theorem exists_iterate_mem_open {A B : Set \u2102} (hA : IsOpen A) (hAne : A.Nonempty) (hB : IsOpen B) (hBne : B.Nonempty) : \u2203 n : \u2115, \u2203 z \u2208 A, expIterate n z \u2208 B`.\n\nProof sketch:\n- Take `\u27e8w, hwB, hw0\u27e9 := exists_nonzero_mem_open hB hBne`.\n- Take `\u27e8n, _, z, hzA, hzw\u27e9 := exists_iterate_eq_nonzero hA hAne hw0`.\n- Return `\u27e8n, z, hzA, hzw \u25b8 hwB\u27e9`.\n\nRewritten uses:\n- `topologically_transitive_exp`: `obtain \u27e8n, z, hzU, hzV\u27e9 := exists_iterate_mem_open hU hUne hV hVne` and then `exact \u27e8\u27e8n\u27e9, expIterate n z, \u27e8z, hzU, rfl\u27e9, hzV\u27e9`.\n- `isOpen_dense_orbitVisitSet` (density part, after `intro V hV hVne`): `obtain \u27e8n, z, hzV, hzU\u27e9 := exists_iterate_mem_open hV hVne hU hUne` and then `exact \u27e8z, hzV, mem_iUnion.2 \u27e8n, hzU\u27e9\u27e9`.\n\nThis removes the `simpa [hzw] using hwU` step. Both proofs sit in the same file as the helper and use the same imports.",
+      "benefit": "The key topological fact, that an iterate of exp carries any nonempty open set into any other, gets a name and is proved once. Both the transitivity proof and the orbit-visit density proof become short corollaries.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ExpChaotic/Dynamics.lean",
+          "declaration": "isOpen_dense_orbitVisitSet",
+          "excerpt": "obtain \u27e8w, hwU, hw0\u27e9 := exists_nonzero_mem_open hU hUne\n    obtain \u27e8n, _, z, hzV, hzw\u27e9 := exists_iterate_eq_nonzero hV hVne hw0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ExpChaotic/Covering.lean",
+          "declaration": "exists_iterate_eq_nonzero",
+          "excerpt": "\u2203 n : \u2115, 0 < n \u2227 \u2203 z \u2208 U, expIterate n z = w"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 10436,
+    "cache_read_input_tokens": 13332,
+    "output_tokens": 4123,
+    "output_tokens_details": {
+      "thinking_tokens": 702
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10436,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3277,
+        "cache_read_input_tokens": 9403,
+        "cache_creation_input_tokens": 4962,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4962
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.08431519999999999,
+  "duration_ms": 27393,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T22:56:17",
+  "unit": "file",
+  "source_sha256": "985db7938511485449f277df08754a49b1a4ff6c130e4541e238fad768710867",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

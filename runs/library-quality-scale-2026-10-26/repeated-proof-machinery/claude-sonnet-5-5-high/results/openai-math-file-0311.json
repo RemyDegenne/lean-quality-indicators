@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0311",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "The file is 16 generated namespaces (hm37_{0,1}_0_{2..7}) with identical structure: 96 data defs, 96 `decide +kernel` chunk lemmas, 6 fin_cases dispatchers, sums_eq, then checked/contains/atomChecked/atomContains/realChecked/realContains. I read the first block in full and diffed the others structurally (they differ only in density0/1, hk37_0_k, ha37_0_k and k). I read the upstream lemmas cached_density_rule_contains (TableDensityBase), fullAtomBox_contains and fullMoment_contains (HighMomentsBase), and cachedMomentRuleBox (BasisIntervals). Uncertainties: exact types of density0_contains / hk37_0_k_contains / ha37_0_k_contains (defined in imported files, not read), so the proposed lemma signature may need the `f` argument adjusted; the same pattern also recurs in HighMoments1_0.lean and other generated files. I did not report the 96 numeric `decide +kernel` lemmas or the fin_cases dispatchers, as those are routine/data rather than shared reasoning.",
+  "findings": [
+    {
+      "declaration": "hm37_0_0_2.contains / atomContains / realContains (pattern repeated in all 16 hm37_* namespaces)",
+      "start_line": 337,
+      "end_line": 349,
+      "excerpt": "exact @cached_density_rule_contains density0 hk37_0_2 (tableDensity false) (fullFactor false 37 2) density0_contains hk37_0_2_contains",
+      "problem": "Each of the 16 blocks repeats the same three-step argument: (1) rewrite the cached rule box to its computed value and apply cached_density_rule_contains with five explicit `@` arguments, (2) do the same with fullAtomBox_contains, (3) combine them via fullMoment_contains with two `norm_num` side goals on 0 \u2264 m \u2264 100. Only the constants (density0/1, hk37_0_k, ha37_0_k, a, k) change. The explicit-argument `@` calls duplicate the instantiation of f, g, m, ell, and a/tr in every block, so any change to the signatures of these upstream lemmas has to be fixed in 48 places.",
+      "proposed_change": "Add once (e.g. in HighMomentsBase or a small certificate-support file) a lemma such as:\n\nlemma moment_certificate_contains (a tr : Bool) {m : \u211d} {ell : \u2115} {c k : Fin 6 \u2192 Fin 16 \u2192 Fin 16 \u2192 CBox} {kernel : Fin 7 \u2192 CBox} {ans atomAns : CBox} {realAns : RBox}\n  (hc : \u2200 j i v, (c j i v).Contains ((fejerWeight (16*i.val+v.val):\u2102) * tableDensity a j.val (quadraturePoint j.val (16*i.val+v.val))))\n  (hk : \u2200 j i v, (k j i v).Contains (fullFactor tr m ell (quadraturePoint j.val (16*i.val+v.val))))\n  (hker : \u2200 j, (kernel j).Contains (fullFactor tr m ell ((j.val:\u211d)/6)))\n  (hchk : cachedMomentRuleBox c k = ans) (hatom : tableAtomBox a kernel = atomAns)\n  (hreal : inflate (atomAns.add ans).re = realAns) (hm0 : 0 \u2264 m) (hm1 : m \u2264 100) :\n  realAns.Contains (fullMoment a tr m ell)\n\nProof sketch: `subst hchk hatom hreal`; obtain `cached_density_rule_contains hc hk` (rewrite to fullMomentRule by unfolding), `fullAtomBox_contains a tr hker`, then `fullMoment_contains`. Each block then reduces to `realContains := moment_certificate_contains false false density0_contains hk37_0_2_contains ha37_0_2_contains checked atomChecked realChecked (by norm_num) (by norm_num)`, with the checked/atomChecked/realChecked kernel computations unchanged.",
+      "benefit": "Removes the three containment proofs per block (about 48 near-identical proofs), makes the mathematical argument (rule box contains Gauss\u2013Fej\u00e9r rule; atom box contains atom; total contains moment up to 1e-22) visible and stated once, and localizes maintenance of the upstream lemma signatures.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/TableDensityBase.lean",
+          "declaration": "cached_density_rule_contains",
+          "excerpt": "(cachedMomentRuleBox c k).Contains\n      (\u2211 j : Fin 6, pieceRule (fun t => f j.val t*g t) j.val)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/HighMomentsBase.lean",
+          "declaration": "fullMoment_contains",
+          "excerpt": "(inflate (ab.add rb).re).Contains (fullMoment a tr m ell)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/HighMomentsBase.lean",
+          "declaration": "fullAtomBox_contains",
+          "excerpt": "(tableAtomBox a kernel).Contains (fullMomentAtom a tr m ell)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/Certificate/LowBlock37_0.lean",
+          "declaration": "hm37_1_0_2.realContains",
+          "excerpt": "exact fullMoment_contains atomContains contains (by norm_num) (by norm_num)"
+        }
+      ]
+    },
+    {
+      "declaration": "hm37_0_0_2.checked (repeated in all 16 hm37_* namespaces)",
+      "start_line": 333,
+      "end_line": 336,
+      "excerpt": "change (finSum (fun j => (finSum (fun i => chunk j i)).scale 1 6)) = ans\n  simp_rw [sums_eq]\n  decide +kernel",
+      "problem": "Every block proves `cachedMomentRuleBox c k = ans` by `change`-ing the definition into a sum of per-(j,i) `chunk` boxes (which only works by defeq of finSum over v with `chunk` defined as the same sum) and then rewriting with the block-local `sums_eq`. This restructuring of cachedMomentRuleBox into chunked form is the same reasoning in all 16 blocks, expressed through an ad-hoc `change` that depends on exact syntactic agreement with the definition at BasisIntervals.lean:1346.",
+      "proposed_change": "State once next to cachedMomentRuleBox:\n\nlemma cachedMomentRuleBox_eq_of_chunks (c k : Fin 6 \u2192 Fin 16 \u2192 Fin 16 \u2192 CBox) (s : Fin 6 \u2192 Fin 16 \u2192 CBox)\n  (h : \u2200 j i, finSum (fun v => (c j i v).mul (k j i v)) = s j i) :\n  cachedMomentRuleBox c k = finSum (fun j => (finSum (fun i => s j i)).scale 1 6)\n\nProof sketch: `unfold cachedMomentRuleBox; simp_rw [h]` (or `congr` with funext). Then in each block `checked` becomes `(cachedMomentRuleBox_eq_of_chunks _ _ sums sums_eq).trans (by decide +kernel)`-style, where `sums_eq` is stated directly in terms of the finSum over v (i.e. `chunk`). This ties the certificate to the definition through one proven lemma rather than a per-block `change`.",
+      "benefit": "Makes the link between the cached rule box and the chunked certificate a single checked lemma, so a change to cachedMomentRuleBox breaks one proof instead of 16 `change` steps, and documents the chunking.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/BasisIntervals.lean",
+          "declaration": "cachedMomentRuleBox",
+          "excerpt": "finSum fun j => (finSum (fun i => finSum (fun v => (c j i v).mul (k j i v)))).scale 1 6"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/Certificate/LowBlock37_0.lean",
+          "declaration": "hm37_1_0_2.checked",
+          "excerpt": "lemma checked : cachedMomentRuleBox density1 hk37_0_2 = ans := by\n  change (finSum (fun j => (finSum (fun i => chunk j i)).scale 1 6)) = ans"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 177734,
+    "cache_read_input_tokens": 530660,
+    "output_tokens": 6802,
+    "output_tokens_details": {
+      "thinking_tokens": 2576
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 177734,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4643,
+        "cache_read_input_tokens": 179132,
+        "cache_creation_input_tokens": 2531,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2531
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.8320379999999999,
+  "duration_ms": 51323,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T01:32:41",
+  "unit": "file",
+  "source_sha256": "a1199fe3666406e2bff11c021f64fb3f2b9b8e4a5cc7a624f7be64975a3319be",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

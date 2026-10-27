@@ -1,0 +1,114 @@
+{
+  "id": "openai-math-file-0222",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, plus the definitions in Model.lean (`deck`, `basis`, `laplacian`, `spatialPartial`, `divergence`) and the neighbouring SheetFlows files (Differential, DirectForce, Clocks, PlanarHamiltonian). I grepped the SheetFlows and MathematicalPhysics trees for existing `@[simp]` lemmas and for uses of `simp [deck]`, `simp [basis]` and the `laplacian` sum expansion. The only attribute-level simp issues I found are the two reported below. I did not report `divergence_sub`, `divergence_smul` or `divergence_sum`: they carry smoothness hypotheses, so making them simp lemmas would need side-condition discharge and I saw no concrete benefit. I cannot run Lean, so I have not checked that the proposed lemmas compile or that adding them as simp lemmas causes no clashes. In particular, I am not sure `deck_apply` would fire cleanly after `Pi.add_apply` in the existing proofs, and I did not look for a canonical-form clash elsewhere (e.g. with `Pi.single_apply`).",
+  "findings": [
+    {
+      "declaration": "laplacian_divergence_free / laplacian_mean_zero (local `hL`)",
+      "start_line": 178,
+      "end_line": 180,
+      "excerpt": "have hL : laplacian u = \u2211 j, spatialPartial (spatialPartial u j) j := by\n    funext t x\n    simp [laplacian]",
+      "problem": "`laplacian` is a bare `def` with a pointwise body, and the file needs its field-level expansion as a sum of iterated partials. That rewrite is not a named lemma. It is proved twice as an identical local `have hL`, with the same `funext t x; simp [laplacian]` proof, once in `laplacian_divergence_free` and once in `laplacian_mean_zero`. Anyone who needs `divergence_sum` or `meanZero_sum` on a Laplacian must rediscover and re-prove this equation. The only simp lemma about `laplacian` in this part of the library is `laplacian_zero`, so there is no canonical form to rewrite into.",
+      "proposed_change": "Add a named lemma next to the `laplacian` definition or in DirectForce.lean. It should state `laplacian u = \u2211 j, spatialPartial (spatialPartial u j) j` for a general `u : Field`, with proof `funext t x; simp [laplacian]`. Optionally add a pointwise version `laplacian u t x = \u2211 j, ...`. Both occurrences of `hL` then become `rw [laplacian_eq_sum]`. I would deliberately not mark it `@[simp]`: it would unfold `laplacian` everywhere and compete with `laplacian_zero`. Keep it as an explicit rewrite lemma, or as a `simp only` argument.",
+      "benefit": "This removes duplicated proof text and fixes one canonical expansion of `laplacian`. Later lemmas that reduce a Laplacian to a finite sum (divergence, mean-zero, smoothness, periodicity) can reuse it instead of re-proving it. It also avoids the `simp [laplacian]` unfold-everything pattern.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/SheetFlows/Model.lean",
+          "declaration": "laplacian",
+          "excerpt": "def laplacian (u : Field) : Field :=\n  fun t x => \u2211 j : Fin 3, spatialPartial (spatialPartial u j) j t x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/SheetFlows/DirectForce.lean",
+          "declaration": "laplacian_zero",
+          "excerpt": "@[simp] theorem laplacian_zero : laplacian (0 : Field) = 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/SheetFlows/ScheduledForce.lean",
+          "declaration": "laplacian_mean_zero",
+          "excerpt": "have hL : laplacian u = \u2211 j, spatialPartial (spatialPartial u j) j := by"
+        }
+      ]
+    },
+    {
+      "declaration": "periodic_integral_divergence_zero / face_front_eq_back_deck / wrapSpace_add_deck (unfolding `deck` and `basis` by hand)",
+      "start_line": 202,
+      "end_line": 216,
+      "excerpt": "  \u00b7 simp [deck]\n  \u00b7 simp [deck]\n\ntheorem periodic_integral_divergence_zero",
+      "problem": "The simp interface for `deck` and `basis` has no coordinate lemma. `deck` and `basis` are plain `def`s (`deck k = fun j => 10 * (k j : \u211d)` and `basis j = Pi.single j 1`), and there is no `deck_apply` or `basis_apply` for the SheetFlows versions. The file therefore unfolds the definitions: `simp [deck]` twice in `face_front_eq_back_deck`, `simp only [Pi.add_apply, wrapSpace, deck, Int.fract]` in `wrapSpace_add_deck`, and `simp only [basis] at *` in `periodic_integral_divergence_zero`. The last of these unfolds `basis` in every hypothesis and in the goal, which is a blunt, non-local rewrite. The same unfolding recurs across SheetFlows (e.g. `simp [basis]` in ShearCore.lean and Localization.lean, `simp only [Pi.add_apply, deck, ...]` in Clocks.lean). A different, unrelated `basis_apply` simp lemma exists for the planar `basis` in PlanarHamiltonian.lean, which shows the intended pattern.",
+      "proposed_change": "In Model.lean, right after the definitions, add `@[simp] theorem deck_apply (k : Fin 3 \u2192 \u2124) (j : Fin 3) : deck k j = 10 * (k j : \u211d) := rfl`. Add `@[simp] theorem basis_apply (j i : Fin 3) : basis j i = if i = j then 1 else 0` (proved by `simp [basis, Pi.single_apply]`), or alternatively `basis_self` and `basis_of_ne`. Proofs can then use `simp` without unfolding the definitions. `simp only [basis] at *` becomes unnecessary or can be replaced by a targeted rewrite. Both `deck_apply` and `basis_apply` are terminating, orientation-safe coordinate evaluations. I recommend them only because of the many repeated unfoldings, not because the identity looks simple.",
+      "benefit": "The definitions `deck` and `basis` are only ever used through their coordinates, so one canonical coordinate rewrite replaces many ad hoc `simp [deck]` and `simp [basis]` calls. Proofs stay robust if the definition bodies change. It also removes the global `simp only [basis] at *`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/SheetFlows/Model.lean",
+          "declaration": "deck",
+          "excerpt": "def deck (k : Fin 3 \u2192 \u2124) : Space := fun j => 10 * (k j : \u211d)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/SheetFlows/Model.lean",
+          "declaration": "basis",
+          "excerpt": "def basis (j : Fin 3) : Space := Pi.single j 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/SheetFlows/Clocks.lean",
+          "declaration": "(deck unfolding in Clocks)",
+          "excerpt": "simpa only [Pi.add_apply, deck, mul_comm (10 : \u211d)] using (hg j).int_mul (k j) (x j)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Flow/PlanarHamiltonian.lean",
+          "declaration": "basis_apply",
+          "excerpt": "@[simp] theorem basis_apply (i j : Fin 2) : basis i j = if j = i then 1 else 0 := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 39114,
+    "cache_read_input_tokens": 151485,
+    "output_tokens": 5525,
+    "output_tokens_details": {
+      "thinking_tokens": 1182
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 39114,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3551,
+        "cache_read_input_tokens": 42221,
+        "cache_creation_input_tokens": 906,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 906
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22687849999999998,
+  "duration_ms": 41332,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:33:03",
+  "unit": "file",
+  "source_sha256": "fb5ba01ff899ae3409ad9573615dd34e475df693b453e92253a0bbaa5ad72461",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0360",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the simp-tagged declarations: modPow\u03c0_powSplit, powSplit_powMulDesc and powMulDesc_powSplit. I compared them with the analogous simp lemmas in PowChain, SymAlg and PowSuccMod, and with their downstream uses in CoverFactor and PowSuccMod. I also compared the local monoidal helper lemmas with Mathlib's Monoidal/Category.lean. I found no rewrite cycles. The two inverse-pair simp lemmas look fine. The findings below are about arity-shape fragility and about missing simp or reassoc coverage, which shows up as long manual calc chains. I could not run Lean, so I make no claim that a simp call fails or loops. The arity-shape point is an inference from the file's own workaround. powMergeIso has no simps-style projection lemmas, but I found no uses of it elsewhere, so I did not report that.",
+  "findings": [
+    {
+      "declaration": "modPow\u03c0_powSplit",
+      "start_line": 1219,
+      "end_line": 1231,
+      "excerpt": "modPow\u03c0 A X (a + 1 + b + 1) \u226b powSplit A X a b =",
+      "problem": "The simp/reassoc lemma is stated at the arity `a + 1 + b + 1`, which is the type of `powSplit` and `powMulDesc`. The ambient concatenation and `modPow\u03c0_tensor_modPowMul` live at `a + 1 + (b + 1)`. The two are only defeq, not syntactically equal. The file's own consumer `powMulDesc_powSplit` has to restate the lemma as `hs` with an explicit `a + 1 + (b + 1)` type ascription to use it. Elsewhere the lemma is used only through `modPow\u03c0_powSplit_assoc` in a manual `refine` chain. So the simp attribute does not fire on the arity shape that composites actually produce. The RHS also expands into the concat inverse and a tensor of projections, with no companion lemma to recombine it.",
+      "proposed_change": "Keep the `a + 1 + b + 1` form, since it matches `powSplit`'s type. Add a companion lemma, either a `modPow\u03c0_cast_powSplit` form with `modPowCast` or a version at `a + 1 + (b + 1)`. Also add a `@[simp]` lemma `powSplit_comp_modPow\u03c0_tensor`: `(modPow\u03c0 A X (a+1) \u2297\u2098 modPow\u03c0 A X (b+1)) \u226b modPowMul \u2026 \u226b powSplit = modTensor\u03c0 \u2026`, or prove `modPow\u03c0_tensor_modPowMul`-style rewriting for `powSplit`. Then `powMulDesc_powSplit` can be closed by `simp` instead of the `hs` + 10-step calc.",
+      "benefit": "Users can rewrite `modPow\u03c0 \u2026 \u226b powSplit` at the arity that actually appears. The `hs` ascription, the manual `_assoc` calls in CoverFactor and the long calc proofs become unnecessary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/PowMerge.lean",
+          "declaration": "powMulDesc_powSplit",
+          "excerpt": "have hs : modPow\u03c0 A X (a + 1 + (b + 1)) \u226b powSplit A X a b ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/CoverFactor.lean",
+          "declaration": "CoverFactor use of modPow\u03c0_powSplit_assoc",
+          "excerpt": "refine (modPow\u03c0_powSplit_assoc A ((tensorLeftMod A V R).X)"
+        }
+      ]
+    },
+    {
+      "declaration": "boundBridge_legM / boundBridge_legN (re-association calc chains)",
+      "start_line": 595,
+      "end_line": 637,
+      "excerpt": "_ = w\u2081 \u226b ((w\u2082 \u226b cc) \u226b (cs \u226b (ci \u226b (\u03c0\u03c0 \u226b mT)))) :=",
+      "problem": "The two proofs introduce about 15 `set` abbreviations and then run roughly 40 calc steps that only re-associate `\u226b` via `congrArg \u2026 (Category.assoc \u2026)`. The same pattern recurs in `powSplit_powMulDesc`, `powMulDesc_powSplit` and the interior `key` lemmas. The simp interface for the intermediate identities is not used. These are the shapes that `Category.assoc` and the `reassoc` variants (`hsplit`, `sub1` and so on, already available via `reassoc_of%`) handle. Local helpers such as `whiskerRight_tensorHom` and `whiskerLeft_comp_tensorHom` have no `@[reassoc]` variants. Other files in the same directory normalise with `simp only [Category.assoc]` and then use `rw` with `_assoc` forms.",
+      "proposed_change": "Put `@[reassoc]` on the local helper lemmas (`whiskerRight_tensorHom`, `whiskerRight_tensorHom_whiskerRight`, `whiskerLeft_comp_tensorHom`). Better, reuse Mathlib's already-`reassoc` versions (see finding 3). Then normalise with `simp only [Category.assoc]` and rewrite with `hM`, `hsplit`, `sub1`, `sub2` as `rw [...]` or `reassoc_of%`, so the `set` names and the explicit calc become unnecessary.",
+      "benefit": "The proofs shrink from hundreds of lines of bookkeeping to a short rewrite chain. They are also less brittle, because they do not hard-code the exact bracketing of each composite.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/PowPairing.lean",
+          "declaration": "associativity normalisation in PowPairing",
+          "excerpt": "simp only [Category.assoc, Iso.inv_hom_id_assoc]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/PowChain.lean",
+          "declaration": "powMulDesc_act",
+          "excerpt": "simpa only [Category.assoc] using h"
+        }
+      ]
+    },
+    {
+      "declaration": "whiskerRight_tensorHom / whiskerLeft_comp_tensorHom",
+      "start_line": 77,
+      "end_line": 105,
+      "excerpt": "(P \u25c1 f) \u226b (g \u2297\u2098 h) = g \u2297\u2098 (f \u226b h)",
+      "problem": "These local lemmas restate Mathlib's `MonoidalCategory.whiskerRight_comp_tensorHom` and `MonoidalCategory.whiskerLeft_comp_tensorHom`. The local statements have identical content. `whiskerLeft_comp_tensorHom` even has the same unqualified name inside `namespace RS` with `open MonoidalCategory`. The local versions drop Mathlib's `@[reassoc]` forms, so `rw`/`simp` use inside longer composites is blocked. Because of this, the file composes them by hand with `congrArg` and `.trans` (lines 567 and 975 onwards). The shadowing name also makes unqualified `rw`/`simp` uses ambiguous.",
+      "proposed_change": "Delete the local `whiskerRight_tensorHom` and `whiskerLeft_comp_tensorHom`. Use `MonoidalCategory.whiskerRight_comp_tensorHom` and `MonoidalCategory.whiskerLeft_comp_tensorHom`, including their `_assoc` versions. Keep only `whiskerRight_tensorHom_whiskerRight` if needed, and give it `@[reassoc]`.",
+      "benefit": "There is one canonical rewrite rule per identity, with reassoc variants. Name clashes disappear, and these identities can be used in `rw`/`simp only` inside longer composites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/CategoryTheory/Monoidal/Category.lean",
+          "declaration": "MonoidalCategory.whiskerLeft_comp_tensorHom",
+          "excerpt": "(V \u25c1 g) \u226b (f \u2297\u2098 h) = f \u2297\u2098 (g \u226b h)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/CategoryTheory/Monoidal/Category.lean",
+          "declaration": "MonoidalCategory.whiskerRight_comp_tensorHom",
+          "excerpt": "(f \u25b7 V) \u226b (g \u2297\u2098 h) = (f \u226b g) \u2297\u2098 h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 56439,
+    "cache_read_input_tokens": 298378,
+    "output_tokens": 8165,
+    "output_tokens_details": {
+      "thinking_tokens": 3041
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 56439,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3194,
+        "cache_read_input_tokens": 58841,
+        "cache_creation_input_tokens": 1611,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1611
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3372718,
+  "duration_ms": 89675,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T02:03:31",
+  "unit": "file",
+  "source_sha256": "fd4b81d45425a6cc5dc3066fa5c0c9f60b8affb3884b6b65ed1f45540258cacc",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

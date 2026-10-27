@@ -1,0 +1,94 @@
+{
+  "id": "lean-pool-file-0238",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, plus RealIso.lean (realLIE, eLpNorm_realLIE, norm_realLIE) and grepped the NemytskiiLebesgue directory for uses of outR1, outR1nested and realLIE. I have not run Lean, so the proposed lemmas are untested. The two new defs, outR1 and outR1nested, have no simp or unfolding API. Their only consumers unfold them by `change` (lines 227-228) or by defeq, and they reuse the norm lemma by hand. I found no looping or competing simp rules in this file. The other simp calls (`simp_all only [ENNReal.toReal_div]` and the final `simp [...]` in memLp_nemytskii_deriv) are not simp-interface defects as far as I can tell.",
+  "findings": [
+    {
+      "declaration": "outR1 / outR1nested (definitions without unfolding simp lemmas)",
+      "start_line": 65,
+      "end_line": 72,
+      "excerpt": "(realLIE.toContinuousLinearMap.comp <| f' \u00b7 \u00b7)",
+      "problem": "outR1 and outR1nested are new `@[expose] noncomputable def`s whose bodies are anonymous-function applications. They have no `outR1_apply` or `outR1nested_apply` lemmas, so simp cannot reduce `outR1 f \u03c9 \u03be` to `realLIE (f \u03c9 \u03be)`, or `outR1nested f' \u03c9 \u03be v` to `realLIE (f' \u03c9 \u03be v)`. The only user, integralFunctional_frechet_deriv, has to restate the whole expression with `change` to expose `realLIE`, and then needs the `\u2190 map_sub` direction. Any later use of these definitions needs the same `change` workaround.",
+      "proposed_change": "Add reduction lemmas next to the defs. These are `@[simp]` and fire only on fully applied terms, so they cannot loop. One is `outR1_apply : outR1 f \u03c9 \u03be = realLIE (f \u03c9 \u03be)`. The other is `outR1nested_apply : outR1nested f' \u03c9 \u03be v = realLIE (f' \u03c9 \u03be v)`, with a companion `outR1nested f' \u03c9 \u03be = realLIE.toContinuousLinearMap.comp (f' \u03c9 \u03be)` if needed. Both can be proved by `rfl`. With them, the `change` in integralFunctional_frechet_deriv becomes `simp only [outR1_apply, outR1nested_apply, ...] at key`.",
+      "benefit": "Callers get a canonical normal form (`realLIE (\u2026)`) without `change` or unfolding definitions. The simp set can then use the existing `eLpNorm_realLIE` and `norm_realLIE`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NemytskiiLebesgue/IntegralFunctional.lean",
+          "declaration": "IsCaratheodory.integralFunctional_frechet_deriv",
+          "excerpt": "change eLpNorm (fun \u03c9 => realLIE (f \u03c9 (u \u03c9 + l \u03c9)) - realLIE (f \u03c9 (u \u03c9)) -"
+        }
+      ]
+    },
+    {
+      "declaration": "outR1nested_norm_eq",
+      "start_line": 97,
+      "end_line": 111,
+      "excerpt": "\u2016NemytskiiLebesgue.outR1nested f' \u03c9 \u03be\u2016 = \u2016f' \u03c9 \u03be\u2016",
+      "problem": "This is the canonical norm-preservation rewrite for outR1nested. It reduces the term to a simpler one, has no extra hypotheses, and cannot loop. It is not tagged `@[simp]`, and its only use is a manual `rw` inside `outR1nested_growth`. Similar facts about this transport are not simp-registered either: `norm_realLIE` and `eLpNorm_realLIE` in RealIso.lean are plain `lemma`s. The call `simp only [\u2190 map_sub, eLpNorm_realLIE, ENNReal.ofReal_one] at key` has to pass `eLpNorm_realLIE` explicitly.",
+      "proposed_change": "Mark `outR1nested_norm_eq` as `@[simp]` after adding the `outR1nested` apply lemma. Also consider `@[simp]` on `norm_realLIE` and `eLpNorm_realLIE`. Then `outR1nested_growth` could be `filter_upwards [hf'bC\u03b1] with \u03c9 h\u03c9 \u03be; simpa using h\u03c9 \u03be`. Rewriting `\u2190 map_sub` to push `realLIE` inside a difference points the wrong way for a default simp set. A forward lemma such as `eLpNorm (fun \u03c9 => outR1 f \u03c9 (u \u03c9 + l \u03c9) - outR1 f \u03c9 (u \u03c9) - outR1nested f' \u03c9 (u \u03c9) (l \u03c9)) p \u03bc = eLpNorm (fun \u03c9 => f \u03c9 (u \u03c9 + l \u03c9) - f \u03c9 (u \u03c9) - f' \u03c9 (u \u03c9) (l \u03c9)) p \u03bc` would give a stable normal form.",
+      "benefit": "Norm and eLpNorm statements about the R^1-transported integrands simplify automatically to statements about the original real-valued f and f'. That removes the need for `change` plus `simp only [\u2190 map_sub, \u2026]`, which depends on a reverse `map_sub` rewrite.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NemytskiiLebesgue/IntegralFunctional.lean",
+          "declaration": "outR1nested_growth",
+          "excerpt": "le_trans (by rw [outR1nested_norm_eq]) (h\u03c9 \u03be)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NemytskiiLebesgue/RealIso.lean",
+          "declaration": "eLpNorm_realLIE",
+          "excerpt": "eLpNorm (fun \u03c9 : \u03a9 => realLIE (u \u03c9)) p \u03bc = eLpNorm u p \u03bc"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 12240,
+    "cache_read_input_tokens": 30460,
+    "output_tokens": 3016,
+    "output_tokens_details": {
+      "thinking_tokens": 568
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12240,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2516,
+        "cache_read_input_tokens": 14933,
+        "cache_creation_input_tokens": 1320,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1320
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.082178,
+  "duration_ms": 21557,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T00:37:30",
+  "unit": "file",
+  "source_sha256": "bdf468e7928581ec5233a6292bdd5968c65281fffd7f16b997d97957db629293",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

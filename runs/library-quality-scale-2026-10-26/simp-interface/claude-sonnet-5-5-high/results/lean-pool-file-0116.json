@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0116",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read ScalingInvarianceBasic.lean, where scalingSpace, scalingTime, scalingParabolic and scalingTimeInv are defined. I read the defs of spatialPartial, timePartial and spatialSecondPartial, and the callers in ScalingInvarianceS3S4.lean. No @[simp] attribute appears in the Setting directory, and there are no simp lemmas for the scaling maps. The findings concern missing simp lemmas and the lack of a named canonical form. I did not run Lean, so the suggested lemmas are untested. I did not recommend simp attributes for the `*_zero_of_not_mem_tsupport` lemmas, because their hypothesis `z \u2209 tsupport \u03c8` is not generally dischargeable by simp.",
+  "findings": [
+    {
+      "declaration": "spatialPartial_pullback / timePartial_pullback / spatialSecondPartial_pullback (projections of scalingParabolic)",
+      "start_line": 83,
+      "end_line": 96,
+      "excerpt": "have htime : (scalingParabolic \u03bc z\u2080 z).2 = scalingTime \u03bc z\u2080.2 z.2 := by\n    rfl\n  rw [htime]",
+      "problem": "The facts `(scalingParabolic \u03bc z\u2080 z).1 = scalingSpace \u03bc z\u2080.1 z.1` and `.2 = scalingTime \u03bc z\u2080.2 z.2` have no simp or rewrite lemma. The file re-proves them by `rfl` as local `have`s five times: lines 83, 94, 139, 142, 187 and 214. Line 199 instead fully unfolds `scalingParabolic`, `parabolicTranslate` and `parabolicScale` inside `simpa`. `scalingParabolic_eq` is a function-level equation, so it does not rewrite `(scalingParabolic \u03bc z\u2080 z).1`. Unfolding the structure definitions to get at these projections is fragile and exposes implementation details.",
+      "proposed_change": "In ScalingInvarianceBasic.lean, add `@[simp] theorem scalingParabolic_fst (\u03bc z\u2080 z) : (scalingParabolic \u03bc z\u2080 z).1 = scalingSpace \u03bc z\u2080.1 z.1 := rfl` and the matching `scalingParabolic_snd` for `.2` and `scalingTime`. Optionally also add `scalingSpace_apply` and `scalingTime_apply` simp lemmas, so unfolding stays opt-in and canonical. Then replace the six local `htime`/`hspace` `have`s with `simp only [scalingParabolic_fst, scalingParabolic_snd]`. Replace the long `simpa [scalingParabolic, \u2026, parabolicTranslate, parabolicScale, h\u03bc.ne'] using h` with a short simp call using these lemmas.",
+      "benefit": "Each scaling proof gets one canonical normal form for projections of the scaling map. Duplicated boilerplate disappears, and downstream proofs no longer need to unfold `parabolicTranslate` and `parabolicScale`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceBasic.lean",
+          "declaration": "CKN.scalingParabolic_eq",
+          "excerpt": "scalingParabolic \u03bc z\u2080 =\n      fun z => (scalingSpace \u03bc z\u2080.1 z.1, scalingTime \u03bc z\u2080.2 z.2)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceTests.lean",
+          "declaration": "CKN.spatialSecondPartial_pullback",
+          "excerpt": "simpa [scalingParabolic, scalingSpace, scalingTime, parabolicTranslate,\n      parabolicScale, h\u03bc.ne'] using h"
+        }
+      ]
+    },
+    {
+      "declaration": "testSpatialDerivative / spatialPartial_pullback / timePartial_pullback (inverse-point `hpoint` facts)",
+      "start_line": 61,
+      "end_line": 63,
+      "excerpt": "have hpoint : \u03bc\u207b\u00b9 \u2022 (scalingSpace \u03bc x\u2080 x - x\u2080) = x := by\n      simp [scalingSpace, smul_smul, h\u03bc.ne']\n    rw [hpoint]",
+      "problem": "The left-inverse identities for the scaling maps are proved ad hoc as local `hpoint` facts: lines 61, 108 and 160. Each unfolds `scalingSpace` or `scalingTime` with a custom simp set. Basic.lean already has `scalingTimeInv`, `scalingTime_left_inverse` and `scalingTime_right_inverse`, but they are private. This file does not use them. It spells out `(\u03bc ^ 2)\u207b\u00b9 * (s - t\u2080)` by hand, so `scalingTimeInv` is not the normal form. There is also no spatial counterpart: lines 3\u20139 use a lambda `fun y => \u03bc\u207b\u00b9 \u2022 (y - x\u2080)` with no name. As a result, simp cannot cancel `scalingSpace`/`scalingTime` against their inverses.",
+      "proposed_change": "Introduce a named spatial inverse (e.g. `scalingSpaceInv`) next to `scalingTimeInv`. Then publicly state conditional simp lemmas: `scalingSpaceInv_scalingSpace (h\u03bc : \u03bc \u2260 0)`, and the `scalingTimeInv`/`scalingTime` analogues, which already exist privately. Mark them `@[simp]` with the hypothesis `\u03bc \u2260 0`; simp can discharge it from a `h\u03bc.ne'` hint. Restate the pullback theorems in terms of these inverses. Replace the three `hpoint` blocks with `simp [h\u03bc.ne']`.",
+      "benefit": "The three repeated `hpoint` proofs collapse into reusable simp rules, and the inverse maps get a single canonical form. Other files can then reuse the cancellation instead of unfolding the definitions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceBasic.lean",
+          "declaration": "CKN.scalingTime_left_inverse",
+          "excerpt": "scalingTimeInv \u03bc t\u2080 (scalingTime \u03bc t\u2080 s) = s"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceTests.lean",
+          "declaration": "CKN.timePartial_pullback",
+          "excerpt": "have hpoint : (\u03bc ^ 2)\u207b\u00b9 * (scalingTime \u03bc z\u2080.2 z.2 - z\u2080.2) = z.2 := by\n      simp [scalingTime, h\u03bc.ne']"
+        }
+      ]
+    },
+    {
+      "declaration": "spatialPartial_pullback, timePartial_pullback, spatialSecondPartial_pullback (anonymous inverse-map lambda in the statements)",
+      "start_line": 75,
+      "end_line": 78,
+      "excerpt": "spatialPartial (\u03c8 \u2218 (fun w =>\n      (\u03bc\u207b\u00b9 \u2022 (w.1 - z\u2080.1), (\u03bc ^ 2)\u207b\u00b9 * (w.2 - z\u2080.2)))) j\n        (scalingParabolic \u03bc z\u2080 z) =\n      \u03bc\u207b\u00b9 * spatialPartial \u03c8 j z",
+      "problem": "The rewrite rules are stated for an anonymous lambda pullback map. The same lambda is copied into each of the three theorem statements and into every caller. Callers must restate the lambda verbatim and prove the equation by `exact`, as at lines 251\u2013266 of ScalingInvarianceS3S4.lean, and `rw` or simp only matches if the lambda is syntactically identical. The unnamed lambda also means these lemmas cannot serve as simp rules in a stable form. Since the file is the scaling-derivative interface, this makes the canonical form of `spatialPartial (\u03c8 \u2218 inverse-scaling)` depend on how each caller writes the map.",
+      "proposed_change": "Name the inverse parabolic map (e.g. `scalingParabolicInv \u03bc z\u2080 : ParabolicPoint \u2192 Vec3 \u00d7 \u211d`). State the three pullback theorems with `\u03c8 \u2218 scalingParabolicInv \u03bc z\u2080`. Provide an `_apply` simp lemma and one `scalingParabolicInv_eq` lemma for the lambda form, which `s34Inverse_eq` in ScalingInvarianceS3S4.lean already does privately. The three pullback theorems could then be `simp`-usable with side conditions `0 < \u03bc` and `ContDiff`, and callers like `s34Inverse_eq` would reuse the public lemma.",
+      "benefit": "There is a single normal form for pulled-back test functions, so the three derivative rules fire uniformly. Callers stop repeating the lambda, and the private `s34Inverse_eq` duplication goes away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceS3S4.lean",
+          "declaration": "CKN.s34Inverse_eq",
+          "excerpt": "(fun z : Vec3 \u00d7 \u211d =>\n        (\u03bc\u207b\u00b9 \u2022 (z.1 - z\u2080.1), (\u03bc ^ 2)\u207b\u00b9 * (z.2 - z\u2080.2)))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceS3S4.lean",
+          "declaration": "ht in the hpoint proof (uses timePartial_pullback)",
+          "excerpt": "timePartial (fun w => (\u03c6 \u2218 (fun v : Vec3 \u00d7 \u211d =>\n          (\u03bc\u207b\u00b9 \u2022 (v.1 - z\u2080.1), (\u03bc ^ 2)\u207b\u00b9 * (v.2 - z\u2080.2)))) w i)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 37172,
+    "cache_read_input_tokens": 191706,
+    "output_tokens": 6403,
+    "output_tokens_details": {
+      "thinking_tokens": 1210
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37172,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3623,
+        "cache_read_input_tokens": 40312,
+        "cache_creation_input_tokens": 873,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 873
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2319166,
+  "duration_ms": 58366,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T23:05:47",
+  "unit": "file",
+  "source_sha256": "17b7381b4a145b97c7c9f239989348ee6f7e7a3a93487bf4cf44e429f1965f57",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

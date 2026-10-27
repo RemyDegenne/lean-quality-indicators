@@ -1,0 +1,114 @@
+{
+  "id": "openai-math-file-0306",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and compared it with Selector.lean, Gates.lean and GateCoefficients.lean in the same directory. Two repetition patterns stood out.\n\n1. The identity `monomial (edgeExponent (i,j)) r = C r * X (.inl i) * X (.inr j)` is reproved in `selectorSplit_base`, once as `hm` and again as `hx`. The same proof also appears in `edgeProduct_nested`, `coeff_graph_edges` and two places in Gates.lean (about five copies in all).\n2. The identity `allOnes (A \u2295 B) = (allOnes A).sumElim (allOnes B)` is reproved in `selectorSplit_coeff` and `permanent_block_diagonal`, and again elsewhere.\n\n`Gates.allOnes_sum` exists, but it is stated for `Gates.allOnes`, a separate definition from `Selector.allOnes`. It cannot be used directly here.\n\nBoth patterns have short proofs, so the benefit is mainly maintenance. I did not find larger duplicated reasoning. The `rename_inner` / `rename_outer` pair is structurally parallel but each is a three-line induction, so I did not report it. I could not run Lean, so the proposed lemmas are untested. The first lemma's variable and typeclass context must match what Selector.lean declares for `edgeExponent` (type variable `n`, `[Fintype n]`), which I did not fully confirm.",
+  "findings": [
+    {
+      "declaration": "selectorSplit_base",
+      "start_line": 99,
+      "end_line": 116,
+      "excerpt": "rw [C_mul_X_eq_monomial, X, monomial_mul_monomial]",
+      "problem": "Inside this one proof, `hm` (general `i j r`) is proved and then `hx` re-proves the same identity for `M i j` with an identical script instead of using `hm i j (M i j)`. The same identity is also reproved as a local `hm` in Selector.lean (`edgeProduct_nested`, `coeff_graph_edges`), in Gates.lean (lines 164, 215, 284), and in a variant in GateCoefficients.lean (`full_gate_split`). Each copy restates the single-edge monomial = C * X * X fact and its rewrite script.",
+      "proposed_change": "Add one lemma next to `edgeExponent` in Selector.lean:\n`theorem monomial_edgeExponent {n R} [CommSemiring R] (i j : n) (r : R) : monomial (edgeExponent (i,j)) r = C r * X (.inl i) * X (.inr j)`.\nProof: the existing script `rw [C_mul_X_eq_monomial, X, monomial_mul_monomial]; simp only [edgeExponent, mul_one]`.\nIn `selectorSplit_base`, replace both `hm` and `hx` with it: the `simp only [baseEdges, hm, ...]` call becomes `simp only [baseEdges, monomial_edgeExponent, ...]`, and `hx` becomes `rw [monomial_edgeExponent, map_mul, map_mul]`. The other sites change the same way. The binders must match those used for `edgeExponent` in Selector.lean.",
+      "benefit": "The identity is proved once and named. Readers no longer have to re-check five near-identical local proofs. A future change to `edgeExponent` needs one edit instead of five. This file also loses the redundant `hx` block.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/Selector.lean",
+          "declaration": "edgeProduct_nested",
+          "excerpt": "rw [C_mul_X_eq_monomial, X, monomial_mul_monomial]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/Selector.lean",
+          "declaration": "coeff_graph_edges",
+          "excerpt": "have hm (e : E) : monomial (edgeExponent (src e,dst e)) (w e) ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/Gates.lean",
+          "declaration": "splitPolynomial edge lemma (line 163)",
+          "excerpt": "have hm : monomial (edgeExponent (i,j)) a = C a * X (.inl i) * X (.inr j) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/Gates.lean",
+          "declaration": "local hm (line 282)",
+          "excerpt": "have hm (i : I) (r : R) : monomial (edgeExponent (i,i)) r ="
+        }
+      ]
+    },
+    {
+      "declaration": "selectorSplit_coeff / permanent_block_diagonal",
+      "start_line": 84,
+      "end_line": 86,
+      "excerpt": "have ho : allOnes (SelectorGateVars I h \u2295 (I \u2295 I)) =",
+      "problem": "Both `selectorSplit_coeff` (lines 84-86, `ho`, then `rw [ho, coeff_nested]`) and `permanent_block_diagonal` (lines 231-233, `hones`, then `rw [hones, coeff_nested, ...]`) prove `allOnes (X \u2295 Y) = (allOnes X).sumElim (allOnes Y)` with `ext; cases; rfl`. This is followed by the same `coeff_nested` rewrite. The same pair also occurs in Selector.lean (`row_product_permanent`, `coeff_graph_edges`) and Gates.lean (line 244). `Gates.allOnes_sum` states this fact, but for `Gates.allOnes`, which is a different definition from `Selector.allOnes`, so none of these sites can use it.",
+      "proposed_change": "In Selector.lean, next to `allOnes`, add `theorem allOnes_sum {A B : Type*} [Fintype A] [Fintype B] : allOnes (A \u2295 B) = (allOnes A).sumElim (allOnes B) := by ext v; cases v <;> rfl`, and optionally a corollary `coeff_allOnes_nested p : p.coeff (allOnes (A \u2295 B)) = ((sumRingEquiv R A B p).coeff (allOnes A)).coeff (allOnes B)` obtained by `rw [allOnes_sum, coeff_nested]`. Then `selectorSplit_coeff` uses `rw [allOnes_sum, coeff_nested]` in place of `ho` (the `SelectorGateVars` side keeps the same shape), and `permanent_block_diagonal` uses `rw [allOnes_sum, coeff_nested, ...]` in place of `hones`. Ideally `Gates.allOnes` is unified with `Selector.allOnes`, so the existing `Gates.allOnes_sum` also serves these sites.",
+      "benefit": "This removes five or more copies of the same exponent-splitting step. It makes explicit that the proofs share one 'coefficient of an all-ones monomial in a sum-indexed polynomial' reduction. Because `Gates.allOnes` and `Selector.allOnes` are two separate definitions, it also surfaces a maintenance hazard. This gain is modest, because each copy is only one line.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/GateCoefficients.lean",
+          "declaration": "Gates.allOnes_sum",
+          "excerpt": "allOnes (A \u2295 B) = (allOnes A).sumElim (allOnes B) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/Selector.lean",
+          "declaration": "row_product_permanent",
+          "excerpt": "have hones : allOnes (I \u2295 I) = (allOnes I).sumElim (allOnes I) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/AffineSelectors.lean",
+          "declaration": "permanent_block_diagonal",
+          "excerpt": "have hones : allOnes (A \u2295 B) = (allOnes A).sumElim (allOnes B) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 32314,
+    "cache_read_input_tokens": 134295,
+    "output_tokens": 6090,
+    "output_tokens_details": {
+      "thinking_tokens": 1862
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32314,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3507,
+        "cache_read_input_tokens": 35017,
+        "cache_creation_input_tokens": 1226,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1226
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2036095,
+  "duration_ms": 59065,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:30:27",
+  "unit": "file",
+  "source_sha256": "52d233c394d9713998ae742b49d9675ae33024d49a7a739e90431cf322b99bbe",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

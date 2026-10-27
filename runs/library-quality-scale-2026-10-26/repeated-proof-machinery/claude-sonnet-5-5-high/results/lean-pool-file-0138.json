@@ -1,0 +1,125 @@
+{
+  "id": "lean-pool-file-0138",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and checked the project definition of affineRemainder in QuadraticTrap/Basic.lean. I looked for existing 1D helper lemmas in the project: the Core.lean coordinateLine lemmas are for cubes, not this 1D slope identity, so they don't replace the repeated algebra. Three groups of repeated reasoning were found: the affine-remainder/slope identity, the subgradient lower bound hleft_le_p, and the secant-point construction. Rewrites are sketches and I could not compile them. Other repeated shapes (the Stieltjes wrappers, the clamp eventuallyEq lemmas and the leftLim/rightLim transfer lemmas) are short or thin wrappers, so I did not report them.",
+  "findings": [
+    {
+      "declaration": "SubgradientOn.affineRemainder_add_le_mul_rightDeriv_sub / affineRemainder_add_le_mul_leftDeriv_sub / affineRemainder_sub_le_mul_sub_rightDeriv (repeated hrem_eq)",
+      "start_line": 559,
+      "end_line": 637,
+      "excerpt": "    rw [affineRemainder, slope_def_field]\n    rw [Real.inner_apply]\n    have hden : x + h - x = h := by ring\n    field_simp [hden, hh_pos.ne']\n    ring_nf",
+      "problem": "Three theorems each reprove, as a local `hrem_eq`, that the 1D affine remainder equals `h * (slope \u2212 p)`. The proof unfolds `affineRemainder`, rewrites `slope_def_field` and `Real.inner_apply`, then runs `field_simp` and `ring_nf`. The add-side proof is copied verbatim in the first two theorems, and the minus-side proof is the third copy with a different denominator. The `rightDeriv` and `leftDeriv` forward theorems also share the entire proof apart from one extra step: the right-derivative bound `slope \u2264 leftDeriv \u2264 rightDeriv` could be taken from the left-derivative theorem plus `leftDeriv_le_rightDeriv`. Any change to the definition of `affineRemainder` or to `inner` on \u211d has to be fixed in three places.",
+      "proposed_change": "Add two private or public helper lemmas:\n`theorem affineRemainder_add_eq_mul_slope {v : \u211d \u2192 \u211d} {x p h : \u211d} (hh : h \u2260 0) : affineRemainder v x p (x + h) = h * (slope v x (x + h) - p)`\n`theorem affineRemainder_sub_eq_mul_slope {v : \u211d \u2192 \u211d} {x p h : \u211d} (hh : h \u2260 0) : affineRemainder v x p (x - h) = h * (p - slope v (x - h) x)`\nProof of each: `rw [affineRemainder, slope_def_field, Real.inner_apply]`, then `have hden : \u2026 = h := by ring`, then `field_simp [hden, hh]` and `ring_nf`, exactly the existing block. In the three theorems, replace each `have hrem_eq \u2026 rw [hrem_eq]` with `rw [affineRemainder_add_eq_mul_slope hzero]` (or the sub version). `hzero` in the `by_cases` is `\u00ac h = 0`, which is the same as `h \u2260 0`, so it can be passed directly. Then prove the right-derivative forward theorem as `(hp.affineRemainder_add_le_mul_leftDeriv_sub hv hx hxh hh).trans (mul_le_mul_of_nonneg_left (sub_le_sub_right (ConvexOn.leftDeriv_le_rightDeriv \u2026 hv hxh) p) hh)`. This removes the duplicated slope-bound branch.",
+      "benefit": "The algebraic identity is proved once with a name that says what it states. Each of the three remainder bounds shrinks to its convexity inequality. The right-derivative variant becomes a short corollary, which makes the relation between the two variants visible.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Analysis/OneDimSecondDerivative/Basic.lean",
+          "declaration": "SubgradientOn.affineRemainder_add_le_mul_leftDeriv_sub",
+          "excerpt": "    have hden : x + h - x = h := by ring\n    field_simp [hden, hh_pos.ne']\n    ring_nf"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Analysis/OneDimSecondDerivative/Basic.lean",
+          "declaration": "SubgradientOn.affineRemainder_sub_le_mul_sub_rightDeriv",
+          "excerpt": "    have hden : x - (x - h) = h := by ring\n    field_simp [hden, hh_pos.ne']\n    ring_nf"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Analysis/QuadraticTrap/Basic.lean",
+          "declaration": "affineRemainder",
+          "excerpt": "u y - (u x + inner \u211d p (y - x))"
+        }
+      ]
+    },
+    {
+      "declaration": "SubgradientOn.affineRemainder_pm_le_mul_rightDeriv_sub and SubgradientOn.affineRemainder_pm_le_mul_leftDeriv_sub_rightDeriv (repeated hleft_le_p)",
+      "start_line": 655,
+      "end_line": 668,
+      "excerpt": "  have hleft_le_p : rightDeriv v (x - h) \u2264 p := by\n    have hrd_le_slope :\n        rightDeriv v (x - h) \u2264 slope v (x - h) x :=",
+      "problem": "The two `pm` theorems contain the same 14-line proof that `rightDeriv v (x - h) \u2264 p` for a subgradient `p` at `x`. It chains `rightDeriv_le_slope`, then `slope_le_leftDeriv`, then `SubgradientOn.leftDeriv_le_of_convex`. The block at lines 694\u2013707 is a character-for-character copy of the block at lines 655\u2013668. Together with the `p \u2264 \u2026Deriv (x + h)` blocks, this makes the two theorems differ only in the right-endpoint derivative used.",
+      "proposed_change": "Extract `theorem SubgradientOn.rightDeriv_sub_le {S : Set \u211d} {v : \u211d \u2192 \u211d} {x p h : \u211d} (hp : SubgradientOn S v x p) (hv : ConvexOn \u211d S v) (hx : x \u2208 interior S) (hxmh : x - h \u2208 interior S) (hh : 0 < h) : rightDeriv v (x - h) \u2264 p`. The proof is the existing body of `hleft_le_p`: `(rightDeriv_le_slope \u2026).trans (slope_le_leftDeriv \u2026) |>.trans (leftDeriv_le_of_convex \u2026)`, with `hh` used for the two `by linarith` side goals. In both `pm` theorems, replace the `have hleft_le_p \u2026 ` block (lines 655\u2013668 and 694\u2013707) with `have hleft_le_p := hp.rightDeriv_sub_le hv hx hxmh hh_pos`. Optionally add the symmetric `le_leftDeriv_add` lemma for the `hp_le_left` block (lines 708\u2013722) so the two derivative-comparison facts are named and reusable.",
+      "benefit": "The pm theorems then read as short assemblies of the one-sided bounds and the remainder estimates. The key fact that a subgradient lies above the right derivative at the left endpoint becomes a named lemma that downstream proofs can reuse. Maintenance is done in one place instead of two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Analysis/OneDimSecondDerivative/Basic.lean",
+          "declaration": "SubgradientOn.affineRemainder_pm_le_mul_leftDeriv_sub_rightDeriv",
+          "excerpt": "  have hleft_le_p : rightDeriv v (x - h) \u2264 p := by\n    have hrd_le_slope :\n        rightDeriv v (x - h) \u2264 slope v (x - h) x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Analysis/OneDimSecondDerivative/Basic.lean",
+          "declaration": "SubgradientOn.affineRemainder_pm_le_mul_rightDeriv_sub",
+          "excerpt": "    exact (hrd_le_slope.trans hslope_le_left).trans\n      (SubgradientOn.leftDeriv_le_of_convex"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_right_secant_two_le_add_of_pairwise_sub_le and exists_neg_add_le_left_secant_neg_two_of_pairwise_sub_le",
+      "start_line": 443,
+      "end_line": 513,
+      "excerpt": "    let d : \u211d := osc / (osc + \u03b5)\n    have hden_pos : 0 < osc + \u03b5 := add_pos hosc_pos h\u03b5\n    have hd_pos : 0 < d := div_pos hosc_pos hden_pos\n    have hd_lt_one : d < 1 := by\n      rw [div_lt_one hden_pos]\n      linarith",
+      "problem": "Both lemmas use the same construction: split on `osc = 0`, and in the positive case set `d = osc/(osc+\u03b5)` and prove `0 < d`, `d < 1` and `(osc+\u03b5)*d = osc`. They then build the point at distance `d` from the endpoint, put it in the domain, and use the one-sided bound `v y \u2212 v x \u2264 osc` to bound the secant slope. The five-line `d` block (lines 444\u2013449 and 490\u2013495) is copied verbatim, as are the `hden_pos` and `hd_pos` steps and the `field_simp` proof of `hmul_eq`. The `osc = 0` branches are two more ad hoc copies (at `\u00b15/2`). The case split exists only because `d = 0` would not lie in the open interval.",
+      "proposed_change": "Add a shared lemma `lemma exists_secant_step_of_nonneg {osc \u03b5 : \u211d} (hosc : 0 \u2264 osc) (h\u03b5 : 0 < \u03b5) : \u2203 d : \u211d, 0 < d \u2227 d < 1 \u2227 osc \u2264 (osc + \u03b5) * d`. Proof sketch: take `d = (osc/(osc+\u03b5) + 1)/2`. Then `0 < d` and `d < 1` follow from `0 \u2264 osc/(osc+\u03b5) < 1`, using `div_lt_one` and `div_nonneg`. The inequality `osc \u2264 (osc+\u03b5)*d` follows from `osc/(osc+\u03b5)*(osc+\u03b5) = osc` and `1 \u2264 \u2026` after `field_simp`. The `osc = 0` case needs no special treatment. Rewrite the forward lemma: obtain `d`, set `y = 2 + d`, get `hdiff : v y \u2212 v 2 \u2264 osc` from `hbound`, and conclude with `rw [slope_def_field]; exact (div_le_iff\u2080 (by linarith)).mpr (by nlinarith/linarith [hdiff, hd])`, where the goal is `v y \u2212 v 2 \u2264 (osc+\u03b5)*(y\u22122)`. Rewrite the backward lemma the same way with `y = \u22122 \u2212 d`, using `le_div_iff\u2080` and the goal `(\u2212osc\u2212\u03b5)*(\u22122\u2212y) \u2264 v(\u22122) \u2212 v y`. Both uses have the same hypotheses `hosc`, `h\u03b5`, `hbound` and need no new imports.",
+      "benefit": "This removes two special-case branches (the `osc = 0` cases), the duplicated `d` bookkeeping and the two `field_simp` equalities. It leaves one small lemma that states the quantitative content: a step in (0,1) turns an oscillation bound into a slope bound. Each endpoint lemma shrinks to about a dozen lines.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Analysis/OneDimSecondDerivative/Basic.lean",
+          "declaration": "exists_neg_add_le_left_secant_neg_two_of_pairwise_sub_le",
+          "excerpt": "    let d : \u211d := osc / (osc + \u03b5)\n    have hden_pos : 0 < osc + \u03b5 := add_pos hosc_pos h\u03b5\n    have hd_pos : 0 < d := div_pos hosc_pos hden_pos\n    have hd_lt_one : d < 1 := by\n      rw [div_lt_one hden_pos]\n      linarith"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Analysis/OneDimSecondDerivative/Basic.lean",
+          "declaration": "exists_right_secant_two_le_add_of_pairwise_sub_le",
+          "excerpt": "    have hmul_eq : (osc + \u03b5) * (y - 2) = osc := by\n      dsimp [y, d]\n      field_simp [hden_pos.ne']\n      ring"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 40006,
+    "cache_read_input_tokens": 136950,
+    "output_tokens": 8367,
+    "output_tokens_details": {
+      "thinking_tokens": 2303
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40006,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4836,
+        "cache_read_input_tokens": 41694,
+        "cache_creation_input_tokens": 2241,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2241
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.257409,
+  "duration_ms": 65205,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:10:13",
+  "unit": "file",
+  "source_sha256": "8b206969d3f61859bc4ed5fca327318f6d4627e67147b0e3a06937220f32fb2a",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

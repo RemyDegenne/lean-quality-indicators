@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0119",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, the upstream DualNumberKernels.lean (glReadback, glKerEquiv, slToGL, glKerMap and their simp lemmas), the test client DualNumberKernelAdjointClient.lean, and the Mathlib lemmas Matrix.coe_units_inv, MulAut.conjNormal_apply, Matrix.lieConj_apply and trace_units_conj. I could not run Lean. The claim that slAdjoint_val's right side is not in simp-normal form rests on reading Matrix.coe_units_inv as @[simp] and on the statement's `(g\u207b\u00b9 : GL)` coercion matching its left side. The proposed simp attributes on the conjugation lemmas are untested. In particular I did not check whether Matrix.GeneralLinearGroup.map_inv or other simp lemmas would fire on their right sides. Beyond the two findings below, I found no simp problems. The private sndMatrix lemmas are only used internally and are fine.",
+  "findings": [
+    {
+      "declaration": "slAdjoint_val",
+      "start_line": 48,
+      "end_line": 52,
+      "excerpt": "(g : Matrix n n R) * X.1 * (g\u207b\u00b9 : Matrix.GeneralLinearGroup n R)",
+      "problem": "The lemma is tagged @[simp], but its right side contains `((g\u207b\u00b9 : GL) : Matrix n n R)`. Mathlib's `Matrix.coe_units_inv` is `@[simp, norm_cast]` and rewrites exactly this to `(\u2191g : Matrix n n R)\u207b\u00b9`, the nonsingular inverse. So the right side is probably not in simp-normal form. After one simp step the result would be rewritten again to a different shape from the one the statement shows. The proof also passes `Matrix.coe_units_inv` to simp explicitly, which is redundant if it is already a simp lemma. The statement and the simp normal form disagree. The units-style form is what `glReadback_conj` and the client's `change ... g.mul_inv` rely on, and the client only uses `rw [slAdjoint_val]` followed by `change`, never simp. Users who call `simp` get the nonsingular-inverse form, which then does not match those units-style lemmas.",
+      "proposed_change": "Choose one interface. (a) If the lemma is only meant for `rw`, drop `@[simp]` and keep the units-coe statement. (b) If simp should expand `slAdjoint`, add a companion simp lemma stated in the normal form, `(slAdjoint g X).1 = (g : Matrix n n R) * X.1 * (g : Matrix n n R)\u207b\u00b9`, and keep the units-coe version as a plain `slAdjoint_val'` for the `Units.mul_inv` / `glReadback_conj` interface. Drop the redundant `Matrix.coe_units_inv` argument from the proof if it is already simp.",
+      "benefit": "The simp set then has a single stable normal form. Users cannot get `\u2191g * \u2191X * \u2191g\u207b\u00b9` in one place and `(\u2191g)\u207b\u00b9` in another from the same expression, and the lemma's stated form matches what simp produces.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/LinearAlgebra/Matrix/NonsingularInverse.lean",
+          "declaration": "Matrix.coe_units_inv",
+          "excerpt": "theorem coe_units_inv (A : (Matrix n n \u03b1)\u02e3) : \u2191A\u207b\u00b9 = (A\u207b\u00b9 : Matrix n n \u03b1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/tests/GeneralLinearGroupsTests/DualNumberKernelAdjointClient.lean",
+          "declaration": "GeneralLinearGroupsTests.DualNumberKernelAdjoint (example for characteristicTwoIdentity)",
+          "excerpt": "rw [slAdjoint_val]"
+        }
+      ]
+    },
+    {
+      "declaration": "glReadback_conj (with slToGL_conj, glKerMap_conj, glKerEquiv_conj, slReadback_conj)",
+      "start_line": 136,
+      "end_line": 144,
+      "excerpt": "theorem glReadback_conj (h : Matrix.GeneralLinearGroup n (DualNumber R))",
+      "problem": "The file proves several conjugation-compatibility identities, but none is tagged simp. `slToGL_conj` and `glKerMap_conj` are naturality (push-through) lemmas of the same kind as `map_mul`. `glReadback_conj` and `slReadback_conj` express readback of a conjugate through readback of the original. `glKerEquiv_conj` is a normal-form lemma for the conjugate of a lifted element. All five have a left side headed by `MulAut.conjNormal`, and the right side is built from smaller pieces. `MulAut.conjNormal_apply` only fires on the coerced `\u2191(conjNormal g h)`, so it does not compete. The client file always applies them by `rw`, then needs a further `simp` step, for example `rw [glReadback_conj, hreduce]` then `simp`, and `rw [glReadback_conj, variableShear_reduce, glKerEquiv_readback]`. Because `glKerEquiv_readback` and `glReadback_natural` are already simp, simp could close such goals if the conjugation lemmas were registered.",
+      "proposed_change": "Tag `slToGL_conj` and `glKerMap_conj` `@[simp]` (hom-naturality, as for `map_mul`), and consider the same for `glReadback_conj`, `slReadback_conj` and `glKerEquiv_conj`. These right sides still contain `\u2191(\u2026)\u207b\u00b9` coercions, so first fix the unit-inverse normal form as in the previous finding, or state them with `(\u2191(glReduce R n h))\u207b\u00b9`. Then `rw [glReadback_conj, hreduce]; simp` in the client reduces to `simp [hreduce]`.",
+      "benefit": "The conjugation story composes with the existing simp lemmas `glKerEquiv_readback`, `glReadback_natural`, `slReadback_natural` and `glKerMap_comp`. Downstream users such as DualNumberMixedCommutator, which uses `rw [glKerEquiv_conj, \u2026]`, can rewrite with simp instead of manually ordering `rw` calls, and the file's `change \u2026 ; simp` proofs can be shortened.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/tests/GeneralLinearGroupsTests/DualNumberKernelAdjointClient.lean",
+          "declaration": "example (infinitesimal readback)",
+          "excerpt": "rw [glReadback_conj, hreduce]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/DualNumberKernels.lean",
+          "declaration": "glKerEquiv_readback",
+          "excerpt": "@[simp] theorem glKerEquiv_readback (X : Multiplicative (Matrix n n R)) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/GroupTheory/GroupAction/ConjAct.lean",
+          "declaration": "MulAut.conjNormal_apply",
+          "excerpt": "\u2191(MulAut.conjNormal g h) = g * h * g\u207b\u00b9"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 25738,
+    "cache_read_input_tokens": 92022,
+    "output_tokens": 7294,
+    "output_tokens_details": {
+      "thinking_tokens": 3256
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25738,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4147,
+        "cache_read_input_tokens": 23991,
+        "cache_creation_input_tokens": 5760,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5760
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18511819999999998,
+  "duration_ms": 58483,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:06:22",
+  "unit": "file",
+  "source_sha256": "2f68c5bb14349c7d1b6c4db1106ba04c0c55a5fe73302d261e0da652d30d43fe",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

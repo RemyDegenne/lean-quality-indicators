@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0113",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "partial",
+  "review_notes": "I read the whole file but only checked candidates against Mathlib for the rubric (competing concepts). I confirmed two: `S3GlueKit.comapEquiv` against `RingEquiv.restrict`, and `C3GlueKit.comapIncl` against `RingHom.restrict`. I confirmed that `ValuationSubring` has a `SubringClass` instance, so both Mathlib definitions apply. I also considered `C3Kit.subalgAction` and `C3Kit.inclAlgebra`, which build on `Subalgebra.inclusion` and a hypothesis-dependent action. I left them out: Mathlib's `Subgroup.mulSemiringAction` acts on the ambient ring, not on a G-stable subalgebra, and `inclAlgebra` is a deliberate non-instance wrapper. The `BC`, `Scal`, `Ord` and `Conj` kits are built on the repository's own `DrinfeldCurve` definitions, with no Mathlib counterpart. The remaining `theorem` declarations are standalone lemmas, which the rubric excludes. The huge `solution` theorem is a statement, not a concept. I did not read the other files that use these declarations, beyond a count of references; the count shows wide reuse (about 630 mentions across 37 files). Both findings are in one `C3GlueKit`/`S3GlueKit` helper pattern that appears to be copied between sibling files.",
+  "findings": [
+    {
+      "declaration": "P2MW...S3GlueKit.comapEquiv",
+      "start_line": 739,
+      "end_line": 745,
+      "excerpt": "def comapEquiv (e : K \u2243+* L) (V : ValuationSubring L) : (V.comap (e : K \u2192+* L)) \u2243+* V where\n  toFun x := \u27e8e x, x.2\u27e9",
+      "problem": "`comapEquiv` is a hand-built ring equivalence between `V.comap e` and `V`, and it exists only so the code can use the descended equivalence. Mathlib already has `RingEquiv.restrict`, which gives an equivalence `s' \u2243+* s` for subring-like sets whenever `x \u2208 s' \u2194 e x \u2208 s`. `V.comap e` and `V` satisfy that condition by `ValuationSubring.mem_comap`, i.e. by `Iff.rfl`. Both are `SubringClass` objects, because `ValuationSubring K` has a `SubringClass` instance. The file therefore carries its own forward/inverse maps, the `left_inv`/`right_inv`/`map_mul'`/`map_add'` proofs and the `coe_comapEquiv` simp lemma for something Mathlib already provides.",
+      "proposed_change": "Define `comapEquiv e V := e.restrict (V.comap (e : K \u2192+* L)) V (fun _ => Iff.rfl)`, or drop the definition and use that term directly. Keep `coe_comapEquiv` and `coe_comapEquiv_symm` as thin lemmas, derived from `RingEquiv.restrict_apply` (the `@[simps!]` lemma on `RingEquiv.restrict`) or proved by `rfl`. The downstream lemmas `isDiscreteValuationRing_comap`, `mem_maximalIdeal_comap_iff` and `maximalIdeal_comap_eq_span` can stay unchanged, because they refer to the equivalence only through `comapEquiv`.",
+      "benefit": "This removes a duplicate equivalence and its proofs. The result also composes with Mathlib's `RingEquiv.restrict` simp set and lemmas, with no conversions needed. The sibling files that copy this helper could share the one definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Ring/Subring/Basic.lean",
+          "declaration": "RingEquiv.restrict",
+          "excerpt": "A ring isomorphism `e : R \u2243+* S` descends to subrings `s' \u2243+* s` provided\n`x \u2208 s' \u2194 e x \u2208 s`."
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/Valuation/ValuationSubring.lean",
+          "declaration": "ValuationSubring.instSubringClass",
+          "excerpt": "instance : SubringClass (ValuationSubring K) K where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/Valuation/ValuationSubring.lean",
+          "declaration": "ValuationSubring.mem_comap",
+          "excerpt": "theorem mem_comap {A : ValuationSubring L} {f : K \u2192+* L} {x : K} : x \u2208 A.comap f \u2194 f x \u2208 A"
+        }
+      ]
+    },
+    {
+      "declaration": "P2MW...C3GlueKit.comapIncl",
+      "start_line": 160,
+      "end_line": 166,
+      "excerpt": "def comapIncl (A : ValuationSubring L) : \u21a5(A.comap (algebraMap K L)) \u2192+* \u21a5A where\n  toFun a := \u27e8algebraMap K L a, a.2\u27e9",
+      "problem": "`comapIncl` is the ring homomorphism from the preimage subring `A.comap f` to `A`, induced by `f = algebraMap K L`. Mathlib defines this as `RingHom.restrict f s' s h`, whose docstring is \"The ring homomorphism from the preimage of `s` to `s`\", for any `SubsemiringClass`. `RingHom.restrict` supplies `coe_restrict_apply` and `comp_restrict`. The file re-proves `map_one'`, `map_mul'`, `map_zero'` and `map_add'` by hand and adds its own coercion lemma `coe_comapIncl`.",
+      "proposed_change": "Define `comapIncl A := (algebraMap K L).restrict (A.comap (algebraMap K L)) A (fun _ h => h)`. Keep `isLocalHom_comapIncl` and `coe_comapIncl`, the latter provable by `rfl` or from `RingHom.coe_restrict_apply`. The local-hom instance, which is the substantive part, is unaffected by the change.",
+      "benefit": "This removes a duplicated structure-field boilerplate and ties the map to Mathlib's restriction API. `ResidueField.map (comapIncl A)` in `exists_residueField_equiv` then works with the standard `RingHom.restrict` lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Ring/Subsemiring/Basic.lean",
+          "declaration": "RingHom.restrict",
+          "excerpt": "def restrict (f : R \u2192+* S) (s' : \u03c3R) (s : \u03c3S) (h : \u2200 x \u2208 s', f x \u2208 s) : s' \u2192+* s :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Ring/Subsemiring/Basic.lean",
+          "declaration": "RingHom.coe_restrict_apply",
+          "excerpt": "(f.restrict s' s h x : S) = f x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 109822,
+    "cache_read_input_tokens": 539565,
+    "output_tokens": 7450,
+    "output_tokens_details": {
+      "thinking_tokens": 2938
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 109822,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2636,
+        "cache_read_input_tokens": 113451,
+        "cache_creation_input_tokens": 452,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 452
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5677685,
+  "duration_ms": 60254,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-26T23:05:08",
+  "unit": "file",
+  "source_sha256": "896526b861ded9dc25c9a34c2cdbbeda04e4dc840049c6d8eb9233d334c2ed9a",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

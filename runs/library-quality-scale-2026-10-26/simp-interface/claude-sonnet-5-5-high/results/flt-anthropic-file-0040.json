@@ -1,0 +1,130 @@
+{
+  "id": "flt-anthropic-file-0040",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped for every simp attribute and every `simp`/`rw` use of the bridge lemmas. I also read the core `show ... from` elaborator to see what term it produces. Simp use in this file is almost entirely `simp only [...]`. The `@[scoped simp]` lemmas (`fn\u2081_*`, `ofFun_toFun'`, `fstHom_app`, `sndHom_app`, `mulFrameHom_app`, `subPresheaf_map_apply_val`) are never fired by a plain `simp` here. Their downstream effect in other files is uncertain. The findings are interface-quality concerns, not observed simplifier failures. I did not run Lean, so I make no claim about loops or failures. I found no competing rules, no rewrite loops and no wrong-direction rules.",
+  "findings": [
+    {
+      "declaration": "fn\u2081_zero, fn\u2081_add, fn\u2081_smul, fn\u2081_map (and the fn\u2082 analogues); ofFun_toFun'",
+      "start_line": 287,
+      "end_line": 318,
+      "excerpt": "@[scoped simp] lemma fn\u2081_add (W : (XT).Opens) (f g : \u0393(P\u00b9, W)) : fn\u2081 W (f + g) = fn\u2081 W f + fn\u2081 W g := rfl",
+      "problem": "The scoped simp set for the identity-cast bridge `fn\u2081`/`fn\u2082` is only partly tagged. The simp set contains `fn\u2081_ofFn\u2081`, `fn\u2081_zero` and `fn\u2081_add`. The equally rfl, equally push-inward lemmas `fn\u2081_smul` and `fn\u2081_map` have no simp attribute. After `simp` pushes `fn\u2081` through `+`, it stalls at `r \u2022 f` and at restriction maps. The file works around this by hand. `nodeFamily_zero` uses `rw [fn\u2081_zero, fn\u2082_zero, map_zero, map_zero, mul_zero]`. `nodeFamily_add` uses `rw [fn\u2081_add, fn\u2082_add, map_add, map_add, mul_add, ...]`. `nodeFamily_smul` uses `rw [fn\u2081_smul, fn\u2082_smul, ...]`. The simp attributes on the other lemmas are therefore not used. Round-trip lemmas are also one-sided. `ofFun_toFun'` is simp and `fn\u2081_ofFn\u2081` is simp, but there is no `toFun'_ofFun` or `ofFn\u2081_fn\u2081`. `conductor` relies on defeq in `exact congrArg (toFun' W) e` to get back from `ofFun W r = ofFun W r'` to `r = r'`.",
+      "proposed_change": "Make the family uniform. Either tag `fn\u2081_smul`, `fn\u2082_smul`, `fn\u2081_map`, `fn\u2082_map` as `@[scoped simp]` too, so simp pushes `fn` to `(i\u2081T).app W r * fn\u2081 W f` and to the restriction map on `C\u2081T`. Or drop the simp attribute from the zero/add lemmas so the interface is not misleadingly partial. Add the missing `toFun'_ofFun` (rfl, scoped simp) next to `ofFun_toFun'`. Then `simp` could replace the explicit `rw` chains and the final `congrArg (toFun' W) e`.",
+      "benefit": "A single canonical normal form (`fn` pushed to atoms) lets `simp` close `NodeCondition` goals about `fn\u2081 W (\u2026)` directly. The proofs in `nodeFamily_*` and `conductor` no longer need hand-ordered `rw` lists. Both round-trip directions for the cast pairs are covered.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_TwoGluedProjectiveLines_exists_isInvertible_isNodeUnitModule.lean",
+          "declaration": "nodeFamily_smul",
+          "excerpt": "rw [fn\u2081_smul, fn\u2082_smul, map_mul, map_mul, hp', appLE_fst_app_eq_appLE_snd_app h\u03bd i W r]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_TwoGluedProjectiveLines_exists_isInvertible_isNodeUnitModule.lean",
+          "declaration": "nodeFamily_add",
+          "excerpt": "rw [fn\u2081_add, fn\u2082_add, map_add, map_add, mul_add, hp', hq']"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_TwoGluedProjectiveLines_exists_isInvertible_isNodeUnitModule.lean",
+          "declaration": "conductor",
+          "excerpt": "exact congrArg (toFun' W) e"
+        }
+      ]
+    },
+    {
+      "declaration": "fstHom_app, sndHom_app",
+      "start_line": 145,
+      "end_line": 149,
+      "excerpt": "(fstHom hS).app W m = (show subMod hS W from m).1.1 := rfl",
+      "problem": "These scoped simp lemmas state their right-hand side with `show subMod hS W from m`. The core `show \u2026 from` elaborator builds a `have`-wrapped term to force the type syntactically. The simp-lemma RHS therefore contains a `have this : subMod hS W := m; this` redex instead of a plain `m.1.1`. A simp rule's RHS is the intended normal form, and it should not carry such a redex. It also shows that the lemma is stated on a type (`\u0393(subModule hS, W)`) whose projections are not directly available. The companion `mem_subMod` (line 65, `p \u2208 subMod hS W \u2194 p \u2208 S W := Iff.rfl`) is not simp. `subMod` is a plain `def`, so simp cannot see through it. This is why `exists_injective_and_range_eq` writes `(show subMod hS W from m).2` and `\u27e8p, hp\u27e9` by hand.",
+      "proposed_change": "State the lemmas with a binder `(m : subMod hS W)`, so the RHS is the clean `m.1.1` / `m.1.2`. Tag `mem_subMod` with `@[scoped simp]`, or keep it as a separately named rw lemma. The `show` ascriptions in `exists_injective_and_range_eq` would then be unnecessary.",
+      "benefit": "The simp normal form is a plain projection, with no `have` redex. Membership in `subMod` can be unfolded by simp in the same scoped set. Proofs about `subModule` no longer need `show` casts.",
+      "evidence": [
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.33.1/src/lean/Lean/Elab/BuiltinNotation.lean",
+          "declaration": "elabShow",
+          "excerpt": "For the `show` notation we use `have` to ensure the type"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_TwoGluedProjectiveLines_exists_isInvertible_isNodeUnitModule.lean",
+          "declaration": "mem_subMod",
+          "excerpt": "p \u2208 subMod hS W \u2194 p \u2208 S W := Iff.rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_TwoGluedProjectiveLines_exists_isInvertible_isNodeUnitModule.lean",
+          "declaration": "exists_injective_and_range_eq",
+          "excerpt": "exact (show subMod hS W from m).2"
+        }
+      ]
+    },
+    {
+      "declaration": "mulFrameHom_app (with mulFrame, mulFrame_add, mulFrame_mul)",
+      "start_line": 219,
+      "end_line": 220,
+      "excerpt": "@[scoped simp] lemma mulFrameHom_app (W : U.toScheme.Opens) (g : \u0393(X, U.\u03b9 ''\u1d41 W)) :",
+      "problem": "`mulFrameHom_app` rewrites `(mulFrameHom m\u2080).app W g` to `mulFrame m\u2080 W g`. `mulFrame` is an opaque `def` whose body is `g \u2022 resFrame m\u2080 W`. Its algebra lemmas `mulFrame_add`, `mulFrame_mul` and `mulFrame_map` have no simp attribute and are only used via `rw`/`erw`. The simp lemma therefore leads simp to a term it cannot simplify further. In particular, `mulFrameHom_app` followed by `g + g'`, `r * g` or `0` stays stuck at `mulFrame`. The scoped simp lemma has no companion rules and is not exercised in the file; `isIso_mulFrameHom` goes through `bijective_mulFrame`.",
+      "proposed_change": "Either add `mulFrame_add` and a `mulFrame_zero` as simp lemmas, so the `mulFrame` normal form is a complete interface. Or state `mulFrameHom_app` with the unfolded form `g \u2022 resFrame m\u2080 W` and tag that, so simp can use the existing `add_smul`, `mul_smul` and `zero_smul`. Otherwise drop the attribute.",
+      "benefit": "Either option gives a rewrite target that simp can keep normalizing, instead of a dead end at the `mulFrame` definition. Users of `mulFrameHom` no longer need manual `unfold mulFrame`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_TwoGluedProjectiveLines_exists_isInvertible_isNodeUnitModule.lean",
+          "declaration": "mulFrame",
+          "excerpt": "g \u2022 resFrame m\u2080 W"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_TwoGluedProjectiveLines_exists_isInvertible_isNodeUnitModule.lean",
+          "declaration": "mulFrame_map",
+          "excerpt": "unfold mulFrame"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 46151,
+    "cache_read_input_tokens": 172303,
+    "output_tokens": 9773,
+    "output_tokens_details": {
+      "thinking_tokens": 5135
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 46151,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3640,
+        "cache_read_input_tokens": 47866,
+        "cache_creation_input_tokens": 2298,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2298
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2995843,
+  "duration_ms": 73024,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:44",
+  "unit": "file",
+  "source_sha256": "e76fef4214c8f5c2fdf97e27aa135eaaefd2bc6f2abf19294c2f643d66effbd4",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

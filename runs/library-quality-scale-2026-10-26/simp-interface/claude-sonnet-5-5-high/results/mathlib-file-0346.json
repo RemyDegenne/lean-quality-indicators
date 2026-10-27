@@ -1,0 +1,115 @@
+{
+  "id": "mathlib-file-0346",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped Mathlib for uses of the monad-law lemmas and LiftRelO/BisimO. I did not run Lean, so the simp behaviour described is reasoned from the definitions, not observed. `Equiv` is a plain `def` (not reducible), so simp cannot see through it. That drives findings 1 and 2. Finding 3 is lower confidence. The same `nolint simpNF` pattern appears in Seq/Defs and Seq/Computation, which suggests it is a convention.",
+  "findings": [
+    {
+      "declaration": "join_ret, join_map_ret, join_append, bind_ret, ret_bind, join_join, bind_assoc_comp, bind_assoc",
+      "start_line": 466,
+      "end_line": 575,
+      "excerpt": "theorem join_ret (s : WSeq \u03b1) : join (ret s) ~\u02b7 s := by simpa [ret] using think_equiv _",
+      "problem": "All eight lemmas are tagged `@[simp]`, but each states `_ ~\u02b7 _`, which is `LiftRel Eq`, a non-`Eq`, non-`Iff` relation behind a non-reducible `def`. Simp turns such a lemma into `(lhs ~\u02b7 rhs) = True`. It can then only close a goal that syntactically matches the lemma. It cannot rewrite `join (ret s)` to `s` inside a larger term, and there is no `@[congr]` support to rewrite under `~\u02b7`. The attribute therefore suggests a normal form (`bind (ret a) f \u21a6 f a`, `bind (bind s f) g \u21a6 bind s \u2026`) that simp does not apply. Searching Mathlib shows no use of the WSeq versions, so the attributes buy nothing. The two associativity lemmas also have identical LHS and compete as simp rules. `bind_assoc_comp` has an unusual RHS, `(fun y => bind y g) \u2218 f`, which is not a sensible normal form.",
+      "proposed_change": "Remove `@[simp]` from these eight lemmas and keep them as ordinary `~\u02b7` lemmas. Alternatively, drop it from at least `bind_assoc_comp`, which is redundant with `bind_assoc`. If simp-normalisation is wanted, add `@[congr]`/`Setoid`-style support, or state Eq-valued versions (for example on a quotient). Otherwise the `~\u02b7` lemmas should be applied explicitly with `rw`/`exact`/`trans`.",
+      "benefit": "The simp set no longer claims rewrites that cannot fire, and the two competing `bind_assoc` forms are gone. Readers are not misled about which monad-law normal form simp uses.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/WSeq/Relation.lean",
+          "declaration": "Stream'.WSeq.Equiv",
+          "excerpt": "def Equiv : WSeq \u03b1 \u2192 WSeq \u03b1 \u2192 Prop :=\n  LiftRel Eq"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/WSeq/Relation.lean",
+          "declaration": "Stream'.WSeq.bind_assoc",
+          "excerpt": "bind (bind s f) g ~\u02b7 bind s fun x : \u03b1 => bind (f x) g := by\n  exact bind_assoc_comp s f g"
+        }
+      ]
+    },
+    {
+      "declaration": "cons_congr / think_equiv / think_congr (missing simp lemmas for Equiv)",
+      "start_line": 232,
+      "end_line": 238,
+      "excerpt": "unfold Equiv; simpa using! h",
+      "problem": "`liftRel_nil`, `liftRel_cons`, `liftRel_think_left` and `liftRel_think_right` are simp lemmas for `LiftRel R`. They do not fire on `~\u02b7` goals, because `Equiv` is an opaque `def` over `LiftRel Eq`. As a result, each Equiv-level consequence (`cons_congr`, `think_equiv`, `think_congr`) must first `unfold Equiv` and then use `simpa using!`. The Equiv layer has no canonical simp lemmas of its own, e.g. `cons a s ~\u02b7 cons b t \u2194 a = b \u2227 s ~\u02b7 t` or `think s ~\u02b7 t \u2194 s ~\u02b7 t`. Later proofs (`flatten_equiv`, `dropn_congr`) fall back on ad hoc `simp [think_equiv]`/`simp [*, tail_congr, drop]`.",
+      "proposed_change": "Add Equiv-level simp lemmas: an `equiv_cons`-style iff `cons a s ~\u02b7 cons b t \u2194 a = b \u2227 s ~\u02b7 t` (by `liftRel_cons` plus `Eq`), `equiv_think_left`/`equiv_think_right` iffs, and an `equiv_nil` lemma. Alternatively, make `Equiv` `@[reducible]` or give it an unfolding simp lemma. Then restate `cons_congr`, `think_congr` and `think_equiv` as `by simp`/`simpa using h` without `unfold`.",
+      "benefit": "Users reasoning about `~\u02b7` get the same simp normalisation that `LiftRel` already has, with no manual unfolding. Proofs in this file and downstream become more uniform.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/WSeq/Relation.lean",
+          "declaration": "Stream'.WSeq.liftRel_cons",
+          "excerpt": "LiftRel R (cons a s) (cons b t) \u2194 R a b \u2227 LiftRel R s t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/WSeq/Relation.lean",
+          "declaration": "Stream'.WSeq.think_equiv",
+          "excerpt": "theorem think_equiv (s : WSeq \u03b1) : think s ~\u02b7 s := by unfold Equiv; simpa using! Equiv.refl _"
+        }
+      ]
+    },
+    {
+      "declaration": "LiftRelO",
+      "start_line": 35,
+      "end_line": 41,
+      "excerpt": "  | _, _ => False\nattribute [nolint simpNF] LiftRelO.eq_3",
+      "problem": "`LiftRelO` is `@[simp]` but ends in a catch-all `| _, _ => False`. The generated equation lemma `LiftRelO.eq_3` therefore carries disequality hypotheses for the earlier cases, so it is a conditional rewrite. The simpNF linter complains, and the file silences it with `nolint`. Simp has no unconditional lemma for the mixed cases `LiftRelO R C none (some _) = False` and `LiftRelO R C (some _) none = False`.",
+      "proposed_change": "Spell out the two remaining cases (`| none, some _ => False` and `| some _, none => False`), so the generated equation lemmas are unconditional and the `nolint` attribute can be dropped.",
+      "benefit": "Simp gets clean unconditional rewrite rules. The linter exception is removed, and the proofs (`cases b; cases h`) that dispose of mismatched cases can use plain simp.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/WSeq/Relation.lean",
+          "declaration": "Stream'.WSeq.LiftRelO",
+          "excerpt": "attribute [nolint simpNF] LiftRelO.eq_3"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 25494,
+    "cache_read_input_tokens": 48483,
+    "output_tokens": 4926,
+    "output_tokens_details": {
+      "thinking_tokens": 1552
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25494,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2695,
+        "cache_read_input_tokens": 26784,
+        "cache_creation_input_tokens": 2723,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2723
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.15609630000000002,
+  "duration_ms": 42208,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:52:13",
+  "unit": "file",
+  "source_sha256": "f4efb68df1dc22f684e14e98a6dfeabaf2e98c3e1264ce02f1f82cde82547d86",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

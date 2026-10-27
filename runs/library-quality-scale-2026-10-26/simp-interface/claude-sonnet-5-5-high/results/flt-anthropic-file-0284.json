@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0284",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the definitions of unipotent, unipotentGL2, diagonal2, halfModulus2 and torusChar2, the simp lemmas for the GL2 torus and unipotent families, Mathlib's GL scalar lemmas, and one sibling Sol file. I could not run Lean, so every claim about how simp would behave is a reading of the sources, not an observation. The main proof uses only ad hoc simp calls and rw chains, and I found no looping or competing simp rules there. The findings are about a missing canonical simp interface for the central-scalar torus elements, and about a Mathlib duplicate that is used in both directions. I did not report the `unipotent_eq` bridge as a finding because I could not show that a simp orientation would help the actual uses.",
+  "findings": [
+    {
+      "declaration": "WsE.LLW.halfModulus2_scalar / torusChar2_scalar / diagonal2_eq_scalar",
+      "start_line": 45,
+      "end_line": 57,
+      "excerpt": "theorem halfModulus2_scalar (z : (p.adicCompletion \u211a)\u02e3) : halfModulus2 p ![z, z] = 1 := by",
+      "problem": "The central-scalar facts about the diagonal torus `diagonal2 p ![z, z]` exist only as local lemmas and are not simp lemmas. The definitions file already marks the analogous identity-element facts `halfModulus2_one`, `torusChar2_one` and `diagonal2_coe` as `@[simp]`, but it has no scalar versions. As a result `halfModulus2 p ![z, z]`, `torusChar2 p \u03b8 ![z, z]` and `diagonal2 p ![z, z]` have no canonical normal form. The scalar case of `solution` (lines ~247\u2013255) therefore needs a hand-ordered `rw` chain (`\u2190 scalar_comm, \u2190 diagonal2_eq_scalar, \u2026, torusChar2_scalar, halfModulus2_scalar, mul_one`). The same `halfModulus2_scalar` is restated verbatim in the sibling file `S_LanglandsTunnell_CubicInduction_eq_bot_of_stable_\u2026_of_norm_eq_one.lean` (line 58), where it is also not simp and is used by `rw`. In addition, `torusChar2_scalar` has the RHS `((\u03b8 0 z * \u03b8 1 z : \u2102\u02e3) : \u2102)`. `Units.val_mul` is simp, so that RHS is not in simp normal form. If the lemma were tagged simp, simp would immediately re-expand its own output.",
+      "proposed_change": "Move the scalar lemmas next to `halfModulus2_one` and `torusChar2_one` in `Def_LanglandsTunnell_CubicInduction_PrincipalSeries2.lean`, so the duplicate in the sibling file also goes. Tag `halfModulus2_scalar` as `@[simp]`; it is a closed-form `= 1` rewrite and cannot loop. State `torusChar2_scalar` with the simp-normal RHS `(\u03b8 0 z : \u2102) * (\u03b8 1 z : \u2102)` and tag it `@[simp]`. Keep `diagonal2_eq_scalar` as a non-simp bridge, or tag it simp only if `Matrix.GeneralLinearGroup.scalar` is wanted as the normal form. Then the scalar branch of `solution` can be closed with a `simp` call plus `hf\u2080`'s torus-equivariance clause instead of the seven-step rewrite chain.",
+      "benefit": "Every user of central-character computations on `principalSeries2` gets the same normal form without re-proving or duplicating the lemma. The rewrite chain, whose order depends on the shape of the goal, becomes a plain simp call. The statement of `torusChar2_scalar` also becomes usable as a simp lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_LanglandsTunnell_CubicInduction_PrincipalSeries2.lean",
+          "declaration": "halfModulus2_one",
+          "excerpt": "@[simp] theorem halfModulus2_one : halfModulus2 v 1 = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_LanglandsTunnell_CubicInduction_PrincipalSeries2.lean",
+          "declaration": "torusChar2_one",
+          "excerpt": "@[simp] theorem torusChar2_one (\u03c7 : Fin 2 \u2192 ((v.adicCompletion \u211a)\u02e3 \u2192* \u2102\u02e3)) : torusChar2 v \u03c7 1 = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_CubicInduction_eq_bot_of_stable_of_forall_principalSeries2Rep_upperUnipotent2_eq_of_norm_eq_one.lean",
+          "declaration": "halfModulus2_scalar",
+          "excerpt": "theorem halfModulus2_scalar (z : (p.adicCompletion \u211a)\u02e3) : halfModulus2 p ![z, z] = 1 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "WsE.LLW.scalar_comm and its use in `solution`",
+      "start_line": 37,
+      "end_line": 38,
+      "excerpt": "theorem scalar_comm (z : (p.adicCompletion \u211a)\u02e3) (g : GL (Fin 2) (p.adicCompletion \u211a)) :",
+      "problem": "`scalar_comm` re-proves Mathlib's `Matrix.GeneralLinearGroup.scalar_commute` by a `fin_cases` and simp computation. It states the same equation for `Fin 2`, over a field and hence a `CommRing`. The only uses, at lines 245 and 250, rewrite with it in both directions (`rw [WsE.LLW.scalar_comm, \u2026]` and `\u2190 WsE.LLW.scalar_comm`). A bare commutation equation is an unsuitable rewrite rule, because its LHS and RHS are interchangeable. Which direction fires depends on where the pattern first matches, and the lemma could never be made a simp lemma without a permutation-ordering risk. The proof therefore depends on a fragile rewrite-direction choice.",
+      "proposed_change": "Delete `scalar_comm` and use Mathlib's `Matrix.GeneralLinearGroup.scalar_commute (Fin 2) z g`, or the same lemma with explicit arguments. If its implicit argument structure differs, use `.symm` where the direction is needed. Pass the instance explicitly to `rw` (e.g. `rw [(Matrix.GeneralLinearGroup.scalar_commute z g)]` / `.symm`), so the direction does not depend on the first pattern match. Alternatively, state the two uses as `have` equalities, since they are one-off facts.",
+      "benefit": "This removes a duplicate and its `fin_cases`-based proof. The direction of each rewrite becomes explicit instead of relying on which side the pattern first matches. It also keeps the file consistent with Mathlib's canonical name for the fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/LinearAlgebra/Matrix/GeneralLinearGroup/Defs.lean",
+          "declaration": "Matrix.GeneralLinearGroup.scalar_commute",
+          "excerpt": "lemma scalar_commute (u : R\u02e3) (A : GL n R) : scalar n u * A = A * scalar n u := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_CubicInduction_exists_whittaker_localLevelOne_centralChar_admissible_principalSeries2_of_norm_eq_one_of_higherUnitsAt.lean",
+          "declaration": "solution",
+          "excerpt": "rw [WsE.LLW.scalar_comm, \u2190 h\u039biv]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 30184,
+    "cache_read_input_tokens": 271184,
+    "output_tokens": 7987,
+    "output_tokens_details": {
+      "thinking_tokens": 2408
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30184,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2911,
+        "cache_read_input_tokens": 48121,
+        "cache_creation_input_tokens": 2130,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2130
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22775640000000003,
+  "duration_ms": 60708,
+  "turns": 15,
+  "attempts": 2,
+  "judged": "2026-10-27T01:00:06",
+  "unit": "file",
+  "source_sha256": "758d5b18d7d004fb46dbe71d2fecf02c938c60b6b8d7d6bdd990a1e8ed819537",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

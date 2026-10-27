@@ -1,0 +1,120 @@
+{
+  "id": "openai-math-file-0104",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related declarations it uses: sobolevOddPower, sobolevProduct_smul_left/right, fourierConjugate_apply/norm, sobolevTorusFunction_apply, and sobolevOddPower_smul in SobolevAmplitude. I also read the downstream uses in SobolevSymmetryFlow and PhysicalStartingInverse. I did not run Lean, so I have not confirmed that the proposed restatements compile or that adding simp attributes causes no loops. The only simp lemma in the file (sobolevPhase_apply, which unfolds to a scalar action) is fine and terminates. The three findings are about lemmas that are stated against that normal form or not registered for it. I found no loop risk and no competing rules. Coverage of simp-relevant declarations is complete.",
+  "findings": [
+    {
+      "declaration": "sobolevOddPower_phase",
+      "start_line": 33,
+      "end_line": 35,
+      "excerpt": "sobolevOddPower k hk m (sobolevPhase c f) =\n      sobolevPhase c (sobolevOddPower k hk m f)",
+      "problem": "The lemma is stated in terms of `sobolevPhase c f`, but `sobolevPhase_apply` is a @[simp] lemma that rewrites `sobolevPhase c f` to `(c : \u2102) \u2022 f`. In any simp or `simp only [sobolevPhase_apply]` pipeline, `sobolevPhase c f` disappears before this lemma can match, so it is not usable as a rewrite rule in the simp normal form. Callers therefore reverse the simp step by hand. SobolevSymmetryFlow does `simp only [..., sobolevPhase_apply, map_smul]` and then `rw [\u2190 sobolevPhase_apply, sobolevOddPower_phase, sobolevPhase_apply, map_smul]`. The file's own `hasDerivAt_sobolevSchrodinger_phase` has to call `rw [sobolevOddPower_phase]` before `simp only [sobolevPhase_apply, ...]`, so the order of rewrites matters.",
+      "proposed_change": "Add (or replace it with) a version in the simp normal form: `sobolevOddPower k hk m ((c : \u2102) \u2022 f) = (c : \u2102) \u2022 sobolevOddPower k hk m f` for `c : Circle`. Mark it @[simp] if the other simp-set lemmas stay compatible. It can be derived from the existing proof, or from `sobolevOddPower_smul` together with `(c * conj c) = 1`. The `sobolevPhase` form then follows by `simp`/`rfl`. `schrodingerInteractionField_phase` and `hasDerivAt_sobolevSchrodinger_phase` can then be finished by `simp only [sobolevPhase_apply, sobolevOddPower_circle_smul, map_smul]`, with no `rw [\u2190 sobolevPhase_apply]` round-trip.",
+      "benefit": "The phase-covariance fact becomes available to `simp` in the form that `sobolevPhase_apply` produces. Downstream proofs no longer fold and unfold `sobolevPhase` by hand, and they no longer depend on the order of rewrites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/SobolevSymmetryFlow.lean",
+          "declaration": "schrodingerInteractionField_phase",
+          "excerpt": "rw [\u2190 sobolevPhase_apply, sobolevOddPower_phase, sobolevPhase_apply, map_smul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/SobolevPhase.lean",
+          "declaration": "sobolevPhase_apply",
+          "excerpt": "@[simp] theorem sobolevPhase_apply (c : Circle) (f : FourierL2) :"
+        }
+      ]
+    },
+    {
+      "declaration": "fourierConjugate_smul",
+      "start_line": 27,
+      "end_line": 30,
+      "excerpt": "theorem fourierConjugate_smul (c : \u2102) (f : FourierL2) :\n    fourierConjugate (c \u2022 f) = conj c \u2022 fourierConjugate f := by",
+      "problem": "This is the canonical push-through lemma for `fourierConjugate` over scalars. It is not tagged @[simp], although the neighbouring `fourierConjugate_apply` and `fourierConjugate_norm` are @[simp]. Every use has to list it by name in `simp only`, both in this file's `sobolevOddPower_phase` and in `sobolevOddPower_smul` in SobolevAmplitude. It is also stated in a file about phases, which downstream files must import just to get a basic conjugation fact.",
+      "proposed_change": "Move `fourierConjugate_smul` next to `fourierConjugate_apply` in SobolevConjugation.lean and mark it @[simp]. It does not loop: `conj c` is smaller, and `fourierConjugate` is eliminated from the scalar argument. `fourierConjugate_add` can be handled the same way if it is missing. The `simp only [... fourierConjugate_smul ...]` lists then become redundant.",
+      "benefit": "`simp` can normalise `fourierConjugate (c \u2022 f)` in odd-power and product computations. The conjugation API is gathered in one file, with a consistent simp set for `fourierConjugate`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/SobolevConjugation.lean",
+          "declaration": "fourierConjugate_norm",
+          "excerpt": "@[simp] theorem fourierConjugate_norm (f : FourierL2) : \u2016fourierConjugate f\u2016 = \u2016f\u2016 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/SobolevAmplitude.lean",
+          "declaration": "sobolevOddPower_smul",
+          "excerpt": "simp only [sobolevOddPower, ih, fourierConjugate_smul,"
+        }
+      ]
+    },
+    {
+      "declaration": "sobolevTorusFunction_phase",
+      "start_line": 50,
+      "end_line": 53,
+      "excerpt": "sobolevTorusFunction k (sobolevPhase c f) x = (c : \u2102) * sobolevTorusFunction k f x",
+      "problem": "The left-hand side uses `sobolevPhase c f`, which the simp lemma `sobolevPhase_apply` rewrites to `(c : \u2102) \u2022 f`. The lemma is therefore not matched by simp after that rewrite. Its own proof goes through `sobolevTorusFunction_apply` and `map_smul`, so it is really the statement `sobolevTorusFunction k ((c:\u2102) \u2022 f) x = c * sobolevTorusFunction k f x`. The existing user, PhysicalStartingInverse, applies it only by explicit `rw [sobolevTorusFunction_phase k hk, ...]`.",
+      "proposed_change": "State the lemma for a general scalar: `sobolevTorusFunction k (a \u2022 f) x = a * sobolevTorusFunction k f x`, with `a : \u2102`. Keep the `sobolevPhase` form as a corollary, proved by `simpa using` or `rfl`. Then the simp normal form `(c:\u2102) \u2022 f` is handled directly. Whether to make the general lemma @[simp] depends on whether `sobolevTorusFunction` already has a linear-map `map_smul` coercion lemma. Check that before adding the attribute, to avoid competing rules.",
+      "benefit": "Evaluation of `sobolevTorusFunction` at a phase-rotated or scaled function can be done by simp or rw in the normal form produced by `sobolevPhase_apply`. The hypothesis `hk` is no longer needed by callers for a purely scalar identity, if `sobolevTorusFunction` is linear for all `k`. I did not verify that.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Nonlinear/PhysicalStartingInverse.lean",
+          "declaration": "(use site)",
+          "excerpt": "sobolevTorusFunction_phase k hk, sobolevTorusFunction_translation k hk, add_zero, norm_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/SobolevPhase.lean",
+          "declaration": "sobolevTorusFunction_phase",
+          "excerpt": "simp only [sobolevTorusFunction_apply k hk, sobolevPhase_apply, map_smul, smul_eq_mul]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19354,
+    "cache_read_input_tokens": 51743,
+    "output_tokens": 5503,
+    "output_tokens_details": {
+      "thinking_tokens": 1227
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19354,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4074,
+        "cache_read_input_tokens": 20496,
+        "cache_creation_input_tokens": 2871,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2871
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1376363,
+  "duration_ms": 42563,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:03:08",
+  "unit": "file",
+  "source_sha256": "1b3a698ed10dca0ab50314ed2975b8f5123f1e1f3541e25bcb692bac49b63a8a",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

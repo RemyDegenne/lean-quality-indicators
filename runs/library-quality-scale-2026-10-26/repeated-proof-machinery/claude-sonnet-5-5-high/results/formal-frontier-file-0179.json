@@ -1,0 +1,99 @@
+{
+  "id": "formal-frontier-file-0179",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions of `boundaryToKernel` and `homology` in CompactFiniteHomology.lean. I found two patterns of repeated proof machinery, both inside the `FiniteBar` section. First, the proof that `d \u2218 d = 0` is copied four times as an inline term. Second, the proof that the algebraic cycle condition is the same as the kernel condition of the compact `differential` is copied about four times, in several variants. The `letI` instance blocks in the `LevelCompact` section are also repeated, but I did not report them because they are mostly instance setup and the rubric treats that as routine. I could not compile anything, so the proposed lemmas are untested. One uncertainty is `x.1` for a cycle `x : (sc' ..).moduleCatLeftHomologyData.K`. The `change` steps already used in the file suggest it is defeq to what the lemma statements need, but elaboration may need small tweaks.",
+  "findings": [
+    {
+      "declaration": "CompHausAddCommGrp.FiniteBar.positiveHomology / algebraicBoundaryRange_map / groupHomologyAddEquivPositive (repeated d\u2218d = 0 proof)",
+      "start_line": 127,
+      "end_line": 132,
+      "excerpt": "exact congrArg (fun f \u21a6 f x)\n        (ModuleCat.hom_ext_iff.1\n          (groupHomology.inhomogeneousChains.d_comp_d B n)))",
+      "problem": "The proof that `differential B h\u03c1 n (differential B h\u03c1 (n+1) x) = 0` is written out inline as the same `change` + `congrArg` + `ModuleCat.hom_ext_iff.1 d_comp_d` block four times. The copies are at lines 127-132 (`positiveHomology`), 166-171 (statement of `algebraicBoundaryRange_map`), 185-190 (the `let d` in its proof) and 221-226 (`groupHomologyAddEquivPositive`). A fifth variant sits inside the cycle `z` at 197-199. Each copy is also passed as a proof argument to `homology` or `boundaryToKernel`, which makes every statement and definition several lines longer and harder to read. The copies must also match each other so the terms line up.",
+      "proposed_change": "Before `positiveHomology`, add a lemma, for example `lemma differential_comp (n : \u2115) : \u2200 x : chains B (n + 2), differential B h\u03c1 n (differential B h\u03c1 (n + 1) x) = 0 := fun x \u21a6 by change groupHomology.inhomogeneousChains.d B n (groupHomology.inhomogeneousChains.d B (n + 1) x) = 0; exact congrArg (fun f \u21a6 f x) (ModuleCat.hom_ext_iff.1 (groupHomology.inhomogeneousChains.d_comp_d B n))`. The proof sketch is `differential_apply` followed by `d_comp_d`, applied pointwise. Then write `positiveHomology := CompHausAddCommGrp.homology (differential B h\u03c1 (n+1)) (differential B h\u03c1 n) (differential_comp B h\u03c1 n)`. In `algebraicBoundaryRange_map` and `groupHomologyAddEquivPositive`, replace each `boundaryToKernel \u2026 (fun x \u21a6 \u2026)` with `boundaryToKernel \u2026 (differential_comp B h\u03c1 n)`. Delete the local `let d`, which `refine \u27e8z, ?_, ?_\u27e9` never uses. Inside `z`, the `rw [d_def]; exact \u2026` step can reuse `differential_comp B h\u03c1 n x`.",
+      "benefit": "This removes about 30 duplicated lines. The statements of `algebraicBoundaryRange_map` and `groupHomologyAddEquivPositive` become readable. A change to the complex's differential or to the `homology` signature has to be fixed in one place instead of four.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CompactFiniteHomology.lean",
+          "declaration": "CompHausAddCommGrp.boundaryToKernel",
+          "excerpt": "(hd : \u2200 x, d\u2081 (d\u2082 x) = 0) : X\u2082 \u27f6 kernelGroup d\u2081"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CompactNegativeTate.lean",
+          "declaration": "CompHausAddCommGrp.FiniteBar.algebraicBoundaryRange_map",
+          "excerpt": "(ModuleCat.hom_ext_iff.1\n              (groupHomology.inhomogeneousChains.d_comp_d B n)))).hom.range := by"
+        }
+      ]
+    },
+    {
+      "declaration": "algebraicCyclesAddEquivCompactCycles / groupHomologyAddEquivPositive_mk / groupHomologyAddEquivPositive_homology\u03c0 (repeated cycle-to-kernel membership proof)",
+      "start_line": 140,
+      "end_line": 153,
+      "excerpt": "toFun x := \u27e8x.1, by\n    change groupHomology.inhomogeneousChains.d B n x.1 = 0\n    have hx := x.2\n    change (groupHomology.inhomogeneousChains B).d\n      (n + 1) n x.1 = 0 at hx\n    rw [groupHomology.inhomogeneousChains.d_def] at hx\n    exact hx\u27e9",
+      "problem": "The same fact is reproved in several places: an element of the algebraic cycle module `(sc' (n+2) (n+1) n).moduleCatLeftHomologyData.K` lies in the kernel of the compact `differential`. This is the `change \u2026 at hx; rw [d_def] at hx; exact hx` block. It appears in `toFun` (140-146), in `invFun` in the reverse direction (147-153), as `xc` in the statement of `groupHomologyAddEquivPositive_mk` (240-245), and as `xc` again in the proof of `groupHomologyAddEquivPositive_homology\u03c0` (about 311-316). The last copy duplicates the previous statement's `let xc` verbatim. The `d_def` rewriting for the algebraic differential is therefore re-derived each time.",
+      "proposed_change": "Add two small lemmas: `cycle_mem_ker (x : (\u2026 sc' (n+2) (n+1) n).moduleCatLeftHomologyData.K) : differential B h\u03c1 n x.1 = 0`, and a converse `ker_mem_cycle`. The proofs would be the existing `change \u2026 ; rw [d_def]` argument. Alternatively, define `cycleToKernel : K \u2192 kernelGroup (differential B h\u03c1 n) := fun x \u21a6 \u27e8x.1, cycle_mem_ker B h\u03c1 n x\u27e9` once. Use it in `toFun`, in `invFun` (via the converse), in `xc` in `groupHomologyAddEquivPositive_mk`, and in the `xc` in `groupHomologyAddEquivPositive_homology\u03c0`. In the last two it replaces the repeated `\u27e8x.1, by \u2026\u27e9`. It could also be stated as `algebraicCyclesAddEquivCompactCycles B h\u03c1 n x`, which already is this map.",
+      "benefit": "The identification of the two cycle conditions is proved once and has a name. The `_mk` lemma statement and the final lemma lose about 6 lines of embedded proof each. The proof of `groupHomologyAddEquivPositive_homology\u03c0` can state `xc` as the equivalence applied to `x`. This avoids re-checking by `rfl` that the hand-built subtype equals the equivalence's value, and makes the link to `groupHomologyAddEquivPositive_mk` visible.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CompactNegativeTate.lean",
+          "declaration": "CompHausAddCommGrp.FiniteBar.groupHomologyAddEquivPositive_mk",
+          "excerpt": "let xc : kernelGroup (differential B h\u03c1 n) := \u27e8x.1, by\n      change groupHomology.inhomogeneousChains.d B n x.1 = 0\n      have hx := x.2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CompactNegativeTate.lean",
+          "declaration": "CompHausAddCommGrp.FiniteBar.groupHomologyAddEquivPositive_homology\u03c0",
+          "excerpt": "let xc : kernelGroup (differential B h\u03c1 n) := \u27e8x.1, by\n    change groupHomology.inhomogeneousChains.d B n x.1 = 0"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18993,
+    "cache_read_input_tokens": 62879,
+    "output_tokens": 4314,
+    "output_tokens_details": {
+      "thinking_tokens": 530
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18993,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3145,
+        "cache_read_input_tokens": 22191,
+        "cache_creation_input_tokens": 731,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 731
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1254159,
+  "duration_ms": 39685,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:17:48",
+  "unit": "file",
+  "source_sha256": "0a04a308c28b905807fab9d72661b8359a87e794ebf02894070c281f16b2c400",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

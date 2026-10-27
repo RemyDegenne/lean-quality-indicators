@@ -1,0 +1,78 @@
+{
+  "id": "openai-math-file-0164",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it relies on in OrderedRemovalAssembly.lean and StrongOrderedComplexRegularity.lean, including growthRegularityComplexity, growthRegularityComplexity_eq_factor_mul and selectedOrderedComplexTolerance. The one clear instance of repeated nontrivial proof machinery is the pair of `coarse_complexity` and `fine_complexity` proofs inside `GrowthFunctionOrderedComplexRegularityCertificate.nonempty`. They are the same argument with the index shifted by one. The other candidates are thin or routine: the `localCertificate` complexity fields are short `simp`/`convert` steps. The recursive-max lemmas (bounded, finite-rank, `finiteMaximum`) are similar inductions, but they sit on different recursions and a shared lemma would not clearly pay off. The proposed lemma statement and both rewritten uses are untested. The exact `simp`/`rfl` closing steps for `hlast` and `hcast` may need small adjustment.",
+  "findings": [
+    {
+      "declaration": "GrowthFunctionOrderedComplexRegularityCertificate.nonempty (coarse_complexity and fine_complexity goals)",
+      "start_line": 383,
+      "end_line": 454,
+      "excerpt": "cases q using Fin.lastCases with\n    | last =>\n        intro e\n        have htop := congrFun R.coarse_topLayer_eq e",
+      "problem": "The proof discharges `coarse_complexity` (lines 383\u2013418) and `fine_complexity` (lines 419\u2013454) by two copies of the same ~35-line argument, differing only in `coarse` vs `fine` and in the index `R.index i` vs `R.index i + 1`. Each copy splits on `Fin.lastCases`. In the `last` case it rewrites through `topLayer_eq` to reduce to `hinitial (Fin.last r) e`. In the `cast` case it runs a three-step calc: the certificate's complexity bound, then `Nat.mul_le_mul_left _ (hinitial i.castSucc e)`, then the `growthRegularityComplexity_eq_factor_mul` identification, closed by `rfl`. This is real reasoning about layer-wise bound propagation, not routine unfolding. Any fix to the top-layer step or to the factor identification must be made twice, and the two blocks are easy to let drift apart.",
+      "proposed_change": "Add one helper lemma before `nonempty`, e.g.\n\ntheorem layerComplexity_le_of_factor_bound {G} [Fintype G] [DecidableEq G] {k r} (initial P : OrderedPartitionComplex G k r) (initialBound bound : Fin (r+1) \u2192 \u2115) (factor : Fin r \u2192 \u2115) (hinitial : \u2200 q e, FacePartition.complexity (initial.partition q e) \u2264 initialBound q) (htop : P.topLayer = initial.topLayer) (hlast : bound (Fin.last r) = initialBound (Fin.last r)) (hcast : \u2200 i : Fin r, bound i.castSucc = factor i * initialBound i.castSucc) (hP : \u2200 (i : Fin r) e, FacePartition.complexity (P.partition i.castSucc e) \u2264 factor i * FacePartition.complexity (initial.partition i.castSucc e)) : \u2200 (q : Fin (r+1)) (e : OrderedFace k q.1), FacePartition.complexity (P.partition q e) \u2264 bound q.\n\nProof sketch: `intro q; cases q using Fin.lastCases`. In `last`, use `congrFun htop e`, unfold `topLayer`, `rw`, then `hlast \u25b8 hinitial _ e`. In `cast i`, use `(hP i e).trans ((Nat.mul_le_mul_left _ (hinitial _ e)).trans_eq (hcast i).symm)`.\n\nThen the two goals become:\n- coarse: `layerComplexity_le_of_factor_bound initial R.coarse initialBound (selectedGrowthCoarseLayerComplexityBound k r initialBound F R.index) (fun i => fixedUpperLayerComplexityFactor i.1 (B i) (R.index i)) hinitial R.coarse_topLayer_eq (by simp [selectedGrowthCoarseLayerComplexityBound]) hcast_coarse hP_coarse`\n- fine: the same with `R.fine`, `selectedGrowthFineLayerComplexityBound`, `R.fine_topLayer_eq`, and `R.index i + 1`.\n\nHere `hP_*` is `fun i e => by simpa [B, growthComplexRegularityBudget] using R.coarse_complexity i e` (resp. `R.fine_complexity i e`), and `hcast_*` is the existing `simp only [..., Fin.lastCases_castSucc]; rw [growthRegularityComplexity_eq_factor_mul]; rfl` block, now written once per variant (about 4 lines each). The hypotheses are exactly those already available in `nonempty`, and no new imports are needed.",
+      "benefit": "The top-layer / `Nat.mul_le_mul_left` / factor-identification argument is stated and proved once. Each of the two goals shrinks to a short instantiation that exposes the only real difference, `index` versus `index + 1`. This also gives a reusable lemma for any other certificate that propagates a per-layer factor bound from `initial`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/TowerDominatingGrowth.lean",
+          "declaration": "GrowthFunctionOrderedComplexRegularityCertificate.nonempty (fine branch)",
+          "excerpt": "have htop := congrFun R.fine_topLayer_eq e"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/OrderedRemovalAssembly.lean",
+          "declaration": "growthRegularityComplexity_eq_factor_mul",
+          "excerpt": "fixedUpperLayerComplexityFactor\n            j (growthRegularityBudget\n              k j initialBound F) n *\n          initialBound"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 29972,
+    "cache_read_input_tokens": 28677,
+    "output_tokens": 3900,
+    "output_tokens_details": {
+      "thinking_tokens": 1242
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29972,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3381,
+        "cache_read_input_tokens": 24748,
+        "cache_creation_input_tokens": 9153,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 9153
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1617637,
+  "duration_ms": 26746,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:14:42",
+  "unit": "file",
+  "source_sha256": "e028c8e0f545b91bfa76d4c5718ba98eb6eb26e5a0de59a31e2eb9bc8e341fc6",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

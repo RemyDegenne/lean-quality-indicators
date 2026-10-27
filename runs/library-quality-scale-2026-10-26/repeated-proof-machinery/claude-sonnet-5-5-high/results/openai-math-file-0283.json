@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0283",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and grepped the repo for uses of the candidate declarations. next_value_probability is used only by next_value_probability_card. card_completions_eq is used by both probability theorems. next_event_probability is used downstream in InjectionConditioning, InjectionAuxiliaryExposure and the Affine files. I did not look for Mathlib duplicates. The rewrites are sketches that I could not compile. Possible concerns are the `classical` decidability instances and the exact simp lemma names, such as Set.mem_ofPred_eq. I ignored the hmap/hmap' symmetry inside fibre_card_eq because it sits in a single proof.",
+  "findings": [
+    {
+      "declaration": "next_value_probability / next_event_probability",
+      "start_line": 105,
+      "end_line": 183,
+      "excerpt": "rw [PMF.toOuterMeasure_uniformOfFinset_apply]\n  simp only [ENNReal.toReal_div, ENNReal.toReal_natCast, Set.mem_ofPred_eq]\n  apply (div_eq_div_iff (ne_of_gt hC) (ne_of_gt hR)).mpr",
+      "problem": "The two proofs repeat the same argument. Both prove positivity of the completions count and of the remaining count. Both state a factorisation `|completions| = |remaining| * m` through `card_completions_eq`. Both unfold the uniform PMF measure, convert to real division, and clear denominators with `div_eq_div_iff`. They differ only in the event, and in whether `nlinarith` or `rw [hfactor, hevent]; ring` closes the goal. In fact `next_value_probability` is the special case `P := (\u00b7 = a)` of the general statement.",
+      "proposed_change": "Add one helper after `card_completions_eq`:\n`theorem uniform_toReal_of_card_mul (K) (base) (p : (I \u21aa J) \u2192 Prop) [DecidablePred p] (n r m : \u2115) (hr : 0 < r) (hC : (completions K base).card = r * m) (hp : ((completions K base).filter p).card = n * m) : ((PMF.uniformOfFinset (completions K base) (completions_nonempty K base)).toOuterMeasure {e | p e}).toReal = (n : \u211d) / r`.\nProof sketch:\n1. `m \u2260 0` follows from `Finset.card_pos` applied to `completions_nonempty`, together with `hC`.\n2. `rw [PMF.toOuterMeasure_uniformOfFinset_apply]`, then `simp only [ENNReal.toReal_div, ENNReal.toReal_natCast, Set.mem_ofPred_eq]`.\n3. `rw [hC, hp]; push_cast; field_simp`.\n\nThen `next_event_probability` becomes `uniform_toReal_of_card_mul K base (fun e => P (e i)) _ _ _ (card_pos of \u27e8base i, base_mem_remaining ..\u27e9) (card_completions_eq K base i hi (base i) _) (event_card_eq K base i hi P)`.\n\n`next_value_probability` becomes the same call with `n := 1`, `p := fun e => e i = a`, `hC := card_completions_eq K base i hi a ha`, and `hp := (one_mul _).symm`. Here `(1:\u2115):\u211d` needs a `Nat.cast_one` rewrite. Alternatively, derive it from `next_event_probability` with `P := (\u00b7 = a)` and `Finset.card_eq_one`. This works because `(remaining K base).filter (\u00b7 = a) = {a}` when `ha` holds.",
+      "benefit": "Each probability theorem shrinks to a short instantiation. The measure-to-cardinality conversion and denominator clearing live in one place. A change to the PMF API, such as a rename of `toOuterMeasure_uniformOfFinset_apply`, is then fixed once. The two theorems no longer differ only through duplicated `hC`/`hR`/`hfactor` boilerplate and an ad hoc `nlinarith`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/BalancedRyser/Local/InjectionExposure.lean",
+          "declaration": "next_value_probability",
+          "excerpt": "apply (div_eq_div_iff (ne_of_gt hC) (ne_of_gt hR)).mpr\n  nlinarith"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/BalancedRyser/Local/InjectionExposure.lean",
+          "declaration": "next_event_probability",
+          "excerpt": "apply (div_eq_div_iff (ne_of_gt hC) (ne_of_gt hR)).mpr\n  rw [hfactor, hevent]\n  ring"
+        }
+      ]
+    },
+    {
+      "declaration": "card_completions_eq / event_card_eq",
+      "start_line": 88,
+      "end_line": 158,
+      "excerpt": "Finset.card_eq_sum_card_fiberwise (fun e he =>\n        value_mem_remaining K base e he i hi)",
+      "problem": "Both lemmas use the same argument. Split the relevant set into fibres over `remaining K base` with `Finset.card_eq_sum_card_fiberwise` and `value_mem_remaining`. Then use `fibre_card_eq` to make every fibre have the size of one reference fibre. Finally collapse the constant sum with `simp`. `card_completions_eq` is the case `P := fun _ => True` of `event_card_eq`. `event_card_eq` redoes the fibre decomposition and adds a `hfibre` ext-proof to strip the predicate. It is also fixed to the reference value `base i`, so `card_completions_eq` cannot be derived from it as stated.",
+      "proposed_change": "Generalise `event_card_eq` to take an arbitrary `a \u2208 remaining K base` in place of `base i`. Its conclusion becomes `((completions K base).filter (fun e => P (e i))).card = ((remaining K base).filter P).card * ((completions K base).filter (fun e => e i = a)).card`. The existing proof goes through with `fibre_card_eq K base i b a hb ha`.\n\nThen prove `card_completions_eq` by `have := event_card_eq K base i hi (fun _ => True) a ha; simpa using this`. `simp` should reduce `filter (fun _ => True)` to the whole finset via `Finset.filter_true`.\n\n`next_event_probability` would then instantiate `a := base i` with `base_mem_remaining`.",
+      "benefit": "One fibre-decomposition proof replaces two near-identical `calc` blocks. `card_completions_eq` is no longer a second copy of the argument, and the fibre-count lemma is stated once at full generality.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/BalancedRyser/Local/InjectionExposure.lean",
+          "declaration": "card_completions_eq",
+          "excerpt": "exact fibre_card_eq K base i b a hb ha\n    _ = _ := by simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/BalancedRyser/Local/InjectionExposure.lean",
+          "declaration": "event_card_eq",
+          "excerpt": "exact fibre_card_eq K base i b (base i) hb (base_mem_remaining K base i hi)\n    _ = _ := by simp"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 16394,
+    "cache_read_input_tokens": 34826,
+    "output_tokens": 4851,
+    "output_tokens_details": {
+      "thinking_tokens": 1839
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16394,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3073,
+        "cache_read_input_tokens": 16762,
+        "cache_creation_input_tokens": 3561,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3561
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11758060000000001,
+  "duration_ms": 34406,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T00:58:19",
+  "unit": "file",
+  "source_sha256": "f8374b732d283f56464217f0ce9ccc42d3774d31413de4b2958695514f10e5e1",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

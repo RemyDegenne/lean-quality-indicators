@@ -1,0 +1,99 @@
+{
+  "id": "formal-frontier-file-0099",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related Mathlib GradedRingHom simp lemmas. I also read the downstream uses in projective-space/ProjectiveSpace/HomogeneousQuotientProj.lean and graded-rings/examples/QuotientLocalization.lean. The existing simp lemmas (gradedRingHom_apply, gradedRingHom_toRingHom, gradedDecompose_mk, coe_gradedDecomposePre) are oriented sensibly, and I saw no loop or competing-rule risk. They do not clash with Mathlib's GradedRingHom.coe_toRingHom, which has a different left-hand side. The two findings are about missing simp-interface lemmas, which I inferred from proofs that unfold definitions or destructure memberships by hand. I could not run Lean, so I do not know whether the proposed lemmas would fire exactly as intended after being added.",
+  "findings": [
+    {
+      "declaration": "Ideal.Quotient.gradedComponent (and its users gradedComponentGradedMonoid, gradedRingHom, gradedDecompose_rightInverse)",
+      "start_line": 43,
+      "end_line": 50,
+      "excerpt": "AddSubgroup.map (Ideal.Quotient.mk I).toAddMonoidHom",
+      "problem": "The component is an `AddSubgroup.map` of an inline structure literal. There is no membership lemma (for example `mem_gradedComponent : y \u2208 gradedComponent \ud835\udc9c I i \u2194 \u2203 a \u2208 \ud835\udc9c i, mk I a = y`) and no `mk_mem_gradedComponent`. Every proof therefore reaches through the definitional unfolding. Examples are `\u27e8_, hx, rfl\u27e9` in `gradedRingHom`, `rcases hx with \u27e8a, ha, rfl\u27e9` followed by `change a \u2208 \ud835\udc9c i at ha` in `gradedComponentGradedMonoid`, and `rcases y.property with \u27e8a, ha, hya\u27e9`. The downstream file `HomogeneousQuotientProj.lean` repeats the same `rcases hx with \u27e8a, ha, rfl\u27e9`. `simp` has no canonical way to normalise `y \u2208 gradedComponent \ud835\udc9c I i`, and `ha` only has the right type after a `change`. This depends on the private structure literal being defeq to `\ud835\udc9c i`, so the pattern is fragile.",
+      "proposed_change": "Add `theorem mem_gradedComponent {i} {y : A \u29f8 I} : y \u2208 gradedComponent \ud835\udc9c I i \u2194 \u2203 a \u2208 \ud835\udc9c i, Ideal.Quotient.mk I a = y`, tagged `@[simp]`. Its proof can be `Iff.rfl`, or `AddSubgroup.mem_map` followed by `Iff.rfl`. Add `theorem mk_mem_gradedComponent {a} (ha : a \u2208 \ud835\udc9c i) : mk I a \u2208 gradedComponent \ud835\udc9c I i`. Then rewrite the `rcases`/`change` blocks to use these lemmas.",
+      "benefit": "Membership in the quotient components gets a stable simp normal form (an existential over the source component). Proofs here and in the projective-space file no longer depend on defeq unfolding of the inline structure. Because `gradedComponent` is an `@[expose]` def, the interface stays usable if its body changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/Quotient.lean",
+          "declaration": "gradedComponentGradedMonoid",
+          "excerpt": "change a \u2208 \ud835\udc9c i at ha"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-space/ProjectiveSpace/HomogeneousQuotientProj.lean",
+          "declaration": "quotient_irrelevant_le_map",
+          "excerpt": "rcases hx with \u27e8a, ha, rfl\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "Ideal.Quotient.gradedComponentMap / gradedDecomposePre",
+      "start_line": 93,
+      "end_line": 102,
+      "excerpt": "toFun x := \u27e8Ideal.Quotient.mk I x, \u27e8x, x.property, rfl\u27e9\u27e9",
+      "problem": "`gradedComponentMap` and `gradedDecomposePre` have no simp lemmas of their own, such as `(gradedComponentMap \ud835\udc9c I i x : A \u29f8 I) = mk I x` or the value of `gradedDecomposePre` on a homogeneous element. Later proofs instead pass the definitions to `simp` as unfolding lemmas, for example `simp [gradedDecomposePre, gradedComponentMap]` in `coe_gradedDecomposePre` and again, with `DirectSum.decompose_of_mem \ud835\udc9c ha`, in `gradedDecompose_rightInverse`. Unfolding exposes the `DirectSum.map \u2218 decomposeAddEquiv` structure and the anonymous-constructor body. `gradedDecompose_mk` rewrites to `gradedDecomposePre \ud835\udc9c I x` and stops there, so a user of the public `gradedDecompose` has no simp path to the components of the decomposition of `mk I a` for homogeneous `a`.",
+      "proposed_change": "Add `@[simp] theorem coe_gradedComponentMap (x : \ud835\udc9c i) : (gradedComponentMap \ud835\udc9c I i x : A \u29f8 I) = Ideal.Quotient.mk I x := rfl`. Add `theorem gradedDecomposePre_of_mem {i} {a} (ha : a \u2208 \ud835\udc9c i) : gradedDecomposePre \ud835\udc9c I a = DirectSum.of _ i (gradedComponentMap \ud835\udc9c I i \u27e8a, ha\u27e9)`, proved from `DirectSum.decompose_of_mem`. Add a corresponding `gradedDecompose_mk_of_mem`. Then replace the `simp [gradedDecomposePre, gradedComponentMap, ...]` calls with these lemmas, so the definitions are not unfolded.",
+      "benefit": "The rewrite `gradedDecompose (mk I a)` to `of i (image of a)` for homogeneous `a` becomes a simp-closed chain. The internal proofs stop unfolding definitions. Users, including the projective-space development, get a canonical normal form for component images.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/Quotient.lean",
+          "declaration": "coe_gradedDecomposePre",
+          "excerpt": "simp [gradedDecomposePre, gradedComponentMap]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/Quotient.lean",
+          "declaration": "gradedDecompose_rightInverse",
+          "excerpt": "DirectSum.decompose_of_mem \ud835\udc9c ha]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 16134,
+    "cache_read_input_tokens": 57918,
+    "output_tokens": 5318,
+    "output_tokens_details": {
+      "thinking_tokens": 1742
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16134,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2665,
+        "cache_read_input_tokens": 16384,
+        "cache_creation_input_tokens": 3763,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3763
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1235278,
+  "duration_ms": 39037,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:02:03",
+  "unit": "file",
+  "source_sha256": "eff36ec7227ea688365887586d71d6062157e0d623e9019c87f2bd65ccaf46e8",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

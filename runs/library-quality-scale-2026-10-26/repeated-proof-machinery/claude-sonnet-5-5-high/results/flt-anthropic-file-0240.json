@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0240",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the helper sections of the file (lines 1\u2013395) in full. I also checked Mathlib's `MonoidHom.mk'` in Mathlib/Algebra/Group/Hom/Defs.lean. The `solution` theorem is a huge hypothesis list. Its proof repeats the same long argument spine several times, but that is argument passing rather than repeated mathematical reasoning, so I did not report it. I also skipped short duplicates: the two `mul_val_congr` lemmas (`subst h; rfl`) and the two `hnat` proofs. Nothing was compiled, and the proposed rewrites are untested. In particular I did not check how `pointGroup` instances unify when `MonoidHom.mk'` replaces the hand-built homomorphism.",
+  "findings": [
+    {
+      "declaration": "TDefConn.img_one / TDefConn.mapPt_one (with img_pow / mapPt_pow)",
+      "start_line": 80,
+      "end_line": 87,
+      "excerpt": "  have h2 : x * x = x * 1 := by rw [mul_one]; exact hxx\n  exact mul_left_cancel h2",
+      "problem": "`img_one` and `mapPt_one` prove the same thing in the same way. A map `f` on point groups preserves `*`, so `f 1 * f 1 = f 1`, and cancelling in the target group gives `f 1 = 1`. Both proofs build `x`, show `mul x x = x`, install the `pointGroup` instance, then run the identical `h2 : x * x = x * 1` and `mul_left_cancel h2`. `img_pow` and `mapPt_pow` then repeat the same step again. Each wraps the map in a hand-written `\u2192*` structure whose `map_one'` is the lemma above, and applies `map_pow`. The group-hom fact needed here is already in Mathlib: `MonoidHom.mk'` builds a monoid hom between groups from `map_mul` alone, and its `map_one'` is exactly this cancellation argument. The file reproduces it twice, plus the wrappers.",
+      "proposed_change": "Delete the two cancellation proofs and use `MonoidHom.mk'`. Under the `pointGroup` instances, set `F := MonoidHom.mk' (img hg) (fun X Y => img_mul hg L L' hg_mul t' X Y)` and `F' := MonoidHom.mk' (mapPt \u03c6 h\u03c6) (hmul t)`. Then:\n- `img_pow` becomes `map_pow F P n`.\n- `mapPt_pow` becomes `map_pow F' P n`.\n- `img_one` and `mapPt_one` become `F.map_one` and `F'.map_one`, keeping the existing statements as one-line lemmas.\n\nThe call sites are `img_one`/`mapPt_one` in `isTr_transfer` (`hRt`, `hZt`, `hWt`). Keeping these lemmas as one-liners leaves them unchanged. Optionally add small defs `imgHom` and `mapPtHom` so the hom is not rebuilt in each place.",
+      "benefit": "This removes two copies of the idempotent-cancellation argument and the two hand-written `map_one'` fields. The one/pow lemmas then plainly follow from the group-hom structure. Maintenance is simpler, since future point-group maps only need a multiplicativity proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Group/Hom/Defs.lean",
+          "declaration": "MonoidHom.mk'",
+          "excerpt": "map_one' := by rw [\u2190 mul_right_cancel_iff, \u2190 map_mul _ 1, one_mul, one_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CerednikDrinfeld_QM_IsFineModuliT_exists_fineFamilyT_connected_value_of_fineFamily_of_towerFamily_of_isNoetherianRing_oneLegC5.lean",
+          "declaration": "TDefConn.mapPt_one",
+          "excerpt": "have hxx : E'.L.mul t x x = x := by rw [hx, \u2190 hmul, E.L.one_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CerednikDrinfeld_QM_IsFineModuliT_exists_fineFamilyT_connected_value_of_fineFamily_of_towerFamily_of_isNoetherianRing_oneLegC5.lean",
+          "declaration": "TDefConn.mapPt_pow",
+          "excerpt": "{ toFun := mapPt \u03c6 h\u03c6, map_one' := mapPt_one \u03c6 h\u03c6 hmul t, map_mul' := fun X Y => hmul t X Y }"
+        }
+      ]
+    },
+    {
+      "declaration": "TDefConn.isTr_transfer (local `hpbI`) and P2CONN.isPullbackVia_inv_of_isoVia",
+      "start_line": 263,
+      "end_line": 274,
+      "excerpt": "      rw [hsid]; exact IsPullback.of_horiz_isIso \u27e8by rw [hi, Category.comp_id]\u27e9",
+      "problem": "Both places turn an `IsoVia` between fake elliptic curves over the same base `S` into `IsPullbackVia (RingHom.id S)`. `hpbI` does it for `i.hom`, and `isPullbackVia_inv_of_isoVia` does it for `i.inv`. The skeleton is the same in both:\n- show `Spec.map (ofHom (RingHom.id _)) = \ud835\udfd9 _`;\n- get the pullback square from `IsPullback.of_horiz_isIso`;\n- transport multiplicativity with `mapPt_coe` and a `mul_val_congr` step along `t = t \u226b \ud835\udfd9`;\n- reuse the action and level-stability fields.\n\n`hpbI` is an inline `have` inside `isTr_transfer`, so it is unavailable elsewhere. The inverse version is a separate theorem in a different namespace, after `isTr_transfer`. It also needs a second, near-identical `mul_val_congr`, with a different signature, in `P2CONN`.",
+      "proposed_change": "Move the forward construction into a named lemma, e.g. `isPullbackVia_hom_of_isoVia E E' i hi h : IsPullbackVia (RingHom.id S) E' E i.hom`, placed in the first namespace before `isTr_transfer`. It would use the existing `mul_val_congr` with `rfl`, `hactI` and `(hlevI t P).1`, as in lines 263\u2013274. Then `hpbI` in `isTr_transfer` is a call to this lemma. Put `isPullbackVia_inv_of_isoVia` next to it, reusing the same `hid`/`hsq` helper and a single `mul_val_congr`. The cleanest form is a helper lemma `id_square_of_comp_eq` that produces `IsPullback \u03c6 E.f E'.f (Spec.map (ofHom (RingHom.id _)))` for any iso with `\u03c6 \u226b f' = f`. If both lemmas are kept, drop the duplicate `P2CONN.mul_val_congr`, since the first namespace's version can be reused.",
+      "benefit": "The `IsoVia` \u2192 `IsPullbackVia id` bridge is stated once in a findable place, instead of being an anonymous `have` inside a 100-line proof plus a later near-copy. `isTr_transfer` becomes shorter and its structure easier to follow. Only one congruence lemma remains to maintain.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CerednikDrinfeld_QM_IsFineModuliT_exists_fineFamilyT_connected_value_of_fineFamily_of_towerFamily_of_isNoetherianRing_oneLegC5.lean",
+          "declaration": "P2CONN.isPullbackVia_inv_of_isoVia",
+          "excerpt": "rw [hid]; exact IsPullback.of_horiz_isIso \u27e8by rw [hinv, Category.comp_id]\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CerednikDrinfeld_QM_IsFineModuliT_exists_fineFamilyT_connected_value_of_fineFamily_of_towerFamily_of_isNoetherianRing_oneLegC5.lean",
+          "declaration": "P2CONN.mul_val_congr",
+          "excerpt": "(L.mul t P Q).1 = (L.mul t' \u27e8P.1, h \u25b8 P.2\u27e9 \u27e8Q.1, h \u25b8 Q.2\u27e9).1 := by\n  subst h; rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CerednikDrinfeld_QM_IsFineModuliT_exists_fineFamilyT_connected_value_of_fineFamily_of_towerFamily_of_isNoetherianRing_oneLegC5.lean",
+          "declaration": "TDefConn.mul_val_congr",
+          "excerpt": "(L.mul t P Q).1 = (L.mul t' P' Q').1 := by\n  subst h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 106692,
+    "cache_read_input_tokens": 397424,
+    "output_tokens": 8029,
+    "output_tokens_details": {
+      "thinking_tokens": 2917
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 106692,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4378,
+        "cache_read_input_tokens": 104528,
+        "cache_creation_input_tokens": 6093,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6093
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5468204000000001,
+  "duration_ms": 62122,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T00:38:44",
+  "unit": "file",
+  "source_sha256": "dd8ba2c4c01bd669f66319777a699e914c7a13e72698387bddc0053a3c7ae074",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

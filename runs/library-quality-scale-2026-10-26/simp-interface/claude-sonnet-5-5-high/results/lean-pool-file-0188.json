@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0188",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and grepped the NavierStokes directory for uses of CopyFamily.periodized, term and copy, and of nativeSupportCells_mem. The existing @[simp] lemma nativeSupportCells_mem looks fine: its LHS contains every argument and the lemma is Iff.rfl. The main weakness is that CopyFamily's definitions (copy, term, periodized, sum) have no simp interface. Downstream files re-unfold them by hand with `simp only [CopyFamily.periodized, ...]` and `change`. I did not run Lean, so I make no claim about how the simplifier behaves on these goals. The proposed lemmas are conditional or definitional, so I do not expect them to loop.",
+  "findings": [
+    {
+      "declaration": "CopyFamily.periodized (and its use in RegularFamily.periodized_zero_off_annulus, RegularFamily.periodized_support, CopyFamily.sum_nonzero_term)",
+      "start_line": 142,
+      "end_line": 143,
+      "excerpt": "simp only [CopyFamily.periodized, hz, tsum_zero]",
+      "problem": "CopyFamily.periodized is a plain def of `\u2211' k, f.term a h r0 I k w`. It has no equation or vanishing lemma in the simp interface. Each proof that every term vanishes pointwise therefore unfolds the definition by hand with `simp only [CopyFamily.periodized, hz, tsum_zero]`. The same idiom appears at lines 219 and 637 of this file. It also appears in LocalPhysicalCopyBounds.lean (285, 311), ActualSignedWaveData.lean (957), ActualSignedExterior.lean (914, 920), InitialPhysicalData.lean (2811) and ActualSignedPhysicalCoherence.lean (356, 365). Other call sites use `unfold PhysicalCopyBounds.CopyFamily.periodized`.",
+      "proposed_change": "Add `theorem CopyFamily.periodized_apply` stating `f.periodized a h r0 I w = \u2211' k, f.term a h r0 I k w` (rfl), and mark it @[simp] only if downstream files want periodized unfolded. Add `theorem CopyFamily.periodized_eq_zero (hz : \u2200 k, f.term a h r0 I k w = 0) : f.periodized a h r0 I w = 0`, and a similar `CopyFamily.sum_eq_zero` for the finsum. Replace the repeated `simp only [CopyFamily.periodized, hz, tsum_zero]` calls with these lemmas, and use `periodized_apply` in the `unfold` sites. The `hz` argument is a hypothesis, so these lemmas cannot loop.",
+      "benefit": "The unfolding idiom is stated once, so the many call sites no longer depend on the representation of `periodized`. Changing `periodized` (for example to a finsum or a different index) would then need one edit instead of about ten scattered across files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/LocalPhysicalCopyBounds.lean",
+          "declaration": "SupportData.periodized_zero_off_annulus",
+          "excerpt": "simp only [CopyFamily.periodized, hz, tsum_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ActualSignedWaveData.lean",
+          "declaration": "periodized_zero",
+          "excerpt": "simp only [CopyFamily.periodized, term_zero f a h r0 I _ hw, tsum_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PhysicalCopyBounds.lean",
+          "declaration": "CopyFamily.sum_nonzero_term",
+          "excerpt": "simp only [CopyFamily.periodized, hn, tsum_zero]"
+        }
+      ]
+    },
+    {
+      "declaration": "CopyFamily.copy / CopyFamily.term / physical_sum_jet_bound",
+      "start_line": 94,
+      "end_line": 97,
+      "excerpt": "noncomputable def CopyFamily.term {H : \u2115} {K : Type*} (f : CopyFamily H K)",
+      "problem": "CopyFamily.term is `(f.copy k).term ...` and CopyFamily.copy is the structure `\u27e8f.gap, f.carrier k, f.amplitude k\u27e9`. No projection lemmas such as `(f.copy k).gap = f.gap`, `(f.copy k).carrier = f.carrier k` or `(f.copy k).amplitude = f.amplitude k` are provided. There is no lemma identifying `f.term a h r0 I k` with the `globalWave` expression either. Callers therefore use `change` with the full globalWave expression, as at line 316 in `physical_sum_jet_bound`. Elsewhere they run a long `simp only [CopyFamily.term, CopyFamily.copy, PhysicalWaveSum.WaveFamily.term, PhysicalWaveSum.globalWave, PhysicalWaveSum.commonWave, ...]` unfold, as in ActualSignedWaveData.term_eq.",
+      "proposed_change": "Add `CopyFamily.copy_gap`, `copy_carrier` and `copy_amplitude` as rfl lemmas, tagged @[simp] with the projection-style statements. Add one lemma `CopyFamily.term_eq_globalWave` giving `f.term a h r0 I k = globalWave a h I.1.val.1 (f.gap I.1) r0 (f.carrier k I.1) (f.amplitude k I) I.2.val`. Use it in place of the `change` at line 316 and the long simp-unfold sets downstream. Do not make `term_eq_globalWave` simp unless term is meant to be unfolded everywhere. The RHS does not mention `term`, so it is not a cycle risk.",
+      "benefit": "Proofs about copy terms can rewrite to the underlying wave by name instead of repeating a fragile `change` or a long `simp only` unfold list. This keeps the `CopyFamily` abstraction opaque to callers.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PhysicalCopyBounds.lean",
+          "declaration": "physical_sum_jet_bound",
+          "excerpt": "change \u2016iteratedFDeriv \u211d m (globalWave a h I.1.val.1 (f.gap I.1) r0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ActualSignedWaveData.lean",
+          "declaration": "term_eq",
+          "excerpt": "simp only [CopyFamily.term, CopyFamily.copy, PhysicalWaveSum.WaveFamily.term,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 30389,
+    "cache_read_input_tokens": 94615,
+    "output_tokens": 4465,
+    "output_tokens_details": {
+      "thinking_tokens": 1160
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30389,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2552,
+        "cache_read_input_tokens": 33480,
+        "cache_creation_input_tokens": 922,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 922
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1756835,
+  "duration_ms": 31498,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:19:35",
+  "unit": "file",
+  "source_sha256": "608bece7fe259546efb5a66ee88014afa4e777428c74eb3538d7dd54f905f7be",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

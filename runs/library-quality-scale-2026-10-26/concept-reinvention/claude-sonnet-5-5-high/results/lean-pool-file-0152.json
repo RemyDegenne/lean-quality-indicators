@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0152",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I compared its definitions with Mathlib's Combinatorics/Colex.lean (Colex, geomSum_injective, equivBitIndices, orderIsoColex), InformationTheory/Hamming.lean and Data/Fintype/Sort.lean. I also checked KruskalKatona.lean and SimplicialCompression.lean in the same project to see how the definitions are used. I did not flag hDist, neighborhood or hammingBall. Cube is Finset (Fin n) rather than a function type, so Mathlib's hammingDist and Metric.closedBall do not apply directly, and I found no Mathlib Finset-level equivalent. The two findings are related: both concern the simplicial order being hand-rolled instead of built on Colex. I am fairly confident about the first and less sure about the second. I did not check whether replacing the `rank`-based initial segments would pay off in the downstream files (Compression, Cascade, Harper).",
+  "findings": [
+    {
+      "declaration": "cubeToNat / simplicialLe",
+      "start_line": 50,
+      "end_line": 56,
+      "excerpt": "\u2211 i \u2208 x, 2 ^ (i : \u2115)",
+      "problem": "The simplicial order is hand-built as card first, then comparison of the binary encoding `cubeToNat`. Mathlib already has the colex order on `Finset \u03b1`, and `Finset.geomSum_le_geomSum_iff_toColex_le_toColex` states that colex on \u2115 coincides with comparing `\u2211 i \u2208 s, 2^i`. So `cubeToNat y \u2264 cubeToNat x` is colex order `toColex y \u2264 toColex x` under another name. The file then reproves the algebra from scratch: `cubeToNat_inj` and the `sum_pow_two_lt` / `ofDigits` helpers, plus `simplicialLe_refl`, `simplicialLe_trans`, `simplicialLe_antisymm` and `simplicialLe_total`. Each of these is a direct consequence of `Colex` being a `LinearOrder`. The project pays a conversion cost later: KruskalKatona.lean has to prove its own bridge `toColex_lt_iff_cubeToNat_lt`, and it does so by passing through `Finset.geomSum_lt_geomSum_iff_toColex_lt_toColex`.",
+      "proposed_change": "Define the tie-break with Mathlib's order, e.g. `x.card < y.card \u2228 (x.card = y.card \u2227 toColex y \u2264 toColex x)`. This is a sketch and has not been compiled. Alternatively, keep `cubeToNat` as a thin abbreviation and state `toColex_le_iff_cubeToNat_le` once, right here in Cube.lean, using `Finset.geomSum_le_geomSum_iff_toColex_le_toColex` and `Finset.Colex.toColex_image_lt_toColex_image`. Then derive refl, trans, antisymm and total from `Colex`'s linear order. This removes the `ofDigits` induction and the injectivity proof, and the bridge lemma in KruskalKatona.lean becomes unnecessary.",
+      "benefit": "One order concept instead of two parallel ones. Downstream Kruskal\u2013Katona and compression code can use Mathlib's colex API directly instead of converting through `cubeToNat`. It also removes about 80 lines of binary-encoding bookkeeping.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Combinatorics/Colex.lean",
+          "declaration": "Finset.geomSum_le_geomSum_iff_toColex_le_toColex",
+          "excerpt": "lemma geomSum_le_geomSum_iff_toColex_le_toColex (hn : 2 \u2264 n) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Combinatorics/Colex.lean",
+          "declaration": "Finset.geomSum_injective",
+          "excerpt": "theorem geomSum_injective {n : \u2115} (hn : 2 \u2264 n) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/KruskalKatona.lean",
+          "declaration": "toColex_lt_iff_cubeToNat_lt",
+          "excerpt": "toColex A < toColex B \u2194 cubeToNat A < cubeToNat B"
+        }
+      ]
+    },
+    {
+      "declaration": "simplicialLt / rank / simplicialInitSeg",
+      "start_line": 205,
+      "end_line": 207,
+      "excerpt": "(Finset.univ.filter (fun y => simplicialLt y x)).card",
+      "problem": "`simplicialLe` and `simplicialLt` are bare `Prop`-valued relations, with `simplicialLt` defined as `le \u2227 \u00ac le`. They carry no `Preorder` or `LinearOrder` instance, even though refl, trans, antisymm and total are all proved. Because of that, the file reconstructs order-theoretic API by hand. `rank` is the position of an element in a finite linear order, i.e. the card of its strict lower set. It is defined by filtering `univ` by `simplicialLt`, and the following lemmas rebuild standard facts about it: `rank_strictMono`, `rank_mono`, `rank_injective`, `rank_image_eq`, `rank_lt_two_pow`. `simplicialInitSeg` is likewise a hand-rolled `rank x < k` filter, and `downwardClosed_eq_initSeg` re-derives that a down-closed set in a finite linear order is an initial segment. Mathlib has `LinearOrder` machinery for this (`Fintype.orderIsoFinOfCardEq`, `monoEquivOfFin`, `Finset.Iio`). Using it would also give `<`, `\u2264`, `Monotone` and `StrictMono` reasoning instead of unfolding `simplicialLe`/`simplicialLt` with `omega` and `grind` in nearly every proof.",
+      "proposed_change": "Equip the cube with the simplicial order through a type synonym or a `LinearOrder.lift'`-style instance (lift along an injective key such as `(card, reverse colex)`). Then redefine `simplicialLt` as `<`, and express `rank` as `(Finset.Iio x).card` or via `Fintype.orderIsoFinOfCardEq`. The refl, trans, antisymm and total lemmas become instance fields, and `rank_injective` / `rank_strictMono` become instances of `StrictMono`/`Equiv` facts. I could not check how much of the downstream use in Compression, Cascade and Harper can move to such an instance, so this would need testing.",
+      "benefit": "Order lemmas come from Mathlib's `LinearOrder` API rather than one-off unfoldings. This also removes the separate `simplicialLt` that must be kept in sync with `simplicialLe`, and downstream files get standard `<`/`\u2264` notation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Fintype/Sort.lean",
+          "declaration": "monoEquivOfFin",
+          "excerpt": "def monoEquivOfFin (\u03b1 : Type*) [Fintype \u03b1] [LinearOrder \u03b1] {k : \u2115} (h : Fintype.card \u03b1 = k) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Finset/Sort.lean",
+          "declaration": "Fintype.orderIsoFinOfCardEq",
+          "excerpt": "def Fintype.orderIsoFinOfCardEq"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "rank_injective",
+          "excerpt": "lemma rank_injective {n : \u2115} : Function.Injective (@rank n) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 33986,
+    "cache_read_input_tokens": 193063,
+    "output_tokens": 7579,
+    "output_tokens_details": {
+      "thinking_tokens": 2321
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33986,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2899,
+        "cache_read_input_tokens": 37139,
+        "cache_creation_input_tokens": 928,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 928
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2310683,
+  "duration_ms": 65687,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-26T23:12:52",
+  "unit": "file",
+  "source_sha256": "fdb666ac9b0aed9e0cf0335af67b6a3f0c169dcd1abe72983dae536eb7edbf8e",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

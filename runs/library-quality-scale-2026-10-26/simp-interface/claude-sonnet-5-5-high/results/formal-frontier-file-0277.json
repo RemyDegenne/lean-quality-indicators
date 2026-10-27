@@ -1,0 +1,99 @@
+{
+  "id": "formal-frontier-file-0277",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked how its lemmas are used in the library. I grepped Mathlib's MvPowerSeries directory for an existing simp lemma about `map` of a polynomial coercion and found none. `coeToMvPowerSeries.ringHom_apply` is already simp in Mathlib. The existing simp attributes (`mem_adicallyRestrictedSubring`, `polynomialToRestricted_coe`, `coeff_adicReduction`, `adicReduction_polynomial`) look well oriented and don't compete with each other. I could not run Lean. The suggestions about adding `@[simp]` are therefore untested: I haven't checked for simp-set conflicts, and I haven't confirmed that the proposed replacement proofs go through.",
+  "findings": [
+    {
+      "declaration": "MvPowerSeries.map_polynomial_coe",
+      "start_line": 89,
+      "end_line": 94,
+      "excerpt": "theorem map_polynomial_coe {S : Type*} [CommRing S] (g : R \u2192+* S)",
+      "problem": "This is the canonical push-inside rewrite for `MvPowerSeries.map g \u2191p`. The right-hand side has a smaller form (the coercion sits outermost, over `MvPolynomial.map`). It is not tagged `@[simp]`, and Mathlib has no equivalent simp lemma (I found none in Mathlib/RingTheory/MvPowerSeries). Every downstream use therefore has to invoke it by hand. `isAdicallyRestricted_polynomial` (line ~104) feeds it into `simpa only [...]` with `.symm`, and `adicReduction_polynomial` (line 175) uses `rw [..., map_polynomial_coe]`. The coefficient proofs also have to unfold with explicit `coeff_map`/`coeff_coe` lists.",
+      "proposed_change": "Mark it `@[simp]`. The orientation already pushes `map` through the coercion, and the rewrite terminates because the head `map` disappears. With it, `isAdicallyRestricted_polynomial` and `adicReduction_polynomial` can be closed with a `simp`-based step instead of the explicit `rw`/`.symm` plumbing. The statement can also be written in the `((MvPolynomial.map g p : MvPolynomial \u03c3 S) : MvPowerSeries \u03c3 S)` form so the coercion elaborates unambiguously.",
+      "benefit": "Terms such as `map (Ideal.Quotient.mk (I ^ k)) \u2191p` normalise to polynomial form automatically. This cuts the manual rewriting in this file and in the many IdealAdicRestricted/* files that work with reductions of polynomials.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/formal-power-series/FormalPowerSeries/MvPowerSeries/IdealAdicRestricted.lean",
+          "declaration": "MvPowerSeries.adicReduction_polynomial",
+          "excerpt": "rw [adicReduction_coe, polynomialToRestricted_coe, map_polynomial_coe]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/formal-power-series/FormalPowerSeries/MvPowerSeries/IdealAdicRestricted.lean",
+          "declaration": "MvPowerSeries.isAdicallyRestricted_polynomial",
+          "excerpt": "(map_polynomial_coe (Ideal.Quotient.mk (I ^ k)) p).symm\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "MvPowerSeries.adicReduction_coe",
+      "start_line": 151,
+      "end_line": 157,
+      "excerpt": "theorem adicReduction_coe (I : Ideal R) (k : \u2115)",
+      "problem": "This lemma rewrites the coercion of `adicReduction I k f` into the canonical `map (Ideal.Quotient.mk (I ^ k)) \u2191f`. Neighbouring lemmas `coeff_adicReduction` and `adicReduction_polynomial` are `@[simp]`, but this one is not. Simp can therefore evaluate coefficients and polynomial reductions, but it cannot unfold the power-series coercion of a reduction. Two proofs have to cite it explicitly: `coeff_adicReduction` does `congrArg ... (adicReduction_coe I k f)` and `adicReduction_polynomial` does `rw [adicReduction_coe, ...]`.",
+      "proposed_change": "Add `@[simp]` to `adicReduction_coe`. It only fires on the specific `((adicReduction I k f : MvPolynomial ..) : MvPowerSeries ..)` shape. The right-hand side contains no `adicReduction`, so it cannot loop. After adding it, the `rw` in `adicReduction_polynomial` can become part of a `simp` call. Since `coeff_adicReduction` is already simp, check whether the new lemma shadows it: `coeff` of a coercion is rewritten by `MvPolynomial.coeff_coe` first, so the two should agree. Alternatively, keep it non-simp and document that `coeff_adicReduction` is the intended simp entry point.",
+      "benefit": "This would give a single normal form for reductions viewed as power series (the `map` of the underlying series). Downstream algebra involving `adicReduction` can then be reasoned about with `simp`, using the existing `map_mul`/`map_add` lemmas, instead of citing `adicReduction_coe` by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/formal-power-series/FormalPowerSeries/MvPowerSeries/IdealAdicRestricted.lean",
+          "declaration": "MvPowerSeries.coeff_adicReduction",
+          "excerpt": "have hc := congrArg (MvPowerSeries.coeff m) (adicReduction_coe I k f)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/MvPowerSeries/Basic.lean",
+          "declaration": "MvPowerSeries.coeToMvPowerSeries.ringHom_apply",
+          "excerpt": "theorem coeToMvPowerSeries.ringHom_apply : coeToMvPowerSeries.ringHom \u03c6 = \u03c6 :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 10495,
+    "cache_read_input_tokens": 38832,
+    "output_tokens": 3827,
+    "output_tokens_details": {
+      "thinking_tokens": 824
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10495,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2589,
+        "cache_read_input_tokens": 13401,
+        "cache_creation_input_tokens": 1107,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1107
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.08414920000000001,
+  "duration_ms": 27576,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:54:18",
+  "unit": "file",
+  "source_sha256": "a7b05d489bfca9c181732b6b464167ef8451f71e05aafeac71d44a26c94d0788",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

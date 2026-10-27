@@ -1,0 +1,125 @@
+{
+  "id": "lean-pool-file-0215",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I compared its vector and matrix primitives (`dot`, `matVec`, `tMatVec`, `FullRowRank`, `ones`) with Mathlib's `dotProduct`, `Matrix.mulVec`, `Matrix.vecMul`, `Matrix.vecMul_injective_iff` and `Pi.one`. I checked how the sibling file NewtonSystem.lean uses them: it re-proves `dot_comm`, `dot_smul_right`, `dot_add_smul`, `matVec_smul_apply` and `tMatVec_smul_apply` by hand. I did not flag `Vec`, which is a harmless abbreviation. I did not flag `hdot` or the HSD structures, which are domain-specific. I did not flag `dot_tMatVec_eq_dot_matVec` as its own finding, because the rubric excludes standalone theorem duplication. It is mentioned only as a symptom of the `matVec`/`tMatVec` duplicates. A migration would need `dotProduct`'s `Mul`/`AddCommMonoid` instances to unify at \u211d, which is expected but not compiled. Uses of `matVec`/`tMatVec` appear in the later files in this directory, so the refactor would touch them.",
+  "findings": [
+    {
+      "declaration": "HSDInteriorPointLP.dot",
+      "start_line": 104,
+      "end_line": 105,
+      "excerpt": "def dot {n : Nat} (u v : Vec n) : \u211d :=\n  \u2211 i, u i * v i",
+      "problem": "`dot` is exactly Mathlib's `dotProduct` (`v \u2b1d\u1d65 w`, `\u2211 i, v i * w i`) specialised to `Fin n \u2192 \u211d`. It is a competing, independent definition. Because it is a separate constant, none of Mathlib's `dotProduct_*` API (`dotProduct_comm`, `dotProduct_add`, `dotProduct_smul`, `dotProduct_mulVec`, ...) applies. The sibling file NewtonSystem.lean therefore re-proves the basic API by hand with `unfold dot` and `Finset.sum_congr`: `dot_comm`, `dot_smul_right`, `dot_add_smul` and `dot_add_smul_left`. Every goal involving `dot` also has to be unfolded before any Mathlib lemma can be used.",
+      "proposed_change": "Remove `dot` and use `Matrix.dotProduct` (notation `\u2b1d\u1d65`) directly. If the name is wanted, keep `abbrev dot := dotProduct` or a notation, not a fresh `def`. Then delete the hand-written `dot_comm`, `dot_smul_right`, `dot_add_smul` and `dot_add_smul_left` in NewtonSystem.lean and use `dotProduct_comm`, `dotProduct_smul`, `dotProduct_add` and similar. This is a replacement for a competing concept, not a proof-shortening exercise.",
+      "benefit": "One notion of dot product across the development. The Mathlib API (and `simp` lemmas) apply directly. Several duplicated lemmas can go, and readers need no unfolding step to relate this development to Mathlib's linear algebra.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Matrix/Mul.lean",
+          "declaration": "dotProduct",
+          "excerpt": "def dotProduct [Mul \u03b1] [AddCommMonoid \u03b1] (v w : m \u2192 \u03b1) : \u03b1 :=\n  \u2211 i, v i * w i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/HSDInteriorPointLP/NewtonSystem.lean",
+          "declaration": "HSDInteriorPointLP.dot_comm",
+          "excerpt": "theorem dot_comm {n : Nat} (u v : Vec n) :\n    dot u v = dot v u := by\n  unfold dot"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/HSDInteriorPointLP/NewtonSystem.lean",
+          "declaration": "HSDInteriorPointLP.dot_smul_right",
+          "excerpt": "theorem dot_smul_right {n : Nat} (u v : Vec n) (a : \u211d) :\n    dot u (fun i : Fin n => a * v i) = a * dot u v := by\n  unfold dot"
+        }
+      ]
+    },
+    {
+      "declaration": "HSDInteriorPointLP.matVec / HSDInteriorPointLP.tMatVec (and dot_tMatVec_eq_dot_matVec)",
+      "start_line": 220,
+      "end_line": 225,
+      "excerpt": "def matVec {m n : Nat} (A : Matrix (Fin m) (Fin n) \u211d) (x : Vec n) : Vec m :=\n  fun i => \u2211 j, A i j * x j",
+      "problem": "`matVec A x` is `Matrix.mulVec A x` (`A *\u1d65 x`), and `tMatVec A y` is `Matrix.vecMul y A` (`y \u1d65* A`), or equivalently `A\u1d40 *\u1d65 y` via `Matrix.mulVec_transpose`. Both are re-defined here on the same `Matrix (Fin m) (Fin n) \u211d` type with the same sum formulas. The adjointness theorem `dot_tMatVec_eq_dot_matVec` is Mathlib's `dotProduct_mulVec` and `vecMul` transpose API, proved by a manual `Finset.sum_comm` calculation. NewtonSystem.lean re-proves linearity facts (`matVec_smul_apply`, `tMatVec_smul_apply`) that Mathlib already has for `mulVec` and `vecMul`. The parallel `ones` (line 249, `fun _ => 1`) is the same as `(1 : Vec n)` from `Pi.instOne`.",
+      "proposed_change": "Make `matVec` and `tMatVec` thin abbreviations of `Matrix.mulVec` and `Matrix.vecMul`, or replace their uses with `P.A *\u1d65 x` and `y \u1d65* P.A`. Replace `ones` by `1`. Then drop the hand-written smul and adjointness lemmas in favour of Mathlib's `Matrix.mulVec_smul`, `Matrix.vecMul_smul` and `dotProduct_mulVec`. The `HLPNullspaceEquations` and Newton-block structures keep the same statements, so no mathematical content changes.",
+      "benefit": "Removes duplicated matrix-vector API and the hand-written adjointness and linearity proofs. It also makes the LP data usable with Mathlib's `Matrix`/`mulVec` results (linear maps, injectivity and rank facts) with no conversion lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Matrix/Mul.lean",
+          "declaration": "Matrix.mulVec",
+          "excerpt": "def mulVec [Fintype n] (M : Matrix m n \u03b1) (v : n \u2192 \u03b1) : m \u2192 \u03b1\n  | i => (fun j => M i j) \u2b1d\u1d65 v"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Matrix/Mul.lean",
+          "declaration": "Matrix.vecMul",
+          "excerpt": "def vecMul [Fintype m] (v : m \u2192 \u03b1) (M : Matrix m n \u03b1) : n \u2192 \u03b1\n  | j => v \u2b1d\u1d65 fun i => M i j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/HSDInteriorPointLP/NewtonSystem.lean",
+          "declaration": "HSDInteriorPointLP.matVec_smul_apply",
+          "excerpt": "theorem matVec_smul_apply {m n : Nat}\n    (A : Matrix (Fin m) (Fin n) \u211d) (a : \u211d) (x : Vec n) (i : Fin m) :\n    matVec A (fun j : Fin n => a * x j) i = a * matVec A x i := by"
+        }
+      ]
+    },
+    {
+      "declaration": "HSDInteriorPointLP.FullRowRank",
+      "start_line": 90,
+      "end_line": 91,
+      "excerpt": "def FullRowRank {m n : Nat} (P : LPData m n) : Prop :=\n  \u2200 y : Vec m, (\u2200 j : Fin n, \u2211 i : Fin m, y i * P.A i j = 0) \u2192 \u2200 i : Fin m, y i = 0",
+      "problem": "This is a hand-rolled statement that the rows of `P.A` are linearly independent, i.e. that `y \u21a6 y \u1d65* A` is injective. Mathlib already states this as `LinearIndependent \u211d A.row`, and `Matrix.vecMul_injective_iff` equates it with injectivity of `vecMul`. The docstring says it is 'written without importing a separate linear-independence API', but the file already imports `Mathlib.LinearAlgebra.Matrix.Defs`. Defining the predicate separately prevents use of the rank and linear-independence API, and the explicit sum is the unfolded `vecMul`.",
+      "proposed_change": "Define `FullRowRank P` as `LinearIndependent \u211d P.A.row` (or `Function.Injective P.A.vecMul`) and keep the name, or replace it by `Matrix.rank P.A = m`. If the explicit form is wanted for downstream proofs, add a single lemma `FullRowRank P \u2194 \u2200 y, y \u1d65* P.A = 0 \u2192 y = 0` instead of baking the sum into the definition.",
+      "benefit": "The full-row-rank assumption becomes interoperable with Mathlib's linear independence and rank API. The Newton-system injectivity argument can then use `vecMul` lemmas instead of unfolding the sums.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/LinearAlgebra/Matrix/ToLin.lean",
+          "declaration": "Matrix.vecMul_injective_iff",
+          "excerpt": "theorem Matrix.vecMul_injective_iff {M : Matrix m n R} :\n    Function.Injective M.vecMul \u2194 LinearIndependent R M.row"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 23505,
+    "cache_read_input_tokens": 110835,
+    "output_tokens": 6752,
+    "output_tokens_details": {
+      "thinking_tokens": 661
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23505,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3759,
+        "cache_read_input_tokens": 26432,
+        "cache_creation_input_tokens": 1154,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1154
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1726475,
+  "duration_ms": 49002,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-27T00:30:53",
+  "unit": "file",
+  "source_sha256": "aa6c4b8a38f25e842545e4cd12d96da2ef54dd8933bacc72af6aa2909e3a055c",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

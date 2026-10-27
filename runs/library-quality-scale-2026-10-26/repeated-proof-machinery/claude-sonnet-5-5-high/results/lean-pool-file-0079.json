@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0079",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and the supporting definitions in ConditionThreeWindow.lean (StrictGoodAt, leastGoodAbove and its spec lemmas), MoveDigits.lean (topBad_lt_of_good_from, div_mul_pow_mono) and DigitVector.lean (digit_good_above_top). Grepped the Egrs75 directory for an existing lemma like `leastGoodAbove_le`; none exists, and the Nat.find_min' pattern occurs only in this file. Candidates I rejected: the ADD and SUBTRACT 'good from index' case splits (hgoodk and hgoodi), which differ too much to share a lemma, and the floor-monotonicity steps, which already use MoveDigits.div_mul_pow_mono. I have not compiled the proposed lemmas. They are short and use only imports the file already has. I also did not check implicit-argument elaboration for `Nat.find_min'` in the proposed lemma.",
+  "findings": [
+    {
+      "declaration": "Egrs75.MuFinish.egrs_move (ADD branch, SUBTRACT branch) and Egrs75.MuFinish.align_finish_mu",
+      "start_line": 226,
+      "end_line": 231,
+      "excerpt": "have hi'le : leastGoodAbove hq3 hbad' \u2264 k := Nat.find_min' _ \u27e8htb', hsgk\u27e9",
+      "problem": "The same three-step argument for bounding the working index appears three times. Step 1: show every digit at or above k is \u2264 B. Step 2: turn that into `topBadIndex < k` via `MoveDigits.topBad_lt_of_good_from`. Step 3: pair it with `StrictGoodAt q k _` (unfolded and rewritten by hand) and apply `Nat.find_min'` to get `leastGoodAbove \u2264 k`. The ADD branch does this at lines 226-231 with `hgoodk`/`hsgk`. The SUBTRACT branch does it at lines 259-264 with `hgoodi`/`hsgi`. `align_finish_mu` does it at lines 417-423 for the seed with `hgood2`/`hsg`. Each copy re-derives the link between `leastGoodAbove`, which is defined by `Nat.find`, and the 'all digits \u2265 k good, digit k strictly good' certificate. The proof has to expose the `Nat.find` witness structure each time.",
+      "proposed_change": "Add one lemma next to `leastGoodAbove` (or at the top of this file):\n\ntheorem leastGoodAbove_le_of_good_from {q n k : \u2115} (hq3 : 3 \u2264 q) (hbad : 0 < badCountQ q n)\n    (hgood : \u2200 idx, k \u2264 idx \u2192 n / q ^ idx % q \u2264 (q - 1) / 2)\n    (hsg : StrictGoodAt q k n) : leastGoodAbove hq3 hbad \u2264 k :=\n  Nat.find_min' _ \u27e8MoveDigits.topBad_lt_of_good_from (by omega) hbad hgood, hsg\u27e9\n\nProof sketch: `leastGoodAbove` is `Nat.find` of 'above topBad and strictly good', so `k` satisfies the predicate and `Nat.find_min'` gives the bound. Rewritten uses:\n- ADD branch: delete `htb'` and `hi'le`, and write `have hi'le := leastGoodAbove_le_of_good_from hq3 hbad' hgoodk hsgk`.\n- SUBTRACT branch: `have hi'le := leastGoodAbove_le_of_good_from hq3 hbad' hgoodi hsgi`.\n- Seed: `have hple := leastGoodAbove_le_of_good_from hq3 hbads hgood2 hsg`, which drops `htb`.\nThe hypotheses are exactly those already in scope at each site. In the ADD branch `htb'` is not used elsewhere. In the SUBTRACT branch `htb'` is used only to build `hi'le`. In `align_finish_mu`, `htb` is used only for `hple`.",
+      "benefit": "The Nat.find bookkeeping is stated once, and each of the three call sites shrinks from several lines to one. A reader sees the intended fact directly: if all digits from k up are good and k is strictly good, the working index is \u2264 k. Any change to how `leastGoodAbove` is defined then touches one proof, not three.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Egrs75/MuFinish.lean",
+          "declaration": "egrs_move SUBTRACT branch",
+          "excerpt": "have hi'le : leastGoodAbove hq3 hbad' \u2264 i := Nat.find_min' _ \u27e8htb', hsgi\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Egrs75/MuFinish.lean",
+          "declaration": "align_finish_mu",
+          "excerpt": "have hple : leastGoodAbove hq3 hbads \u2264 e + 2 := Nat.find_min' _ \u27e8htb, hsg\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Egrs75/ConditionThreeWindow.lean",
+          "declaration": "leastGoodAbove",
+          "excerpt": "Nat.find (exists_strictGood_above hq hbad)"
+        }
+      ]
+    },
+    {
+      "declaration": "Egrs75.MuFinish.muVal_lt_of and Egrs75.MuFinish.align_mu (hile)",
+      "start_line": 316,
+      "end_line": 331,
+      "excerpt": "have h3 : (leastGoodAbove hq3 hbad + 1) * q \u2264 leastGoodAbove hq3 hbad' * q :=",
+      "problem": "The same mixed-radix fact about `muVal` is re-proved inline. For `hbad : 0 < badCountQ q n`, write i for `leastGoodAbove hq3 hbad`. Then `i * q \u2264 muVal n < (i + 1) * q`, because `B - digit < q`. `muVal_lt_of` proves this for the index-drop case: it first rewrites `muVal` by hand (lines 104-118) and then builds `key : i' * q + q \u2264 i * q` (lines 120-127). `align_mu` proves the contrapositive, that a larger index forces a larger `muVal`. It does this inside `hile` with two hand-unfolded `muVal` equalities (`h1`, `h2`), the index step `h3`, the rewrite `h4` and the digit bound `h5` (lines 316-331). Elsewhere, `simp only [muVal, dite_eq_left hbad]` is repeated at lines 104, 116, 170, 272, 323 and 326, and the `dite_eq_right` zero case at lines 111, 201 and 251. All of these re-derive the same unfolding, and the two bound proofs repeat the same reasoning.",
+      "proposed_change": "Add small API lemmas after `muVal`:\n\ntheorem muVal_of_pos (q) (hq3 : 3 \u2264 q) {n} (hbad : 0 < badCountQ q n) :\n    muVal q hq3 n = leastGoodAbove hq3 hbad * q + ((q - 1) / 2 - n / q ^ (leastGoodAbove hq3 hbad) % q) := by\n  simp only [muVal, dite_eq_left hbad]\n\ntheorem muVal_of_eq_zero (q) (hq3 : 3 \u2264 q) {n} (h : badCountQ q n = 0) : muVal q hq3 n = 0 := by\n  simp only [muVal, dite_eq_right (by omega : \u00ac 0 < badCountQ q n)]\n\ntheorem muVal_bounds (hq3 : 3 \u2264 q) (hbad : 0 < badCountQ q n) :\n    leastGoodAbove hq3 hbad * q \u2264 muVal q hq3 n \u2227 muVal q hq3 n < (leastGoodAbove hq3 hbad + 1) * q := by\n  rw [muVal_of_pos q hq3 hbad]; constructor <;> (try rw [add_mul, one_mul]) <;> omega\n\nProof sketch: unfold, then use `B - x \u2264 B < q`. Rewritten uses:\n- `muVal_lt_of`, index-drop case: from `muVal_bounds` at n and n' and `i' + 1 \u2264 i`, close with `Nat.mul_le_mul_right`/`nlinarith` or `gcongr`. This replaces `key` and `hmn'`.\n- `align_mu`, `hile`: by_contra gives `i + 1 \u2264 i'`. Then `muVal n < (i + 1) * q \u2264 i' * q \u2264 muVal n'`, contradicting `hmle`. This replaces `h1`-`h5`.\nThe other sites use `muVal_of_pos`/`muVal_of_eq_zero` in place of the inline `simp only`.",
+      "benefit": "The relationship between `muVal` and its index is stated and proved once. The ordering reasoning in `muVal_lt_of` and `align_mu` then reads as a short chain of inequalities, not two separate unfold-and-omega scripts. There is also one canonical rewrite for `muVal` in place of eight copies of the `dite` simp.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Egrs75/MuFinish.lean",
+          "declaration": "muVal_lt_of",
+          "excerpt": "have key : leastGoodAbove hq3 hbad' * q + q \u2264 leastGoodAbove hq3 hbad * q := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Egrs75/MuFinish.lean",
+          "declaration": "align_mu",
+          "excerpt": "have h5 : (q - 1) / 2 - n / q ^ (leastGoodAbove hq3 hbad) % q < q := by omega"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 20231,
+    "cache_read_input_tokens": 66765,
+    "output_tokens": 6032,
+    "output_tokens_details": {
+      "thinking_tokens": 1821
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20231,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3998,
+        "cache_read_input_tokens": 22612,
+        "cache_creation_input_tokens": 1548,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1548
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1479365,
+  "duration_ms": 45291,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T22:58:49",
+  "unit": "file",
+  "source_sha256": "c48d8ec67625ef6b3d55c799e69f7bd9d8d2a8e9ba4e06ca66c6f06c0fdd2886",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

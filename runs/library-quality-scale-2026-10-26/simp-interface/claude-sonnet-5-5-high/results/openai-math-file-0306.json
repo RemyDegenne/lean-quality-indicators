@@ -1,0 +1,141 @@
+{
+  "id": "openai-math-file-0306",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and grepped the sibling Determinantal files for the definitions the file uses: edgeExponent, baseEdges, expandedWeight, gadgetH and allOnes. I did not run Lean, so I don't claim that any proposed lemma compiles or that any simp set behaves a given way. The existing @[simp] set for selectorSplit (C, main, gate) looks coherent: the left-hand sides are distinct constructors, and I found no rewrite loop. The findings are about missing canonical simp lemmas. Each one is currently replaced by repeated local `have`s or by unfolding definitions inside `simp [...]` calls. I did not report rename_inner/rename_outer or allOnes_block, because the evidence for them was weaker.",
+  "findings": [
+    {
+      "declaration": "selectorSplit_base",
+      "start_line": 99,
+      "end_line": 116,
+      "excerpt": "have hm (i j : SelectorOuter I h) (r : R) : monomial (edgeExponent (i,j)) r =\n      C r * X (.inl i) * X (.inr j) := by",
+      "problem": "The canonical rewrite `monomial (edgeExponent (i,j)) r = C r * X (.inl i) * X (.inr j)` has no named simp lemma. This file proves it as `hm`, then proves the same statement again as `hx` for `M i j` (lines 113-116). Selector.lean (lines 271 and 330) and Gates.lean (line 163) each prove it again. Each time it is a local `have` that is fed to `simp only`, so the normal form for edge monomials is not part of the simp interface.",
+      "proposed_change": "Next to `edgeExponent` in Selector.lean, add one lemma `monomial_edgeExponent (i j : n) (r : R) : monomial (edgeExponent (i,j)) r = C r * X (.inl i) * X (.inr j)` and mark it @[simp]. It has no side conditions and is oriented toward the form that map_mul and rename/split lemmas consume. Then delete `hm` and `hx` here and in the other proofs. The `simp only [baseEdges, hm, ...]` call and the `edgeProduct` branch can then use the lemma directly, and `hx` plus the `rw [hx, map_mul, map_mul]` step become redundant.",
+      "benefit": "One lemma replaces five copies of the same proof, and the `edgeExponent`-monomial form is rewritten consistently across the Determinantal files. Later proofs about base edges no longer need a local bridge lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/Selector.lean",
+          "declaration": "hm inside the edgeProduct proof (about line 271)",
+          "excerpt": "have hm (i j : I) : monomial (edgeExponent (i,j)) (M i j) =\n      C (M i j)*X (.inl i)*X (.inr j) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/Gates.lean",
+          "declaration": "hm inside the splitPolynomial edge lemma (about line 163)",
+          "excerpt": "have hm : monomial (edgeExponent (i,j)) a = C a * X (.inl i) * X (.inr j) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "selectorWeight / selectorBoundaryWeight",
+      "start_line": 24,
+      "end_line": 25,
+      "excerpt": "noncomputable def selectorWeight (\u03b8 : I \u2192 R) (g : Fin 2 \u00d7 I) : R :=\n  if g.1=0 then 1 else \u03b8 g.2",
+      "problem": "`selectorWeight` is an `if` on the `Fin 2` coordinate, but it has no simp equations for the two cases that occur: `selectorWeight \u03b8 (0,i) = 1` and `selectorWeight \u03b8 (1,i) = \u03b8 i`. Downstream proofs unfold it instead. `h0` and `h1` in `selector_boundary_coeff` use `simp [selectorBoundaryWeight, selectorWeight]` (lines 175-178). `selectorMatrix_map` unfolds it and then needs `split_ifs` (line 284). `selectorBoundaryWeight` has the same gap. Unfolding exposes `if (1:Fin 2) = 0` conditions, which then have to be decided every time.",
+      "proposed_change": "Add @[simp] lemmas `selectorWeight_zero : selectorWeight \u03b8 (0,i) = 1` and `selectorWeight_one : selectorWeight \u03b8 (1,i) = \u03b8 i`. Add `selectorBoundaryWeight_zero : selectorBoundaryWeight \u03b8 0 i = X (.inl i) * X (.inr i)` and `selectorBoundaryWeight_one : selectorBoundaryWeight \u03b8 1 i = C (\u03b8 i) * X (.inl i) * X (.inr i)`, with the second also marked @[simp] or used via `simp only`. Then `h0` and `h1` reduce to `funext i; simp` or disappear, and the unfolding in `selectorMatrix_map` can stop at the lemmas. Keep the definitions semireducible rather than unfolding them in call sites.",
+      "benefit": "The two cases are stated once as readable rewrite rules. Proofs stop depending on the `if` implementation and no longer unfold the definition, and the `Fin 2` case split is handled by lemmas rather than `simp` arithmetic on `Fin` literals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/AffineSelectors.lean",
+          "declaration": "selector_boundary_coeff",
+          "excerpt": "funext i; simp [selectorBoundaryWeight, selectorWeight]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/AffineSelectors.lean",
+          "declaration": "selectorMatrix_map",
+          "excerpt": "simp only [expandedWeight, selectorBaseWeight, Matrix.map_apply, selectorWeight] <;>"
+        }
+      ]
+    },
+    {
+      "declaration": "gadgetH_map",
+      "start_line": 270,
+      "end_line": 272,
+      "excerpt": "theorem gadgetH_map (f : R \u2192+* S) (r c : Fin 3) :\n    f (gadgetH (R := R) r c) = gadgetH r c := by",
+      "problem": "This is the standard map-compatibility lemma for the constant matrix `gadgetH`. It is not tagged @[simp], so its sole use passes it by hand to `simp_all [gadgetH_map, map_ofNat]` (line 285). `gadgetH` entries are integer literals (`!![-1,-1,1; ...]`). Ring homomorphisms commute with them, as with `map_natCast` and `map_ofNat`. Any other proof that maps a gate expansion through a ring hom has to re-supply the lemma.",
+      "proposed_change": "Mark it @[simp] and move it next to the `gadgetH` definition in Selector.lean, where it applies to every user of `expandedWeight`. Its left-hand side `f (gadgetH r c)` is headed by a ring hom applied to `gadgetH`, and its right-hand side has strictly less structure, so I see no loop. The call at line 285 then no longer needs to name it.",
+      "benefit": "Ring-hom maps through `expandedWeight` and `expandedMatrix` simplify without the user having to know this auxiliary lemma. The canonical form of `f (gadgetH r c)` is `gadgetH r c`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/Selector.lean",
+          "declaration": "gadgetH",
+          "excerpt": "noncomputable def gadgetH : Matrix (Fin 3) (Fin 3) R := !![-1,-1,1; -1,-1,1; 1,1,1]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/Gates.lean",
+          "declaration": "expandedWeight",
+          "excerpt": "| .inr (_,.inr (.inr (r,c))) => gadgetH r c"
+        }
+      ]
+    },
+    {
+      "declaration": "selectorLinearEntries",
+      "start_line": 251,
+      "end_line": 254,
+      "excerpt": "  | .inl (.inl i), .inl (.inl j) => M i j\n  | _, _ => 0",
+      "problem": "`selectorLinearEntries` is defined by a catch-all match, and it is the key term in the affine decomposition. It has no simp equations: no `selectorLinearEntries M h (.inl (.inl i)) (.inl (.inl j)) = M i j` and no zero cases. Every consumer therefore unfolds the definition and manually does a three-by-three `rcases` on both indices (lines 263-264 and 296-297), with the unfolding handled by `simp [selectorLinearEntries, ...]`. The catch-all match also leaves overlapping equation lemmas, which are awkward in `simp` when the indices are not literal constructors.",
+      "proposed_change": "Add @[simp] lemmas: `selectorLinearEntries_main (M i j) : selectorLinearEntries M h (.inl (.inl i)) (.inl (.inl j)) = M i j`. Add `selectorLinearEntries_zero_of_gate`, i.e. `selectorLinearEntries M h (.inr g) c = 0` and `selectorLinearEntries M h r (.inr g) = 0`, together with the `.inl (.inr _)` variants. Also add `selectorLinearEntries_zero : selectorLinearEntries 0 h r c = 0`. This lets `selectorMatrix_affine` and `selectorLinearEntries_sum` use `simp` after the case split without unfolding the definition. Because `selectorMatrix_affine` is stated for `selectorMatrix 0 \u03b8 h`, the last lemma also makes the `M = 0` instance used in `selector_polynomial_affine` simplify directly.",
+      "benefit": "The constructor-by-constructor behaviour is explicit in the simp set, so a change to `SelectorVertex` or to the definition doesn't need the case analysis redone in every proof that touches the linear part.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/AffineSelectors.lean",
+          "declaration": "selectorMatrix_affine",
+          "excerpt": "simp [selectorLinearEntries, ite_and]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Algebra/Determinantal/AffineSelectors.lean",
+          "declaration": "selectorLinearEntries_sum",
+          "excerpt": "simp [selectorLinearEntries, selectorCoefficientMatrix, Fintype.sum_prod_type, ite_and]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 34548,
+    "cache_read_input_tokens": 113847,
+    "output_tokens": 6736,
+    "output_tokens_details": {
+      "thinking_tokens": 1970
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 34548,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4275,
+        "cache_read_input_tokens": 34003,
+        "cache_creation_input_tokens": 4558,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4558
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2169567,
+  "duration_ms": 53371,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:30:28",
+  "unit": "file",
+  "source_sha256": "52d233c394d9713998ae742b49d9675ae33024d49a7a739e90431cf322b99bbe",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

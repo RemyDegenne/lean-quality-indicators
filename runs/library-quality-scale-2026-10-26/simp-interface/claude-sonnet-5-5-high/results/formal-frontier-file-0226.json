@@ -1,0 +1,99 @@
+{
+  "id": "formal-frontier-file-0226",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the simp-tagged declarations and the places that use them. I did not run Lean, so I make no claim about simp failures or loops. The file has about five repeated `congr_app ... ; change ... at h` blocks, which suggest a missing app-level simp lemma. The `@[simp]` lemma `flasqueResolution_d_succ` has a right-hand side that other simp lemmas in the file rewrite further. I found no rewrite cycles. I did not look for other candidate lemmas, such as one for the sections-level zero maps.",
+  "findings": [
+    {
+      "declaration": "toFlasqueEnvelope_comp_toFlasqueEnvelopeQuotient",
+      "start_line": 123,
+      "end_line": 127,
+      "excerpt": "@[reassoc (attr := simp)]\ntheorem toFlasqueEnvelope_comp_toFlasqueEnvelopeQuotient :\n    toFlasqueEnvelope (X := X) \u226b\n      toFlasqueEnvelopeQuotient (X := X) = 0",
+      "problem": "The simp lemma only states the vanishing for the natural transformations. Every use in the file needs the objectwise statement `(toFlasqueEnvelope).app F \u226b (toFlasqueEnvelopeQuotient).app F = 0`. Simp rewrites `(\u03b7 \u226b \u03c0).app F` into `\u03b7.app F \u226b \u03c0.app F`, so it never applies the natural-transformation lemma to the app-level composite `\u03b7.app F \u226b \u03c0.app F`. As a result the proofs repeat the same boilerplate by hand: `have h := congr_app (toFlasqueEnvelope_comp_toFlasqueEnvelopeQuotient (X := X)) B`, then `change ... = 0 at h`, then `rw [h, zero_comp]`. This appears in `flasqueResolutionDifferential_comp`, `flasqueResolution_exactAt_succ`, `flasqueResolutionAugmentedShortComplex`, `toFlasqueResolution`, `flasqueEnvelopeSectionsShortComplex` and `flasqueEnvelopeSectionsHomologyIsoCokernel`.",
+      "proposed_change": "Add an objectwise lemma, for example `@[reassoc (attr := simp)] theorem toFlasqueEnvelope_app_comp_toFlasqueEnvelopeQuotient_app (F : Sheaf AddCommGrpCat X) : (toFlasqueEnvelope (X := X)).app F \u226b (toFlasqueEnvelopeQuotient (X := X)).app F = 0 := congr_app toFlasqueEnvelope_comp_toFlasqueEnvelopeQuotient F`. Its `_assoc` form handles three-fold composites such as `\u03b7.app B \u226b \u03c0.app B \u226b \u03b7.app C`. Then replace the `congr_app`/`change`/`rw` blocks with `simp` or `simp [Category.assoc]`.",
+      "benefit": "The canonical vanishing fact fires automatically on the composites that actually occur. This removes about five duplicated `change ... at h` blocks that depend on defeq unfolding of `NatTrans.app`. Later proofs become shorter and less fragile.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/sheaf-cohomology/SheafCohomology/FlasqueResolution.lean",
+          "declaration": "flasqueResolutionAugmentedShortComplex",
+          "excerpt": "have h := congr_app\n      (toFlasqueEnvelope_comp_toFlasqueEnvelopeQuotient (X := X)) F"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/sheaf-cohomology/SheafCohomology/FlasqueResolution.lean",
+          "declaration": "flasqueResolution_exactAt_succ",
+          "excerpt": "have hB := congr_app\n    (toFlasqueEnvelope_comp_toFlasqueEnvelopeQuotient (X := X)) B"
+        }
+      ]
+    },
+    {
+      "declaration": "flasqueResolution_d_succ",
+      "start_line": 306,
+      "end_line": 315,
+      "excerpt": "@[simp]\ntheorem flasqueResolution_d_succ (F : Sheaf AddCommGrpCat X) (n : \u2115) :",
+      "problem": "The simp lemma's right-hand side contains `(flasqueEnvelopeQuotientIterate (n + 1)).obj F`. The file also tags `flasqueEnvelopeQuotientIterate_succ` as `@[simp]`, and simp then rewrites that term through `Functor.comp_obj` to `Q.obj ((flasqueEnvelopeQuotientIterate n).obj F)`. So the output of `flasqueResolution_d_succ` is not in simp normal form, and simp keeps rewriting after it fires. The simp set therefore has two competing normal forms for the same object. The users handle this by hand. `flasqueResolution_exactAt_succ` needs an extra `simp only [flasqueEnvelopeQuotientIterate_succ, Functor.comp_obj]` after `simp only [flasqueResolution_d_succ]`. Other proofs use `rw [flasqueResolution_d_succ]` followed by `rfl`. The lemma's own proof is `simp [...]` followed by a bare `rfl`, which again depends on defeq between the two forms.",
+      "proposed_change": "State the right-hand side in the simp-normal form, writing the target object as `(flasqueEnvelopeQuotientFunctor (X := X)).obj ((flasqueEnvelopeQuotientIterate (X := X) n).obj F)`. Alternatively, drop `@[simp]` from `flasqueEnvelopeQuotientIterate_succ`. Provide `flasqueEnvelopeQuotientIterate_obj_succ : (flasqueEnvelopeQuotientIterate (n+1)).obj F = Q.obj ((flasqueEnvelopeQuotientIterate n).obj F)` as the single canonical objectwise rewrite. Then the `simp only [flasqueEnvelopeQuotientIterate_succ, Functor.comp_obj]` step and the trailing `rfl`s can be removed.",
+      "benefit": "Simp reaches one stable normal form for the resolution differentials and the iterated quotient objects. Downstream proofs, such as the global-sections iso and the exactness proof, no longer need manual normalisation steps.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/sheaf-cohomology/SheafCohomology/FlasqueResolution.lean",
+          "declaration": "flasqueEnvelopeQuotientIterate_succ",
+          "excerpt": "@[simp]\ntheorem flasqueEnvelopeQuotientIterate_succ (n : \u2115) :\n    flasqueEnvelopeQuotientIterate (X := X) (n + 1) ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/sheaf-cohomology/SheafCohomology/FlasqueResolution.lean",
+          "declaration": "flasqueResolution_exactAt_succ",
+          "excerpt": "simp only [flasqueEnvelopeQuotientIterate_succ, Functor.comp_obj]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 24559,
+    "cache_read_input_tokens": 56066,
+    "output_tokens": 4754,
+    "output_tokens_details": {
+      "thinking_tokens": 1602
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24559,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2770,
+        "cache_read_input_tokens": 27176,
+        "cache_creation_input_tokens": 1396,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1396
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1513946,
+  "duration_ms": 30426,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T00:33:56",
+  "unit": "file",
+  "source_sha256": "4ba746b17a72358f75eb3433dae1990d69af861f2a5d927ba1d654c853a25609",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0219",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the places that use diagonalUnit in the library (UnitPivotInduction, LocalElementaryGeneration, tests). I also checked Mathlib for relevant Fin and diagonal simp lemmas. I found no cycle or competing-rule problem. The existing simp lemmas diagonalUnit_val, diagonalUnit_one and diagonalUnit_mul look orientation-safe. The two findings are about missing simp coverage that the proofs work around by hand. I could not run Lean, so I have not checked that the proposed lemmas compile or that the proofs get shorter. That the `Fin.succ 0` versus `1` mismatch is what blocks simp is inferred from the manual rewrite workaround, not observed.",
+  "findings": [
+    {
+      "declaration": "diagonalUnit_pair_mem (local `hi`); missing diagonalUnit inverse simp lemma",
+      "start_line": 108,
+      "end_line": 111,
+      "excerpt": "have hi : scalar\u207b\u00b9 = diagonalUnit (fun _ : Fin 1 => a\u207b\u00b9) := by\n    rw [hs]\n    apply Units.ext\n    rfl",
+      "problem": "The file sets up a simp interface for diagonalUnit with `diagonalUnit_val`, `diagonalUnit_one` and `diagonalUnit_mul`, but it has no lemma for the inverse of a diagonalUnit. The proof of `hi` rewrites by hand and closes with `rfl`, which relies on how `GL` inverses unfold. So `(diagonalUnit d)\u207b\u00b9` has no canonical normal form, and `simp` cannot reduce it to `diagonalUnit (fun i => (d i)\u207b\u00b9)`. The inverse sits next to `diagonalUnit_mul` and `diagonalUnit_one`, so the group-structure simp set is incomplete.",
+      "proposed_change": "Add `@[simp] theorem diagonalUnit_inv (d : \u03b9 \u2192 R\u02e3) : (diagonalUnit d)\u207b\u00b9 = diagonalUnit (fun i => (d i)\u207b\u00b9)`, proved by `Units.ext rfl`. The inverse field of the structure is already `Matrix.diagonal (fun i => ((d i)\u207b\u00b9).val)`. Then `hi` becomes `by rw [hs, diagonalUnit_inv]` or `by simp [hs]`. This is a safe orientation: the right side is built from the same constructor and the lemma cannot loop. Also check that it does not conflict with a coercion simp lemma for `Units.val_inv_eq_inv_val`.",
+      "benefit": "Users and later proofs, such as the `hp` step at lines 112\u2013119, get a normal form for inverses of diagonal units. They no longer need `rfl` proofs that depend on the definition of `diagonalUnit`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/ElementaryDiagonal.lean",
+          "declaration": "diagonalUnit",
+          "excerpt": "inv := Matrix.diagonal (fun i => ((d i)\u207b\u00b9).val)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/ElementaryDiagonal.lean",
+          "declaration": "diagonalUnit_mul",
+          "excerpt": "diagonalUnit (fun i => d i * e i) = diagonalUnit d * diagonalUnit e"
+        }
+      ]
+    },
+    {
+      "declaration": "firstTwoRestEquiv_zero / firstTwoRestEquiv_one / firstTwoRestEquiv_succ_succ and their use in diagonalUnit_firstTwo_mem and diagonalUnit_mem_elementarySubgroup",
+      "start_line": 133,
+      "end_line": 182,
+      "excerpt": "rw [Fin.succ_zero_eq_one' (n := n + 1)]\n          simp only [Nat.reduceAdd, Equiv.symm_symm, Function.comp_apply,\n            firstTwoRestEquiv_one, Fin.isValue, Sum.elim_inl, pair]\n          rw [\u2190 Fin.succ_zero_eq_one' (n := n + 1),\n            \u2190 Fin.succ_zero_eq_one' (n := 1)]",
+      "problem": "The evaluation lemmas for `firstTwoRestEquiv` are private and not tagged `@[simp]`, and the `Fin.cases` induction produces the index `Fin.succ 0`, not `1`. The lemma `firstTwoRestEquiv_one` is stated at `1`, so it does not match `firstTwoRestEquiv n (Fin.succ 0)`. The proof therefore rewrites `Fin.succ 0` to `1` with `Fin.succ_zero_eq_one'`, runs a hand-built `simp only` set, then rewrites back, twice over. The same round trip appears in `hfactor` at lines 240\u2013243. The cases `zero` and `succ` are listed by name, as `simp [firstTwoRestEquiv_zero, pair]`, instead of being closed by a plain simp set. The matching `Matrix.firstRestEquiv_zero` and `Matrix.firstRestEquiv_succ` are used the same way at lines 127\u2013128 and 231\u2013232. The rewrite-and-undo pattern points to a missing simp lemma, not to a deliberate normal form.",
+      "proposed_change": "Mark the three evaluation lemmas `@[simp]` and add a `Fin.succ 0` variant, for example `firstTwoRestEquiv_succ_zero (n : \u2115) : firstTwoRestEquiv n (Fin.succ 0) = Sum.inl 1`. It can be proved from `firstTwoRestEquiv_one` together with `Fin.succ_zero_eq_one'`. Optionally add a local simp lemma that evaluates `Fin.cases a (Fin.cases b f)` at `Fin.succ 0`, which would replace the `rw \u2190 Fin.succ_zero_eq_one'` steps at lines 179\u2013181 and 242\u2013243. With these, the succ-zero branches should reduce to a single `simp [pair]` call. That would match the other branches and remove the rewrite-then-undo steps. These lemmas have no cycle risk: each rewrites a concrete index to a constructor.",
+      "benefit": "The Fin/Sum index bookkeeping stops depending on a fragile `1` versus `Fin.succ 0` mismatch. The proofs become shorter and robust to simp-set changes, and `firstTwoRestEquiv` becomes usable with `simp` by any later code in this file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/ElementaryDiagonal.lean",
+          "declaration": "firstTwoRestEquiv_one",
+          "excerpt": "firstTwoRestEquiv n 1 = Sum.inl 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/ElementaryDiagonal.lean",
+          "declaration": "diagonalUnit_mem_elementarySubgroup",
+          "excerpt": "rw [Fin.succ_zero_eq_one' (n := n + 1)]\n                simp only [pair, a, tail, rest]\n                rw [\u2190 Fin.succ_zero_eq_one' (n := n + 1)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Data/Fin/SuccPred.lean",
+          "declaration": "Fin.succ_zero_eq_one'",
+          "excerpt": "theorem succ_zero_eq_one' [NeZero n] : Fin.succ (0 : Fin n) = 1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18490,
+    "cache_read_input_tokens": 49720,
+    "output_tokens": 5779,
+    "output_tokens_details": {
+      "thinking_tokens": 2031
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18490,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3404,
+        "cache_read_input_tokens": 19625,
+        "cache_creation_input_tokens": 2878,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2878
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.136738,
+  "duration_ms": 54619,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:32:15",
+  "unit": "file",
+  "source_sha256": "a311c3de636b07e166b400746cbe3af06f8747a82f111092fc9b5d843732d1fb",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

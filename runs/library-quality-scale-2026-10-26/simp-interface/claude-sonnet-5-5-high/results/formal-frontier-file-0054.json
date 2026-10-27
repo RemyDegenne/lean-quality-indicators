@@ -1,0 +1,125 @@
+{
+  "id": "formal-frontier-file-0054",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related stabilize lemmas in ElementaryStabilization.lean. I also grepped for uses of the simp lemmas in the library. I did not run Lean. The claims below rest on how simp rewrites subterms before the enclosing term, and on the file's own proofs, which apply these lemmas by hand. I found no cycle. I did not report map_id, map_comp, stage_finStabilize or lift_stage, which look fine.",
+  "findings": [
+    {
+      "declaration": "Matrix.GeneralLinearGroup.finStabilize_apply_inl_inl (and _inl_inr, _inr_inl, _inr_inr)",
+      "start_line": 50,
+      "end_line": 88,
+      "excerpt": "finStabilize R h g (finBlockEquiv h (Sum.inl i))\n        (finBlockEquiv h (Sum.inl j)) = g i j",
+      "problem": "These four @[simp] lemmas have left-hand sides containing `finBlockEquiv h (Sum.inl i)` and `finBlockEquiv h (Sum.inr j)`. The simp lemmas `finBlockEquiv_inl` and `finBlockEquiv_inr` rewrite exactly those subterms to `Fin.castLE h i` and `Fin.cast _ (Fin.natAdd n i)`. Simp normalizes arguments before the enclosing application, so the left-hand sides are not in simp normal form and the lemmas will very likely never fire. The file's own proofs agree: `finStabilize_apply_castLE` is proved by `simpa only [finBlockEquiv_inl] using finStabilize_apply_inl_inl ...`, and `finStabilize_apply` applies the inl_inr, inr_inl and inr_inr lemmas by hand with `exact`. Only `finStabilize_apply_castLE` is stated in normal form. The off-diagonal and identity blocks have no simp lemma in normal form, so `simp` cannot evaluate those entries.",
+      "proposed_change": "Keep the four `Sum.inl`/`Sum.inr` lemmas as non-simp lemmas (remove `@[simp]`). Add simp-normal companions stated with `Fin.castLE h i` and `Fin.cast (Nat.add_sub_of_le h) (Fin.natAdd n j)`. These would give `0` for the two off-diagonal blocks and `(1 : Matrix _ _ R) i j` for the complementary block. They can be proved by `simpa only [finBlockEquiv_inl, finBlockEquiv_inr] using ...`.",
+      "benefit": "Simp would reduce off-diagonal and identity-block entries of `finStabilize` instead of leaving them stuck. The simp set would also contain no dead lemmas, so readers are not misled about which rules fire.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/StableGeneralLinear.lean",
+          "declaration": "Matrix.GeneralLinearGroup.finBlockEquiv_inl",
+          "excerpt": "finBlockEquiv h (Sum.inl i) = Fin.castLE h i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/StableGeneralLinear.lean",
+          "declaration": "Matrix.GeneralLinearGroup.finStabilize_apply_castLE",
+          "excerpt": "simpa only [finBlockEquiv_inl] using finStabilize_apply_inl_inl R h g i j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/StableGeneralLinear.lean",
+          "declaration": "Matrix.GeneralLinearGroup.finStabilize_apply",
+          "excerpt": "exact finStabilize_apply_inl_inr R h g row col"
+        }
+      ]
+    },
+    {
+      "declaration": "Matrix.GeneralLinearGroup.finStabilize_comp",
+      "start_line": 148,
+      "end_line": 151,
+      "excerpt": "finStabilize R (h.trans h') = (finStabilize R h').comp (finStabilize R h)",
+      "problem": "This is a @[simp] lemma that expands one `finStabilize` into a composite of two. It rewrites `finStabilize R (h.trans h')` to `(finStabilize R h').comp (finStabilize R h)`, so the result is syntactically larger, and the intermediate rank `m` is introduced into the goal. The direction matches the directed-system axiom `map_map`, but it is unwanted as a simp rewrite. It fires only when the proof term is literally `Trans`/`le_trans` syntax, so it rarely helps. When it does fire it can block `stage_finStabilize`, which wants a single `finStabilize R h` under `stage`. For example, `stage R k (finStabilize R (h.trans h') g)` would become `stage R k ((finStabilize R h').comp (finStabilize R h) g)` and then `stage R k (finStabilize R h' (finStabilize R h g))`. That still reduces, but only through two steps, and proof-term syntax decides which path is taken.",
+      "proposed_change": "Remove `@[simp]` from `finStabilize_comp` and use it explicitly, as the `DirectedSystem` instance already does. If a simp-friendly form is wanted, add a separate applied lemma `finStabilize R h' (finStabilize R h g) = finStabilize R (h.trans h') g`. That orientation collapses two stabilizations into one and gives a canonical single-step form.",
+      "benefit": "Simp would collapse nested stabilizations instead of splitting composite ones. The result would be a canonical form that is smaller and does not depend on proof-term syntax.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/StableGeneralLinear.lean",
+          "declaration": "Matrix.GeneralLinearGroup.stage_finStabilize",
+          "excerpt": "stage R m (finStabilize R h g) = stage R n g"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/StableGeneralLinear.lean",
+          "declaration": "DirectedSystem instance for finStabilizeSystem",
+          "excerpt": "(finStabilize_comp R hij hjk)).symm"
+        }
+      ]
+    },
+    {
+      "declaration": "Matrix.GeneralLinearGroup.finStabilize_mapRingHom",
+      "start_line": 171,
+      "end_line": 176,
+      "excerpt": "finStabilize S h (mapRingHom f g) = mapRingHom f (finStabilize R h g)",
+      "problem": "This @[simp] lemma competes with `stage_finStabilize` and `map_stage`. The goal `stage S m (finStabilize S h (mapRingHom f g))` can be closed by `stage_finStabilize` to `stage S n (mapRingHom f g)`. Simp rewrites the inner term first, so `finStabilize_mapRingHom` turns it into `stage S m (mapRingHom f (finStabilize R h g))`. That no longer matches `stage_finStabilize`, and no simp lemma rewrites `stage S m (mapRingHom f _)`. The proof of `StableGL.map` shows the problem. It cannot use `simp`. It does `rw [\u2190 finStabilize_mapRingHom f h g]` to undo the rewrite and then calls `stage_finStabilize` by hand. The simp rule pushes `mapRingHom` outward, which is the opposite of the form the stable-stage lemmas need.",
+      "proposed_change": "Remove `@[simp]` from `finStabilize_mapRingHom`. Alternatively, reverse it or add a stage-level lemma `stage S m (mapRingHom f (finStabilize R h g)) = stage S n (mapRingHom f g)` so both normal forms converge. The simplest choice is to keep the lemma as a plain `theorem` and use it in the `map` proof, as is done now.",
+      "benefit": "Simp goals about `StableGL.map` and `stage` reach the single canonical form `stage S n (mapRingHom f g)`. They no longer stall on a `mapRingHom f (finStabilize ..)` term that nothing else rewrites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/StableGeneralLinear.lean",
+          "declaration": "Matrix.GeneralLinearGroup.StableGL.map",
+          "excerpt": "rw [\u2190 finStabilize_mapRingHom f h g]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/StableGeneralLinear.lean",
+          "declaration": "Matrix.GeneralLinearGroup.StableGL.stage_finStabilize",
+          "excerpt": "stage R m (finStabilize R h g) = stage R n g"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 16014,
+    "cache_read_input_tokens": 32293,
+    "output_tokens": 5864,
+    "output_tokens_details": {
+      "thinking_tokens": 1958
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16014,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3238,
+        "cache_read_input_tokens": 16600,
+        "cache_creation_input_tokens": 3427,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3427
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1259373,
+  "duration_ms": 42313,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T22:54:48",
+  "unit": "file",
+  "source_sha256": "bf9e53761b5fe4fc186659f36075cf7f22d7a6fbba0b4780a92cb3d24284a732",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

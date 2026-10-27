@@ -1,0 +1,83 @@
+{
+  "id": "lean-pool-file-0322",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the MeanRankUpdate and CorrectionState signatures that bear on the support lemmas. I considered other candidates and left them out because the repeated part is routine or short.\n- The three `*_update_on` theorems each rewrite with `barMoment_add_on` twice. That is a thin pattern.\n- `barMoment_add_on` and `barMoment_sub_on` are near copies, but each is a thin wrapper around an existing lemma.\n- `LocalShell.directional` and `supportedGauge_directional` share a closing step: if f is eventually 0 near p, then fderiv is 0. It is one line (`rw [he.fderiv_eq]` then `simp only [fderiv_fun_const, ...]`), so I judged it too short to extract.\nI did not compile anything, so the proposed rewrite is untested. The one finding rests on `angular_supportedGauge` (line 1040) closing by definitional unfolding, as `desired_supportedGauge` does at line 1034. That should work but is unconfirmed.",
+  "findings": [
+    {
+      "declaration": "RankGeometry.angular_supported / RankGeometry.angular_supportedGauge (versus RankGeometry.desired_slice_support)",
+      "start_line": 618,
+      "end_line": 629,
+      "excerpt": "have h := MeanRankUpdate.angularIncrement_tsupport r.lambda (r.coefficient n p.2.1)\n    r.inner r.outer (r.velocity n p.2.1) (hg.length_pos n p.2.1 hp) hg.inner_lt_outer\n    (CorrectionState.debt c u n p.2.1) (subset_tsupport _ hn)",
+      "problem": "The desired-axial source has a single slice-level lemma, `desired_slice_support`, which proves that the support of the slice lies in `Icc lo hi` for any bounds `lo`, `hi` below and above the moving patch. Both `desired_supported` (line 610) and `desired_supportedGauge` (line 1034) are one-line corollaries of it. The angular source has no such lemma. `angular_supported` (lines 618\u2013629) and `angular_supportedGauge` (lines 1040\u20131047) each repeat the same reasoning. Each unfolds to `angularIncrement`, calls `angularIncrement_tsupport` with the same eight arguments, and then reads the two endpoint inequalities off `Ioo` and chains them with the outer bounds. The two copies differ only in the endpoints: `hleft`/`hright` in one, `le_rfl` in the other. This is the same argument as `desired_slice_support` with `angularIncrement` swapped in. The asymmetry makes a reader check two long argument lists by eye, and any change to the `tsupport` lemma's signature must be made in three places.",
+      "proposed_change": "Add, next to `desired_slice_support` inside `namespace RankGeometry` (with `include hg`), a mirror lemma:\n\ntheorem angular_slice_support (n : \u2115) {x : P} (hx : x \u2208 U) {lo hi : \u211d}\n    (hlo : lo \u2264 r.length n x * r.inner) (hhi : r.length n x * r.outer \u2264 hi) :\n    support (fun R => CorrectionState.rankAngular r c u n (R, x)) \u2286 Icc lo hi := by\n  intro R hR\n  change MeanRankUpdate.angularIncrement r.lambda (r.coefficient n x) r.inner r.outer\n    (r.length n x) (r.velocity n x) (CorrectionState.debt c u n x) R \u2260 0 at hR\n  have h := MeanRankUpdate.angularIncrement_tsupport r.lambda (r.coefficient n x)\n    r.inner r.outer (r.velocity n x) (hg.length_pos n x hx) hg.inner_lt_outer\n    (CorrectionState.debt c u n x) (subset_tsupport _ hR)\n  exact \u27e8hlo.trans h.1.le, h.2.le.trans hhi\u27e9\n\nThe proof is that of `desired_slice_support` with `angularIncrement` in place of `desiredAxialIncrement`. Then:\n\n- `angular_supported` becomes `intro p hp hn; exact hg.angular_slice_support n hp (hleft n _ hp) (hright n _ hp) hn`. This is the same shape as `desired_supported`.\n- `angular_supportedGauge` becomes `intro p hp hn; exact hg.angular_slice_support n hp le_rfl le_rfl hn`. This is the same shape as `desired_supportedGauge`.\n\nThe hypotheses are unchanged. The lemma needs only `hg.length_pos` and `hg.inner_lt_outer`, which `angular_supported` and `angular_supportedGauge` already use. No new imports are required. `potential_supportedGauge` (lines 1049 onward) repeats the same `desiredAxialIncrement_tsupport` call, but it passes `hsupport` to `scaledPrimitive_zero_of_support` unapplied, so I left it out.",
+      "benefit": "The angular and desired-axial support proofs become parallel, with one place to maintain each unfolding-and-`tsupport` argument. `angular_supported` and `angular_supportedGauge` shrink to one-liners that match `desired_supported` and `desired_supportedGauge`. A reader sees at once that the two sources are handled identically.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/LocalRankDefect.lean",
+          "declaration": "RankGeometry.desired_slice_support",
+          "excerpt": "exact \u27e8hlo.trans h.1.le, h.2.le.trans hhi\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/LocalRankDefect.lean",
+          "declaration": "RankGeometry.angular_supportedGauge",
+          "excerpt": "have h := MeanRankUpdate.angularIncrement_tsupport r.lambda (r.coefficient n p.2.1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/MeanRankUpdate.lean",
+          "declaration": "MeanRankUpdate.angularIncrement_tsupport",
+          "excerpt": "tsupport (angularIncrement lam C a b ell U d) \u2286 Ioo (ell * a) (ell * b)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 41837,
+    "cache_read_input_tokens": 164698,
+    "output_tokens": 6589,
+    "output_tokens_details": {
+      "thinking_tokens": 3010
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 41837,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2795,
+        "cache_read_input_tokens": 43414,
+        "cache_creation_input_tokens": 2352,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2352
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2497278,
+  "duration_ms": 55249,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:36:11",
+  "unit": "file",
+  "source_sha256": "a877f3684fcecc0e08a904f162518b2ba314d891b677b66ce32441ccf751ee7a",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

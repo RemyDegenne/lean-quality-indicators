@@ -1,0 +1,110 @@
+{
+  "id": "formal-frontier-file-0157",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the entire target file and the group-theory RationalCircle simp lemma (rationalToCircle_mk is simp, but there is no simp lemma for evaluation of characterToPontryagin etc.). Grepped the formal-frontier repo for other uses of these defs; only the test file uses characterEquivPontryagin, with `change` to unfold. I did not run Lean, so the claims are about proof style and missing simp coverage, not observed simplifier behavior. There are no @[simp] attributes at all in this file, so I report missing simp interface, not competing rules or loops.",
+  "findings": [
+    {
+      "declaration": "Supernatural.characterToPontryagin / Supernatural.characterToPontryaginHom",
+      "start_line": 129,
+      "end_line": 161,
+      "excerpt": "toFun a := Additive.toMul (AddCircle.rationalToCircle (c a.toAdd))",
+      "problem": "The evaluation of `characterToPontryagin A c` at `a` has no `@[simp]` apply lemma, and neither does the coercion of `characterToPontryaginHom A c`. The proofs of `map_mul'` and `map_zero'`/`map_add'` therefore have to restate the goal with long `change` blocks, and `rfl` closes the final step. The same unfolding is repeated in `pontryaginRestriction_surjective`, with `change Additive.toMul (AddCircle.rationalToCircle (c b.1)) = \u03c7 b`. Users cannot simplify `characterToPontryagin A c (Multiplicative.ofAdd x)` to the intended normal form `Additive.toMul (AddCircle.rationalToCircle (c x))`.",
+      "proposed_change": "Add `@[simp] theorem characterToPontryagin_apply (c : CharacterModule A) (a : Multiplicative A) : characterToPontryagin A c a = Additive.toMul (AddCircle.rationalToCircle (c a.toAdd)) := rfl`. Add `@[simp] theorem characterToPontryaginHom_apply (c : CharacterModule A) : characterToPontryaginHom A c = Additive.ofMul (characterToPontryagin A c) := rfl`. The `change` blocks and the final `change` in `pontryaginRestriction_surjective` can then be replaced by `simp`/`rw` with these lemmas, together with `map_add` and `rationalToCircle_mk`.",
+      "benefit": "The proofs of the additive-hom structure fields and the surjectivity statement become short and robust to changes in the definition. The interface gains a canonical normal form for character evaluation. Downstream users, such as the test that has to `change Nat.card (PontryaginDual ...)` after the equivalence, no longer have to unfold by `rfl`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/group-theory/GroupTheory/Topology/RationalCircle.lean",
+          "declaration": "AddCircle.rationalToCircle_mk",
+          "excerpt": "@[simp] theorem rationalToCircle_mk (q : \u211a) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Characters.lean",
+          "declaration": "Supernatural.characterToPontryaginHom",
+          "excerpt": "change Additive.toMul (AddCircle.rationalToCircle (c a.toAdd + d a.toAdd)) ="
+        }
+      ]
+    },
+    {
+      "declaration": "Supernatural.pontryaginEquivAddChar",
+      "start_line": 216,
+      "end_line": 229,
+      "excerpt": "toFun \u03c7 :=\n    { toFun := fun a \u21a6 \u03c7 (Multiplicative.ofAdd a)",
+      "problem": "The equivalence is defined by anonymous structures. It has no `@[simps]` or manual `_apply`/`_symm_apply` simp lemmas, and no coe lemma for `characterEquivPontryagin`. Simp cannot reduce `pontryaginEquivAddChar A \u03c7 a` to `\u03c7 (Multiplicative.ofAdd a)`, nor `(pontryaginEquivAddChar A).symm \u03c8 x` to `\u03c8 x.toAdd`. Proofs must use `rfl` (`left_inv`, `right_inv`) or `change`, as the test file does after rewriting with `characterEquivPontryagin`.",
+      "proposed_change": "Add `@[simp] theorem pontryaginEquivAddChar_apply (\u03c7 : PontryaginDual (Multiplicative A)) (a : A) : pontryaginEquivAddChar A \u03c7 a = \u03c7 (Multiplicative.ofAdd a) := rfl` and `@[simp] theorem pontryaginEquivAddChar_symm_apply (\u03c8 : AddChar A Circle) (a : Multiplicative A) : (pontryaginEquivAddChar A).symm \u03c8 a = \u03c8 a.toAdd := rfl`. Likewise add `@[simp] theorem characterEquivPontryagin_apply (hA : IsAddTorsion A) (c : CharacterModule A) : characterEquivPontryagin A hA c = Additive.ofMul (characterToPontryagin A c) := rfl`. Use `@[simps]` where it works.",
+      "benefit": "The equivalences become usable by `simp` and `rw`, which gives a canonical form for transporting characters between `CharacterModule`, `PontryaginDual (Multiplicative A)` and `AddChar A Circle`. This removes ad hoc `change` steps such as the one in `SupernaturalNumbersTests/RationalCircle.lean`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbersTests/RationalCircle.lean",
+          "declaration": "cyclic_six_rational_characters",
+          "excerpt": "change Nat.card (PontryaginDual (Multiplicative (ZMod 6))) = 6"
+        }
+      ]
+    },
+    {
+      "declaration": "Supernatural.multiplicativeSubgroupInclusion / Supernatural.pontryaginRestriction",
+      "start_line": 239,
+      "end_line": 251,
+      "excerpt": "toFun b := Multiplicative.ofAdd b.toAdd.1",
+      "problem": "The coercion of `multiplicativeSubgroupInclusion A B` and the evaluation of `pontryaginRestriction A B \u03c7` have no simp lemmas. Later proofs rely on defeq: `have h\u03c7a : \u03c7 a = 1 := hrest` and `change Additive.toMul (...) = \u03c7 b`. They also use `congrArg (fun \u03c8 \u21a6 \u03c8 (Multiplicative.ofAdd b))`, because `pontryaginRestriction A B \u03c7 b` does not simplify to `\u03c7 (Multiplicative.ofAdd \u2191b.toAdd)`. The `PontryaginDual.map` composition is opaque to simp.",
+      "proposed_change": "Add `@[simp] theorem multiplicativeSubgroupInclusion_apply (B : AddSubgroup A) (b : Multiplicative B) : multiplicativeSubgroupInclusion A B b = Multiplicative.ofAdd (b.toAdd : A) := rfl` and `@[simp] theorem pontryaginRestriction_apply (B : AddSubgroup A) (\u03c7 : PontryaginDual (Multiplicative A)) (b : Multiplicative B) : pontryaginRestriction A B \u03c7 b = \u03c7 (Multiplicative.ofAdd (b.toAdd : A)) := rfl`. Use them in `pontryaginRestriction_surjective` and `exists_pontryaginRestrictionKernel_le` instead of `change`/defeq coercions.",
+      "benefit": "Restriction of characters can be computed by `simp`. The kernel and cofinality proofs (`hrest`, `h\u03c7a`, and the final `change` in the surjectivity proof) no longer depend on definitional unfolding through `PontryaginDual.map`. This makes them more robust and more readable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Characters.lean",
+          "declaration": "Supernatural.exists_pontryaginRestrictionKernel_le",
+          "excerpt": "have h\u03c7a : \u03c7 a = 1 := hrest"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 15052,
+    "cache_read_input_tokens": 52341,
+    "output_tokens": 3918,
+    "output_tokens_details": {
+      "thinking_tokens": 275
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15052,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2961,
+        "cache_read_input_tokens": 17631,
+        "cache_creation_input_tokens": 1434,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1434
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10463810000000001,
+  "duration_ms": 32683,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:13:22",
+  "unit": "file",
+  "source_sha256": "abe8434d670e7435623f494a50c7ef1da1cebacfa0168f9056dcffe0c41ff26b",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

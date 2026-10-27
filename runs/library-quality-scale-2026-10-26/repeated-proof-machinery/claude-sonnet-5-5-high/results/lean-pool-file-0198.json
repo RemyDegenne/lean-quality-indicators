@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0198",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I reviewed the whole file. It has one very large generated TAlphaWff term (lines 35\u20131489), seven `nb084_focused_notmem_*` lemmas, and one `TEnvFresh` assembly lemma. I read `mem_lt_freshVar` and the two `freshVar_not_mem_of_subset` variants in the support files. I could not compile anything. The two proposed helpers are untested, and the first is only a thin wrapper, so it is the weaker finding. For the first, the `unfold` plus `with_reducible exact` steps would still be needed to expose `freshVar` in each `show`. The big term is generated, so the real fix may belong in the generator. I did not locate the generator.",
+  "findings": [
+    {
+      "declaration": "NFChoice.DirectNominalPrf.NominalAlphaWrappersRepaired.nb084SplitAlpha0001",
+      "start_line": 55,
+      "end_line": 65,
+      "excerpt": "(show (nb084AlphaDummy004 A B R) \u2260 (nb084AlphaDummy010 A B R) from (by\n              unfold nb084AlphaDummy010;\n              with_reducible\n                exact (Nat.ne_of_lt (mem_lt_freshVar (nb084_support_mem_0036 A B R) 1))))",
+      "problem": "The same three-step proof of `earlierDummy \u2260 freshVar-dummy` appears inline dozens of times in this one term. Each copy is `unfold <dummy>; with_reducible exact Nat.ne_of_lt (mem_lt_freshVar (nb084_support_mem_NNNN \u2026) k)`. It pairs a support-membership lemma with a fresh-variable offset. Each copy repeats the full `show a \u2260 b from by \u2026` boilerplate, and the two parallel `A B R` and `x y A R` versions are written out separately for every `TAlphaVar.there`. This is hard to audit and bulks up the term. Note that `Nat.ne_of_lt` plus `mem_lt_freshVar` is itself short, so a helper is only worthwhile because of how many times it is repeated.",
+      "proposed_change": "Add one local helper next to this file's definitions, for example `theorem ne_freshVar_of_mem {s : Finset Var} {v : Var} (hv : v \u2208 s) (k : Nat) : v \u2260 freshVar s k := Nat.ne_of_lt (mem_lt_freshVar hv k)`. A second helper could return `TAlphaVar.there` directly from a membership proof, so a step becomes `ne_freshVar_of_mem (nb084_support_mem_0036 A B R) 1`. Each `show \u2026 from (by unfold \u2026; with_reducible exact \u2026)` block is then one application. The `unfold` is kept only where `freshVar` must be exposed, for example `(by unfold nb084AlphaDummy010; exact ne_freshVar_of_mem (nb084_support_mem_0036 A B R) 1)`. Both the `A B R` side and the `x y A R` side use the same lemma. Alternatively, fix the generator so it emits the helper call.",
+      "benefit": "This removes roughly 50 copies of the same proof from a 1,450-line term, so the remaining term shows which support lemma and offset justify each distinctness fact. A reader can then check the structure without scanning boilerplate. If the freshVar ordering argument changes, it needs one edit instead of dozens.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/ReplaySupport/Basic.lean",
+          "declaration": "mem_lt_freshVar",
+          "excerpt": "theorem mem_lt_freshVar {support : Finset Var} {x : Var} (hx : x \u2208 support)\n    (offset : Nat := 0) : x < freshVar support offset"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/AlphaSupport/NAR4C084C001Part004Stage1.lean",
+          "declaration": "nb084SplitAlpha0001",
+          "excerpt": "(show (nb084AlphaDummy006 x y A R) \u2260 (nb084AlphaDummy012 x y A R) from (by\n              unfold nb084AlphaDummy012;"
+        }
+      ]
+    },
+    {
+      "declaration": "NFChoice.DirectNominalPrf.NominalAlphaWrappersRepaired.nb084_focused_notmem_0010 (and 0011\u20130016)",
+      "start_line": 1491,
+      "end_line": 1559,
+      "excerpt": "  change freshVar ((R).fv \u222a (A).fv \u222a (B).fv) 0 \u2209 R.fv\n  exact\n    NFChoice.DefinitionLeaves.AlphaFocusedSupport.freshVar_not_mem_of_subset 0\n      (fun u hu => Finset.mem_union_left _ (Finset.mem_union_left _ (hu)))",
+      "problem": "`nb084_focused_notmem_0010` to `0016` all prove `fresh dummy \u2209 R.fv` in the same way. Each uses `change freshVar (R.fv \u222a \u2026 ) k \u2209 R.fv`, then `freshVar_not_mem_of_subset k` with an inclusion proved by nested `Finset.mem_union_left`. There are only two shapes. In 0014\u20130016, the support is `R.fv \u222a A.fv \u222a B.fv`, with offsets 2, 1, 0. In 0010\u20130013, it is `R.fv \u222a A.fv \u222a cv a.fv \u222a cv b.fv`, with offsets 1, 0, 1, 0. The two-union inclusion and three-union inclusion are re-derived by hand seven times. The `change` statements also repeat the long support expression. The same pattern appears in other files such as `SingletonImageAlpha` and `CompositionAlpha`.",
+      "proposed_change": "Prove two lemmas once: `freshVar_not_mem_left3 (R A B : Class) (k : Nat) : freshVar (R.fv \u222a A.fv \u222a B.fv) k \u2209 R.fv` and `freshVar_not_mem_left4 (R A C D : Class) (k : Nat) : freshVar (R.fv \u222a A.fv \u222a C.fv \u222a D.fv) k \u2209 R.fv`. Prove each with `freshVar_not_mem_of_subset k (fun u hu => Finset.mem_union_left _ \u2026)`. Then restate the uses as `nb084_focused_notmem_0014 A B R := freshVar_not_mem_left3 R A B 2`, `0015 := \u2026 1`, `0016 := \u2026 0`. `0010\u20130013` become `freshVar_not_mem_left4 R A (Class.cv _) (Class.cv _) k`, with `0011` and `0013` taking `(Class.cv x) (Class.cv y)`. The statements already unfold definitionally to the `change` goals, so only the `change` may need to stay.",
+      "benefit": "Seven near-identical proof blocks (about 70 lines) shrink to two lemmas plus one-line uses. This makes it clear that every dummy variable is fresh for R because of the same support-inclusion fact. The helpers can also be reused across the sibling alpha-support files that repeat this pattern, and adding another dummy needs one line.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/AlphaSupport/NAR4C084C001Part004Stage1.lean",
+          "declaration": "nb084_focused_notmem_0010",
+          "excerpt": "Finset.mem_union_left _ (Finset.mem_union_left _ (Finset.mem_union_left _ (hu))))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/AlphaSupport/NAR4C084C001Part004Stage1.lean",
+          "declaration": "nb084_focused_notmem_0014",
+          "excerpt": "(fun u hu => Finset.mem_union_left _ (Finset.mem_union_left _ (hu)))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/AlphaFocusedSupport.lean",
+          "declaration": "freshVar_not_mem_of_subset",
+          "excerpt": "theorem freshVar_not_mem_of_subset {small large : Finset Var} (offset : Nat)\n    (hsub : small \u2286 large) : freshVar large offset \u2209 small"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 45731,
+    "cache_read_input_tokens": 210161,
+    "output_tokens": 6041,
+    "output_tokens_details": {
+      "thinking_tokens": 1478
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 45731,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3115,
+        "cache_read_input_tokens": 47891,
+        "cache_creation_input_tokens": 1769,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1769
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.26437409999999995,
+  "duration_ms": 48751,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:21:44",
+  "unit": "file",
+  "source_sha256": "6c0ec841859e9f476e9b71813768550807988c2f2beda596ceab2b953715bd78",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

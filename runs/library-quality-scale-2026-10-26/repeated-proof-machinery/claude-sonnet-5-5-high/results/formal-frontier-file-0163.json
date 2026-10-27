@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0163",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file, TopRepUlift.lean (JointlyContinuous, TopRep.of/ofMonoidHom usage) and the related part of TopRepDiscreteHom.lean (a third, differently styled discrete-carrier construction). Candidates considered: (1) the identical ofMonoidHom bundling in discreteDirectSum/discreteTensor; (2) the four 'check continuity on generators, close under 0/+' proofs (two continuousSMul, two jointlyContinuous). I did not verify that the helper statements compile; the proposed helpers' exact instance requirements (e.g. IsTopologicalAddGroup for TopRep.of, the 'let ... := \u22a5' topologies) may need adjustment. The ContinuousLinearMap.mk/ofMonoidHom pattern in TopRepDiscreteHom.discreteLinHom uses a different proof (coe_injective), so I did not count it as a third identical copy.",
+  "findings": [
+    {
+      "declaration": "discreteDirectSum / discreteTensor (ofMonoidHom bundling of a discrete representation)",
+      "start_line": 191,
+      "end_line": 212,
+      "excerpt": "exact .of <| .ofMonoidHom {\n    toFun := fun g => ContinuousLinearMap.mk (\u03c1 g) continuous_of_discreteTopology",
+      "problem": "The construction that turns an algebraic Representation on a carrier with the discrete topology into a TopRep is copied verbatim in `discreteDirectSum` (lines 72\u201387) and `discreteTensor` (lines 197\u2013212): same toFun via `ContinuousLinearMap.mk (\u03c1 g) continuous_of_discreteTopology`, and the same `map_one'` (ext, change, rw [map_one], rfl) and `map_mul'` (ext, change, rw [map_mul], rfl) proofs. Only the algebraic representation \u03c1 differs. Any change (e.g. to the ContRepresentation API) must be made twice, and the continuity of each operator on a discrete carrier is re-established ad hoc.",
+      "proposed_change": "Add one helper in this file, e.g.\n`noncomputable def ofDiscrete {V : Type w} [AddCommGroup V] [Module k V] [TopologicalSpace V] [DiscreteTopology V] [ContinuousSMul k V] (\u03c1 : Representation k G V) : TopRep.{w} k G := .of <| .ofMonoidHom { toFun := fun g => ContinuousLinearMap.mk (\u03c1 g) continuous_of_discreteTopology, map_one' := (the existing proof using \u03c1.map_one), map_mul' := (the existing proof using \u03c1.map_mul) }`\n(plus an `@[simp]` lemma `ofDiscrete_\u03c1_apply : (ofDiscrete \u03c1).\u03c1 g x = \u03c1 g x := rfl`). Then `discreteDirectSum` becomes `letI \u2026 := \u22a5; letI \u2026 ; exact ofDiscrete (Representation.directSum fun i => (X i).\u03c1.toRepresentation)` and `discreteTensor` becomes `\u2026 exact ofDiscrete (Representation.tprod X.\u03c1.toRepresentation Y.\u03c1.toRepresentation)`. The downstream `rfl`/`change` proofs (`discreteDirectSum_V`, `discreteDirectSum_\u03c1_of`, `discreteTensor_\u03c1_tmul`) should be unaffected since the action unfolds definitionally to \u03c1 g. Care is needed that the instance arguments (IsTopologicalAddGroup etc.) are available for the \u22a5 topology, as they are in the present proofs. The same helper could also serve the analogous construction in TopRepDiscreteHom.discreteLinHom.",
+      "benefit": "Removes ~20 duplicated lines of non-trivial bundling, states once the principle 'a representation on a discrete carrier is automatically operatorwise continuous', and makes future discrete constructions (like discreteLinHom) one-liners.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/TopRepDiscrete.lean",
+          "declaration": "TopRep.discreteDirectSum",
+          "excerpt": "exact .of <| .ofMonoidHom {\n    toFun := fun g => ContinuousLinearMap.mk (\u03c1 g) continuous_of_discreteTopology"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/TopRepDiscreteHom.lean",
+          "declaration": "TopRep.discreteLinHom",
+          "excerpt": "ContRepresentation.ofMonoidHom\n    { toFun := fun g =>\n        { toLinearMap := \u03c1 g\n          cont := continuous_of_discreteTopology }"
+        }
+      ]
+    },
+    {
+      "declaration": "continuousSMul_discreteDirectSum, continuousSMul_discreteTensor, discreteDirectSum_jointlyContinuous, discreteTensor_jointlyContinuous",
+      "start_line": 243,
+      "end_line": 267,
+      "excerpt": "rw [continuous_prod_of_discrete_right]\n  intro x\n  induction x using TensorProduct.inductionOn with",
+      "problem": "Four proofs share the same skeleton: put the discrete topology on the carrier, reduce `Continuous (fun p : T \u00d7 V => \u03c6 p.1 p.2)` to continuity of `t \u21a6 \u03c6 t x` for each x via `continuous_prod_of_discrete_right`, then do induction on x, where the `zero` case is a constant and the `add` case is `(hx.add hy).congr (\u2026 map_add/smul_add \u2026)`. Only the generator case (`of i a` / `tmul a b`) is specific. The argument is stated four times (lines 49\u201362, 133\u2013161, 172\u2013186, 243\u2013267), with the additivity/zero bookkeeping and the topology-juggling duplicated each time.",
+      "proposed_change": "Prove one lemma, e.g.\n`theorem continuous_prod_of_discrete_of_generators {T V : Type*} [TopologicalSpace T] [AddCommMonoid V] [TopologicalSpace V] [DiscreteTopology V] (\u03c6 : T \u2192 V \u2192+ V) {S : Set V} (hS : AddSubmonoid.closure S = \u22a4) (h : \u2200 s \u2208 S, Continuous fun t => \u03c6 t s) : Continuous fun p : T \u00d7 V => \u03c6 p.1 p.2`.\nProof sketch: `rw [continuous_prod_of_discrete_right]; intro x; have : x \u2208 AddSubmonoid.closure S := hS \u25b8 trivial; induction this using AddSubmonoid.closure_induction` with zero case `by simpa using continuous_const` (\u03c6 t 0 = 0), add case `(hx.add hy).congr fun t => (map_add (\u03c6 t) _ _).symm`. Use it with \u03c6 = `DistribMulAction.toAddMonoidHom V` (for the two ContinuousSMul proofs; T = k) and \u03c6 = `fun g => (\u03c1 g).toAddMonoidHom` (for the joint-continuity proofs; T = G), with S = range of `DirectSum.of` / the set of pure tensors (closure = \u22a4 shown once by `DirectSum.induction_on` / `TensorProduct.induction_on`). Each of the four theorems is then reduced to its generator-continuity computation (`ha`/`hi` or `ha`/`hb`/`ht`). Since the lemma is stated with the discrete topology as a typeclass, the `let : TopologicalSpace \u2026 := \u22a5` / `hV3` juggling would be applied once per call rather than inside a hand-written induction.",
+      "benefit": "Concentrates the 'continuity on a discrete additive carrier follows from continuity on additive generators' argument in one reusable lemma, shortens four proofs to their genuinely distinct generator computations, and makes it easy to add further constructions (e.g. other tensor/sum functors) without a fifth induction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/TopRepDiscrete.lean",
+          "declaration": "TopRep.discreteDirectSum_jointlyContinuous",
+          "excerpt": "exact h.congr (fun g => (map_zero ((discreteDirectSum X).\u03c1 g)).symm)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/TopRepDiscrete.lean",
+          "declaration": "TopRep.continuousSMul_discreteTensor",
+          "excerpt": "exact (hx.add hy).congr (fun r => (smul_add r x y).symm)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/TopRepDiscrete.lean",
+          "declaration": "TopRep.discreteTensor_jointlyContinuous",
+          "excerpt": "exact (hx.add hy).congr (fun g => (map_add ((discreteTensor X Y).\u03c1 g) x y).symm)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19042,
+    "cache_read_input_tokens": 52624,
+    "output_tokens": 6997,
+    "output_tokens_details": {
+      "thinking_tokens": 2754
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19042,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3310,
+        "cache_read_input_tokens": 20829,
+        "cache_creation_input_tokens": 2142,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2142
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.15141639999999998,
+  "duration_ms": 55530,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:14:58",
+  "unit": "file",
+  "source_sha256": "6812e47c7f9387aa02a6bb2622d3844b9c69fadf30b68f540cc810be8e866703",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

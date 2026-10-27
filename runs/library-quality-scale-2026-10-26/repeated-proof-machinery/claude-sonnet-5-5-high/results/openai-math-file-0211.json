@@ -1,0 +1,93 @@
+{
+  "id": "openai-math-file-0211",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the related definitions: step_down and step_up in Driver.lean, down_rep and up_rep and different_eq in RawLabels.lean, and settle, downRun, upRun and the rank lemmas in GridLabels.lean. I grepped for the uses of down_pass and up_pass; the only ones are in RecursiveExecution.lean, lines 112-113. The down_pass and up_pass proofs are the same argument line by line, with only these changes: the grid step (gridDown/gridUp), the rank, the label (frame 0/frame 1), the successor states, and the run lemmas (downRun_fixed/next and upRun_fixed/next). I did not compile the proposed generic lemma, so its exact binder and unification details are uncertain. In particular, I have not checked the definitional unfolding from downRun to settle, nor the exact form of Label.downRun_fixed and Label.downRun_next. I found nothing else in the file that meets the rubric. The size lemmas (Small.size and the like) have similar shapes but differ in their arithmetic, so I did not flag them.",
+  "findings": [
+    {
+      "declaration": "MeanPayoff.TreeDevice.Certified.DetDriver.down_pass and up_pass",
+      "start_line": 32,
+      "end_line": 71,
+      "excerpt": "obtain \u27e8j,hj,hjexec\u27e9 := ho g vs hv (frame 0 x ds vs::ks)\n  by_cases he : g'=g",
+      "problem": "down_pass (lines 20-71) and up_pass (lines 73-124) are the same nontrivial well-founded induction, copied once per direction. Each one does the following. (1) It builds us from down/up and proves VectorRep of the stepped pivot via gridPivot_down/up and down_rep/up_rep. (2) It proves `different (us,vs)=decide (g'\u2260g)` from different_eq and injectivity of gridPivot. (3) It runs the oracle for j steps, then case-splits on g'=g. (4) In the fixed branch it rewrites the one-step `step` through step_down/step_up and ite_eq_right, and takes k=j+1. (5) In the changed branch it recurses on g', uses the rank-drop estimate `Nat.mul_le_mul_right T hr` + nlinarith to bound j+1+k \u2264 (rank g+1)*T, rewrites with downRun_next/upRun_next, and glues the executions with Exec.trans and a second ite_eq_left step. Only the grid step, rank, frame tag and successor states differ. Any fix to the cost bound, the step lemma shape or the recursion has to be made twice, and the two copies can drift apart.",
+      "proposed_change": "Add one direction-agnostic lemma in this file, before down_pass, and make down_pass and up_pass one-line instantiations of it.\n\nSuggested statement, with n, d, A, x, h, hd, ar, o, T as in the existing theorems. Abstract over:\n- a grid map `f : Label.Grid n \u2192 Label.Grid n`, with `rank : Label.Grid n \u2192 \u2115` and `hdec : \u2200 z, f z \u2260 z \u2192 rank (f z) < rank z`;\n- `U : Label.Grid n \u2192 List W \u2192 List W`, with `hU : \u2200 g vs, VectorRep (gridPivot A t g) vs \u2192 VectorRep (gridPivot A t (f g)) (U g vs)`, where t := (2:\u2124)^(d-12);\n- `hdiff : \u2200 g vs, VectorRep .. g vs \u2192 different (U g vs, vs) = decide (f g \u2260 g)`, which follows from different_eq and gridPivot_injective;\n- the three state families `Call vs ds ks` (the in-progress call with the old vector), `Again us ds ks` (the re-entered call with the new vector) and `Done us ds ks` (the exit state), and `hstep_ne` / `hstep_eq`, which give `step (ar, ret ls (frame \u03c4 x ds vs::ks))` as `Again (U g vs)` when different and `Done (U g vs)` otherwise. Here Call, Again and Done are `Label.Grid n \u2192 ...`-free state builders such as `fun vs ds ks => call (child false (x,vs)) (frame 0 x ds vs::ks)`;\n- the oracle hypothesis `ho` for the callee, stated with `Exec ar (call (child b (x,vs)) ks) (ret (List.ofFn (o g)) ks) k`.\n\nConclusion of the lemma: `\u2203 us k, VectorRep (gridPivot A t (settle f rank hdec g).val.1) us \u2227 k \u2264 (rank g + 1) * T \u2227 Exec ar (Call vs ds ks) (Done us ds ks) k`.\n\nProof sketch: well-founded induction on rank g.\n- Fixed branch (f g = g): use `Nat.le_mul_of_pos_left` for the bound, then one step via hstep_eq.\n- Changed branch (f g \u2260 g): use hstep_ne, recurse on f g, and bound the cost with `Nat.mul_le_mul_right T (hdec ..)` + nlinarith.\n\nThen:\n- `down_pass` := generic lemma with f := fun z => gridDown z (o z), rank := downRank, U := fun g vs => down (x,vs,List.ofFn (o g)), hU from gridPivot_down + down_rep, hstep_* from step_down. downRun o g is definitionally `settle (fun z => gridDown z (oracle z)) downRank ..`, so the conclusion should match, possibly after `unfold Label.downRun`, and downRun_fixed/next are then not needed.\n- `up_pass` := the same with gridUp, upRank, up, up_rep, step_up.\n\nThe call sites in RecursiveExecution.lean lines 112-113 need no change, because the statements of down_pass and up_pass stay the same.",
+      "benefit": "This removes about 50 lines of duplicated, tactic-heavy proof (the ite_eq_right/ite_eq_left rewrites, the nlinarith cost arithmetic, and the Exec.trans gluing) and leaves a single place where the settle-loop cost bound and the step semantics are proved. A reader checks one induction, and the two direction-specific statements shrink to the short hypotheses that really distinguish them: the step lemma, the rank lemma and the representation lemma. It also makes plain that the two passes are symmetric instances of the existing `settle` abstraction in GridLabels.lean, which already treats downRun and upRun uniformly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/DriverExecution.lean",
+          "declaration": "up_pass",
+          "excerpt": "obtain \u27e8j,hj,hjexec\u27e9 := ho g vs hv (frame 1 x ds vs::ks)\n  by_cases he : g'=g"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/GridLabels.lean",
+          "declaration": "Label.downRun",
+          "excerpt": "settle (fun z => gridDown z (oracle z)) downRank"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/GridLabels.lean",
+          "declaration": "Label.upRun",
+          "excerpt": "settle (fun z => gridUp z (oracle z)) upRank"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/Driver.lean",
+          "declaration": "step_down",
+          "excerpt": "if different (us,vs) then call (child false (x,us)) (frame 0 x ds us::ks)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/Driver.lean",
+          "declaration": "step_up",
+          "excerpt": "if different (us,vs) then call (child true (x,us)) (frame 1 x ds us::ks)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 28600,
+    "cache_read_input_tokens": 78193,
+    "output_tokens": 5185,
+    "output_tokens_details": {
+      "thinking_tokens": 1327
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28600,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2914,
+        "cache_read_input_tokens": 30155,
+        "cache_creation_input_tokens": 2374,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2374
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1740853,
+  "duration_ms": 38916,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:27",
+  "unit": "file",
+  "source_sha256": "d21bff1b5e07e07c5c8583732f2a49896f15468287183124e52f10ee5fff48ae",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

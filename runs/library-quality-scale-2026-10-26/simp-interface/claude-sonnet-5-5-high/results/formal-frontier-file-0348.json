@@ -1,0 +1,115 @@
+{
+  "id": "formal-frontier-file-0348",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked its simp-related declarations. The file has no `@[simp]` attributes of its own. I looked at the uses of `degreeZeroRingHom` in `ProjectiveSpace/Veronese.lean` and the test client. I also looked at how `HomogeneousLocalizationMap.lean` in `graded-rings` handles simp lemmas for `mapDegreeMul`, and at `fromZeroRingHom` in Mathlib's `HomogeneousLocalization.lean`. I searched Mathlib for an existing public `val_fromZeroRingHom` and found none. I did not run Lean, so I make no claim about simp behaviour. Two findings are about missing canonical coercion lemmas. The third concerns a chart-restriction identity that proofs rewrite by hand and which lacks a reassoc/simp form. The last of these is less certain.",
+  "findings": [
+    {
+      "declaration": "degreeZeroRingHom",
+      "start_line": 332,
+      "end_line": 338,
+      "excerpt": "toFun a := \u27e8f a, by simpa only [mul_zero] using hdeg 0 a a.2\u27e9",
+      "problem": "`degreeZeroRingHom` is a public bundled ring hom into a subtype-valued ring `\u212c 0`. It has no simp lemma for its underlying value, so `((degreeZeroRingHom \ud835\udc9c \u212c f d hdeg a : \u212c 0) : B)` has no simp normal form `f a`. Downstream proofs unfold it by hand. `mapDegreeMul_fromZeroRingHom` is closed by `exact (val_fromZeroRingHom ...).symm`. `degreeZeroRingHom_eq` in Veronese.lean is closed by `apply Subtype.ext; rfl`.",
+      "proposed_change": "Add a lemma `@[simp] theorem coe_degreeZeroRingHom (f) (d) (hdeg) (a : \ud835\udc9c 0) : ((degreeZeroRingHom \ud835\udc9c \u212c f d hdeg a : \u212c 0) : B) = f a := rfl`. Add the `RingHom` apply form too if wanted. The direction is canonical (it removes the wrapper) and cannot loop, because the right-hand side is the plain ring hom `f`.",
+      "benefit": "Simp can then reduce coefficient-level goals involving `degreeZeroRingHom` to `f a`. That would shorten `mapDegreeMul_fromZeroRingHom` and downstream proofs such as `degreeZeroRingHom_eq`. It also means client files need no `Subtype.ext; rfl` or manual unfolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-space/ProjectiveSpace/Veronese.lean",
+          "declaration": "degreeZeroRingHom_eq",
+          "excerpt": "apply RingHom.ext\n  intro a\n  apply Subtype.ext\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-space/ProjectiveSpace/DegreeScaledMap.lean",
+          "declaration": "mapDegreeMul_fromZeroRingHom",
+          "excerpt": "exact (val_fromZeroRingHom \u212c (f a) (degreeZeroRingHom \ud835\udc9c \u212c f d hdeg z)).symm"
+        }
+      ]
+    },
+    {
+      "declaration": "val_fromZeroRingHom",
+      "start_line": 340,
+      "end_line": 344,
+      "excerpt": "private theorem val_fromZeroRingHom (a : A) (z : \ud835\udc9c 0) :",
+      "problem": "The identity `(fromZeroRingHom \ud835\udc9c (Submonoid.powers a) z).val = algebraMap A (Localization (Submonoid.powers a)) z` is the missing coercion lemma for `fromZeroRingHom`. Mathlib does not provide it, and I found no `val_fromZeroRingHom` there. In this file it is `private`, has no simp attribute, and is passed by name to `simp only`, so the simp interface is hidden from other files. The same file's `degreeZeroRingHom` and `mapDegreeMul` already follow the convention of public `val_*` lemmas, namely `val_mapDegreeMul` in the graded-rings library.",
+      "proposed_change": "Make it public and mark it `@[simp]`, or move it next to `fromZeroRingHom` in the graded-rings library. The orientation (`.val` of the hom equals `algebraMap` of the coefficient) is the canonical one, and the right-hand side does not contain `fromZeroRingHom`, so there is no cycle. Check that `algebraMap A (Localization _)` does not conflict with existing `HomogeneousLocalization.algebraMap_eq` / `val_*` simp lemmas when you add it.",
+      "benefit": "Every client that compares `fromZeroRingHom` images, for example `degreeScaledChart_base`, would get a canonical rewrite. Duplicate private copies would no longer be needed. `mapDegreeMul_fromZeroRingHom` could drop the explicit lemma name from its `simp only` call.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/GradedAlgebra/HomogeneousLocalization.lean",
+          "declaration": "fromZeroRingHom",
+          "excerpt": "toFun f := .mk \u27e80, f, 1, one_mem _\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/HomogeneousLocalizationMap.lean",
+          "declaration": "val_mapDegreeMul",
+          "excerpt": "@[simp] theorem val_mapDegreeMul"
+        }
+      ]
+    },
+    {
+      "declaration": "chartCover_map",
+      "start_line": 296,
+      "end_line": 301,
+      "excerpt": "(chartCover \ud835\udc9c \u212c f).f i \u226b degreeScaledMap \ud835\udc9c \u212c f d hd hdeg =\n      degreeScaledChartMap \ud835\udc9c \u212c f d hd hdeg i",
+      "problem": "This is the defining restriction law for `degreeScaledMap`, and it is the main way to compute `degreeScaledMap`. It is stated only as a plain equation, with no `reassoc` companion and no simp attribute. Later proofs apply it by hand through `rw`, or through the manual `(Category.assoc _ _ _).trans (congrArg _ (chartCover_map ...))` in `degreeScaledMap_chartSpec`. The same hand-reassociation appears with `congrArg` in `degreeScaledMap_toSpecZero`. Without a reassociated form, any composite `(chartCover).f i \u226b degreeScaledMap \u226b g` cannot be simplified directly.",
+      "proposed_change": "Mark it `@[reassoc (attr := simp)]`, following the usual Mathlib convention for restriction/glue lemmas. If a simp attribute seems too aggressive, add at least `@[reassoc]`. The orientation is canonical: it rewrites away the glued map in favour of the chart map, and `degreeScaledChartMap` is a definition that simp does not unfold, so I see no cycle.",
+      "benefit": "`degreeScaledMap_chartSpec` and the `calc` blocks in `degreeScaledMap_toSpecZero` could close with `simp`/`rw` using the reassociated lemma. The manual `Category.assoc`/`congrArg` bridging goes away, and later users can compose `degreeScaledMap` with further arrows.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-space/ProjectiveSpace/DegreeScaledMap.lean",
+          "declaration": "degreeScaledMap_chartSpec",
+          "excerpt": "exact (Category.assoc _ _ _).trans (congrArg _ (chartCover_map \ud835\udc9c \u212c f d hd hdeg i))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 11223,
+    "cache_read_input_tokens": 160652,
+    "output_tokens": 4873,
+    "output_tokens_details": {
+      "thinking_tokens": 709
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 11223,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2973,
+        "cache_read_input_tokens": 31414,
+        "cache_creation_input_tokens": 880,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 880
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10971119999999998,
+  "duration_ms": 41709,
+  "turns": 9,
+  "attempts": 2,
+  "judged": "2026-10-27T01:54:40",
+  "unit": "file",
+  "source_sha256": "2511fa774e56371adbb22644b5111e8e5080ed328e6010f8a73a644b8412e204",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

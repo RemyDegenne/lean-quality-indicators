@@ -1,0 +1,99 @@
+{
+  "id": "mathlib-file-0257",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related `Exp.lean` and `Substitution.lean` sources. I checked the simp attributes on `coeff_log`, `constantCoeff_log`, `map_log`, `logOf_one_add_X` and `logOf_exp`, and the unannotated `subst_exp_log`, `subst_log_exp_sub_one`, `logOf_eq` and `constantCoeff_logOf`. I found no cycles or competing rules. The findings are about missing or inconsistent simp coverage. I did not run Lean, so I don't claim that any simp call fails. My suggestion to mark `subst_exp_log` and `subst_log_exp_sub_one` simp is a judgement call. `HasSubst.log` could be made reusable via `simp` or `fun_prop`, but I did not report that. The `coeff_log` suggestion is weaker.",
+  "findings": [
+    {
+      "declaration": "PowerSeries.subst_log_exp_sub_one / PowerSeries.subst_exp_log / PowerSeries.logOf_exp",
+      "start_line": 146,
+      "end_line": 158,
+      "excerpt": "theorem subst_log_exp_sub_one : (log A).subst (exp A - 1) = X := by",
+      "problem": "The same identity exists in two forms, and only one is simp. `logOf_exp` states `logOf (exp A) = X` and is `@[simp]`. Its proof is just `subst_log_exp_sub_one A`, because `logOf f` is defined as `(log A).subst (f - 1)`. `logOf` is a plain def and `logOf_eq` is not simp, so simp does not unfold it. A goal written with `subst` therefore stays stuck: `(log A).subst (exp A - 1)` is not rewritten to `X`, and `(exp A).subst (log A)` is not rewritten to `1 + X`. Whether a goal simplifies depends on whether the user wrote `logOf` or `subst`. The two identities are the headline results of the file, and the file itself calls them with explicit arguments, e.g. `subst_exp_log A` in the proof of `subst_log_exp_sub_one`. Neither has side conditions, and the LHS heads (`subst` applied to `exp A`/`log A`) are specific enough that they should not loop or fire unexpectedly.",
+      "proposed_change": "Mark both `subst_exp_log` and `subst_log_exp_sub_one` as `@[simp]`, so the `subst` and `logOf` forms have consistent simp coverage. Then `logOf_exp` stays as the simp lemma for the `logOf` spelling. Alternatively, keep `subst` the canonical spelling and drop `@[simp]` from `logOf_exp`, relying on `logOf_eq`. The first option is the least disruptive.",
+      "benefit": "Users who write `(exp A).subst (log A)` or `(log A).subst (exp A - 1)` get `1 + X` and `X` from `simp`, the same as the `logOf` form already does. This avoids having to call `subst_exp_log A` or `subst_log_exp_sub_one A` by hand, as the file does itself.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/PowerSeries/Log.lean",
+          "declaration": "PowerSeries.logOf_exp",
+          "excerpt": "theorem logOf_exp : logOf (exp A) = X :=\n  subst_log_exp_sub_one A"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/PowerSeries/Log.lean",
+          "declaration": "PowerSeries.logOf",
+          "excerpt": "(log A).subst (f - 1)"
+        }
+      ]
+    },
+    {
+      "declaration": "PowerSeries.coeff_log",
+      "start_line": 54,
+      "end_line": 57,
+      "excerpt": "coeff n (log A) = if n = 0 then 0 else algebraMap \u211a A ((-1 : \u211a) ^ (n + 1) / n)",
+      "problem": "The only simp lemma for coefficients of `log A` is the unconditional `if n = 0` form. For a variable `n`, simp leaves the `if` in place; it only reduces for numerals or `n + 1`. It also leaves `algebraMap \u211a A ((-1)^(n+1) / n)` in an unreduced shape, since `A` is only a ring and `map_div\u2080` does not apply. The derivative proof shows the weak interface. It needs a manual `have : (n + 1) = algebraMap \u211a A (n + 1)` and a `grind` call after `rw [coeff_derivative, coeff_log, coeff_mk]`, instead of a `simp` call. The two cases (`n = 0` and successor) are also not exposed as separate simp lemmas.",
+      "proposed_change": "Add a successor-form simp lemma `coeff_succ_log : coeff (n + 1) (log A) = algebraMap \u211a A ((-1) ^ (n + 2) / (n + 1))`. Optionally add a `coeff_zero_log` as well. Consider whether `coeff_log` should be simp at all, or kept as a non-simp unfolding lemma used by those two. With a successor-form lemma, `coeff (n + 1) (d\u2044dX (log A))`, which `coeff_derivative` rewrites to `coeff (n + 1) (log A) * (n + 1)`, can be handled by a small lemma such as `algebraMap \u211a A (q) * (n + 1) = \u2026`, and the `derivative_log` proof becomes shorter.",
+      "benefit": "This removes the case split in uses that already know `n \u2260 0` or have a successor index, and makes `derivative_log` and later coefficient computations simpler. Readers see the two cases as explicit rewrite rules.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/PowerSeries/Log.lean",
+          "declaration": "PowerSeries.derivative_log",
+          "excerpt": "have : (n + 1) = algebraMap \u211a A (n + 1) := by simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/PowerSeries/Log.lean",
+          "declaration": "PowerSeries.order_log",
+          "excerpt": "fun i hi \u21a6 by simp [Nat.lt_one_iff.mp hi]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 17543,
+    "cache_read_input_tokens": 65419,
+    "output_tokens": 7026,
+    "output_tokens_details": {
+      "thinking_tokens": 3078
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17543,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2458,
+        "cache_read_input_tokens": 16672,
+        "cache_creation_input_tokens": 4884,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4884
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14699790000000001,
+  "duration_ms": 49499,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T00:43:29",
+  "unit": "file",
+  "source_sha256": "ced40d5066d36c16787715c93fbadb9c3b63b773813ebe7c4f5bfa9ee21bfdad",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,109 @@
+{
+  "id": "formal-frontier-file-0301",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the related definitions in CoinducedAcyclic.lean (the resolutionEval simp family), DegreeOne.lean (cochainsZeroEquiv_symm_apply), CohomologyExactSequence.lean (a downstream use) and CGCExamples/CochainExactness.lean (downstream rw uses). The file has no simp attributes of its own. Finding 1 is well supported. Finding 2 is less certain: I did not run Lean, so I can't say whether `resolutionEval_succ` would pre-empt the proposed lemma in practice. Both are based on reading the sources only.",
+  "findings": [
+    {
+      "declaration": "TopRep.resolutionEval_zero_term (private theorem, ContinuousCohomology namespace)",
+      "start_line": 126,
+      "end_line": 135,
+      "excerpt": "private theorem resolutionEval_zero_term (Y : TopRep.{max v w} k G) :\n    \u2200 (n : \u2115) (hs : Fin n \u2192 G),\n      resolutionEval Y n (0 : resolutionX Y n) hs = 0",
+      "problem": "The zero case of `resolutionEval` is the missing member of an otherwise simp-tagged family. CoinducedAcyclic.lean has `@[simp]` `resolutionEval_add`, `resolutionEval_neg` and `resolutionEval_sub`, but nothing for `0`. Here the zero case is a `private`, non-simp lemma, restated locally and used only through a manual `rw`. Because it is private, nothing downstream gets a canonical normal form for `resolutionEval Y n 0 hs`. Simp can only partly rewrite such a term: `resolutionEval_succ` unfolds it step by step, then `ContinuousMap.zero_apply` fires, but the base case is not reached uniformly. This is why the proof itself needs a bespoke `simpa only [resolutionEval_succ, ContinuousMap.zero_apply]`.",
+      "proposed_change": "Move this lemma next to `resolutionEval_add/neg/sub` in CoinducedAcyclic.lean. Make it public with `@[simp]`, in the same argument order as its siblings, e.g. `@[simp] theorem resolutionEval_zero_elem (Y) (n) (hs : Fin n \u2192 G) : resolutionEval Y n (0 : resolutionX Y n) hs = 0`. The name `resolutionEval_zero` is already taken by the n = 0 evaluation lemma, so choose another. Then replace `rw [resolutionEval_zero_term]` in `cochainsMap_comp_zero` by `simp`/`rw [resolutionEval_zero_elem]`. The termination and orientation are fine: the rewrite is LHS \u21a6 `0`, which is smaller, and there is no cycle.",
+      "benefit": "Completes the additive-structure simp set (add, neg, sub, zero) for `resolutionEval`, so goals with `resolutionEval _ _ 0 _` or zero cochains normalise without a private ad-hoc lemma. Later cochain exactness or cohomology files can use it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CoinducedAcyclic.lean",
+          "declaration": "TopRep.resolutionEval_add",
+          "excerpt": "@[simp] theorem resolutionEval_add (Y : TopRep.{max v w} k G) (n : \u2115)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CoinducedAcyclic.lean",
+          "declaration": "TopRep.resolutionEval_neg",
+          "excerpt": "@[simp] theorem resolutionEval_neg (Y : TopRep.{max v w} k G) (n : \u2115)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CoinducedAcyclic.lean",
+          "declaration": "TopRep.resolutionEval_succ",
+          "excerpt": "@[simp] theorem resolutionEval_succ (Y : TopRep.{max v w} k G) (n : \u2115)"
+        }
+      ]
+    },
+    {
+      "declaration": "ContinuousCohomology.cochainsMap_resolutionEval (and TopRep.resolutionEval_map)",
+      "start_line": 71,
+      "end_line": 76,
+      "excerpt": "theorem cochainsMap_resolutionEval (f : A \u27f6 B) (n : \u2115)\n    (\u03c3 : (homogeneousCochains A).X n) (hs : Fin (n + 1) \u2192 G) :\n    resolutionEval B (n + 1) ((cochainsMap (ContinuousMonoidHom.id G) f).f n \u03c3).1 hs =\n      f.hom (resolutionEval A (n + 1) \u03c3.1 hs)",
+      "problem": "This is the canonical evaluation rule for the induced cochain map. Its LHS is a `resolutionEval` of a `cochainsMap` image, and its RHS is the simpler `f.hom (resolutionEval \u2026)`. It is not a simp lemma, and nor is `resolutionEval_map`. Every use is a manual `rw`: four in CGCExamples/CochainExactness.lean, two in `cochainsMap_comp_zero`, and `simpa only [...] using hmap` in CohomologyExactSequence.lean, where `resolutionEval_succ` and `resolutionEval_zero` have to be supplied by hand. Making it a plain `@[simp]` is not clearly safe. `resolutionEval_succ` is already `@[simp]` and matches `resolutionEval B (n + 1) _ hs` with the same head and could unfold the LHS first (not checked by running Lean). That competition is the unresolved part of the interface. The file does not say which of the two normal forms is intended.",
+      "proposed_change": "Decide the normal form. Either (a) state `resolutionEval_map` / `cochainsMap_resolutionEval` in a form that simp can match before `resolutionEval_succ` unfolds (for example give `resolutionEval_map` `@[simp]` for the `resolutionMap` form, whose LHS has the `.hom` image inside, and test priority against `resolutionEval_succ`). Or (b) document that these are deliberately `rw`-only and give a simp-friendly variant at fixed degree, such as the n = 0 case that CohomologyExactSequence.lean obtains via `simpa only [resolutionEval_succ, resolutionEval_zero]`. Check by running Lean that the chosen attribute does not loop and does not change downstream behaviour.",
+      "benefit": "The recurring `rw [cochainsMap_resolutionEval]` / `simpa only [...]` boilerplate in the examples and in CohomologyExactSequence.lean could become `simp`. It would also be clear to readers whether `resolutionEval_succ` and the cochain-map evaluation rule are meant to coexist.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CohomologyExactSequence.lean",
+          "declaration": "use of cochainsMap_resolutionEval",
+          "excerpt": "simpa only [TopRep.resolutionEval_succ, TopRep.resolutionEval_zero] using hmap"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/CGCExamples/CochainExactness.lean",
+          "declaration": "evenSequence_degreeZero_projection",
+          "excerpt": "rw [ContinuousCohomology.cochainsMap_resolutionEval]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CoinducedAcyclic.lean",
+          "declaration": "TopRep.resolutionEval_map",
+          "excerpt": "theorem resolutionEval_map {Y Z : TopRep.{max v w} k G} (f : Y \u27f6 Z) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 16293,
+    "cache_read_input_tokens": 66184,
+    "output_tokens": 4736,
+    "output_tokens_details": {
+      "thinking_tokens": 843
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16293,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3056,
+        "cache_read_input_tokens": 18564,
+        "cache_creation_input_tokens": 1742,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1742
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1191704,
+  "duration_ms": 48501,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:25:00",
+  "unit": "file",
+  "source_sha256": "1198772c5dea3396ce76e1ab6c50bbde84b25bb8016856e452abd070930845de",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

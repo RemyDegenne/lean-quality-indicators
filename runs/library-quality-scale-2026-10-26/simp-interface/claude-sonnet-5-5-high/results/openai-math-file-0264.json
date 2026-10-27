@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0264",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, the definitions of step, collarSum, capMax, frozenArea, leadingCost, collarError and triangleCost, frozenCylinder_area in Assembly, and the uses in UniformApproximation.lean and ZeroCapSeparation.lean. I found no simp loop and no competing rules. The file declares no @[simp] lemmas and uses only `simp only`, so the issues are about the missing canonical rewrite interface. I could not run Lean, so the proposed lemmas are untested. Whether CollarRate can import UniformApproximationDefinitions (for the collarError restatement) is unchecked. The import structure looks permissive, since the Definitions file only needs SweepDefinitions.",
+  "findings": [
+    {
+      "declaration": "CylinderCovering.RadialSweep.frozenCylinder_collar_bounds / frozenCylinder_collar_le_div (and sum_frozenArea_eq_collarSum)",
+      "start_line": 133,
+      "end_line": 134,
+      "excerpt": "unfold TriangularCovering.totalArea\n  simp only [frozenCylinder_area, sum_frozenArea_eq_collarSum]",
+      "problem": "There is no canonical simp lemma for `totalArea (frozenCylinder D N tag htag)`. Every consumer unfolds `TriangularCovering.totalArea` by hand and then rewrites each summand with `frozenCylinder_area`. The same pair of steps appears in `frozenCylinder_collar_bounds` (133-134), in `frozenCylinder_collar_le_div` (156-157), in `triangleCost_eq_formula` (UniformApproximation.lean:23), and in ZeroCapSeparation.lean (138-139 and 158). `sum_frozenArea_eq_collarSum` is then added as an ad-hoc simp-only rule on top. The `unfold` step exposes the raw `Finset.sum` and depends on the definition of `totalArea` staying a plain sum. It is also a step the simp set cannot do for itself.",
+      "proposed_change": "Add one lemma next to `frozenCylinder_area` in Assembly: `totalArea (frozenCylinder D N tag htag) = \u2211 i, frozenArea D N tag i`. Its proof is `Finset.sum_congr rfl (fun i _ => frozenCylinder_area ..)`. Mark `sum_frozenArea_eq_collarSum` and the new lemma as the normal-form rewrites for this expression. Then the two collar theorems start with `rw [totalArea_frozenCylinder, sum_frozenArea_eq_collarSum]` or a single `simp only`, with no `unfold`. The ZeroCapSeparation and UniformApproximation call sites can use the same lemma.",
+      "benefit": "The rewriting step is stated once and has a stable name. Callers no longer unfold `totalArea` by hand and repeat the same two-lemma simp set at five sites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/CylinderCovering/Radial/UniformApproximation.lean",
+          "declaration": "triangleCost_eq_formula",
+          "excerpt": "simp only [TriangularCovering.totalArea, frozenCylinder_area]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/CylinderCovering/Radial/ZeroCapSeparation.lean",
+          "declaration": "zeroCapData_totalArea",
+          "excerpt": "simp_rw [frozenCylinder_area]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/CylinderCovering/Radial/Assembly.lean",
+          "declaration": "frozenCylinder_area",
+          "excerpt": "TriangularCovering.area (frozenCylinder D N tag htag i).base = frozenArea D N tag i"
+        }
+      ]
+    },
+    {
+      "declaration": "CylinderCovering.RadialSweep.frozenCylinder_collar_bounds, frozenCylinder_collar_le_div, frozenCylinder_collar_uniform (statements)",
+      "start_line": 113,
+      "end_line": 125,
+      "excerpt": "(fun t => 1 / Real.sqrt (1 + \u2016D.w t\u2016^2)) 0 D.\u03b1 D.\u03b2 N tag \u2227",
+      "problem": "The three theorems state their bounds in a fully expanded normal form: `totalArea (frozenCylinder ..) - kappa D / 2 * collarSum D.R (fun t => 1/\u221a(1+\u2016D.w t\u2016\u00b2)) 0 ...`. This is the same quantity as `collarError D N tag`, which is defined with `leadingCost` and `triangleCost` in UniformApproximationDefinitions. The only consumer, `uniform_approximation`, therefore needs `simpa only [collarError, leadingCost, triangleCost_eq_totalArea D N tag htag] using ...` to convert back. The expanded weight lambda is copied about ten times in this file. The result is a mismatch between the lemma form and the form simp targets, and the unfolding step can silently stop matching if either side is restated.",
+      "proposed_change": "Add a small bridge lemma `collarError D N tag = totalArea (frozenCylinder D N tag htag) - kappa D / 2 * collarSum ... 0 ...`, or state the collar theorems directly in terms of `collarError`. This is possible because the Definitions file only imports SweepDefinitions. Also introduce a named weight, such as `projectionWeight D t := 1 / Real.sqrt (1 + \u2016D.w t\u2016^2)`, with a simp lemma unfolding it. Then `uniform_approximation` would use `rw [collarError_eq ..]` or `exact` instead of the `simpa only` unfolding of three definitions.",
+      "benefit": "Downstream proofs rewrite with one canonical equation instead of unfolding three definitions. The statements get shorter and cannot drift apart syntactically.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/CylinderCovering/Radial/UniformApproximation.lean",
+          "declaration": "uniform_approximation",
+          "excerpt": "simpa only [collarError, leadingCost, triangleCost_eq_totalArea D N tag htag]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/CylinderCovering/Radial/UniformApproximationDefinitions.lean",
+          "declaration": "leadingCost",
+          "excerpt": "kappa D / 2 * RadialRiemann.collarSum D.R"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 28621,
+    "cache_read_input_tokens": 115918,
+    "output_tokens": 5533,
+    "output_tokens_details": {
+      "thinking_tokens": 1741
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28621,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3310,
+        "cache_read_input_tokens": 28294,
+        "cache_creation_input_tokens": 4340,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4340
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1814298,
+  "duration_ms": 43852,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T00:45:21",
+  "unit": "file",
+  "source_sha256": "3125e04fe145f1da15a16d485e7fd2e4db6b7a041fe3be1b517c11cfc8f98bde",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,114 @@
+{
+  "id": "openai-math-file-0183",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it uses: `Node`, `step`, `terminal`, `terminal_nil` and `terminal_cons` in PrimeRatioBins.lean, and `Side.flip` in FiniteHistorySupport.lean. I grepped the Jacobsthal tree for uses of `terminal_gap_sum`, `simp [..step..Side.flip]` and `change (step ..)`. I found no `step_side`, `step_gap`, `step_cutoff` or `step_ratio` lemmas, and no simp lemmas for `Side.flip`. I did not run Lean. The suggested lemmas are untested, and I could not check whether the new simp rules would change the outcome of any existing `simp` call elsewhere in the tree. The statement of `terminal_gap_sum` is fine and the proofs are otherwise unaffected.",
+  "findings": [
+    {
+      "declaration": "terminal_gap_sum (proof) / admitted_of_even_prefix_safety",
+      "start_line": 22,
+      "end_line": 25,
+      "excerpt": "change z.gap-primeExponent w p-(ps.map (primeExponent w)).sum = _",
+      "problem": "`step` has no simp lemmas for its fields (`side`, `gap`, `cutoff`, `ratio`), so projections of `step w z p` cannot be simplified. The proof of `terminal_gap_sum` falls back on a `change` that restates the unfolded `gap` field. Line 51 does `simp [terminal,step,hi,Side.flip]`, which unfolds the whole definition. `Side.flip` is also unfolded by hand with no simp lemmas for `.even` and `.odd`. The same unfold-by-hand pattern recurs in other files, for example `simp [step,hi,Side.flip]` in ReferenceSourceDecomposition, LatePrimeRatio, StrongReferenceTransport and ActualTagFreezing, and `change (step w z p).ratio-1 \u2264 ...` in LatePrimeRatio.",
+      "proposed_change": "Next to `step` in PrimeRatioBins.lean, add `@[simp] theorem step_side : (step w z p).side = z.side.flip := rfl`, plus `step_gap : (step w z p).gap = z.gap - primeExponent w p`, `step_cutoff` and `step_ratio` in the same form. Also add `@[simp] Side.flip_even : Side.even.flip = Side.odd` and `Side.flip_odd`. Then the `change` in `terminal_gap_sum` becomes `simp [step_gap]; ring` or similar, and line 51 becomes `by simp [terminal, hi]`. The same lemmas replace the repeated `simp [step,hi,Side.flip]` calls and the `change` lines elsewhere.",
+      "benefit": "The projections of `step` get a canonical normal form. Proofs no longer unfold `step` or rely on `change` to expose the structure fields. Call sites become shorter and do not break if the definition of `step` or `Side.flip` is later refactored.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Primes/PrimeRatioBins.lean",
+          "declaration": "step",
+          "excerpt": "gap := z.gap - primeExponent w p"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Estimates/ReferenceSourceDecomposition.lean",
+          "declaration": "step_source_boundary (inline `hside`)",
+          "excerpt": "have hside : (step w z p).side=.odd := by simp [step,hi,Side.flip]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Paths/FiniteHistorySupport.lean",
+          "declaration": "Side.flip",
+          "excerpt": "def Side.flip : Side \u2192 Side | .even => .odd | .odd => .even"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Estimates/RepresentativeAdmission.lean",
+          "declaration": "admitted_of_even_prefix_safety",
+          "excerpt": "simp [terminal,step,hi,Side.flip]"
+        }
+      ]
+    },
+    {
+      "declaration": "terminal_gap_sum",
+      "start_line": 18,
+      "end_line": 19,
+      "excerpt": "theorem terminal_gap_sum (w : \u211d) (z : Node) (ps : List \u2115) :",
+      "problem": "`terminal_nil` and `terminal_cons` are `@[simp]`, but the closed form `(terminal w z ps).gap = z.gap - (ps.map (primeExponent w)).sum` is not simp, so it is never applied by simp. Every caller uses an explicit `rw [terminal_gap_sum]`, e.g. in this file's `representativeGap_le_actual`, in PrimeBinRepresentatives, PrimeProductLogCoordinates and WordIntervalGeometry, and as `exact terminal_gap_sum w _ _` in CandidateExceptionMass. For a symbolic word `ps`, simp leaves `(terminal w z ps).gap` stuck, while for a concrete cons-list it unfolds through `terminal_cons` and `step`.",
+      "proposed_change": "Once `step_gap` exists (see the first finding), mark `terminal_gap_sum` `@[simp]`. There is no loop: the right-hand side contains no `terminal`. It also agrees with `terminal_cons` on explicit lists, because simp rewrites the inner `terminal w z (p::ps)` first and the resulting `terminal w (step w z p) ps` then matches `terminal_gap_sum`. The result has the same normal form as unfolding the cons by hand. Alternatively, keep it non-simp and document that `rw` is the intended interface.",
+      "benefit": "Gap goals about terminal nodes then normalize to `z.gap - sum` without a manual `rw`. This also removes the asymmetry with `terminal_nil` and `terminal_cons`. The residual risk is a changed normal form in other files that use `simp` on `(terminal ...).gap`, which I did not check.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Primes/PrimeRatioBins.lean",
+          "declaration": "terminal_cons",
+          "excerpt": "terminal w z (p::ps) = terminal w (step w z p) ps := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Primes/PrimeProductLogCoordinates.lean",
+          "declaration": "(use of terminal_gap_sum)",
+          "excerpt": "rw [terminal_gap_sum,exponent_sum_log_product w ps hp,hroot"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Paths/WordIntervalGeometry.lean",
+          "declaration": "(use of terminal_gap_sum)",
+          "excerpt": "rw [terminal_append,terminal_gap_sum]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 37920,
+    "cache_read_input_tokens": 221395,
+    "output_tokens": 6810,
+    "output_tokens_details": {
+      "thinking_tokens": 1804
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37920,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4018,
+        "cache_read_input_tokens": 39246,
+        "cache_creation_input_tokens": 2687,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2687
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2419555,
+  "duration_ms": 51870,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-26T23:18:53",
+  "unit": "file",
+  "source_sha256": "7b09ea924ff58886e8dcbff28b141ac10b56927f3e42c096de80033b85f8b9a7",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

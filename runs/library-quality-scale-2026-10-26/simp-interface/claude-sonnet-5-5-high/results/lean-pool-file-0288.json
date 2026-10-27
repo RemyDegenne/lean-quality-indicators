@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0288",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped the Nikodym directory for uses of Q_exp_inv and D_zero/D_one. The only simp-tagged lemmas are D_zero and D_one, which look fine. The issues are in how M and Q are stated and how simp is called around them. I could not run Lean, so I make no claim about observed simp behaviour. Whether Q_exp_inv fires inside that simpa call is my inference from the standard simp set (one_div, Nat.cast_mul, Nat.cast_pow). I did not check downstream files for other uses of M and Q.",
+  "findings": [
+    {
+      "declaration": "Q_exp_inv (used in Q_pow_le via simpa [Q, Q_exp_inv])",
+      "start_line": 56,
+      "end_line": 60,
+      "excerpt": "theorem Q_exp_inv (n i : \u2115) :\n    1 / ((n : \u211d) * 2 ^ i) = ((n * 2 ^ i : \u2115) : \u211d)\u207b\u00b9 := by",
+      "problem": "Q_exp_inv is passed to simp in `simpa [Q, Q_exp_inv]`, but its orientation fights the default simp set. The RHS has a cast of a product, which simp's `Nat.cast_mul` and `Nat.cast_pow` push back to `(\u2191n * 2^i)\u207b\u00b9`. The LHS `1 / x` is normally rewritten to `x\u207b\u00b9` by `one_div` first. So the lemma is either dead in that call or competes with `one_div` and the cast lemmas. It could not safely be tagged `@[simp]`, because it would undo the cast normal form. The statement is only a manual `rw` rewrite (line 353) and not part of any coherent simp interface.",
+      "proposed_change": "Drop `Q_exp_inv` from the simp set in `Q_pow_le` and use `simpa [Q, one_div] using ...`, as `M_pow_le` already does. Keep `Q_exp_inv` only for the explicit `rw` at line 353, and document that it is not a simp lemma. Alternatively, restate `floor_root_pow_le` with `1 / (k : \u211d)` and a cast-free exponent so that neither lemma is needed.",
+      "benefit": "The two parallel proofs `M_pow_le` and `Q_pow_le` would use the same simp normal form, with no lemma that works against the cast-pushing simp lemmas. A reader would not have to guess which rewrite fires.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Nikodym/Nikodym/Construction/Parameters.lean",
+          "declaration": "Q_pow_le",
+          "excerpt": "simpa [Q, Q_exp_inv] using floor_root_pow_le (q := q) hk"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Nikodym/Nikodym/Construction/Parameters.lean",
+          "declaration": "M_pow_le",
+          "excerpt": "simpa [M, one_div] using floor_root_pow_le (q := q) (ne_zero_of_one_le hn)"
+        }
+      ]
+    },
+    {
+      "declaration": "M and Q definitions (with floor_root_pow_le and the Q02 real-bound statements)",
+      "start_line": 36,
+      "end_line": 40,
+      "excerpt": "def M : \u2115 := \u230a(q : \u211d) ^ (1 / (n : \u211d))\u230b\u208a",
+      "problem": "M and Q are defined with exponents `1 / (n : \u211d)` and `1 / ((n : \u211d) * 2 ^ i)`, which are not in simp normal form because `one_div` rewrites `1 / x` to `x\u207b\u00b9`. The general lemma `floor_root_pow_le` is stated with `(k : \u211d)\u207b\u00b9`. Every bridge from M or Q to it therefore needs an ad hoc `simpa [M, one_div]` or `simpa [Q, Q_exp_inv]`. Unfolding M or Q under simp also gives an expression different from what `two_le_rpow_M`, `two_le_rpow_Q`, `M_le_rpow` and `Q_ge_half_rpow` state, since those use `1 / ...`. There are no `M`/`Q` unfolding equations or simp lemmas, so these are separate proofs.",
+      "proposed_change": "Either define the exponents as `(n : \u211d)\u207b\u00b9` and `((n : \u211d) * 2 ^ i)\u207b\u00b9`, and state the Q02 lemmas the same way, or add non-recursive equation lemmas such as `M_eq : M n q = \u230a(q : \u211d) ^ (n : \u211d)\u207b\u00b9\u230b\u208a` and an analogous `Q_eq`. Use these in the `simpa` calls and in the statements of `two_le_rpow_*`, `*_ge_half_rpow` and `M_le_rpow`, so that the stated form is already the form simp produces.",
+      "benefit": "Statements and simp-normalised goals would agree, so downstream users could rewrite with `Nat.floor_le` or `Nat.le_floor_iff'` without a `one_div` or cast conversion step. The ad hoc simp argument lists would shrink.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Nikodym/Nikodym/Construction/Parameters.lean",
+          "declaration": "floor_root_pow_le",
+          "excerpt": "\u230a(q : \u211d) ^ (k : \u211d)\u207b\u00b9\u230b\u208a ^ k \u2264 q"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Nikodym/Nikodym/Construction/Parameters.lean",
+          "declaration": "M_le_rpow",
+          "excerpt": "(M n q : \u211d) \u2264 (q : \u211d) ^ (1 / (n : \u211d))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Nikodym/Nikodym/Construction/Parameters.lean",
+          "declaration": "M_pow_le",
+          "excerpt": "simpa [M, one_div] using floor_root_pow_le"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 20580,
+    "cache_read_input_tokens": 47415,
+    "output_tokens": 4634,
+    "output_tokens_details": {
+      "thinking_tokens": 1745
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20580,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2249,
+        "cache_read_input_tokens": 22847,
+        "cache_creation_input_tokens": 1746,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1746
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.13341350000000002,
+  "duration_ms": 36798,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:08:54",
+  "unit": "file",
+  "source_sha256": "6c0fd68911047243085d0e1773e9c32d8ebf1cbd9dc2cf262e8b16b4268ce58c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

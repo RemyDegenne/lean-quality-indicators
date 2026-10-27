@@ -1,0 +1,125 @@
+{
+  "id": "lean-pool-file-0124",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "partial",
+  "review_notes": "I read the file's definitions and checked those that look like Mathlib concepts: pairing, supportFunction, normalizedVolume, barycenter, standardSimplex, dualVector, and the upper-regularization and Legendre-transform definitions. I did not check every proof body or every use site. Findings: `pairing` duplicates `dotProduct`, `normalizedVolume` duplicates `Measure.real`, and `barycenter` duplicates the set average `\u2a0d`. Not reported: `standardSimplex` (Mathlib's `stdSimplex` requires the sum to equal 1, so it is a different set), and `supportFunction` and `legendreTransform` (a grep of Mathlib found no support-function definition and no Legendre-transform definition). The dotProduct and Measure.real matches rest on Mathlib's definitions, which I did not re-read in full. I did not check how many of the pairing lemmas are only used internally. No Lean was run.",
+  "findings": [
+    {
+      "declaration": "Ehrhart.SupportFunction.pairing (and the lemmas pairing_add_left, pairing_smul_left, pairing_sub_left, pairing_add_right, pairing_smul_right, pairing_sub_right)",
+      "start_line": 240,
+      "end_line": 241,
+      "excerpt": "private def pairing {n : \u2115} (u x : Space n) : \u211d :=\n  \u2211 i, u i * x i",
+      "problem": "`pairing u x = \u2211 i, u i * x i` on `Fin n \u2192 \u211d` is exactly Mathlib's `dotProduct` (`u \u2b1d\u1d65 x`). The file re-proves linearity facts that Mathlib already has, as six separate lemmas. These are `pairing_add_left` (line 321), `pairing_smul_left` (326), `pairing_sub_left` (612), `pairing_add_right` (619), `pairing_smul_right` (626) and `pairing_sub_right` (1695). It also builds `pairingLinear` (line 2314) by hand for `map_add'` and `map_smul'`, and uses `mul_comm` unfoldings to swap arguments (`pairing_actualGradient_eq_fderiv`, `sourcePairingContinuousLinear_apply`). Continuity (`continuous_pairing_left/right`) is also redone from scratch.",
+      "proposed_change": "Drop the private `pairing` and use `u \u2b1d\u1d65 x` directly. If the name is wanted, keep `pairing` as an `abbrev` for `dotProduct`. Replace the six linearity lemmas with Mathlib's `add_dotProduct`, `dotProduct_add`, `smul_dotProduct`, `dotProduct_smul`, `sub_dotProduct`, `dotProduct_sub` and `dotProduct_comm`. Build `pairingLinear` from `Matrix.dotProductBilin` or `Matrix.toLin'`. Obtain continuity from `fun_prop`/`continuous_finsetSum` once, on `dotProduct`.",
+      "benefit": "Removes about six near-identical private lemmas and several manual `simp only` unfoldings. Readers get standard notation and simp lemmas, and the pairing integrates with the rest of Mathlib's linear algebra instead of being a private island.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Matrix/Mul.lean",
+          "declaration": "dotProduct",
+          "excerpt": "def dotProduct [Mul \u03b1] [AddCommMonoid \u03b1] (v w : m \u2192 \u03b1) : \u03b1 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Matrix/Mul.lean",
+          "declaration": "add_dotProduct",
+          "excerpt": "theorem add_dotProduct : (u + v) \u2b1d\u1d65 w = u \u2b1d\u1d65 w + v \u2b1d\u1d65 w := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Matrix/Mul.lean",
+          "declaration": "smul_dotProduct",
+          "excerpt": "theorem smul_dotProduct [IsScalarTower R \u03b1 \u03b1] (x : R) (v w : m \u2192 \u03b1) :"
+        }
+      ]
+    },
+    {
+      "declaration": "Ehrhart.normalizedVolume",
+      "start_line": 69,
+      "end_line": 71,
+      "excerpt": "def normalizedVolume {n : \u2115} (K : Set (Space n)) : \u211d :=\n  ((volume : Measure (Space n)) K).toReal",
+      "problem": "`normalizedVolume K` is by definition `(volume K).toReal`, which is `Measure.real volume K`. Mathlib already has `Measure.real` with the `measureReal_*` API (`measureReal_def`, `measureReal_restrict_apply`, `measureReal_univ`, ...). The file keeps two parallel notions. Some proofs use `volume.real` (`real_volume_ball_inv_nat`, `realVolume_uniformInnerBall`, `normalizedVolume_standardSimplex`), while others use `normalizedVolume`. Conversions are needed repeatedly, for example `unfold Measure.real normalizedVolume`, `simp only [... measureReal_def, ..., normalizedVolume]`, and `simpa only [ne_eq, normalizedVolume] using K.volume_pos.ne'`. Despite the name, nothing is normalized, so the name is also misleading.",
+      "proposed_change": "Replace `normalizedVolume K` by `(volume : Measure (Space n)).real K` throughout. If a short name is wanted, make it `abbrev normalizedVolume K := (volume : Measure (Space n)).real K` so the `measureReal_*` lemmas apply without unfolding. The `normalizedVolume`-specific conversions then disappear.",
+      "benefit": "Avoids a second real-valued volume notion that needs unfolding or bridging lemmas. Mathlib's measureReal simp lemmas (restrict, union, smul, ...) apply directly, and the repeated `unfold normalizedVolume`/`measureReal_def` steps become unnecessary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Measure/MeasureSpaceDef.lean",
+          "declaration": "MeasureTheory.Measure.real",
+          "excerpt": "protected def Measure.real {\u03b1 : Type*} {m : MeasurableSpace \u03b1} (\u03bc : Measure \u03b1) (s : Set \u03b1) : \u211d :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EhrhartVolumeInequality/Foundations.lean",
+          "declaration": "Ehrhart.LatticeAsymptotics.monomial_count_div_pow_tendsto_volume",
+          "excerpt": "unfold Measure.real normalizedVolume"
+        }
+      ]
+    },
+    {
+      "declaration": "Ehrhart.barycenter",
+      "start_line": 75,
+      "end_line": 76,
+      "excerpt": "def barycenter {n : \u2115} (K : Set (Space n)) : Space n :=\n  (normalizedVolume K)\u207b\u00b9 \u2022 \u222b x in K, x \u2202(volume : Measure (Space n))",
+      "problem": "`barycenter K` is the average of the identity on `K` w.r.t. Lebesgue measure. That is Mathlib's set average `\u2a0d x in K, x`, defined via `average` and unfolded by `average_eq` to `(\u03bc.real univ)\u207b\u00b9 \u2022 \u222b x, f x \u2202\u03bc`, applied to `volume.restrict K`. The file reimplements it by hand and then has to manually extract the integral from the `centered` hypothesis: `sourceCenteredBody_setIntegral_id_eq_zero` uses `simpa only [smul_eq_zero, inv_eq_zero, barycenter] using K.centered` and then `resolve_left` with a volume-positivity argument.",
+      "proposed_change": "Define `barycenter K := \u2a0d x in K, x \u2202(volume : Measure (Space n))` (or state `CenteredBody.centered` with `\u2a0d`) and use `average_eq` and the `setAverage` API. Keep the name `barycenter` as a thin alias if desired.",
+      "benefit": "Uses the standard averaging notion and its lemma library (`average_eq`, `setAverage_eq`, ...) instead of a one-off normalization, and removes the duplicated `smul_eq_zero` plumbing. This also removes the dependence on the nonstandard `normalizedVolume`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Integral/Average.lean",
+          "declaration": "MeasureTheory.average_eq",
+          "excerpt": "theorem average_eq : \u2a0d x, f x \u2202\u03bc = (\u03bc.real univ)\u207b\u00b9 \u2022 \u222b x, f x \u2202\u03bc := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/MeasureTheory/Integral/Average.lean",
+          "declaration": "setAverage notation",
+          "excerpt": "notation3 \"\u2a0d \" (...) \" in \" s \", \" r:60:(scoped f => average (Measure.restrict volume s) f) => r"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 177567,
+    "cache_read_input_tokens": 360282,
+    "output_tokens": 5864,
+    "output_tokens_details": {
+      "thinking_tokens": 1746
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 177567,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3680,
+        "cache_read_input_tokens": 180129,
+        "cache_creation_input_tokens": 1519,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1519
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.8049482000000001,
+  "duration_ms": 49685,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T23:07:06",
+  "unit": "file",
+  "source_sha256": "e61c9365fea206a8cfc65b632bcd8614263a69c854e228ffa988c6a239312d94",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

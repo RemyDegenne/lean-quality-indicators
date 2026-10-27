@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0173",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of FlowL2Transport.lean (lines 1\u201391). I also read the downstream uses in ParentState.lean (lines 640\u2013699, 778\u2013792) and the sibling `inversePath` in SourceForwardCoefficient.lean, which does have a simp apply lemma. The file declares no simp attributes and no simp lemmas. The findings are about missing apply lemmas for its two bundled `C(...)` definitions. I did not run Lean, so I don't claim that any simp call fails. Whether the proposed `rfl` proofs go through should be confirmed by compiling, and I expect them to, since `ContinuousMap.curry` unfolds to the uncurried function. The `transportPath_apply` proof might be `rfl`, or might need `ContinuousMap.coe_mk` or a `show`. I found no loop or competing-rule risk, because there are no existing simp rules here to compete with.",
+  "findings": [
+    {
+      "declaration": "EulerFlowL2Transport.inversePath",
+      "start_line": 57,
+      "end_line": 59,
+      "excerpt": "def inversePath : C(K,C(Vector3,Vector3)) :=\n  (\u27e8Function.uncurry Y,hY\u27e9 : C(K \u00d7 Vector3,Vector3)).curry",
+      "problem": "`inversePath` is a bundled continuous-map definition with no apply lemma. Its statements and theorems elsewhere are written with the unbundled `Y t x`. For example, `transportPath_ae` says `fun x => f t (Y t x)`, while the measure-preservation theorem is about `inversePath Y hY t`. Nothing tells simp that `inversePath Y hY t x = Y t x`. The only way to cross between the two forms is definitional unfolding (the proofs rely on defeq), or unfolding the def and `ContinuousMap.curry_apply` and `Function.uncurry_apply_pair` by hand. A reader or downstream proof that meets `inversePath Y hY t x` cannot normalise it to `Y t x` with `simp`. The sibling definition `inversePath` in SourceForwardCoefficient.lean has exactly such a `@[simp] inversePath_apply ... := rfl`, so this file is inconsistent with its own project's convention.",
+      "proposed_change": "Add right after the definition: `@[simp] theorem inversePath_apply (t : K) (x : Vector3) : inversePath Y hY t x = Y t x := rfl`. The normal form is the plain `Y t x`, so the lemma cannot loop. The lemma needs no hypotheses beyond `Y` and `hY`, so it can be stated before the `include` theorem. Optionally add a coe lemma such as `\u21d1(inversePath Y hY t) = Y t`, also `rfl`.",
+      "benefit": "Users such as ParentState.lean, which instantiate `inversePath Y hYjoint` and then compare against `Y t x` in `tensorPath_ae`, can rewrite between the bundled and unbundled forms with `simp`. They no longer need `show`, `change` or defeq coercion. This follows the sibling-file convention.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SourceForwardCoefficient.lean",
+          "declaration": "inversePath_apply",
+          "excerpt": "@[simp] theorem inversePath_apply (Qp : C(K, \u03b1 \u2192\u1d47 U \u2192L[\u211d] E))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/ParentState.lean",
+          "declaration": "tensorPath_ae",
+          "excerpt": "iteratedFDeriv \u211d n (fun x => Z.pointField t (cylinderGraph P k m (Y t x)))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/FlowL2Transport.lean",
+          "declaration": "transportPath_ae",
+          "excerpt": "fun x => f t (Y t x) :="
+        }
+      ]
+    },
+    {
+      "declaration": "EulerFlowL2Transport.transportPath",
+      "start_line": 69,
+      "end_line": 75,
+      "excerpt": "def transportPath (u : C(K, Lp E 2 (volume : Measure Vector3))) :\n    C(K,Lp E 2 (volume : Measure Vector3)) where\n  toFun t := Lp.compMeasurePreserving (inversePath Y hY t)",
+      "problem": "`transportPath` is a bundled `C(K, Lp ...)` built field by field, and no evaluation lemma exposes `toFun`. The only facts available about `transportPath ... u t` are `transportPath_norm` and `transportPath_ae`, which are stated about that application. Any other use must unfold the definition by hand, since there is no `@[simp]` lemma saying `transportPath ... u t = Lp.compMeasurePreserving (inversePath Y hY t) _ (u t)`. Because the measure-preserving proof argument is a dependent term, `simp` or `rw` cannot recover this equation without a dedicated lemma.",
+      "proposed_change": "Add `theorem transportPath_apply (u) (t : K) : transportPath X Y F hX hYX hXY hY hdet u t = Lp.compMeasurePreserving (inversePath Y hY t) (inversePath_measurePreserving X Y F hX hYX hXY hY hdet t) (u t) := rfl`. Mark it `@[simp]` if the project prefers that. The right-hand side is already the primitive `Lp.compMeasurePreserving`, which has its own lemmas such as `Lp.norm_compMeasurePreserving` and `Lp.coeFn_compMeasurePreserving`, so the rewrite terminates. Also use it in `transportPath_norm` and `transportPath_ae` in place of relying on defeq.",
+      "benefit": "Callers get a canonical way to unfold `transportPath` to Mathlib's composition operator and then use the existing `Lp.compMeasurePreserving` lemmas through `simp`/`rw`. This is the usual pattern for bundled continuous maps, and the file currently lacks it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/FlowL2Transport.lean",
+          "declaration": "transportPath_norm",
+          "excerpt": "Lp.norm_compMeasurePreserving (u t)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/ParentState.lean",
+          "declaration": "Eulerian path using transportPath",
+          "excerpt": "transportPath X Y (fun t x => D.F.field t x) hX hYX hXY hY hdet (graphPath D P \u03ba Z k)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 14291,
+    "cache_read_input_tokens": 65643,
+    "output_tokens": 4860,
+    "output_tokens_details": {
+      "thinking_tokens": 1185
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14291,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2607,
+        "cache_read_input_tokens": 16170,
+        "cache_creation_input_tokens": 2134,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2134
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11235230000000002,
+  "duration_ms": 33899,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:16:37",
+  "unit": "file",
+  "source_sha256": "dada7b91d432ce281e50eaaa4ffa15116d0005d9c0d91842e5bddfa453153cb0",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

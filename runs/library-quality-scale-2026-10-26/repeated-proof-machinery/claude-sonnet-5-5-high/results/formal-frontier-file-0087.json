@@ -1,0 +1,83 @@
+{
+  "id": "formal-frontier-file-0087",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and checked Mathlib's MvPolynomial API (`as_sum`, `linearMap_ext`, `coeffsIn`, `mem_coeffsIn`). Found no existing Mathlib lemma that expresses `F p = \u2211 \u03b1 \u2208 p.support, p.coeff \u03b1 \u2022 F (monomial \u03b1 1)` for a linear map F. `linearMap_ext` needs agreement on all monomials, but the two `_of_reduced` theorems only have a hypothesis on `p.support`, so it doesn't replace the helper. I also looked at the uses in docs and tests. `monomial_eq_smul_one`, `linearDivision_remainder_of_reduced` and `linearDivision_quotient_of_reduced` are mentioned in docs/API.md and the tests, so a new helper would have to be added next to them. The rewrites in the finding are sketches I haven't compiled. The main uncertainty is how much each of the four proofs shrinks. The `of_reduced` pair gains the most.",
+  "findings": [
+    {
+      "declaration": "MonomialOrder.linearDivision_remainder_of_reduced / MonomialOrder.linearDivision_quotient_of_reduced (also MonomialOrder.linearMap_preserves_coeffsIn and MonomialOrder.linearDivision_decomposition)",
+      "start_line": 200,
+      "end_line": 229,
+      "excerpt": "      rw [monomial_eq_smul_one, map_smul]\n      rw [linearDivisionRemainder_monomial]",
+      "problem": "Four proofs repeat the same reduction of a linear map to monomials. They expand `p` with `p.as_sum`, distribute with `map_sum`, rewrite each term as `coeff \u2022 monomial \u03b1 1` with `monomial_eq_smul_one`, and push the map through with `map_smul`. The two `_of_reduced` theorems (lines 200\u2013229) are almost line-for-line copies: each is a sum over `p.support` followed by `rw [monomial_eq_smul_one, map_smul]` and a monomial lemma. The same reduction appears in `linearMap_preserves_coeffsIn` (lines 172\u2013177) and, with an explicit calc, in `linearDivision_decomposition` (lines 103\u2013124). Each proof redoes the `conv_lhs => rw [p.as_sum]` / `rw [map_sum]` bookkeeping and the `Finset.sum_congr` scaffolding. `MvPolynomial.linearMap_ext` doesn't cover this case: the `_of_reduced` theorems only know the behaviour on `p.support`, not on all monomials.",
+      "proposed_change": "Add one general lemma, placed after `monomial_eq_smul_one`:\n\nlemma linearMap_apply_eq_sum {M : Type*} [AddCommMonoid M] [Module R M]\n    (F : MvPolynomial \u03c3 R \u2192\u2097[R] M) (p : MvPolynomial \u03c3 R) :\n    F p = \u2211 \u03b1 \u2208 p.support, p.coeff \u03b1 \u2022 F (monomial \u03b1 (1 : R)) := by\n  classical\n  conv_lhs => rw [p.as_sum]\n  rw [map_sum]\n  exact Finset.sum_congr rfl fun \u03b1 _ => by\n    rw [monomial_eq_smul_one \u03b1 (p.coeff \u03b1), map_smul]\n\nProof sketch: expand `p` as the sum of its monomials, apply additivity, then pull the scalar out of each `monomial \u03b1 (coeff \u03b1)`. Then rewrite the uses:\n- `linearDivision_remainder_of_reduced`: `rw [linearMap_apply_eq_sum (linearDivisionRemainder m b hb) p]; conv_rhs => rw [p.as_sum]; exact Finset.sum_congr rfl fun \u03b1 h\u03b1 => by rw [linearDivisionRemainder_monomial, ((basisDivision m b hb \u03b1).2.2.2 (hp \u03b1 h\u03b1)).2, \u2190 monomial_eq_smul_one]`.\n- `linearDivision_quotient_of_reduced`: `rw [linearMap_apply_eq_sum (linearDivisionQuotient m b hb) p]; exact Finset.sum_eq_zero fun \u03b1 h\u03b1 => by rw [linearDivisionQuotient_monomial, ((basisDivision m b hb \u03b1).2.2.2 (hp \u03b1 h\u03b1)).1, smul_zero]`.\n- `linearMap_preserves_coeffsIn`: `rw [linearMap_apply_eq_sum F p]; refine Submodule.sum_mem _ fun \u03b1 _ => ?_`, then `rw [mem_coeffsIn]; intro \u03b2; rw [coeff_smul, smul_eq_mul]; exact J.mul_mem_right _ (hp \u03b1)`. This drops the `as_sum`/`map_sum`/`map_smul` steps and keeps only the ideal argument.\n- `linearDivision_decomposition`: apply the lemma to `(Finsupp.linearCombination (MvPolynomial \u03c3 R) b).restrictScalars R \u2218\u2097 linearDivisionQuotient m b hb` and to `linearDivisionRemainder m b hb`. Then use `basisDivision .. |>.2.1` termwise instead of the manual `hsmul` and `map_sum` calc.",
+      "benefit": "The monomial-expansion argument is proved once instead of four times. The `of_reduced` proofs reduce to the actual mathematical content, namely that the chosen witnesses on reduced monomials are trivial. Maintenance is also easier: any change to how `linearDivisionQuotient` or `linearDivisionRemainder` is defined or simplified affects one helper instead of four hand-written sum manipulations.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomials/LinearDivision.lean",
+          "declaration": "MonomialOrder.linearDivision_quotient_of_reduced",
+          "excerpt": "rw [p.as_sum, map_sum]\n  apply Finset.sum_eq_zero\n  intro \u03b1 h\u03b1\n  rw [monomial_eq_smul_one, map_smul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomials/LinearDivision.lean",
+          "declaration": "MonomialOrder.linearMap_preserves_coeffsIn",
+          "excerpt": "rw [p.as_sum]\n  rw [map_sum]\n  apply Submodule.sum_mem _\n  intro \u03b1 _\n  rw [monomial_eq_smul_one, map_smul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/MvPolynomial/Basic.lean",
+          "declaration": "MvPolynomial.linearMap_ext",
+          "excerpt": "(h : \u2200 s, f \u2218\u2097 monomial s = g \u2218\u2097 monomial s) : f = g"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 13634,
+    "cache_read_input_tokens": 43000,
+    "output_tokens": 6174,
+    "output_tokens_details": {
+      "thinking_tokens": 2883
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13634,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2598,
+        "cache_read_input_tokens": 15625,
+        "cache_creation_input_tokens": 1938,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1938
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.120592,
+  "duration_ms": 42783,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:00:08",
+  "unit": "file",
+  "source_sha256": "16a447117b6a911c2797af608bb8870f488b2bd2b6c7620ee00c823da0c1ebd0",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

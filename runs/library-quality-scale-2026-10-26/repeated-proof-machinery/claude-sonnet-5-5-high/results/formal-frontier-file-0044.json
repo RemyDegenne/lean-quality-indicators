@@ -1,0 +1,110 @@
+{
+  "id": "formal-frontier-file-0044",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it depends on in WeightOneValuation.lean: WeightOneCoefficientField, WeightOneCoefficientVariables and the coefficient section lemmas. I also checked Mathlib's IsFractionRing.ringHom_ext. I could not compile anything, so the proposed lemmas are untested sketches. I looked for other repeated blocks and rejected them as too short. These were the `simpa only [map_zero] using (...).ne hp` non-vanishing steps (lines 182, 764, 941), the `Ideal.Quotient.ringHom_ext` wrappers in the residue id/comp lemmas, and the `obtain \u27e8p,q,hq,rfl\u27e9` decompositions. Finding 3 depends on one uncertainty: the author may have inlined the pivot-change ring equivalence to avoid a private/`@[no_expose]` interaction. I did not check that.",
+  "findings": [
+    {
+      "declaration": "weightOneZeroResidueMap_coordinates (and weightOneCoefficientSection_map)",
+      "start_line": 869,
+      "end_line": 902,
+      "excerpt": "    apply IsFractionRing.ringHom_ext (A := MvPolynomial \u03c3 k)\n    intro p\n    have hpoly : left.comp (algebraMap (MvPolynomial \u03c3 k)",
+      "problem": "Two proofs show that two ring homomorphisms out of `FractionRing (MvPolynomial \u03b9 k)` are equal by the same three-step scaffold. They apply `IsFractionRing.ringHom_ext`, prove equality of the compositions with `algebraMap` via `MvPolynomial.ringHom_ext` on `C` and `X`, then finish with `DFunLike.congr_fun hpoly p` and `DFunLike.congr_fun hfield x`. Each copy restates the full composed expressions in long `change` goals. In `weightOneCoefficientSection_map` the scaffold covers lines 600\u2013651 and also splits the variable case into `inl` and `inr`. In `weightOneZeroResidueMap_coordinates` it covers lines 876\u2013902.",
+      "proposed_change": "Add one extension lemma before both uses. It would read: `theorem fractionRing_mvPolynomial_ringHom_ext {\u03b9 : Type*} {B : Type*} [Semiring B] {f f' : FractionRing (MvPolynomial \u03b9 k) \u2192+* B} (hC : \u2200 a : k, f (algebraMap _ _ (C a)) = f' (algebraMap _ _ (C a))) (hX : \u2200 j, f (algebraMap _ _ (X j)) = f' (algebraMap _ _ (X j))) : f = f'`. Proof sketch: `IsFractionRing.ringHom_ext (A := MvPolynomial \u03b9 k) fun p => DFunLike.congr_fun (MvPolynomial.ringHom_ext (f := f.comp (algebraMap _ _)) (g := f'.comp (algebraMap _ _)) hC hX) p`.\n\nUse in `weightOneZeroResidueMap_coordinates`: set `left := (weightOneResidueEquiv T t).toRingHom.comp (weightOneZeroResidueMap g e T h t)` and take `\u03b9 := \u03c3`. Then `hfield := fractionRing_mvPolynomial_ringHom_ext hC hX`. The `hC` branch is the existing `C a` rewrite chain, `weightOneZeroResidueMap_apply, weightOneZeroValuationRingMap_C, weightOneResidueEquiv_section, weightOneZeroCoefficientFieldMap_C`. The `hX` branch is the existing `X j` chain. The proof ends with `exact DFunLike.congr_fun hfield x`.\n\nUse in `weightOneCoefficientSection_map`: take `\u03b9 := WeightOneCoefficientVariables S i`, with `left` and `right` as already defined. `hC` is the existing `C c` chain. `hX` is `intro j; cases j` with the existing `inl` and `inr` chains. The final `Subtype.ext; exact DFunLike.congr_fun hfield a` stays.\n\nBoth uses stay at their actual hypotheses. The lemma needs only `Field k`, which is already in scope through `variable {k}`, and the existing imports.",
+      "benefit": "This removes about 15 lines of scaffolding from each proof, so the proofs show only the mathematical content: what happens on constants and on generators. The lemma also gives the next field-of-fractions-of-polynomials homomorphism proof a ready tool, instead of a third copy of the scaffold.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomials/WeightOneNaturality.lean",
+          "declaration": "weightOneCoefficientSection_map",
+          "excerpt": "    apply IsFractionRing.ringHom_ext\n      (A := MvPolynomial (WeightOneCoefficientVariables S i) k)\n    intro p"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/Localization/FractionRing.lean",
+          "declaration": "IsFractionRing.ringHom_ext",
+          "excerpt": "theorem ringHom_ext {f1 f2 : K \u2192+* L}\n    (hf : \u2200 x : A, f1 (algebraMap A K x) = f2 (algebraMap A K x)) : f1 = f2"
+        }
+      ]
+    },
+    {
+      "declaration": "weightOneCoefficientChangePivot_ratio_pivot and weightOneCoefficientChangePivot_ratio_of_ne",
+      "start_line": 394,
+      "end_line": 440,
+      "excerpt": "  let sectionToField : WeightOneCoefficientField l T t' \u2192+*\n      FractionRing (MvPolynomial \u03c4 l) :=\n    (ValuationSubring.subtype (WeightOneValuationRing (k := l) T t')).comp\n      (weightOneCoefficientSection T t')",
+      "problem": "The two proofs repeat the same machinery. Each calls `apply weightOneCoefficientChangePivot_of_sections`. Each rebuilds the same local ring hom `sectionToField`, which is the section followed by the valuation-subring inclusion. Each then uses a `change` to push the target-side ratio expression through it, rewrites with `map_inv\u2080` or `map_div\u2080`, and uses a second long `change` to restate the result as coerced `weightOneCoefficientSection` values. They close with `weightOneCoefficientSection_ratio_val` rewrites. The `change` goals spell out the full coerced expressions, which is brittle and hides the one fact used: a ratio generator is sent to `X j / X t'` in the fraction field.",
+      "proposed_change": "Introduce a named, top-level ring hom `weightOneCoefficientSectionField T t' : WeightOneCoefficientField l T t' \u2192+* FractionRing (MvPolynomial \u03c4 l)`. Define it as `(ValuationSubring.subtype (WeightOneValuationRing (k := l) T t')).comp (weightOneCoefficientSection T t')`. Prove one lemma saying it sends `ratio[l,T,t'](j)` to `algebraMap (X j) / algebraMap (X t')`; this is `weightOneCoefficientSection_ratio_val` restated, proved by `rfl` or that lemma. Each theorem then becomes `apply weightOneCoefficientChangePivot_of_sections`, `show _ = weightOneCoefficientSectionField T t' _`, `rw [map_inv\u2080 or map_div\u2080, lemma, lemma]`, then `simp only [inv_div]` or `field_simp` with the existing `ht'` nonvanishing fact. The `change` goals and the duplicated `let` disappear. Hypotheses and imports are unchanged.",
+      "benefit": "Readers see one definition of the section-to-field map and one rewrite rule for ratio generators. They no longer have to compare two nearly identical 10-line `let`/`change` preambles. Any later pivot-change formula, such as an inverse-ratio or a third-pivot formula, reuses the helper.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomials/WeightOneNaturality.lean",
+          "declaration": "weightOneCoefficientChangePivot_ratio_of_ne",
+          "excerpt": "  let sectionToField : WeightOneCoefficientField l T t' \u2192+*\n      FractionRing (MvPolynomial \u03c4 l) :=\n    (ValuationSubring.subtype (WeightOneValuationRing (k := l) T t')).comp\n      (weightOneCoefficientSection T t')"
+        }
+      ]
+    },
+    {
+      "declaration": "weightOneCoefficientChangePivot",
+      "start_line": 333,
+      "end_line": 350,
+      "excerpt": "  let cast : WeightOneValuationRing (k := l) T t \u2243+*\n      WeightOneValuationRing (k := l) T t' := by\n    apply RingEquiv.restrict (RingEquiv.refl (FractionRing (MvPolynomial \u03c4 l)))",
+      "problem": "The body of `cast` is a verbatim second copy of the proof that defines `weightOneValuationRingEquiv`, including the `change ... \u2264 1 \u2194 ...` and `rw [weightOneValuation_pivot_eq T t t']` steps. The surrounding lemmas `weightOneCoefficientChangePivot_of_sections` and `weightOneCoefficientChangePivot_trans` already relate `weightOneCoefficientChangePivot` to `weightOneValuationRingEquiv` only by a `change`. That works only because the two constructions agree definitionally, and the file never states the connection.",
+      "proposed_change": "In `weightOneCoefficientChangePivot`, replace the inline `let cast ... := by ...` block with `let cast := weightOneValuationRingEquiv (l := l) T t t'`. Alternatively state the definition directly as `(weightOneResidueEquiv T t).symm.trans ((IsLocalRing.ResidueField.mapEquiv (weightOneValuationRingEquiv (l := l) T t t')).trans (weightOneResidueEquiv T t'))`. The private helper is declared earlier and `@[no_expose]` is already present, so the helper should be usable, though I did not check this. If a private/`no_expose` interaction forces the inlining, record that in a comment. The `change` steps in `of_sections` and `trans` then no longer depend on an accidental match.",
+      "benefit": "There is one definition of the pivot-change ring equivalence on valuation rings, so any later change to its proof is made in one place. The lemmas about the pivot change are then visibly about the same equivalence.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomials/WeightOneNaturality.lean",
+          "declaration": "weightOneValuationRingEquiv",
+          "excerpt": "  apply RingEquiv.restrict (RingEquiv.refl (FractionRing (MvPolynomial \u03c4 l)))\n  intro x\n  change weightOneValuation (k := l) T t x \u2264 1 \u2194\n    weightOneValuation (k := l) T t' x \u2264 1\n  rw [weightOneValuation_pivot_eq T t t']"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 38068,
+    "cache_read_input_tokens": 216662,
+    "output_tokens": 9787,
+    "output_tokens_details": {
+      "thinking_tokens": 3917
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 38068,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5805,
+        "cache_read_input_tokens": 40240,
+        "cache_creation_input_tokens": 1757,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1757
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2718362,
+  "duration_ms": 79855,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-26T22:53:37",
+  "unit": "file",
+  "source_sha256": "33f56d28e76f3a00ddad396ab75c0bcb2c2cbf81664e95e6f2f65fbcce637131",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

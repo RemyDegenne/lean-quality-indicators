@@ -1,0 +1,115 @@
+{
+  "id": "flt-anthropic-file-0154",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. The helper sections T2Aux and TCAux are where the simp-interface issues are. I treated the very long `solution` theorem as a proof-only section with no simp interface and found no simp-specific problems in it. I read `Place.evalAt_one`, `evalAt_of_mem`, `evalAt_mul_of_mem` and `evalAt_algebraMap_eq` in the Definitions files to check which simp lemmas already exist. I did not check whether adding `@[simp]` to the lemmas below would break other files that import this one. The `attribute [-simp]` lines list many names, and I did not exhaustively check them against these findings. All proposals are untested, since I cannot run Lean.",
+  "findings": [
+    {
+      "declaration": "T2Aux.evalAt_algebraMap",
+      "start_line": 87,
+      "end_line": 93,
+      "excerpt": "theorem evalAt_algebraMap (P : Place K F) (hP : P.IsRational) (a : K) :\n    P.evalAt (algebraMap K F a) = a := by",
+      "problem": "The identity `P.evalAt (algebraMap K F a) = a` is the canonical normal form for evaluating a constant. It has no `@[simp]` attribute here. The library already has the same statement as `Place.evalAt_algebraMap_eq` (also without `@[simp]`), and that version assumes no rationality hypothesis. This local copy needs `hP : P.IsRational` and a longer proof. Because neither version is simp, constants under `evalAt` are rewritten by hand, as in `rw [evalAt_algebraMap P hP]` at line 168.",
+      "proposed_change": "Delete the local `evalAt_algebraMap` and use `Place.evalAt_algebraMap_eq`, which takes no rationality hypothesis. Make that library lemma `@[simp]`. Its left side `v.evalAt (algebraMap K F a)` is a fixed shape and its right side is a strictly smaller term, so a rewrite loop is not credible. If the library lemma cannot be changed, mark the local copy `@[simp]` instead.",
+      "benefit": "`simp` can then reduce `evalAt (algebraMap K F a)` to `a` automatically. It also removes the duplicate lemma and the unnecessary `hP` argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_PlaceEvaluationAlgebra.lean",
+          "declaration": "Place.evalAt_algebraMap_eq",
+          "excerpt": "theorem evalAt_algebraMap_eq (a : K) : v.evalAt (algebraMap K F a) = a := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_PlaceEvaluation.lean",
+          "declaration": "Place.evalAt_one",
+          "excerpt": "@[simp]\ntheorem evalAt_one : v.evalAt (1 : F) = 1 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "T2Aux.compVal (zero_mem' field) and the evalAt_mul/add/neg/sub family",
+      "start_line": 132,
+      "end_line": 138,
+      "excerpt": "    have : P.evalAt (0 : F) = 0 := by\n      rw [\u2190 ev_eq_evalAt P hP 0 (zero_mem _)]",
+      "problem": "The library has `@[simp] Place.evalAt_one`, but the matching `evalAt 0 = 0` fact is proved inline inside `zero_mem'`. It is never stated as a named lemma. Lines 147 and 162 then use `exact zero_mem _` after a manual rewrite. The sibling lemmas `evalAt_mul`, `evalAt_add`, `evalAt_neg`, `evalAt_sub` (lines 101\u2013115) are also proved here with side conditions `hf : f \u2208 P.toValuationSubring`. They are used only through explicit `rw [evalAt_\u2026 P hP hf hg]`. This makes the interface for `evalAt` asymmetric: `evalAt 1` is simp, while `evalAt 0` and the ring operations are not.",
+      "proposed_change": "State `theorem evalAt_zero (P : Place K F) : P.evalAt (0 : F) = 0` and mark it `@[simp]`. It needs no rationality hypothesis, because `evalAt_of_mem` gives `residueInv (residue 0)`, and `residueInv` of an `algebraMap` image is injective-inverse. Use it in `zero_mem'`. For `evalAt_mul/add/neg/sub`, keep the side-condition form and consider marking them `@[simp]` with the membership hypotheses as discharger goals. Alternatively, state an `evalAt` ring hom on the valuation subring (the existing `ev`) and register simp lemmas for that.",
+      "benefit": "This gives one canonical simp normal form for `evalAt` on constants and removes the inline proof. It also avoids the repeated `rw [\u2026 evalAt_mul \u2026, Place.evalAt_one]` sequences, such as those at lines 153 and 183.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_PlaceEvaluation.lean",
+          "declaration": "Place.evalAt_one",
+          "excerpt": "theorem evalAt_one : v.evalAt (1 : F) = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_PlaceEvaluationAlgebra.lean",
+          "declaration": "Place.evalAt_mul_of_mem",
+          "excerpt": "theorem evalAt_mul_of_mem (hv : v.IsRational) {f g : F} (hf : f \u2208 v.toValuationSubring)"
+        }
+      ]
+    },
+    {
+      "declaration": "T2Aux.mem_compVal_iff",
+      "start_line": 164,
+      "end_line": 165,
+      "excerpt": "theorem mem_compVal_iff {f : F} : f \u2208 compVal P hP A \u2194 f \u2208 P.toValuationSubring \u2227 P.evalAt f \u2208 A :=\n  \u27e8fun h => h, fun h => h\u27e9",
+      "problem": "This is the membership-unfolding lemma for the new `compVal` definition. Its proof is `Iff.rfl` in disguise, and it is not `@[simp]`. Downstream code never uses it. It instead reaches into membership proofs with projections, for example `hf.2` and `hf.1` in `isUnit_compVal_iff` (lines 171\u2013190). Constructions such as `\u27e8f\u207b\u00b9, hfiP, hfiA\u27e9` and `\u27e8P.algebraMap_mem' a, \u2026\u27e9` rely on definitional unfolding. `simp` therefore cannot turn `f \u2208 compVal P hP A` into its two conjuncts.",
+      "proposed_change": "Mark `mem_compVal_iff` as `@[simp]`, since its left side is headed by the specific constant `compVal`. Optionally add `Iff.rfl` as the proof. Then state `isUnit_compVal_iff`, `coe_mem_nonunits_compVal_iff` and `algebraMap_mem_compVal` using `simp [mem_compVal_iff]` instead of `.1`/`.2` projections.",
+      "benefit": "This gives the standard unfolding simp lemma for a bespoke carrier set. Membership goals such as `f \u2208 compVal P hP A` reduce to the two data conditions without relying on definitional unfolding, and proofs stay robust if the structure of `compVal` changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_exists_levelAutBar_smul_centred_twoChartIntegralModel_of_forall_not_ssTube.lean",
+          "declaration": "T2Aux.isUnit_compVal_iff",
+          "excerpt": "IsUnit (\u27e8f, hf\u27e9 : \u21a5(compVal P hP A)) \u2194 IsUnit (\u27e8P.evalAt f, hf.2\u27e9 : \u21a5A)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 67276,
+    "cache_read_input_tokens": 313176,
+    "output_tokens": 5612,
+    "output_tokens_details": {
+      "thinking_tokens": 1259
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 67276,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3000,
+        "cache_read_input_tokens": 67955,
+        "cache_creation_input_tokens": 3334,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3334
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3565656,
+  "duration_ms": 40644,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:12:57",
+  "unit": "file",
+  "source_sha256": "6ffd0ce7e0eba7a498bb5de81b515955e5e2c29c7240e0bf4c0d3e7584b648e1",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

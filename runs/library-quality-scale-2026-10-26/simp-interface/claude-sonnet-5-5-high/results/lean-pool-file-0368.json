@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0368",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read hessD/hessX/hessY (Hessian.lean), pt/neg_pt (Chart.lean), three_torsion_some_iff (Curve.lean) and Infinity.lean's simp lemmas. The file declares no @[simp] lemmas of its own. I found no loop, competing rule or unwanted expansion. The two findings concern fragile simp-set usage. They are low-to-moderate severity, and I have not run Lean, so I am not claiming any observed failure. I did not recommend @[simp] on t3, phi or the hess* defs. The hess* unfoldings are always local, and simp attributes there would risk unwanted expansion.",
+  "findings": [
+    {
+      "declaration": "KasamiCyclicAdditive.FermatCubic.frob_fermat",
+      "start_line": 50,
+      "end_line": 50,
+      "excerpt": "simpa [add_pow_char_pow, \u2190 pow_mul, Nat.mul_comm] using this",
+      "problem": "The simp set contains the commutativity lemma `Nat.mul_comm` together with `\u2190 pow_mul`. Simp can only use a commutativity lemma through ordered rewriting. The resulting normal form of the exponent products `2 * 3` / `3 * 2` and `2 ^ k` depends on the term order, not on a stated canonical form. This makes the proof fragile if surrounding simp lemmas or `Nat` literal normalisation change. The file already isolates the needed fact as `pow_pow_comm`, `(x ^ 3) ^ 2 ^ k = (x ^ 2 ^ k) ^ 3`, which is the canonical rewrite for this goal. It is only introduced later, as a private lemma.",
+      "proposed_change": "Move `pow_pow_comm` (or use Mathlib's `pow_right_comm`) before `frob_fermat`. Replace the simp-with-`Nat.mul_comm` step by `rw [\u2190 pow_pow_comm, \u2190 pow_pow_comm, \u2190 add_pow_char_pow, h, one_pow]`, or an equivalent `simpa [add_pow_char_pow, pow_pow_comm] using this`. That is, orient the rewrite with a fixed-direction lemma rather than a permutation lemma in the simp set.",
+      "benefit": "The simp call no longer depends on ordered rewriting with a commutativity lemma. The `(x^3)^(2^k) = (x^(2^k))^3` normal form is stated once and reused by `frob_fermat` and `not_hess_all_eq_zero`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KasamiCyclicAdditive/Geometry/FermatCubic/IncidenceChart.lean",
+          "declaration": "pow_pow_comm",
+          "excerpt": "rw [\u2190 pow_mul, \u2190 pow_mul, Nat.mul_comm]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Algebra/Group/Monoid.lean",
+          "declaration": "pow_right_comm",
+          "excerpt": "lemma pow_right_comm (a : M) (m n : \u2115) : (a ^ m) ^ n = (a ^ n) ^ m"
+        }
+      ]
+    },
+    {
+      "declaration": "KasamiCyclicAdditive.FermatCubic.neg_add_t3",
+      "start_line": 111,
+      "end_line": 113,
+      "excerpt": "simp only [hessX, hessY, hessD, one_pow, mul_one, mul_zero, zero_pow, zero_mul,",
+      "problem": "The proof unfolds all three `hess*` definitions with a long, `simp?`-style `simp only` list. The list includes the side-condition debris `zero_pow, ne_eq, OfNat.ofNat_ne_zero, not_false_eq_true`. It is run twice via `<;>` before `field_simp`. The specialisation of the Hessian formulas at the second point `(1,0)` is a reusable computation with no named rewrite rules. The same unfold-and-simplify step is redone in `neg_add_t3`'s `hD2` (which uses `mul_zero, add_zero`) and in other files. The `hess*` defs have no simp or equation lemmas for the `(1,0)` case. Each caller must therefore spell out the unfold-and-clean-up list, and the list is brittle to simp-lemma changes such as `zero_pow` side conditions.",
+      "proposed_change": "Add small, non-simp, explicitly named specialisation lemmas, for example `hessD_one_zero : hessD w t 1 0 = w * t`, `hessX_one_zero : hessX w t 1 0 = t ^ 2` and `hessY_one_zero : hessY w t 1 0 = w ^ 2 * 0 + 1 ^ 2 * t` simplified to `t`. Then use `rw [hessX_one_zero, ...]` in `neg_add_t3` (and `hD2`). These lemmas could also be tagged `@[simp]` if they are stated at the literals `1` and `0`. They are terminating, directional (a compound term rewrites to a smaller one) and do not conflict with the `hess*` defs, which stay irreducible to simp. Then `refine pt_congr _ _ ?_ ?_ <;> field_simp` should replace the long list.",
+      "benefit": "The canonical form of the Hessian formulas at `t3` is stated once. The proof of `neg_add_t3` and `hD2` becomes robust against changes to simp lemmas for powers and zero, instead of replaying a long `simp?` output.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KasamiCyclicAdditive/Geometry/FermatCubic/Hessian.lean",
+          "declaration": "hessX",
+          "excerpt": "def hessX (w1 t1 w2 t2 : K) : K := t1 ^ 2 * w2 + t2 ^ 2 * w1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KasamiCyclicAdditive/Geometry/FermatCubic/Hessian.lean",
+          "declaration": "hessD",
+          "excerpt": "def hessD (w1 t1 w2 t2 : K) : K := w1 * t1 + w2 * t2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/KasamiCyclicAdditive/Geometry/FermatCubic/IncidenceChart.lean",
+          "declaration": "neg_add_t3",
+          "excerpt": "simp only [hessD, mul_zero, add_zero]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 29974,
+    "cache_read_input_tokens": 100865,
+    "output_tokens": 5508,
+    "output_tokens_details": {
+      "thinking_tokens": 1685
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29974,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2404,
+        "cache_read_input_tokens": 33466,
+        "cache_creation_input_tokens": 521,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 521
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18508249999999998,
+  "duration_ms": 43506,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T02:08:49",
+  "unit": "file",
+  "source_sha256": "01e858995c4ff5e1dd8602b54a66f232fd45da718fea411071dbe9d6d88946a8",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

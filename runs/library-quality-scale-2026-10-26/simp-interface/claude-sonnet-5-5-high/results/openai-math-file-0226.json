@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0226",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read ProductMerge.lean and the definitions of productMass, productLeft, productRight and ProductIncrement in VectorBranch.lean. I checked every use of mapProductIncrement and the _map lemmas in TripleScheduleScale.lean and NarrowScheduleScale.lean. I did not run Lean. The suggestions below are untested: I have not checked how the proposed simp lemmas interact with productMass_map or with the surrounding `simp only` sets. The file has only one @[simp] lemma. Its orientation is sound (it removes the map), so it is not a defect. The findings concern missing simp coverage around the new definition, not wrong orientation or loops.",
+  "findings": [
+    {
+      "declaration": "mapProductIncrement",
+      "start_line": 14,
+      "end_line": 16,
+      "excerpt": "Sum.map (fun p => (p.1,f p.2)) (fun p => (p.1,g p.2))",
+      "problem": "The map has no simp lemmas for its constructor cases (`mapProductIncrement f g (.inl p)` and `(.inr p)`). The only way to compute it is to unfold the definition, which exposes `Sum.map` and the raw lambdas. Downstream proofs do this by hand: `norm_num [Function.comp_def,mapProductIncrement,tripleMiddleVector,smul_eq_mul]` in tripleMiddleSchedule_scale and in the Narrow scaling lemma. The file's own proofs also unfold it, e.g. `simp only [List.map_map,Function.comp_def,mapProductIncrement,Sum.map_inl,Sum.map_inr]`. Unfolding exposes the implementation (`Sum.map`) at every use. A simp user cannot rewrite `mapProductIncrement f g (Sum.inl p)` without that definition-specific unfolding.",
+      "proposed_change": "Add two @[simp] equation lemmas right after the definition, both provable by `rfl`: `mapProductIncrement f g (Sum.inl p) = Sum.inl (p.1, f p.2)` and `mapProductIncrement f g (Sum.inr p) = Sum.inr (p.1, g p.2)`. Callers can then replace `mapProductIncrement` in their simp sets with these lemmas, or drop it. Optionally mark the definition `@[reducible]` or leave it irreducible-by-simp once the lemmas exist.",
+      "benefit": "Case-split proofs such as `cases p <;> ext i <;> fin_cases i <;> norm_num [...]` get the constructor-level rewrite from the simp set instead of unfolding `Sum.map`. The normal form of a mapped increment is stated once and used consistently. The three proofs in this file also need less ad-hoc unfolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKBarriers/Replicas/TripleScheduleScale.lean",
+          "declaration": "tripleMiddleSchedule_scale",
+          "excerpt": "norm_num [Function.comp_def,mapProductIncrement,tripleMiddleVector,smul_eq_mul] <;> ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKBarriers/Locking/NarrowScheduleScale.lean",
+          "declaration": "narrowMiddleSchedule_scale",
+          "excerpt": "norm_num [Function.comp_def,mapProductIncrement,narrowMiddleVector,smul_eq_mul] <;> ring"
+        }
+      ]
+    },
+    {
+      "declaration": "productLeft_map / productRight_map",
+      "start_line": 21,
+      "end_line": 33,
+      "excerpt": "productLeft (l.map (mapProductIncrement f g))=(productLeft l).map (fun p => (p.1,f p.2))",
+      "problem": "`productMass_map` is @[simp], but its siblings `productLeft_map` and `productRight_map` are not. They are the same kind of fact: a projection commutes with `mapProductIncrement`. Each rewrites a projection applied to a mapped list into a map applied to the projection. That is a terminating, size-reducing orientation, as with `productMass_map`. Without the attribute, `simp` cannot push `productLeft`/`productRight` through `l.map (mapProductIncrement f g)`. A consumer must name the lemma by hand or unfold `productLeft` into `filterMap`. The existing consumers, such as the `simp` calls in TripleSchedule.lean, unfold `productLeft`/`productRight` to `filterMap`. They therefore cannot use the structural lemmas.",
+      "proposed_change": "Mark `productLeft_map` and `productRight_map` with @[simp], matching `productMass_map`. Their left-hand sides (`productLeft (List.map (mapProductIncrement f g) l)`) do not occur in their right-hand sides, so there is no loop. Optionally also tag `mergedProductBranches_left`/`_right` in ProductMerge.lean as simp lemmas so that `productLeft (mergedProductBranches ..)` closes automatically after a map is pushed through.",
+      "benefit": "The projection-vs-map interface becomes uniform: all three compatibility lemmas fire automatically, so scale lemmas over `tripleMiddleSchedule` and `tripleTailSchedule` that mention `productLeft (l.map ..)` can be closed by `simp` instead of by manual unfolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKBarriers/Scalar/ProductBranchMap.lean",
+          "declaration": "productMass_map",
+          "excerpt": "@[simp] theorem productMass_map"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SKBarriers/Replicas/TripleSchedule.lean",
+          "declaration": "tripleMiddleSchedule_sum_formula (the induction proof over productLeft and productRight)",
+          "excerpt": "simp only [productLeft,productRight,List.filterMap_cons,weightedUnderlying,rawVariance,weightedCross,weightedVariance,List.map_cons,List.sum_cons,add_assoc]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 16992,
+    "cache_read_input_tokens": 45712,
+    "output_tokens": 3829,
+    "output_tokens_details": {
+      "thinking_tokens": 570
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16992,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2683,
+        "cache_read_input_tokens": 18477,
+        "cache_creation_input_tokens": 2528,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2528
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11084519999999999,
+  "duration_ms": 29148,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:33:57",
+  "unit": "file",
+  "source_sha256": "a990180aafdb4bf84d7a0baafb3789df8a078d38d3b9abdec2a255b4dd94994c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

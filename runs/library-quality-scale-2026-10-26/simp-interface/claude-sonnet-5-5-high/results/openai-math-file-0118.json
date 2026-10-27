@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0118",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Stabilization/Weights.lean definitions (Positive.smul, ExtendedTrace). I grepped the Pureness and JiangSu trees for uses of rootExponent, rank_smul, rank_normalize and power_smul. The file has only one @[simp] lemma, power_one. Both findings are about missing simp-interface lemmas. I did not run Lean, so I make no claims about simp behaviour. The ENNReal.coe cast version of the root-scalar limit (root_scalars_tendsto_one) looked fine. I did not propose simp attributes on power_smul or rank_smul, because their positivity hypotheses make them poor simp lemmas, and I did not recommend them.",
+  "findings": [
+    {
+      "declaration": "CuntzTrace.Positive.rootExponent (and its downstream uses, e.g. ExtendedTrace.apply_le_rank, rank_eq_iSup_cuts, rank_eq_iSup_cuts_all)",
+      "start_line": 16,
+      "end_line": 16,
+      "excerpt": "def rootExponent (n : \u2115) : \u211d\u22650 := 1 / ((n : \u211d\u22650) + 1)",
+      "problem": "rootExponent is a bare def with no simp-normal-form lemmas. Every use that needs its value or limit has to unfold the definition inside simp. That happens in this file at `simpa [Positive.rootExponent] using h` (apply_le_rank) and at three `simpa [Positive.rootExponent] using (tendsto_one_div_add_atTop_nhds_zero_nat : ...)` calls (rank_eq_iSup_cuts, root_scalars_tendsto_one, rank_eq_iSup_cuts_all). The same pattern appears in about 15 other files in Pureness and JiangSu. Unfolding exposes the raw `1 / (\u2191n + 1)` form in \u211d\u22650, so the outcome depends on how simp then normalises casts and `one_div`. The tendsto fact is restated with an explicit type ascription each time.",
+      "proposed_change": "Add a small interface next to the definition. First, `@[simp] lemma rootExponent_zero : rootExponent 0 = 1`, which would let apply_le_rank use `power_one` through simp without unfolding the definition. Second, a lemma `rootExponent_coe (n) : (rootExponent n : \u211d) = 1 / ((n : \u211d) + 1)` (or `= ((n:\u211d)+1)\u207b\u00b9`), proved once by `simp [rootExponent]`. Third, one `tendsto_rootExponent : Tendsto (fun n => (rootExponent n : \u211d)) atTop (\ud835\udcdd 0)` and `Tendsto rootExponent atTop (\ud835\udcdd 0)` in \u211d\u22650, derived from `tendsto_one_div_add_atTop_nhds_zero_nat`. The four unfold-and-simpa sites here, and the other copies, would then become `exact`/`simpa using tendsto_rootExponent`.",
+      "benefit": "Simp has a stable, definition-independent normal form for the root exponents. The repeated type-ascribed `simpa [rootExponent] using (tendsto_one_div_add... : ...)` blocks go away in this file and in the other call sites. If rootExponent's definition changes, only the interface lemmas need to be reproved.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Stabilization/RankCyclic.lean",
+          "declaration": "same unfolding pattern in another file",
+          "excerpt": "simpa [Positive.rootExponent] using (tendsto_one_div_add_atTop_nhds_zero_nat :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Operators/PositiveCutOrder.lean",
+          "declaration": "same unfolding pattern in another file",
+          "excerpt": "simpa [Positive.rootExponent] using (tendsto_one_div_add_atTop_nhds_zero_nat :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Projections/FiniteSpectralIntegralRankRecovery.lean",
+          "declaration": "same unfolding pattern in another file",
+          "excerpt": "simpa [Positive.rootExponent] using (tendsto_one_div_add_atTop_nhds_zero_nat :"
+        }
+      ]
+    },
+    {
+      "declaration": "CuntzTrace.ExtendedTrace.rank_normalize",
+      "start_line": 186,
+      "end_line": 188,
+      "excerpt": "lemma rank_normalize (\u03c4 : ExtendedTrace A) (a : Positive A) :\n    \u03c4.rank (Positive.normalize a) = \u03c4.rank a :=",
+      "problem": "rank_normalize is an unconditional equation. Its right-hand side is strictly simpler than its left-hand side, so it is a natural simp lemma and cannot cycle. It is not tagged @[simp], so every user has to name it explicitly. In this file it is passed by hand to `simp only [one_mul, \u03c4.rank_normalize] at ht` and `simpa only [\u03c4.rank_normalize] using hr n`. It is also used through `rw` or `\u2190 rank_normalize` in RankBounds.lean and RankFunctorial.lean. Any plain `simp` call on a goal containing `\u03c4.rank (normalize a)` leaves the normalisation in place.",
+      "proposed_change": "Mark it `@[simp] lemma rank_normalize ...`. Its direction is already the right one for simp, and it is unconditional, so no discharger is needed. Keep `rank_smul` without @[simp], since it needs the side condition `0 < s`.",
+      "benefit": "Rank goals that mention normalised elements reduce to the rank of the original element under plain `simp`. Several `simp only [\u03c4.rank_normalize]` and `rw [\u03c4.rank_normalize, ...]` call sites can be simplified. The unconditional scale-invariance fact becomes part of the default simp set for rank.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Stabilization/Rank.lean",
+          "declaration": "ExtendedTrace.rank_le_of_tendsto_all",
+          "excerpt": "simpa only [\u03c4.rank_normalize] using hr n"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Pureness/Stabilization/RankBounds.lean",
+          "declaration": "rank bound proof using rank_normalize by rw",
+          "excerpt": "by rw [\u03c4.rank_normalize, h]; exact le_rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 12009,
+    "cache_read_input_tokens": 78186,
+    "output_tokens": 4483,
+    "output_tokens_details": {
+      "thinking_tokens": 1264
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12009,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3114,
+        "cache_read_input_tokens": 24695,
+        "cache_creation_input_tokens": 3257,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3257
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1007006,
+  "duration_ms": 33681,
+  "turns": 7,
+  "attempts": 2,
+  "judged": "2026-10-26T23:06:22",
+  "unit": "file",
+  "source_sha256": "ee19c213edb2800db8e3ce951ece09ef6522274f06e4ccb82caf0159cca726ad",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

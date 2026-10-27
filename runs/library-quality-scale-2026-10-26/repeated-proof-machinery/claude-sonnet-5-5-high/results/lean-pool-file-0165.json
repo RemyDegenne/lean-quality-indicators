@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0165",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked line numbers with Read. I looked at all the repeated-proof candidates. The B/A/C triples are hBint, hAint and hCint (lines 24\u2013140); hBslice, hAslice and hCslice (631\u2013710); and the hsum* blocks together with the integrable_finsetSum nests. I judged hBzero, hAzero and hCzero (lines ~320\u2013380) too short and routine, so I did not report them. I also skipped the hBsliceAll and hAsliceAll lemmas, because they are thin ae_all_iff wrappers. I did not open compact_factor_integrable, ParabolicPoint or spaceTimeSet. The proposed lemma statements are sketches that I have not compiled. They rely on ParabolicPoint being defeq to Vec3 \u00d7 \u211d, which the existing `change` steps in hBslice, hAslice and hCslice already assume.",
+  "findings": [
+    {
+      "declaration": "laplacian_transfer_hBslice_4 / laplacian_transfer_hAslice_5 / laplacian_transfer_hCslice_6",
+      "start_line": 631,
+      "end_line": 710,
+      "excerpt": "rw [\u2190 Measure.prod_restrict \u03a9' J] at h\n  exact h.prod_left_ae",
+      "problem": "The three lemmas contain the same Fubini slicing argument, copied verbatim. Each one weakens integrability from `volume` to `volume.restrict (spaceTimeSet \u03a9' J)`, rewrites that as a product measure with `Measure.prod_restrict`, and applies `prod_left_ae`. The only difference is the integrand. Each copy also carries a long hand-expanded statement, and each proof ends with a `change` that must repeat the integrand.",
+      "proposed_change": "Add one private lemma for an arbitrary integrand F. Statement: `lemma integrable_slice_ae {F : ParabolicPoint \u2192 \u211d} {\u03a9' : Set Vec3} {J : Set \u211d} (h : Integrable F volume) : \u2200\u1d50 t \u2202volume.restrict J, Integrable (fun x : Vec3 => F (x, t)) (volume.restrict \u03a9')`.\nProof: `have h' := h.mono_measure (Measure.restrict_le_self : volume.restrict (spaceTimeSet \u03a9' J) \u2264 volume)`. Then `change Integrable F (((volume : Measure Vec3).prod (volume : Measure \u211d)).restrict (\u03a9' \u00d7\u02e2 J)) at h'`, then `rw [\u2190 Measure.prod_restrict \u03a9' J] at h'`, then `exact h'.prod_left_ae`.\nRewrite the uses as `hBslice i j := integrable_slice_ae (hBint i j)`, `hAslice i j := integrable_slice_ae (hAint i j)` and `hCslice i j := integrable_slice_ae (hCint i j)`. Each F is the corresponding lambda, so the statements match by beta reduction. This also removes the three unused `{_ : \u211d}` binders.",
+      "benefit": "The measure-theoretic argument is stated and maintained once. About 60 lines of statement and proof copies shrink to one lemma and three one-line uses. A change to `spaceTimeSet` or `prod_restrict` needs one edit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Step3/LocalizedEquationLaplacian.lean",
+          "declaration": "laplacian_transfer_hAslice_5",
+          "excerpt": "rw [\u2190 Measure.prod_restrict \u03a9' J] at h\n  exact h.prod_left_ae"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Step3/LocalizedEquationLaplacian.lean",
+          "declaration": "laplacian_transfer_hCslice_6",
+          "excerpt": "rw [\u2190 Measure.prod_restrict \u03a9' J] at h\n  exact h.prod_left_ae"
+        }
+      ]
+    },
+    {
+      "declaration": "laplacian_transfer_hBint_1 / laplacian_transfer_hAint_2 / laplacian_transfer_hCint_3",
+      "start_line": 45,
+      "end_line": 60,
+      "excerpt": "have hbc := h\u03c6c.mul_right (f' := fun z : Vec3 \u00d7 \u211d =>\n    spatialSecondPartial (fun w => \u03c8 w i) j j z)",
+      "problem": "The three proofs repeat the same five-step argument for integrability of `a * (f * g)` on `volume`. The steps are: (1) `f * g` is continuous because both factors are smooth; (2) `HasCompactSupport.mul_right` gives compact support; (3) `tsupport_mul_subset_left` followed by a box inclusion gives `tsupport (f*g) \u2286 spaceTimeSet \u03a9' J`; (4) the L\u00b2 hypothesis is converted to L\u00b9 with `.integrable (by norm_num)`; (5) everything is passed to `compact_factor_integrable` with `simpa [\u03bc]`. The three copies differ only in the choice of f, g and a: B uses (\u03c6, \u2202\u00b2\u03c8, u i), A uses (\u03c6, \u2202\u03c8, Du i j), and C uses (\u2202\u03c6, \u2202\u03c8, u i). Hand-written expansions of the terms are repeated each time.",
+      "proposed_change": "Add a lemma: `lemma integrable_mul_box_factor {a : ParabolicPoint \u2192 \u211d} {f g : Vec3 \u00d7 \u211d \u2192 \u211d} {\u03a9' J} (ha : Integrable a (volume.restrict (spaceTimeSet \u03a9' J))) (hg : Continuous g) (hf : Continuous f) (hfc : HasCompactSupport f) (hfs : tsupport f \u2286 \u03a9' \u00d7\u02e2 J) : Integrable (fun z => a z * (f z * g z)) volume`.\nProof: the body already in hBint, i.e. `compact_factor_integrable (a := a) (b := fun z => f z * g z) ha (hf.mul hg) (hfc.mul_right) ((tsupport_mul_subset_left).trans hfs)`.\nThe uses become: B = `integrable_mul_box_factor (by simpa [\u03bc] using (huComp i).integrable (by norm_num)) (h\u03c6second i j).continuous h\u03c6d.continuous h\u03c6c h\u03c6box`; A = the same with `Du z i j`, `spatialPartial_contDiff (h\u03c8i i) j`, and f = \u03c6; C = f = `spatialPartial \u03c6 j`, using `h\u03c6sp_c j` and `(h\u03c6sp_ts j).trans h\u03c6box`.\nIn all three cases the L\u00b2 to L\u00b9 step `(huComp i).integrable (by norm_num)` stays at the call site.",
+      "benefit": "The compact-support bookkeeping appears once, and each use only supplies the factors. This also makes it clear that the three integrability facts are instances of one principle, and it shortens the heavily annotated statements.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Step3/LocalizedEquationLaplacian.lean",
+          "declaration": "laplacian_transfer_hAint_2",
+          "excerpt": "have hbc := h\u03c6c.mul_right (f' := fun z : Vec3 \u00d7 \u211d =>\n    spatialPartial (fun w => \u03c8 w i) j z)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Step3/LocalizedEquationLaplacian.lean",
+          "declaration": "laplacian_transfer_hCint_3",
+          "excerpt": "have hbc := (h\u03c6sp_c j).mul_right (f' := fun z : Vec3 \u00d7 \u211d =>\n    spatialPartial (fun w => \u03c8 w i) j z)"
+        }
+      ]
+    },
+    {
+      "declaration": "laplacian_transfer_hsliceSum_8 (and hB/hA/hC in laplacian_transfer_of_sws)",
+      "start_line": 443,
+      "end_line": 505,
+      "excerpt": "have hsumC :\n      (\u222b x in \u03a9', C (x, t)) =\n        \u2211 i, \u2211 j, \u222b x in \u03a9',",
+      "problem": "Three times in `hsliceSum_8` (hBs/hAs/hCs and hsumB/hsumA/hsumC), and again three times in the main theorem (hB/hA/hC), the same argument is spelled out for a double sum over `Fin 3 \u00d7 Fin 3`. It shows that a finite double sum of integrable functions is integrable, and that its integral is the double sum of the integrals. The proof is a nested `integrable_finsetSum` / `integral_finsetSum` / `Finset.sum_congr` with `intro i hi; intro j hj`. Only the integrand name and the hypothesis (hBst, hAst, hCst, hBint, ...) change. Also, hBs/hAs/hCs are unused in `hsliceSum_8`.",
+      "proposed_change": "Add a helper for a general measure \u03bc and `f : Fin 3 \u2192 Fin 3 \u2192 \u03b1 \u2192 \u211d` with `h : \u2200 i j, Integrable (f i j) \u03bc`. It has two statements: (a) `Integrable (fun x => \u2211 i, \u2211 j, f i j x) \u03bc` and (b) `\u222b x, \u2211 i, \u2211 j, f i j x \u2202\u03bc = \u2211 i, \u2211 j, \u222b x, f i j x \u2202\u03bc`.\nProof: `integrable_finsetSum` twice for (a), and for (b) `integral_finsetSum` for the outer sum followed by `Finset.sum_congr` and `integral_finsetSum` for the inner sum, as in the current hsumB.\nThen hsumB, hsumA and hsumC become `(sum_integral h)` applied to `hBst`, `hAst` and `hCst`. The hB, hA and hC proofs in the main theorem become `integrable_double_sum hBint`, `hAint` and `hCint`, and the unused hBs, hAs and hCs are deleted.",
+      "benefit": "This removes about 60 lines of near-identical proof text across six places and the unused hypotheses. A future change to the dimension or the index structure has one place to edit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Step3/LocalizedEquationLaplacian.lean",
+          "declaration": "laplacian_transfer_hsliceSum_8",
+          "excerpt": "rw [integral_finsetSum (s := Finset.univ)]\n    \u00b7 apply Finset.sum_congr rfl\n      intro i hi\n      rw [integral_finsetSum (s := Finset.univ)]\n      intro j hj\n      exact hAst i j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Step3/LocalizedEquationLaplacian.lean",
+          "declaration": "laplacian_transfer_of_sws",
+          "excerpt": "have hA : Integrable A volume := by\n    dsimp [A]\n    exact integrable_finsetSum (Finset.univ : Finset (Fin 3)) (fun i _ =>\n      integrable_finsetSum (Finset.univ : Finset (Fin 3)) (fun j _ =>\n        hAint i j))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 37539,
+    "cache_read_input_tokens": 106794,
+    "output_tokens": 6846,
+    "output_tokens_details": {
+      "thinking_tokens": 1699
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37539,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5111,
+        "cache_read_input_tokens": 39955,
+        "cache_creation_input_tokens": 1513,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1513
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22931140000000003,
+  "duration_ms": 51118,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:15:16",
+  "unit": "file",
+  "source_sha256": "a83e2bdeb1bbf8c8bc467c22881abda556a620eced4120bd634e8becc8bfd4eb",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

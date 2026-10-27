@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0236",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definition of `B` in Basic.lean and grepped the TotientAsymptotic directory for uses of `discardPrimeBound`, `discardExponent` and the surrounding `simpa only` / `rw [show Nat.clog ...]` idioms. Neither definition has any simp or norm_cast lemma. The same unfolding recipe is repeated by hand in this file and in CandidateNormalMass, LocalNormalityMass and LocalResidualLayers. I did not run Lean, so I make no claim that the proposed lemmas compile or that simp closes any goal. The proposed lemma statements follow from the definitions, using `Nat.cast_pow`, `Nat.cast_ofNat` and `Nat.clog_pow`, which the file already uses. Whether to add `@[simp]` versus `@[norm_cast]` is a judgement call.",
+  "findings": [
+    {
+      "declaration": "discardPrimeBound (missing cast/unfolding simp lemma), used in discardPrimeBound_bounds and discard_normal_mass",
+      "start_line": 14,
+      "end_line": 14,
+      "excerpt": "def discardPrimeBound (b : \u211d) : \u2115 := 2^(discardExponent b)",
+      "problem": "`discardPrimeBound` has no canonical rewrite to its real-valued form. Every use that needs `((discardPrimeBound b : \u2115) : \u211d)` as a power of two unfolds the definition by hand with `simp only [discardPrimeBound,Nat.cast_pow,Nat.cast_ofNat,...]`. This happens at lines 41, 66, 96 and 98 of this file. The same idiom is copied in CandidateNormalMass.lean (lines 47, 49), LocalNormalityMass.lean (lines 36, 38) and LocalResidualLayers.lean (line 37). Because the definition itself is unfolded, the goal exposes `2 ^ discardExponent b` rather than a stable interface. Downstream statements such as `Real.log (discardPrimeBound b : \u211d)` in HeadSquareSum and SquareCaseSum cannot be normalised by plain `simp` or `push_cast`.",
+      "proposed_change": "Add a cast lemma next to the definition, for example `lemma discardPrimeBound_cast (b : \u211d) : (discardPrimeBound b : \u211d) = (2:\u211d)^discardExponent b := by simp [discardPrimeBound]`. Mark it `@[simp, norm_cast]`, or at least `@[simp]`. Add a companion `Real.log (discardPrimeBound b : \u211d) = discardExponent b * Real.log 2` (via `Real.log_pow`). The `simp only [discardPrimeBound,Nat.cast_pow,Nat.cast_ofNat]` calls then become `simpa [discardPrimeBound_cast] using ...` or a direct `rw`. The orientation unfolds to a power of 2, which is a normal form with no cycle, since `discardExponent` is not rewritten back.",
+      "benefit": "The unfolding recipe lives in one place instead of at least seven call sites across four files. Later proofs no longer need to unfold the definition. Goals stay in terms of `discardExponent`, which is the quantity the bounds in `discardExponent_bounds` speak about.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TotientAsymptotic/LocalResidualLayers.lean",
+          "declaration": "same unfolding idiom in LocalResidualLayers",
+          "excerpt": "simpa only [discardPrimeBound,Nat.cast_pow,Nat.cast_ofNat] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TotientAsymptotic/LocalNormalityMass.lean",
+          "declaration": "same idiom in LocalNormalityMass",
+          "excerpt": "\u00b7 simpa only [discardPrimeBound,Nat.cast_pow,Nat.cast_ofNat] using hBN"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TotientAsymptotic/CandidateNormalMass.lean",
+          "declaration": "same idiom in CandidateNormalMass",
+          "excerpt": "simpa only [discardPrimeBound,Nat.cast_pow,Nat.cast_ofNat] using hBN"
+        }
+      ]
+    },
+    {
+      "declaration": "discard_normal_mass (rewrite of Nat.clog 2 (discardPrimeBound b)) and B (discardPrimeBound b)",
+      "start_line": 86,
+      "end_line": 87,
+      "excerpt": "rw [show Nat.clog 2 (discardPrimeBound b)=discardExponent b from",
+      "problem": "The identity `Nat.clog 2 (discardPrimeBound b) = discardExponent b` is the natural canonical form for the dyadic bound. It is proved inline with `show ... from Nat.clog_pow 2 _ (by norm_num)` and then used with `rw`. The same `rw [show ...]` block is copied in CandidateNormalMass.lean (line 42) and LocalNormalityMass.lean (line 31). It has no name and no simp attribute, so `simp` cannot collapse `Nat.clog 2 (discardPrimeBound b)` anywhere. Similarly, `B (discardPrimeBound b) = Real.log (discardExponent b * Real.log 2)` is proved as a local `hB` (line 40) and then restated in a different form (`B ((2:\u211d)^discardExponent b)`) in `hBpow`.",
+      "proposed_change": "Add a named lemma such as `@[simp] lemma clog_two_discardPrimeBound (b : \u211d) : Nat.clog 2 (discardPrimeBound b) = discardExponent b := Nat.clog_pow 2 _ (by norm_num)`. The right-hand side is strictly simpler, so it cannot loop. Hoist `hB` to a top-level lemma `B_discardPrimeBound (b : \u211d) : B (discardPrimeBound b) = Real.log ((discardExponent b : \u211d) * Real.log 2)`. Replace the three inline `rw [show Nat.clog ...]` blocks with this lemma.",
+      "benefit": "This removes the duplicated inline proofs and gives downstream files, which keep re-deriving the clog and B identities, one stable rewrite target. It lets `simp` normalise `Nat.clog 2 (discardPrimeBound b)` without a hand-written `show`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TotientAsymptotic/LocalNormalityMass.lean",
+          "declaration": "inline clog rewrite repeated in LocalNormalityMass",
+          "excerpt": "rw [show Nat.clog 2 (discardPrimeBound b)=discardExponent b from"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TotientAsymptotic/CandidateNormalMass.lean",
+          "declaration": "inline clog rewrite repeated in CandidateNormalMass",
+          "excerpt": "rw [show Nat.clog 2 (discardPrimeBound b)=discardExponent b from"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/TotientAsymptotic/Basic.lean",
+          "declaration": "B",
+          "excerpt": "def B (x : \u211d) : \u211d := Real.log (Real.log x)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 22780,
+    "cache_read_input_tokens": 56046,
+    "output_tokens": 4054,
+    "output_tokens_details": {
+      "thinking_tokens": 521
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22780,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2854,
+        "cache_read_input_tokens": 25488,
+        "cache_creation_input_tokens": 1305,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1305
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1372806,
+  "duration_ms": 27117,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:37:08",
+  "unit": "file",
+  "source_sha256": "cd86c5c3a83994c966998a20450492515817738eaa16c826c019e0c04172541d",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

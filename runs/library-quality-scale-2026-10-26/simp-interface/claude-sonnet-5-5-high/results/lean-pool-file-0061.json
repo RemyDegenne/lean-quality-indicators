@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0061",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the downstream files that use it: RatFuncExactConstantExtension, FiniteFieldConstantExtensionNormalization, ExactConstantExtensionTower and FunctionFieldNormalClosureOriginalCompositum. I did not run Lean, so every proposed lemma is untested. I found no simp loops or competing rules; the four `_apply`/`_symm_apply` variant lemmas canonicalise to `polynomialTensorCancel`, which is reasonable. The findings are all about missing simp coverage that downstream code works around by hand. I also noticed the local instances `Algebra C[X] S[X]` and `Algebra S[X] (S \u2297 A)`. They may make the simp lemmas hard to use outside this file, but that is an instance-design issue, so I did not report it.",
+  "findings": [
+    {
+      "declaration": "polynomialTensorCancel_tmul / polynomialTensorCancel_symm_tmul (missing forward lemma for constant polynomials)",
+      "start_line": 383,
+      "end_line": 396,
+      "excerpt": "theorem polynomialTensorCancel_tmul (p : S[X]) (a : A) :\n    polynomialTensorCancel C S A (p \u2297\u209c[C[X]] a) =\n      Polynomial.aeval (polynomialTensorCancelEvaluationPoint C S A) p *\n        (1 \u2297\u209c[C] a) := by",
+      "problem": "The simp set covers `(polynomialTensorCancel ..).symm (s \u2297\u209c a) = C s \u2297\u209c a`, but not the forward direction on constant polynomials. `polynomialTensorCancel_tmul` rewrites `C s \u2297\u209c a` to `aeval point (C s) * (1 \u2297\u209c a)`. Normalising that needs `aeval_C`, the `algebraMap` into the tensor product and `tmul_mul_tmul`. The `Algebra S[X]` instance on the target is the `toAlgebra` of `aeval`, so `Algebra.TensorProduct.algebraMap_apply` does not fire cleanly. Downstream code therefore adds `change` steps. In FiniteFieldConstantExtensionNormalization (lines 160\u2013165) it ends with `change s \u2297\u209c[C] (1 : N) = Polynomial.aeval (polynomialTensorCancelEvaluationPoint C S N) (Polynomial.C s)` followed by `simp`, after a very long `simp only` list that includes `polynomialTensorCancel_tmul, Polynomial.aeval_C, Algebra.TensorProduct.tmul_mul_tmul, mul_one`. The same instance mismatch appears in `normalizationTargetConstantPolynomialTower` (lines 91\u201394).",
+      "proposed_change": "Add simp lemmas for the constant case and the unit case, e.g. `@[simp] theorem polynomialTensorCancel_C_tmul (s : S) (a : A) : polynomialTensorCancel C S A (Polynomial.C s \u2297\u209c[C[X]] a) = s \u2297\u209c[C] a`, proved from the existing `symm_tmul` via `AlgEquiv.apply_symm_apply`. Also add `@[simp] theorem aeval_polynomialTensorCancelEvaluationPoint_C (s : S) : Polynomial.aeval (polynomialTensorCancelEvaluationPoint C S A) (Polynomial.C s) = s \u2297\u209c[C] 1`, so the `change ... aeval ...; simp` workaround is not needed. A forward `tmul` rule for `1 \u2297\u209c a` would round out the pair of directions.",
+      "benefit": "The forward and inverse equivalences then have symmetric simp coverage on generating tensors. Downstream proofs no longer need the long `simp only` list and the manual `change` to align instances; both are fragile.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/HasseWeil/FiniteFieldConstantExtensionNormalization.lean",
+          "declaration": "finiteFieldConstantExtensionIntegralClosureAlgEquiv",
+          "excerpt": "change s \u2297\u209c[C] (1 : N) =\n          Polynomial.aeval\n            (polynomialTensorCancelEvaluationPoint C S N) (Polynomial.C s)\n        simp }"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/HasseWeil/FiniteFieldConstantExtensionNormalization.lean",
+          "declaration": "normalizationTargetConstantPolynomialTower",
+          "excerpt": "change s \u2297\u209c[C] (1 : N) =\n      Polynomial.aeval\n        (polynomialTensorCancelEvaluationPoint C S N) (Polynomial.C s)\n    simp)"
+        }
+      ]
+    },
+    {
+      "declaration": "polynomialTensorCancelEvaluationPoint",
+      "start_line": 55,
+      "end_line": 58,
+      "excerpt": "noncomputable def polynomialTensorCancelEvaluationPoint :\n    TensorProduct C S A :=\n  Algebra.TensorProduct.includeRight (algebraMap C[X] A Polynomial.X)",
+      "problem": "The evaluation point is a plain def with no unfolding or characterising lemma, such as `polynomialTensorCancelEvaluationPoint = 1 \u2297\u209c[C] algebraMap C[X] A X`. Every user that needs the tensor form has to unfold the definition by name. ExactConstantExtensionTower (439\u2013440) and FunctionFieldNormalClosureOriginalCompositum (448) both do `simp only [polynomialTensorCancelEvaluationPoint, Algebra.TensorProduct.includeRight_apply]`. Simp cannot reduce `aeval point p`, `point * x` or `tmul` expressions involving the point without such unfolding. The file's own proofs also unfold it by name inside `simp [...]` calls (lines 137 and 194, for example).",
+      "proposed_change": "Add `theorem polynomialTensorCancelEvaluationPoint_eq : polynomialTensorCancelEvaluationPoint C S A = 1 \u2297\u209c[C] algebraMap C[X] A Polynomial.X := rfl` (the `Algebra.TensorProduct.includeRight_apply` form). Tag it `@[simp]`, or at least expose it for `simp only`. It rewrites an opaque constant to a canonical tensor form and cannot loop.",
+      "benefit": "Clients can write `simp [polynomialTensorCancelEvaluationPoint_eq]` or `rw` against a stable statement. They no longer unfold the definition and then chase `includeRight_apply`. The public simp interface of the file also becomes complete for its main constant.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/HasseWeil/ExactConstantExtensionTower.lean",
+          "declaration": "hX in the exact constant extension tower proof",
+          "excerpt": "simp only [polynomialTensorCancelEvaluationPoint,\n      Algebra.TensorProduct.includeRight_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/HasseWeil/FunctionFieldNormalClosureOriginalCompositum.lean",
+          "declaration": "ratFuncToExactConstantExtension compatibility lemma",
+          "excerpt": "simp only [polynomialTensorCancelEvaluationPoint, Algebra.TensorProduct.includeRight_apply]"
+        }
+      ]
+    },
+    {
+      "declaration": "constantTensorToPolynomialTensor, polynomialTensorToConstantTensor and the factor maps (no `_apply`/`_tmul` simp lemmas)",
+      "start_line": 155,
+      "end_line": 166,
+      "excerpt": "    simp [polynomialTensorToConstantTensorOverPolynomial,\n      leftFactorToConstantTensor, leftFactorToConstantTensorOverS]",
+      "problem": "The public bundled maps `polynomialTensorToConstantTensor`, `constantTensorToPolynomialTensor`, `leftFactorToConstantTensor(OverS)`, `rightFactorToConstantTensor` and `constantsToPolynomialTensor` have no simp lemmas for their action. Only the final equivalences get `_tmul` lemmas. Each proof therefore passes a long list of definition names to `simp [...]`, to unfold a stack of `__ :=` structure definitions. See lines 165\u2013166, 232\u2013235 (`polynomialTensorToConstantTensor`, `...OverPolynomial`, `leftFactorToConstantTensor`), 194\u2013196, 269\u2013271 and 283\u2013286. Several of the `OverPolynomial` and `OverCoefficientPolynomial` variants repeat this. This unfolding depends on the exact construction, so it breaks if a definition is restructured. The `polynomialTensorCancel_tmul` lemma is proved by `rfl`, which also relies on this unfolding.",
+      "proposed_change": "Add `@[simp]` apply lemmas stating the intended values, e.g. `polynomialTensorToConstantTensor C S A (p \u2297\u209c a) = aeval (polynomialTensorCancelEvaluationPoint C S A) p * (1 \u2297\u209c a)`, `constantTensorToPolynomialTensor C S A (s \u2297\u209c a) = C s \u2297\u209c a`, `rightFactorToConstantTensor C S A a = 1 \u2297\u209c a`, `leftFactorToConstantTensorOverS C S A p = aeval point p`, and `constantsToPolynomialTensor C S A s = C s \u2297\u209c 1`. Then derive `polynomialTensorCancel_tmul` and `polynomialTensorCancel_symm_tmul` from them, and shorten the inverse and `commutes'` proofs to plain `simp`.",
+      "benefit": "The simp interface describes the maps by their values instead of by their construction. The proofs in this file become shorter and more robust, and downstream users who work with the underlying `AlgHom`s get usable simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/HasseWeil/PolynomialTensorCancel.lean",
+          "declaration": "polynomialTensorToConstantTensorOverCoefficientPolynomial",
+          "excerpt": "simp [polynomialTensorToConstantTensor,\n      polynomialTensorToConstantTensorOverPolynomial,\n      leftFactorToConstantTensor]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/MarkoffModP/BGS/HasseWeil/PolynomialTensorCancel.lean",
+          "declaration": "constantTensorToPolynomialTensor_rightInverse",
+          "excerpt": "simp [constantTensorToPolynomialTensor,\n      polynomialTensorToConstantTensor,\n      polynomialTensorToConstantTensorOverPolynomial,\n      rightFactorToConstantTensor, rightFactorToPolynomialTensor]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 25806,
+    "cache_read_input_tokens": 143324,
+    "output_tokens": 9613,
+    "output_tokens_details": {
+      "thinking_tokens": 3564
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25806,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4104,
+        "cache_read_input_tokens": 29059,
+        "cache_creation_input_tokens": 760,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 760
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2137144,
+  "duration_ms": 65004,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-26T22:56:18",
+  "unit": "file",
+  "source_sha256": "b9eef30e0a0f30daa392a8280c7691b42c2ac12b0a585bc055e171f40bbf8067",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

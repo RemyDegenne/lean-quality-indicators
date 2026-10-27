@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0038",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked its simp interface. Nothing in it carries @[simp]. The top of the file is a `attribute [-simp]` block that removes simp lemmas defined elsewhere, which I treated as infrastructure. I looked for missing canonical simp lemmas and for competing or duplicated rewrite forms. I compared against the Definitions file where Place.evalAt is defined and grepped the repository for other copies of evalAt_zero. I could not run Lean. The second finding is lower confidence: it depends on how simp discharges the `hDt` side condition, and I did not check that experimentally. I did not flag wq_apply, regVal_apply, evalVec_apply or nsmul_two_add_apply. They are unfolding lemmas used by `rw`, and making them simp lemmas would expand the pivot definitions or add little.",
+  "findings": [
+    {
+      "declaration": "P2MW.evalAt_zero",
+      "start_line": 55,
+      "end_line": 57,
+      "excerpt": "theorem evalAt_zero (Q : Place K F) : Q.evalAt (0 : F) = 0 := by",
+      "problem": "`Place.evalAt 0 = 0` is the obvious companion of `Place.evalAt_one`, which is `@[simp]` in the defining file. Here it is a plain, unattributed theorem in the P2MW namespace rather than `Place.evalAt_zero`. Every use is a manual `exact evalAt_zero Q` or `rw [..., evalAt_zero]`. The same lemma is re-proved under the names `evalAt_zero` and `evalAt_zero'` in at least four other P2M/Sol files, which signals that the canonical simp lemma is missing from the definitions file. Because there is no simp lemma, goals like `Q.evalAt (0 * x)` or `Q.evalAt (c \u2022 0)` do not normalise, and the `empty` cases in `evalAt_sum_smul_of_mem` need `simp only [Finset.sum_empty]; exact evalAt_zero Q`.",
+      "proposed_change": "Move the lemma next to `Place.evalAt_one` in Definitions/Def_AlgebraicCurve_PlaceEvaluation(Algebra) as `@[simp] theorem Place.evalAt_zero (v : Place K F) : v.evalAt (0 : F) = 0`. Its proof is the existing one: apply `evalAt_algebraMap_eq 0` and rewrite with `map_zero`. In this file, drop the local copy and replace `exact evalAt_zero Q` and `rw [..., evalAt_zero]` with `simp`. That includes the `empty` case of `evalAt_sum_smul_of_mem`, the `hwr0` step and the `hg0` branch of `regVal_chord_eq_evalAt_wr`.",
+      "benefit": "The zero case is handled by `simp` in one place. This removes the repeated local re-proofs (`evalAt_zero'` in several files). Simp normal forms then agree with `evalAt_one`, and no call site has to name the lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_PlaceEvaluation.lean",
+          "declaration": "Place.evalAt_one",
+          "excerpt": "@[simp]\ntheorem evalAt_one : v.evalAt (1 : F) = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_Annulus_exists_valuationSubring_mem_iff_of_valuation_lt.lean",
+          "declaration": "evalAt_zero'",
+          "excerpt": "theorem evalAt_zero' (P : Place L F) (hP : P.IsRational) : P.evalAt (0 : F) = 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_Annulus_eq_of_mul_eq_algebraMap_pow_of_isUnit_evalAt_mul_evalAt_param_zpow_neg_one.lean",
+          "declaration": "evalAt_zero",
+          "excerpt": "theorem evalAt_zero (v : Place K F) : v.evalAt (0 : F) = 0 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "P2MW.der_zero / der_one / der_algebraMap / der_self / der_add / der_sub / der_smul",
+      "start_line": 203,
+      "end_line": 226,
+      "excerpt": "theorem der_zero {t : F} (hDt : D K F t \u2260 0) : der K t (0 : F) = 0 := by",
+      "problem": "`der K t` behaves as a derivation under the hypothesis `D K F t \u2260 0`. The file proves the full set of rewrite rules for it (`der_zero`, `der_one`, `der_algebraMap`, `der_self`, `der_add`, `der_sub`, `der_mul`, `der_smul`), but none is a simp lemma. All call sites therefore use manual `rw [der_mul hDt, der_self hDt]; ring`, or `simp only [Finset.sum_empty]; exact der_zero hDt`, and re-pass `hDt` each time. There is no `simp [hDt]` route to normalise `der K t (a \u2022 g - b \u2022 f)`, `der K t (t * g)` and similar terms. The hand-written `der_smul_sub_smul` exists only to bundle such a rewrite.",
+      "proposed_change": "Tag the conditional rules `der_zero`, `der_one`, `der_algebraMap`, `der_self`, `der_add`, `der_sub`, `der_smul` and `der_mul` with `@[simp]`. Each has the single side condition `D K F t \u2260 0`, which simp can discharge from `simp [hDt]`. They are terminating, since each rule strictly decreases the argument of `der`. `der_mul` produces only smaller `der` calls. Then `der_sum_smul`, `der_pow_two`, `wr_one_left`, `der_smul_sub_smul` and the `hDf` step in `evalAt_mul_inv_eq_evalAt_der` can become `simp [hDt]` (plus `ring` where needed). If conditional simp lemmas are unwanted globally, put them in a named simp set used as `simp [hDt, der_...]`. I have not checked that the discharger closes these side goals.",
+      "benefit": "Derivative computations on `der` (Wronskian and local-coordinate manipulations) would be automated and uniform, instead of chains of explicit `rw` with `hDt` threaded through. Downstream proofs would be shorter and less brittle to the order of rewrites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_JZero_exists_abs_absLogHeight_regVal_sub_pointHt_add_pointHt_le.lean",
+          "declaration": "der_sum_smul",
+          "excerpt": "| empty => simp only [Finset.sum_empty]; exact der_zero hDt"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_JZero_exists_abs_absLogHeight_regVal_sub_pointHt_add_pointHt_le.lean",
+          "declaration": "der_smul_sub_smul",
+          "excerpt": "rw [der_sub hDt, der_smul hDt, der_smul hDt]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_JZero_exists_abs_absLogHeight_regVal_sub_pointHt_add_pointHt_le.lean",
+          "declaration": "evalAt_mul_inv_eq_evalAt_der",
+          "excerpt": "rw [hfg, der_mul hDt, der_self hDt]; ring"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 45273,
+    "cache_read_input_tokens": 141183,
+    "output_tokens": 5565,
+    "output_tokens_details": {
+      "thinking_tokens": 1793
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 45273,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4226,
+        "cache_read_input_tokens": 48248,
+        "cache_creation_input_tokens": 1038,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1038
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2508763,
+  "duration_ms": 40934,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T22:51:41",
+  "unit": "file",
+  "source_sha256": "225a05884375fb483721c570c55ab87c03e7e32846ede4fb0b1c94fb93440f14",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

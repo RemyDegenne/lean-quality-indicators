@@ -1,0 +1,98 @@
+{
+  "id": "lean-pool-file-0237",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the definitions of HasSecondOrderExpansionAt, HasSecondOrderExpansionAtCLM and IsSymmetricOperator in Foundation/SecondOrder.lean, and the existing bridge lemma hasSecondOrderExpansionAt_of_clm_eq_inner. I grepped for uses of the line-restriction lemmas: only Reconstruction.lean uses HasSecondOrderExpansionAt.lineRestriction_hasSecondOrderExpansionAt, so a refactor keeps the public names. The remaining declarations (the preimage_lineMap_* subset lemmas, the realScalarQuadratic* lemmas, and the SecondOrderDifferentiableAt lemmas) are short wrappers over existing API. I did not flag them. The replacement relies on the Mathlib lemma innerSL_apply_apply, and the new bridge lemma is untested. I have not compiled any of the proposed code, and the simp calls in the corollaries may need small adjustments.",
+  "findings": [
+    {
+      "declaration": "HasSecondOrderExpansionAt.lineRestriction_isLittleO / _of_norm_eq_one / _standard / lineRestriction_hasSecondOrderExpansionAt / lineRestriction_at_hasSecondOrderExpansionAt and their HasSecondOrderExpansionAtCLM twins",
+      "start_line": 26,
+      "end_line": 189,
+      "excerpt": "  have hcomp := h.comp_tendsto htend\n  refine hcomp.congr_left ?_",
+      "problem": "The file proves the same five-lemma chain twice. The inner-product version `HasSecondOrderExpansionAt u x p B` is at lines 26\u2013106, and the continuous-linear-functional version `HasSecondOrderExpansionAtCLM u x \u2113 B` is at lines 108\u2013189. The two chains differ only in the first-order coefficient, `inner \u211d p v` versus `\u2113 v`. The proof bodies are otherwise identical. Both build `htend : Tendsto (fun t => t \u2022 v) (\ud835\udcdd 0) (\ud835\udcdd 0)` and compose with `comp_tendsto`. Both apply the same `simp [lineRestriction, real_inner_smul_right, ...]` `congr_left` step. Both rescale `\u2016t \u2022 v\u2016 ^ 2` to `\u2016t\u2016 ^ 2` via `norm_smul` and `of_const_mul_right`. Both prove the shifted version with the same `hpoint : x + (t + z) \u2022 v = x + t \u2022 v + z \u2022 v` argument. The two definitions in Foundation/SecondOrder.lean differ only in whether the linear term is `inner \u211d p z` or `\u2113 z`, but no bridge from the inner-product form to the CLM form is used here. The existing `hasSecondOrderExpansionAt_of_clm_eq_inner` goes only from the CLM form to the inner-product form. As a result, any fix to the little-o rescaling or the shift argument has to be made in two places.",
+      "proposed_change": "Keep the CLM chain as the only full proof. Add a bridge lemma in Foundation/SecondOrder.lean or at the top of this file:\n\n```lean\ntheorem hasSecondOrderExpansionAtCLM_innerSL {u : E \u2192 \u211d} {x p : E} {B : E \u2192L[\u211d] E}\n    (h : HasSecondOrderExpansionAt u x p B) :\n    HasSecondOrderExpansionAtCLM u x (innerSL \u211d p) B := by\n  refine h.congr_left ?_\n  intro z\n  simp [innerSL_apply_apply]\n```\n\nThe proof sketch is that the two expansions differ only by the pointwise identity `innerSL \u211d p z = inner \u211d p z`, which is `innerSL_apply_apply`.\n\nThen rewrite the five inner-product lemmas as corollaries, with the same hypotheses and statements as now. For example:\n\n```lean\ntheorem HasSecondOrderExpansionAt.lineRestriction_hasSecondOrderExpansionAt\n    {u : E \u2192 \u211d} {x p : E} {B : E \u2192L[\u211d] E}\n    (h : HasSecondOrderExpansionAt u x p B) (v : E) :\n    HasSecondOrderExpansionAt (lineRestriction u x v) 0 (inner \u211d p v)\n      ((inner \u211d v (B v)) \u2022 (1 : \u211d \u2192L[\u211d] \u211d)) := by\n  simpa [innerSL_apply_apply] using\n    (hasSecondOrderExpansionAtCLM_innerSL h).lineRestriction_hasSecondOrderExpansionAt v\n\ntheorem HasSecondOrderExpansionAt.lineRestriction_at_hasSecondOrderExpansionAt\n    {u : E \u2192 \u211d} {x p v : E} {B : E \u2192L[\u211d] E} {t : \u211d}\n    (h : HasSecondOrderExpansionAt u (x + t \u2022 v) p B) :\n    HasSecondOrderExpansionAt (lineRestriction u x v) t (inner \u211d p v)\n      ((inner \u211d v (B v)) \u2022 (1 : \u211d \u2192L[\u211d] \u211d)) := by\n  simpa [innerSL_apply_apply] using\n    (hasSecondOrderExpansionAtCLM_innerSL h).lineRestriction_at_hasSecondOrderExpansionAt\n```\n\nThe `_isLittleO`, `_of_norm_eq_one` and `_standard` variants follow the same pattern, each one line plus `simpa [innerSL_apply_apply]`. Alternatively, restate the three auxiliary little-o lemmas once for the CLM form and delete the inner-product copies, since only `lineRestriction_hasSecondOrderExpansionAt` is used downstream (Reconstruction.lean, e.g. line 306). The names used elsewhere are unchanged.",
+      "benefit": "About 80 lines of duplicated asymptotic reasoning shrink to one copy plus short corollaries. A future change to the rescaling or shifting argument is made once. A reader can see that the inner-product and CLM versions are the same statement, instead of comparing two near-identical proofs line by line. The new bridge lemma also complements the existing `hasSecondOrderExpansionAt_of_clm_eq_inner`, which currently covers only one direction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Foundation/SecondOrder.lean",
+          "declaration": "HasSecondOrderExpansionAt",
+          "excerpt": "u (x + z) - u x - inner \u211d p z - (1 / 2 : \u211d) * inner \u211d z (B z))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Foundation/SecondOrder.lean",
+          "declaration": "HasSecondOrderExpansionAtCLM",
+          "excerpt": "u (x + z) - u x - \u2113 z - (1 / 2 : \u211d) * inner \u211d z (B z))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Foundation/SecondOrder.lean",
+          "declaration": "hasSecondOrderExpansionAt_of_clm_eq_inner",
+          "excerpt": "(h\u2113 : \u2200 z : E, \u2113 z = inner \u211d p z)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Analysis/LineSecondOrder.lean",
+          "declaration": "HasSecondOrderExpansionAtCLM.lineRestriction_isLittleO",
+          "excerpt": "  have hcomp := h.comp_tendsto htend\n  refine hcomp.congr_left ?_"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/AleksandrovDifferentiability/Analysis/LineSecondOrder.lean",
+          "declaration": "HasSecondOrderExpansionAtCLM.lineRestriction_at_hasSecondOrderExpansionAt",
+          "excerpt": "  have hpoint : x + (t + z) \u2022 v = x + t \u2022 v + z \u2022 v := by\n    rw [add_smul]\n    abel"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/InnerProductSpace/LinearMap.lean",
+          "declaration": "innerSL_apply_apply",
+          "excerpt": "theorem innerSL_apply_apply (v w : E) : innerSL \ud835\udd5c v w = \u27eav, w\u27eb"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 25784,
+    "cache_read_input_tokens": 102344,
+    "output_tokens": 6162,
+    "output_tokens_details": {
+      "thinking_tokens": 1566
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25784,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3851,
+        "cache_read_input_tokens": 24197,
+        "cache_creation_input_tokens": 5516,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5516
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1750144,
+  "duration_ms": 42291,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:37:32",
+  "unit": "file",
+  "source_sha256": "2eca28a7ac52455fd564046708a130aad7c6c7a6bb9a892f26034024249e2859",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

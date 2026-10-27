@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0143",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the sibling proofs it parallels: transportBilinear_bound and transportBilinear_norm in SobolevTransport.lean, and transport_reverse_norm in CorrectionDifference.lean. I also checked Mathlib's ContinuousLinearMap.opNorm_le_bound\u2082 in Mathlib/Analysis/Normed/Operator/Bilinear.lean. Nothing was compiled, so the proposed rewrites are untested. The first finding is the stronger one. The second is more modest because the Fin 4 sum step is fairly short. I did not report the rest of the file: the cached local instances, asymmetricTransport_apply, asymmetricTransport_eq and asymmetricTransport_eq_background are thin wrappers or routine unfolding.",
+  "findings": [
+    {
+      "declaration": "asymmetricTransport_norm",
+      "start_line": 81,
+      "end_line": 91,
+      "excerpt": "apply ContinuousLinearMap.opNorm_le_bound _ (mul_nonneg (mul_nonneg (by norm_num)\n    (sobolevProductConstant_nonneg period s)) (norm_nonneg u))",
+      "problem": "The same hand-unrolled two-level operator-norm argument appears here and in transportBilinear_norm. Both apply opNorm_le_bound, intro u, apply opNorm_le_bound again with a hand-built nonnegativity proof, intro v, and then call the pointwise bound. Mathlib already packages this as `ContinuousLinearMap.opNorm_le_bound\u2082`, whose hypothesis is `\u2200 x y, \u2016f x y\u2016 \u2264 C * \u2016x\u2016 * \u2016y\u2016`. That is exactly the shape of asymmetricTransport_bound and transportBilinear_bound.",
+      "proposed_change": "Replace the body with `ContinuousLinearMap.opNorm_le_bound\u2082 _ (mul_nonneg (by norm_num) (sobolevProductConstant_nonneg period s)) (asymmetricTransport_bound period hs L hL)`. Do the same for transportBilinear_norm, using `transportBilinear_bound period hq L hL`. Both existing bounds already have the form `4 * const * \u2016u\u2016 * \u2016v\u2016`, so the hypotheses should match without the second nonnegativity proof. The `by norm_num` placeholders are replaced by one nonnegativity argument.",
+      "benefit": "This removes the duplicated, fiddly nonnegativity bookkeeping from both _norm proofs. Each becomes a one-line call to the library lemma, and a reader sees that the operator norm is just the pointwise bilinear bound.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevTransport.lean",
+          "declaration": "transportBilinear_norm",
+          "excerpt": "apply ContinuousLinearMap.opNorm_le_bound _ (mul_nonneg (mul_nonneg (by norm_num)\n    (sobolevProductConstant_nonneg period q)) (norm_nonneg u))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Normed/Operator/Bilinear.lean",
+          "declaration": "ContinuousLinearMap.opNorm_le_bound\u2082",
+          "excerpt": "(hC : \u2200 x y, \u2016f x y\u2016 \u2264 C * \u2016x\u2016 * \u2016y\u2016) : \u2016f\u2016 \u2264 C"
+        }
+      ]
+    },
+    {
+      "declaration": "asymmetricTransport_bound",
+      "start_line": 66,
+      "end_line": 79,
+      "excerpt": "have h := (norm_sum_le _ _).trans (Finset.sum_le_sum (s := (Finset.univ : Finset (Fin 4))) (fun i",
+      "problem": "This proof repeats the same step as transportBilinear_bound and transport_reverse_norm. Bound each of the four summands uniformly, then apply `norm_sum_le` and `Finset.sum_le_sum`, collapse the constant sum with `Finset.sum_const, Finset.card_univ, Fintype.card_fin, nsmul_eq_mul`, and finish with ring or mul_assoc. Each copy has slightly different simp lemma sets and a different closing tactic (`ring` here, `simpa \u2026 mul_assoc` there), and each is spelled in a fragile term-mode style.",
+      "proposed_change": "Add one lemma next to the Sobolev transport definitions: `lemma norm_sum_fin_four_le {E} [SeminormedAddCommGroup E] (f : Fin 4 \u2192 E) {c : \u211d} (h : \u2200 i, \u2016f i\u2016 \u2264 c) : \u2016\u2211 i, f i\u2016 \u2264 4 * c`. Proof sketch: `(norm_sum_le _ _).trans ((Finset.sum_le_sum fun i _ => h i).trans_eq (by simp))`. Mathlib's `norm_sum_le_of_le` could replace the first step. Then asymmetricTransport_bound becomes `rw [asymmetricTransport_apply]; simpa [mul_assoc] using norm_sum_fin_four_le _ (fun i => (productHq_norm \u2026 ).trans (mul_le_mul_of_nonneg_left (derivativeOperator_bound period i v) \u2026))`. transportBilinear_bound and transport_reverse_norm would pass their existing `hi i` to the same lemma.",
+      "benefit": "The three proofs would keep only their genuinely different per-term estimates. The summation and constant-collapsing step would be written once, so a change in the number of coordinates or the constant form would touch one place. The proofs also get shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevTransport.lean",
+          "declaration": "transportBilinear_bound",
+          "excerpt": "have h := (norm_sum_le _ _).trans (Finset.sum_le_sum (fun i (_ : i \u2208 (Finset.univ : Finset (Fin\n      4))) => hi i))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/CorrectionDifference.lean",
+          "declaration": "transport_reverse_norm",
+          "excerpt": "simpa only [Finset.sum_const, Finset.card_univ, Fintype.card_fin, nsmul_eq_mul, Nat.cast_ofNat,\n      mul_assoc] using h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 20163,
+    "cache_read_input_tokens": 77305,
+    "output_tokens": 5197,
+    "output_tokens_details": {
+      "thinking_tokens": 1753
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20163,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2426,
+        "cache_read_input_tokens": 21692,
+        "cache_creation_input_tokens": 2400,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2400
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14037650000000002,
+  "duration_ms": 52266,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:10:59",
+  "unit": "file",
+  "source_sha256": "d3022b16be5c079452c2e889440be3137ed0733040a4a44cd9206099ae89b17b",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0255",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole Grover.lean file and the parallel AmplitudeAmplification.timedIterate block. I searched the repository for other uses of phaseOracle and found none. I checked Timed.trusted_ret and trusted_time in Core/Cost.lean. I did not run Lean, so the simp interactions below are predictions from the rule shapes, not observed behaviour. The Grover.timedIterate_ret and timedIterate_time simp lemmas are consistent with the equivalent lemmas in the amplitude-amplification file, so I did not flag that as inconsistent by itself.",
+  "findings": [
+    {
+      "declaration": "Grover.timedIterate_ret / Grover.timedIterate_correct / Grover.timedIterate_success_probability",
+      "start_line": 141,
+      "end_line": 160,
+      "excerpt": "theorem timedIterate_ret (M : GroverModel) (k : \u2115) :\n    (timedIterate M k).ret =\n      Gate.apply ((M.diffusion * M.phaseOracle) ^ k)\n        (amplitudeAmplificationState M.\u03b8 0) := rfl",
+      "problem": "`timedIterate_ret` is a `@[simp]` lemma that rewrites `(timedIterate M k).ret` into the raw `Gate.apply (...)^k` expression. The closed-form lemmas `timedIterate_correct` and `timedIterate_success_probability` have `(timedIterate M k).ret` as their left-hand side, and neither is tagged `@[simp]`. Even if one were tagged, `simp` rewrites subterms first. `.ret` would already have been expanded, so the closed-form rule could not match. The simp normal form is therefore the unexpanded power of the iterate, and the closed form is only reachable by manual `rw`. The proofs at lines 160 and 189 work around this with `rw` followed by `simp`. This is a competing-rules problem, not a loop.",
+      "proposed_change": "Make the closed form the simp normal form. Tag `timedIterate_correct` and `timedIterate_success_probability` with `@[simp]`, and either drop `@[simp]` from `timedIterate_ret` or turn it into a plain `unfold`-style lemma. Alternatively, restate the simp lemmas with the right-hand side `amplitudeAmplificationState M.\u03b8 k`, which is `timedIterate_correct`, and remove the expanding one. Apply the same change to the copy in AmplitudeAmplification.lean (line 258), because `Grover.timedIterate_ret_eq_amplitudeAmplification` is a `rfl` between the two.",
+      "benefit": "`simp` on a goal mentioning `(timedIterate M k).ret` would give the closed-form state or probability `sin(...)^2` directly. Downstream proofs such as `success_probability_with_resources` could use `simp [amplitudeAmplificationAngle, h\u03b8]` without the intermediate `rw [timedIterate_success_probability]`. Users would not be left with an opaque `Gate.apply ((d * o)^k) ...` term.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/AmplitudeAmplification.lean",
+          "declaration": "AmplitudeAmplification.timedIterate_ret",
+          "excerpt": "theorem timedIterate_ret (M : AmplitudeAmplificationModel) (k : \u2115) :\n    (timedIterate M k).ret ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Algorithms/Grover.lean",
+          "declaration": "Grover.timedIterate_success_probability",
+          "excerpt": "rw [timedIterate_correct, amplitudeAmplificationState_good_probability]"
+        }
+      ]
+    },
+    {
+      "declaration": "phaseOracle (missing entry/ket simp lemmas) and phaseOracle_apply_ket",
+      "start_line": 46,
+      "end_line": 76,
+      "excerpt": "def phaseOracle {n : \u2115} (marked : Fin (2 ^ n) \u2192 Bool) : HilbertOperator n :=\n  fun i j => if i = j then (if marked j then -1 else 1 : \u2102) else 0",
+      "problem": "`phaseOracle` is a bare `def` with no entry-level simp lemma such as `phaseOracle marked i j = if i = j then ... else 0`. Every use has to unfold it with `simp [phaseOracle, ...]`, which exposes the raw lambda and its `if i = j` structure; the proof of `phaseOracle_apply_ket` does this four times. The main basis-action lemma `phaseOracle_apply_ket` is not `@[simp]` either. Its right-hand side `(if marked j then -1 else 1) \u2022 ket j` is the canonical form for `applyVec (phaseOracle marked) (ket j)`, but `simp` cannot reach it. The same statement is duplicated as `GroverSearch.main_phase_oracle_basis_action`, which is not a simp lemma either.",
+      "proposed_change": "Add `@[simp] theorem phaseOracle_apply (marked) (i j : Fin (2^n)) : phaseOracle marked i j = if i = j then (if marked j then -1 else 1 : \u2102) else 0 := rfl`, so that later `simp [phaseOracle]` calls can become plain `simp`. Mark `phaseOracle_apply_ket` as `@[simp]`, so that `applyVec (phaseOracle marked) (ket j)` normalizes to the signed `ket j`. The `if` split on `marked j` is not an expansion that could loop, because it lands in a scalar `\u2022` form. After that, `GroverSearch.main_phase_oracle_basis_action` becomes redundant.",
+      "benefit": "Downstream proofs about the concrete `n`-qubit oracle, which the file says are a planned refinement, could rewrite oracle applications on basis states automatically. The file's own duplicated `simp [phaseOracle, hm, PureState.ket_apply]` calls would also get shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Algorithms/Grover.lean",
+          "declaration": "phaseOracle_apply_ket",
+          "excerpt": "simp [phaseOracle, hm, PureState.ket_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Algorithms/Grover.lean",
+          "declaration": "GroverSearch.main_phase_oracle_basis_action",
+          "excerpt": "theorem GroverSearch.main_phase_oracle_basis_action {n : \u2115}"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 12802,
+    "cache_read_input_tokens": 54456,
+    "output_tokens": 4390,
+    "output_tokens_details": {
+      "thinking_tokens": 746
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12802,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2440,
+        "cache_read_input_tokens": 16159,
+        "cache_creation_input_tokens": 656,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 656
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1005736,
+  "duration_ms": 30027,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:42:41",
+  "unit": "file",
+  "source_sha256": "4d9f3faa279287f72037b10628d8b466d9a072fde695bbe1e43e3e720c90cb39",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

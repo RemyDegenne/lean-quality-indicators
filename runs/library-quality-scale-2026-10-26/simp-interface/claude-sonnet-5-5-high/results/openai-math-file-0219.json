@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0219",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, plus the definitions of information, rowMass and conditionalMass in Logarithms.lean and FiniteTables.lean. I also grepped the Information directory for other uses of conditionalMass and rowMass. The file has no simp attributes, and `jointMass_eq_row_mul_conditional` should not be made simp: its right-hand side contains the left-hand side `q v y` inside `conditionalMass`, so it risks looping and it has a hypothesis. The findings are about missing canonical simp lemmas, which show up as repeated ad hoc unfolding. I did not run Lean, so I make no claims about how the simplifier actually behaves. The real uncertainty is how many call sites would shrink after the change.",
+  "findings": [
+    {
+      "declaration": "conditional_information_nonneg / jointMass_eq_row_mul_conditional (missing conditionalMass simp lemma)",
+      "start_line": 100,
+      "end_line": 102,
+      "excerpt": "    \u00b7 simp [conditionalMass, hr]",
+      "problem": "`conditionalMass` has no simp-facing API. The degenerate case (row mass zero, so the conditional mass is `q v y / 0 = 0`) is handled by unfolding the definition in each proof. This file does it at line 102 and again at lines 89\u201393 (`simp [hv, hq0]` and `unfold conditionalMass; field_simp`). FiniteTables.lean does it at line 223 (`unfold conditionalMass` followed by `simp only [hr, div_zero, zero_le_one]`). Entropy.lean and EntropyLaws.lean also use `unfold ... conditionalMass`. Unfolding exposes `q v y / \u2211 y, q v y`, so the canonical `conditionalMass` form is lost.",
+      "proposed_change": "In FiniteTables.lean, next to the definition, add `@[simp] lemma conditionalMass_of_rowMass_eq_zero (q) (v) (y) (h : rowMass q v = 0) : conditionalMass q v y = 0 := by simp [conditionalMass, h]`. Add `conditionalMass_def` as an unfolding lemma (`conditionalMass q v y = q v y / rowMass q v`, proved by `rfl`) and use it for the non-degenerate case. The side condition `rowMass q v = 0` can be discharged by simp when `hr` is in the simp set, so the call sites become `simp [hr]`. Keep `conditionalMass` itself irreducible-by-simp, with no `@[simp]` unfolding.",
+      "benefit": "The zero-row case is stated once. The bounds proofs (`conditional_information_nonneg`, `conditionalEntropy_nonneg`) stay in terms of `conditionalMass`, and the duplicated `unfold conditionalMass` plus case-split blocks shrink.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarEndpoint/Information/FiniteTables.lean",
+          "declaration": "conditionalEntropy_nonneg",
+          "excerpt": "\u00b7 simp only [hr, div_zero, zero_le_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarEndpoint/Information/FiniteTables.lean",
+          "declaration": "conditionalMass",
+          "excerpt": "q v y / rowMass q v"
+        }
+      ]
+    },
+    {
+      "declaration": "conditional_information_mass_tail_le and conditional_information_expected_tail_le (missing rowMass-sum lemma)",
+      "start_line": 132,
+      "end_line": 134,
+      "excerpt": "      rw [\u2190 Finset.sum_mul]\n      simp only [rowMass, hq1, one_mul]",
+      "problem": "The proofs finish by unfolding `rowMass` inside `simp only`, so that `\u2211 v, rowMass q v` turns into the double sum that `hq1` rewrites. There is no lemma saying the total row mass is 1. The same unfold-then-rewrite step appears in the second lemma (lines 163\u2013165) and in FiniteTables.lean line 83 (`simp only [rowMass, hq1, mul_one]`). FiniteTables.lean line 161 works around it with `have hrow : \u2211 v, rowMass q v = 1 := hq1`. `Conditioning.lean` defines `totalMass` as `\u2211 v, rowMass q v`, so the gap is real.",
+      "proposed_change": "In FiniteTables.lean, add `lemma sum_rowMass_eq_one (q : V \u2192 Y \u2192 \u211d) (hq1 : \u2211 v, \u2211 y, q v y = 1) : \u2211 v, rowMass q v = 1 := hq1`. Optionally add the unconditional `sum_rowMass : \u2211 v, rowMass q v = \u2211 v, \u2211 y, q v y := rfl` and tag it `@[simp]`; this is a safe orientation because it only unfolds a definition into its canonical double-sum form. Then the endings become `rw [\u2190 Finset.sum_mul, sum_rowMass_eq_one q hq1, one_mul]`, or `simp [sum_rowMass_eq_one q hq1]`.",
+      "benefit": "The proofs stop depending on how `rowMass` is defined. The three call sites and the `hrow` workaround share one named fact, and a change to the `rowMass` definition would not break them.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarEndpoint/Information/FiniteTables.lean",
+          "declaration": "rowMass (use in a nearby proof)",
+          "excerpt": "have hrow : \u2211 v, rowMass q v = 1 := hq1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarEndpoint/Information/FiniteTables.lean",
+          "declaration": "joint_conditioning_exception_le (or a nearby lemma)",
+          "excerpt": "simp only [rowMass, hq1, mul_one]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 28958,
+    "cache_read_input_tokens": 120543,
+    "output_tokens": 4672,
+    "output_tokens_details": {
+      "thinking_tokens": 1180
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28958,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2214,
+        "cache_read_input_tokens": 30364,
+        "cache_creation_input_tokens": 2607,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2607
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17463030000000002,
+  "duration_ms": 34831,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:31:57",
+  "unit": "file",
+  "source_sha256": "f1152ac347ffb30368e6d6bcbf760a4597b2c9bbb896e7f26c635b6778081b5e",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

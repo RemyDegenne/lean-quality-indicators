@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0137",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the related definitions in EndpointGeometry.lean (endpointVertex, endpointVertex_self). I also read the downstream uses in GammaPassage/EndpointExtensions.lean, EndpointEntrance.lean and EndpointExit.lean. The two findings are interface gaps, not defects. I could not run Lean, so I did not test whether the proposed lemmas actually fire. I did not flag the `simpa [hXY] using ...` calls in the target proof, because I could not tell whether the cast normal forms there are a problem. There are no cyclic or competing simp rules in this file, since it declares no simp attributes.",
+  "findings": [
+    {
+      "declaration": "endpointTube",
+      "start_line": 33,
+      "end_line": 34,
+      "excerpt": "{z | B \u2264 z.1 \u2227 z.1 \u2264 T \u2227 |transverse b z-r| \u2264 H}",
+      "problem": "`endpointTube` is a plain `def` of a set-builder set, and no membership lemma (`mem_endpointTube`) is given. Every consumer unpacks or builds membership through defeq, using projections like `hz.1`, `hz.2.1`, `hz.2.2` and anonymous constructors like `\u27e8hB.trans hz.1, hz.2.1.trans hT, hz.2.2\u27e9`. A goal such as `z \u2208 endpointTube b r H B T` cannot be rewritten into its three inequalities with `simp`. The tube also carries a hidden coupling: the last conjunct is `|transverse b z - r| \u2264 H`, which in the consumers is an `abs` bound over a `Prop` that is not exposed as a normal form.",
+      "proposed_change": "Add right after the definition: `@[simp] lemma mem_endpointTube {b r H : \u211d} {B T : \u2124} {z : Vertex} : z \u2208 endpointTube b r H B T \u2194 B \u2264 z.1 \u2227 z.1 \u2264 T \u2227 |transverse b z - r| \u2264 H := Iff.rfl`. The proof would be `Iff.rfl`, assuming the set-builder membership unfolds by defeq, as the file's own anonymous-constructor proof suggests. Use it in place of the `hz.1`/`hz.2.1` projections.",
+      "benefit": "Callers get one canonical simp-normal form for tube membership. They can use `simp [mem_endpointTube]` or `simp at hz` and no longer rely on the shape of the definition. If the tube is later changed, for example by rewriting the abs bound, only this one lemma has to change. Without it, the `omega` calls and the `hz.2.2` projections in EndpointExtensions break silently.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/GammaPassage/EndpointExtensions.lean",
+          "declaration": "gridConnections_endpoint_extensions",
+          "excerpt": "\u00b7 exact \u27e8by have hh := hz.1; omega,\n        by have hh := hz.2.1; omega\u27e9\n    \u00b7 exact hz.2.2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/GammaPassage/EndpointConnection.lean",
+          "declaration": "gridConnections_block_connection",
+          "excerpt": "exact \u27e8hB.trans hz.1,hz.2.1.trans hT,hz.2.2\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "ColumnConnection",
+      "start_line": 10,
+      "end_line": 14,
+      "excerpt": "\u2203 ds, endpointVertex b r X+displacement ds=endpointVertex b r Y \u2227",
+      "problem": "`ColumnConnection` is a bare `def` with no simp or unfolding lemma. The `endpointVertex_self` lemma (in EndpointGeometry.lean) is not tagged `@[simp]`. Downstream, the same step is repeated by hand: `simpa only [ColumnConnection,endpointVertex_self] using h`. It unfolds the structure and rewrites `endpointVertex b (transverse b p) p.1` back to `p` in every use. The canonical interface for the case where the left-hand endpoint is a vertex's own column is missing, so each caller unfolds the definition.",
+      "proposed_change": "Add a dedicated lemma for the self-endpoint case. For example, `lemma ColumnConnection.of_self_left`, stated with `endpointVertex b (transverse b p) p.1` as the start and `p` replaced in the displacement equation and path cost. Alternatively, mark `endpointVertex_self` as `@[simp]`, since its LHS is strictly larger than the RHS `p` and so the rewrite terminates, and state the corresponding `ColumnConnection` unfolding lemma. Callers would then use `simpa using` or the lemma directly.",
+      "benefit": "This removes the repeated `simpa only [ColumnConnection, endpointVertex_self]` boilerplate in five places across EndpointExtensions, EndpointEntrance and EndpointExit. It also stops callers from depending on the internal layout of the existential.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/GammaPassage/EndpointExtensions.lean",
+          "declaration": "gridConnections_endpoint_extensions",
+          "excerpt": "simpa only [ColumnConnection,endpointVertex_self] using hentr"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/GammaPassage/EndpointEntrance.lean",
+          "declaration": "endpointVertex_self use",
+          "excerpt": "simpa only [ColumnConnection,endpointVertex_self] using hc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/GammaPassage/EndpointGeometry.lean",
+          "declaration": "endpointVertex_self",
+          "excerpt": "lemma endpointVertex_self (b : \u211d) (p : Vertex) :\n    endpointVertex b (transverse b p) p.1=p := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19370,
+    "cache_read_input_tokens": 51230,
+    "output_tokens": 4573,
+    "output_tokens_details": {
+      "thinking_tokens": 1312
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19370,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3263,
+        "cache_read_input_tokens": 19734,
+        "cache_creation_input_tokens": 3649,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3649
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.128349,
+  "duration_ms": 37624,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:09:40",
+  "unit": "file",
+  "source_sha256": "b9a1fe17b73b9db935fa20a5dc304aa79fe0e18efafb483a388fed3da5336307",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

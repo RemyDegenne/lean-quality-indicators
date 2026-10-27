@@ -1,0 +1,130 @@
+{
+  "id": "lean-pool-file-0249",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. It consists of about 75 mechanical \"support membership\" lemmas. I checked fv_class_cab and fv_syn_wrex in CoreFVSimp.lean and CompactSyntaxFVExplicit.lean, and mem_lt_freshVar in ReplaySupport/Basic.lean. I also checked the nb055AlphaDummy118\u2013121 and 154\u2013157 definitions in Block001, which are freshVar with offsets 0 and 1. The one-line `Class.cv` singleton lemmas (0140, 0141, 0144\u20130161, etc.) are short and routine, so I did not report them. The three findings below are the nontrivial repeated blocks. The helper lemmas are my own sketches and have not been compiled. Their names are new. The lemma shapes are chosen to match the existing `rw` sequences exactly. There is some risk in unification or elaboration, for example with `Finset.mem_union_left` or the `Finset.mem_erase` argument order. I did not check downstream uses in Block002 and later files. Since every lemma keeps its name and statement, those uses are unaffected.",
+  "findings": [
+    {
+      "declaration": "nb055_support_mem_0138 / 0139 / 0166 / 0167 / 0178 / 0179 / 0206 / 0207",
+      "start_line": 33,
+      "end_line": 57,
+      "excerpt": "rw [fv_class_cab]\n  with_reducible rw [Finset.mem_erase]\n  constructor\n  \u00b7 exact (Nat.ne_of_lt (mem_lt_freshVar (nb055_support_mem_0134) 0))\n  \u00b7 rw [fv_syn_wrex]",
+      "problem": "Eight theorems (0138, 0139, 0166, 0167, 0178, 0179, 0206, 0207) repeat the same 15-line argument. The goal is `v \u2208 (Class.cab a (synWrex b (Class.cv v) \u03c6)).fv`. The proof rewrites with `fv_class_cab` and `Finset.mem_erase`, which leaves `v \u2260 a`. It then rewrites with `fv_syn_wrex`, takes the left union branch, applies `Finset.mem_erase` again to get `v \u2260 b`, and closes with `fv_class_cv` and `mem_singleton_self`. The theorems differ only in the names of the variables and in the body \u03c6, which the proof never inspects. The same text also sits inside the six `synCcompl`-wrapped theorems (see the next finding). Any change to the fv simp lemmas has to be made in all of these places.",
+      "proposed_change": "Add one generic lemma before 0138:\n\ntheorem nb055_mem_fv_cab_wrex (v a b : Var) (\u03c6 : Wff) (ha : v \u2260 a) (hb : v \u2260 b) :\n    v \u2208 (Class.cab a (synWrex b (Class.cv v) \u03c6)).fv := by\n  rw [fv_class_cab, Finset.mem_erase]\n  refine \u27e8ha, ?_\u27e9\n  rw [fv_syn_wrex, Finset.mem_union]\n  left\n  rw [Finset.mem_erase, fv_class_cv]\n  exact \u27e8hb, Finset.mem_singleton_self _\u27e9\n\nEach target theorem then becomes, for example for 0138: `Finset.mem_union_left _ (nb055_mem_fv_cab_wrex _ _ _ _ (Nat.ne_of_lt (mem_lt_freshVar nb055_support_mem_0134 0)) (Nat.ne_of_lt (mem_lt_freshVar nb055_support_mem_0134 1)))`. The `x y` versions (0139, 0167, 0179, 0207) and the `...Dummy078/015` versions use the same call with their own support lemma. The statements and names are unchanged, so downstream uses are unaffected. In the file the \u03c6 argument is `Wff.classEq (cv a) (synCphi (cv b))` or the `synCun` variant. Both are covered by the generic \u03c6.",
+      "benefit": "The ~15-line proof appears once and each use is a one- or two-line application. The only data in each use is which freshVar offsets supply the two disequalities. A reader can see that all eight statements are instances of one fact, and a change to the fv lemmas needs one edit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/NAR4C055C001Part005.lean",
+          "declaration": "nb055_support_mem_0166",
+          "excerpt": "\u00b7 exact (Nat.ne_of_lt (mem_lt_freshVar (nb055_support_mem_0162) 1))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/CoreFVSimp.lean",
+          "declaration": "fv_class_cab",
+          "excerpt": "theorem fv_class_cab (x : Var) (p : Wff) : (Class.cab x p).fv = p.fv.erase x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/CompactSyntaxFVExplicit.lean",
+          "declaration": "fv_syn_wrex",
+          "excerpt": "(synWrex x A ph).fv = ((A.fv).erase x) \u222a ((ph.fv).erase x)"
+        }
+      ]
+    },
+    {
+      "declaration": "nb055_support_mem_0163 / 0165 / 0175 / 0177 / 0203 / 0205",
+      "start_line": 334,
+      "end_line": 371,
+      "excerpt": "rw [fv_syn_ccompl]\n  rw [fv_class_cab]\n  with_reducible rw [Finset.mem_erase]",
+      "problem": "These six theorems have the same shape. Each picks the left or right branch of a union of two `synCcompl (Class.cab \u2026)` free-variable sets, rewrites with `fv_syn_ccompl`, and then repeats the entire cab/wrex membership argument from the previous finding word for word. The only variation is which branch of the union is taken (`left` in 0175 and 0177, `right` in the others) and which support lemma supplies the offsets 0 and 1. The same 12-line tail is copied into six more places.",
+      "proposed_change": "With `nb055_mem_fv_cab_wrex` from the previous finding, add the following (or inline `fv_syn_ccompl` in each proof):\n\ntheorem nb055_mem_fv_ccompl_cab_wrex (v a b : Var) (\u03c6 : Wff) (ha : v \u2260 a) (hb : v \u2260 b) :\n    v \u2208 (synCcompl (Class.cab a (synWrex b (Class.cv v) \u03c6))).fv := by\n  rw [fv_syn_ccompl]; exact nb055_mem_fv_cab_wrex v a b \u03c6 ha hb\n\nThe branch lemma `fv_syn_ccompl` is already in the opened namespaces, since the file uses it. 0163 then becomes `Finset.mem_union_right _ (nb055_mem_fv_ccompl_cab_wrex \u2026)`. 0165 and 0205 get the same `mem_union_right` form with their own support lemma. 0175, 0177 and 0203 become `mem_union_left` or `mem_union_right` applications with the matching Dummy variables. The wrapped second argument is the `synCun \u2026` variant, which is covered by the generic \u03c6. If the \u03c6 in the statement is not syntactically `Wff.classEq \u2026`, unification still succeeds because \u03c6 is a metavariable.",
+      "benefit": "This removes about 70 lines of duplicated proof. It makes explicit that the six lemmas are the cab/wrex lemma under a `synCcompl`. Each proof now exposes only its real content: the union branch and the two `freshVar` bounds.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/NAR4C055C001Part005.lean",
+          "declaration": "nb055_support_mem_0163",
+          "excerpt": "rw [fv_syn_ccompl]\n  rw [fv_class_cab]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/NAR4C055C001Part005.lean",
+          "declaration": "nb055_support_mem_0175",
+          "excerpt": "rw [fv_syn_ccompl]\n  rw [fv_class_cab]"
+        }
+      ]
+    },
+    {
+      "declaration": "nb055_support_mem_0172 / 0173 / 0212 / 0213",
+      "start_line": 500,
+      "end_line": 522,
+      "excerpt": "rw [fv_syn_wex]\n  with_reducible rw [Finset.mem_erase]\n  constructor\n  \u00b7 exact (Nat.ne_of_lt (mem_lt_freshVar (nb055_support_mem_0050) 2))\n  \u00b7 rw [fv_syn_wa]",
+      "problem": "Four theorems prove membership of a variable in `{a} \u222a {b} \u222a (synWex w (synWa (synWbr (cv a) (cv m\u2081) (cv w)) (synWbr (cv w) (cv m\u2082) (cv b)))).fv`. 0172 and 0173 pick the first `synWbr` and 0212 and 0213 pick the second. Each proof takes the right union branch, rewrites with `fv_syn_wex`, discharges `m \u2260 w` from `mem_lt_freshVar \u2026 2`, and then walks `fv_syn_wa`, `fv_syn_wbr` and `fv_class_cv` to a singleton. The `x y` versions (0173 and 0213) repeat the unnamed-parameter version (0172 and 0212) with `Dummy016/079/017` substituted for `Dummy014/078/015`. The ~20-line argument is therefore written four times, and the only differences are which `synWa` branch is taken and which of the three `synWbr` arguments is the target.",
+      "proposed_change": "Prove two lemmas generically over `a b w m\u2081 m\u2082 : Var` (the sketch below is untested):\n\ntheorem nb055_mem_fv_wex_wa_wbr_left (a b w m\u2081 m\u2082 : Var) (hw : m\u2081 \u2260 w) :\n    m\u2081 \u2208 (synWex w (synWa (synWbr (Class.cv a) (Class.cv m\u2081) (Class.cv w)) (synWbr (Class.cv w) (Class.cv m\u2082) (Class.cv b)))).fv\n\nwith the proof `rw [fv_syn_wex, Finset.mem_erase]; refine \u27e8hw, ?_\u27e9; rw [fv_syn_wa, Finset.mem_union]; left; rw [fv_syn_wbr, Finset.mem_union]; right; rw [fv_class_cv]; exact Finset.mem_singleton_self _`. A second lemma, `nb055_mem_fv_wex_wa_wbr_right`, mirrors it with `hw : m\u2082 \u2260 w` and the branch choices `right`, `right`. The four theorems then reduce to `Finset.mem_union_right _ (lemma \u2026 (Nat.ne_of_lt (mem_lt_freshVar nb055_support_mem_0050 2)))`, and the same for 0052, 0014 and 0016. The `x y` versions of 0173 and 0213 specialise `m\u2081 := y` and `m\u2082 := x`.",
+      "benefit": "The `wex`/`wa`/`wbr` traversal is stated and proved once, and the left/right split gets two names that say what they prove. The four statements stay the same, and the parameterised and unparameterised versions stop being maintained in parallel.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/NAR4C055C001Part005.lean",
+          "declaration": "nb055_support_mem_0212",
+          "excerpt": "rw [fv_syn_wa]\n    with_reducible rw [Finset.mem_union]\n    right\n    rw [fv_syn_wbr]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/NAR4C055C001Part005.lean",
+          "declaration": "nb055_support_mem_0173",
+          "excerpt": "\u00b7 exact (Nat.ne_of_lt (mem_lt_freshVar (nb055_support_mem_0052 x y) 2))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/ReplaySupport/Basic.lean",
+          "declaration": "mem_lt_freshVar",
+          "excerpt": "theorem mem_lt_freshVar {support : Finset Var} {x : Var} (hx : x \u2208 support)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 30251,
+    "cache_read_input_tokens": 92532,
+    "output_tokens": 8094,
+    "output_tokens_details": {
+      "thinking_tokens": 2631
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30251,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5963,
+        "cache_read_input_tokens": 32562,
+        "cache_creation_input_tokens": 1618,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1618
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2112132,
+  "duration_ms": 54637,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:41:12",
+  "unit": "file",
+  "source_sha256": "7f121acf416fee4ed57fc1279da100314055dd709e86f937057dde83f9be8671",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

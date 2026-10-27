@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0114",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped the formal-frontier library for repeats of the same machinery. I found the same `PreservesLimitsOfShape WalkingCospan (forget (TopModuleCat k))` construction in three places in this file, in CompactDiscreteTorsion.lean and in CochainInjectivity.lean. I also found the same `\u03c0_map` evaluation block three times in this file. Two other repeats looked too small to report. One is the duplicated `toCycles_i` branch inside `hboundary`; it lies within a single proof and would only move into a helper. The other is the `hmapZ`/`hreflect` calc steps, which are routine unfolding. I did not compile anything. The exact home module for the injectivity helper depends on the import graph, because CochainInjectivity.lean imports only Mathlib. I did not check Mono-instance availability for each use beyond noting that the current code already needs those instances.",
+  "findings": [
+    {
+      "declaration": "homology\u03c0_succ_eq_zero_iff_boundary; class_eq_zero_of_inflation_zero_degree_zero; exists_refinement_class_eq_zero",
+      "start_line": 46,
+      "end_line": 52,
+      "excerpt": "let : PreservesLimitsOfShape WalkingCospan (forget (TopModuleCat k)) := by\n    rw [\u2190 HasForget\u2082.forget_comp (C := TopModuleCat k) (D := TopCat)]\n    infer_instance",
+      "problem": "Each proof that a morphism in `TopModuleCat k` is injective on underlying functions rebuilds the instance `PreservesLimitsOfShape WalkingCospan (forget (TopModuleCat k))`. It does this by rewriting through `HasForget\u2082.forget_comp` and calling `infer_instance`. This block appears at lines 46-48, 129-131 and 229-231 of this file. It also appears in CompactDiscreteTorsion.lean (line 77) and CochainInjectivity.lean (line 129), so five sites need the same nontrivial universe/forgetful-functor workaround. Every use is followed by `ConcreteCategory.injective_of_mono_of_preservesPullback f` for a mono `f`: cyclesIso.hom, homologyIso.hom, K.iCycles, \u03c0 X 0, CN.iCycles. The `let : ... := by rw ...` pattern is fragile because it depends on `set_option backward.isDefEq.respectTransparency` and on the exact form of the instance goal.",
+      "proposed_change": "Prove one lemma in a small module imported by all users, for example next to the existing TopModuleCat topology API:\n\ntheorem TopModuleCat.hom_injective_of_mono {M N : TopModuleCat k} (f : M \u27f6 N) [Mono f] : Function.Injective f.hom\n\nProof sketch: build the `PreservesLimitsOfShape WalkingCospan (forget (TopModuleCat k))` instance once via `HasForget\u2082.forget_comp (C := TopModuleCat k) (D := TopCat)` and `infer_instance`, then `exact ConcreteCategory.injective_of_mono_of_preservesPullback f`.\n\nRewritten uses in this file:\n- Lines 46-52: `have hcycles_inj := TopModuleCat.hom_injective_of_mono cyclesIso.hom` and `have hhomology_inj := TopModuleCat.hom_injective_of_mono homologyIso.hom`. The local instance goes away.\n- Line 79: `apply TopModuleCat.hom_injective_of_mono (K.iCycles (n + 1))`.\n- Lines 128-132: `h\u03c0inj := TopModuleCat.hom_injective_of_mono (\u03c0 X 0)`. The `Mono (\u03c0 X 0)` instance is already needed by the current code.\n- Lines 229-232: `apply TopModuleCat.hom_injective_of_mono (CN.iCycles (n + 1))`.\n\nThe same helper replaces the blocks in CompactDiscreteTorsion.lean and CochainInjectivity.lean. The statement is unchanged and uses the same hypotheses (`Mono f`), so no imports beyond the helper's module are needed.",
+      "benefit": "The workaround is stated and maintained in one place. About 15 lines of boilerplate disappear from the proofs. If the forgetful-functor instance setup changes, only one proof needs repair. The injectivity steps then read as plain `injective_of_mono` uses.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CompactDiscreteTorsion.lean",
+          "declaration": "lemma containing the iCycles injectivity step (line 77)",
+          "excerpt": "let : PreservesLimitsOfShape WalkingCospan (forget (TopModuleCat k)) := by\n      rw [\u2190 HasForget\u2082.forget_comp (C := TopModuleCat k) (D := TopCat)]\n      infer_instance"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CochainInjectivity.lean",
+          "declaration": "cocyclesMap injectivity proof (line 129)",
+          "excerpt": "let : Limits.PreservesLimitsOfShape Limits.WalkingCospan (forget (TopModuleCat k)) := by\n    rw [\u2190 HasForget\u2082.forget_comp (C := TopModuleCat k) (D := TopCat)]\n    infer_instance"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/FiniteStageBoundary.lean",
+          "declaration": "exists_refinement_class_eq_zero (hcycles)",
+          "excerpt": "let : PreservesLimitsOfShape WalkingCospan (forget (TopModuleCat k)) := by\n        rw [\u2190 HasForget\u2082.forget_comp (C := TopModuleCat k) (D := TopCat)]\n        infer_instance"
+        }
+      ]
+    },
+    {
+      "declaration": "class_eq_zero_of_inflation_zero_degree_zero; exists_refinement_class_eq_zero",
+      "start_line": 116,
+      "end_line": 127,
+      "excerpt": "have h := congrArg\n      (fun f : cocycles YM 0 \u27f6 continuousCohomology 0 X => f.hom zM)\n      (\u03c0_map (openNormalQuotientHom M)\n        (TopRep.quotientInvariantsIncl M.toSubgroup X) 0)",
+      "problem": "The proof that the class `\u03c0 X d` of the inflated cocycle vanishes is written out twice: once for degree 0 (lines 116-127) and once for degree n+1 (lines 162-174). In each, `congrArg` is applied to `\u03c0_map`, the result is evaluated at `zM` with `simpa only [ConcreteCategory.comp_apply]`, and a calc step then uses `ha`. The same `\u03c0_map` + `congrArg` + `simpa` evaluation is repeated a third time at lines 242-245 for the transition map. The statements differ only in the degree and the pair (\u03c6, f), and they are copied together with their long `quotientInvariantsIncl` arguments.",
+      "proposed_change": "Add a private lemma over any `\u03c6 f d` and cocycle `z` of the source:\n\nprivate theorem \u03c0_cocyclesMap_apply (\u03c6 f d) (z : cocycles Y d) : (\u03c0 X d).hom ((cocyclesMap \u03c6 f d).hom z) = (map \u03c6 f d).hom ((\u03c0 Y d).hom z)\n\nIts proof is `congrArg (fun g => g.hom z) (\u03c0_map \u03c6 f d)` followed by `simpa only [ConcreteCategory.comp_apply]`. Then:\n- The degree-0 `h\u03c0G` becomes `(\u03c0_cocyclesMap_apply _ _ 0 zM).trans ha`.\n- The succ-case `h\u03c0G` becomes `(\u03c0_cocyclesMap_apply _ _ (n+1) zM).trans ha`.\n- The final step at lines 242-245 becomes `(\u03c0_cocyclesMap_apply (quotientTransitionHom N M hNM) (quotientTransitionIncl X hNM) (n+1) zM).trans h\u03c0N`.\n\nThe hypotheses are unchanged: `ha` and `h\u03c0N` are exactly the second premises, and `\u03c6`, `f` are instantiated at the existing arguments.",
+      "benefit": "This removes three near-identical 8-12 line blocks. The main theorems then read as the mathematical argument (zero downstairs implies zero at the inflation, and vice versa) instead of repeated element-level bookkeeping. Any change to `\u03c0_map` or the coercion shape is fixed once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/FiniteStageBoundary.lean",
+          "declaration": "exists_refinement_class_eq_zero (succ case h\u03c0G)",
+          "excerpt": "have h := congrArg\n        (fun f : cocycles YM (n + 1) \u27f6 continuousCohomology (n + 1) X => f.hom zM)\n        (\u03c0_map (openNormalQuotientHom M)\n          (TopRep.quotientInvariantsIncl M.toSubgroup X) (n + 1))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/FiniteStageBoundary.lean",
+          "declaration": "exists_refinement_class_eq_zero (final step)",
+          "excerpt": "(fun f : cocycles YM (n + 1) \u27f6 continuousCohomology (n + 1) YN => f.hom zM)\n      (\u03c0_map (quotientTransitionHom N M hNM) (quotientTransitionIncl X hNM) (n + 1))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 19296,
+    "cache_read_input_tokens": 78602,
+    "output_tokens": 5811,
+    "output_tokens_details": {
+      "thinking_tokens": 1446
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19296,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3633,
+        "cache_read_input_tokens": 21869,
+        "cache_creation_input_tokens": 1356,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1356
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14317419999999997,
+  "duration_ms": 44552,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:05:06",
+  "unit": "file",
+  "source_sha256": "a4ca68e91a7bc5dc3e25b6cbfd493d9bc81273aa7fb89a34930d408e22288ddf",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

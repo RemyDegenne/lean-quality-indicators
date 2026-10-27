@@ -1,0 +1,156 @@
+{
+  "id": "openai-math-file-0332",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and Model.lean, which defines tabloidAct, hilbertEquiv and the existing simp lemmas. I grepped the sibling files that reuse these lemmas (InsertionPerm.lean, BlockProduct.lean, Main.lean). I confirmed that Mathlib's Nat.card_eq_fintype_card is @[simp]. I did not run Lean, so nothing here claims an observed loop or simp failure. Other candidates (act_single, tailSet_act, the card_*_fiber lemmas) are consumed only through rw or simp only, and I did not find a clear benefit in making them simp. The existing @[simp] lemmas (act_apply, mem_tailSet, and tabloidAct_apply/one/mul in Model.lean) look consistent. The file duplicates large blocks across the ThorpRouting variants, so a change to these lemmas would need applying in each copy.",
+  "findings": [
+    {
+      "declaration": "nat_card_fiberGroup (and its consumers card_rowGroup, card_colGroup, tail_row_group, column_group_le_tail, choose_tail_le_dimension)",
+      "start_line": 455,
+      "end_line": 458,
+      "excerpt": "lemma nat_card_fiberGroup (f : \u03b1 \u2192 \u03b2) :\n    Nat.card (fiberGroup f) = \u220f b, (Nat.card {x // f x=b}).factorial := by",
+      "problem": "The fiber-group cardinality lemma is stated with Nat.card, but every consumer works with Fintype.card (card_rowGroup, card_colGroup, tail_row_group, column_group_le_tail, card_fiberGroups_mul_le). Mathlib's Nat.card_eq_fintype_card is @[simp] and rewrites Nat.card to Fintype.card, which is the canonical form. Each consumer therefore first rewrites against that direction (`rw [\u2190Nat.card_eq_fintype_card (\u03b1 := fiberGroup ...)]`) and then undoes it with `simp only [Nat.card_eq_fintype_card]`. choose_tail_le_dimension runs `simp only [\u2190Nat.card_eq_fintype_card] at htail hc hr hd`, which pushes hypotheses into the non-simp normal form. Whether the lemma is stated with Nat.card or Fintype.card has no mathematical reason behind it. It forces back-and-forth conversions and a reversed use of a standard simp lemma.",
+      "proposed_change": "State the lemma in the Fintype.card normal form, e.g. `Fintype.card (fiberGroup f) = \u220f b, Fintype.card {x // f x = b} !`. Its proof is the existing body plus `Nat.card_eq_fintype_card` on the left. The consumers can then use `rw [rowGroup, fiberGroup_card]; simp only [card_row_fiber]`, with no `\u2190Nat.card_eq_fintype_card`. In choose_tail_le_dimension, drop the reversed `simp only [\u2190Nat.card_eq_fintype_card] at \u2026` and the Nat.card statements in the calc steps. InsertionPerm.lean line 201 repeats the same pattern and would shrink too.",
+      "benefit": "Removes the repeated round-trips against Mathlib's simp normal form. Hypotheses such as `card_fiberGroups_mul_le` and `column_group_le_tail` then chain directly. It also removes the need to convert Fintype.card to Nat.card in order to combine them.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/SetTheory/Cardinal/Finite.lean",
+          "declaration": "Nat.card_eq_fintype_card",
+          "excerpt": "theorem card_eq_fintype_card [Fintype \u03b1] : Nat.card \u03b1 = Fintype.card \u03b1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/Shapes.lean",
+          "declaration": "choose_tail_le_dimension",
+          "excerpt": "simp only [\u2190Nat.card_eq_fintype_card] at htail hc hr hd"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/Shapes.lean",
+          "declaration": "card_rowGroup",
+          "excerpt": "rw [\u2190Nat.card_eq_fintype_card,rowGroup,nat_card_fiberGroup]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/Shapes.lean",
+          "declaration": "column_group_le_tail",
+          "excerpt": "rw [card_colGroup,\u2190Nat.card_eq_fintype_card (\u03b1 := fiberGroup (fun x : Tail \u03bc => colIndex x.1)),nat_card_fiberGroup]"
+        }
+      ]
+    },
+    {
+      "declaration": "hilbert_action (missing hilbertEquiv evaluation simp lemma)",
+      "start_line": 361,
+      "end_line": 365,
+      "excerpt": "simp [hilbertEquiv,PermutationHilbert.act_apply]",
+      "problem": "hilbertEquiv (Model.lean) is defined as `(WithLp.linearEquiv 2 \u2102 (Tabloid \u03bc \u2192 \u2102)).symm` and has no evaluation simp lemma. The only way to simplify `hilbertEquiv \u03bc v f` is to unfold the definition inside an unrestricted `simp [hilbertEquiv, \u2026]`. The same coercion is later handled with `change`. Examples are `change inner \u2102 (hilbertEquiv \u03bc (polytabloid \u03bc)) \u2026` in polytabloid_norm_sq and `have he : hilbertEquiv \u03bc (polytabloid \u03bc) (baseTabloid \u03bc) = 1 := polytabloid_base \u03bc`, which only typechecks through defeq. Unfolding the definition exposes the WithLp wrapper and depends on how simp reduces it. A user of hilbertEquiv has no stable rewrite to call.",
+      "proposed_change": "Next to the definition of hilbertEquiv, add `@[simp] lemma hilbertEquiv_apply (\u03bc : YoungDiagram) (v : Tabloid \u03bc \u2192 \u2102) (f : Tabloid \u03bc) : hilbertEquiv \u03bc v f = v f := rfl`. hilbert_action can then be `by ext f; simp [PermutationHilbert.act_apply]` (act_apply is already @[simp], so `simp` alone may do). For polytabloid_base, the statement `hilbertEquiv \u03bc (polytabloid \u03bc) (baseTabloid \u03bc) = 1` can be closed by `simp [polytabloid_base]`.",
+      "benefit": "Keeps hilbertEquiv opaque to simp and gives a canonical, exact normal form, so the three downstream uses no longer depend on defeq or on unfolding the definition. It also fits the existing simp lemma `act_apply`, which is already stated pointwise.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/Model.lean",
+          "declaration": "hilbertEquiv",
+          "excerpt": "(WithLp.linearEquiv 2 \u2102 (Tabloid \u03bc \u2192 \u2102)).symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/Shapes.lean",
+          "declaration": "hilbert_action",
+          "excerpt": "simp [hilbertEquiv,PermutationHilbert.act_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/Shapes.lean",
+          "declaration": "dimension_times_column_ge_tabloids",
+          "excerpt": "have he : hilbertEquiv \u03bc (polytabloid \u03bc) (baseTabloid \u03bc) = 1 := polytabloid_base \u03bc"
+        }
+      ]
+    },
+    {
+      "declaration": "tabloidMulAction (no smul simp lemma)",
+      "start_line": 501,
+      "end_line": 504,
+      "excerpt": "smul p f := tabloidAct p f",
+      "problem": "The file defines a global instance, tabloidMulAction, whose smul is `tabloidAct p f`, but it gives no simp lemma relating `p \u2022 f` to `tabloidAct p f`. Model.lean already has simp lemmas for `tabloidAct` (tabloidAct_apply, tabloidAct_one, tabloidAct_mul), but they cannot fire on `p \u2022 f` terms. The MulAction API lemmas (stabilizer, orbit) produce `p \u2022 baseTabloid \u03bc`, so tabloid_stabilizer must start with `change tabloidAct p (baseTabloid \u03bc) = baseTabloid \u03bc \u2194 \u2026`, and tabloid_orbit_all closes with `exact \u27e8p,hp\u27e9` by defeq. Both of the instance's own axioms are proved with `change \u2026 ; rw \u2026; rfl`.",
+      "proposed_change": "After the instance, add `@[simp] lemma tabloidMulAction_smul_def (\u03bc) (p : Equiv.Perm (Cell \u03bc)) (f : Tabloid \u03bc) : p \u2022 f = tabloidAct p f := rfl`, or an `smul_def`-style lemma. The `change` in tabloid_stabilizer can then be replaced by `simp only [MulAction.mem_stabilizer_iff, tabloidAct_smul]` (the exact form is untested), and simp can continue into tabloidAct_apply.",
+      "benefit": "The orbit/stabilizer API on Tabloid then connects to the existing tabloidAct simp set without `change`. Later files that use MulAction lemmas on tabloids get a canonical form (tabloidAct) instead of defeq-based `change` steps.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/Shapes.lean",
+          "declaration": "tabloid_stabilizer",
+          "excerpt": "change tabloidAct p (baseTabloid \u03bc) = baseTabloid \u03bc \u2194 \u2200 x, rowIndex (p x) = rowIndex x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/Model.lean",
+          "declaration": "tabloidAct_apply",
+          "excerpt": "@[simp] lemma tabloidAct_apply {\u03bc : YoungDiagram} (p : Equiv.Perm (Cell \u03bc))"
+        }
+      ]
+    },
+    {
+      "declaration": "characterClass_mk",
+      "start_line": 134,
+      "end_line": 140,
+      "excerpt": "characterClass \u03c1 (ConjClasses.mk g) = \u03c1.character g",
+      "problem": "`characterClass \u03c1` is a def that picks a representative via `classRep` (a `Classical.choose`), so simp cannot reduce it on its own. `characterClass_mk` is the only meaningful evaluation rule. It is not tagged @[simp], although it has a clean normal form (the RHS is strictly simpler and contains no characterClass), no hypotheses, and no overlap with another rule. The only consumers are `simp only [characterClass_mk]` at line 159 and the `simp only [... characterClass_mk ...]` calls in BlockProduct.lean. Each must name it explicitly, and a plain `simp` or `simpa` over a statement involving `characterClass \u03c1 (ConjClasses.mk g)` cannot evaluate it. For example, the `simpa using horth i i` call in complete_of_card_conjugacy_le sits next to characterDual terms where the class-function evaluation is needed.",
+      "proposed_change": "Mark it `@[simp] lemma characterClass_mk \u2026`. The statement is unchanged. It cannot loop, because it removes a `characterClass` application and the RHS has none.",
+      "benefit": "Makes class-function evaluation on `ConjClasses.mk g` automatic for `simp` and `simpa`. The `simp only [characterClass_mk]` calls in this file and in BlockProduct.lean could then use default simp. This is a minor improvement, only worthwhile if more simp-based uses appear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/BlockProduct.lean",
+          "declaration": "(use in block-product proof)",
+          "excerpt": "simp only [Finset.sum_apply,Pi.smul_apply,smul_eq_mul,hd,characterClass_mk,Representation.char_one] at he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/ThorpRouting/Harmonic/Shapes.lean",
+          "declaration": "characterClass",
+          "excerpt": "fun c => \u03c1.character (classRep c)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 48026,
+    "cache_read_input_tokens": 206809,
+    "output_tokens": 9061,
+    "output_tokens_details": {
+      "thinking_tokens": 3018
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 48026,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4800,
+        "cache_read_input_tokens": 50945,
+        "cache_creation_input_tokens": 1094,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1094
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3034189,
+  "duration_ms": 64881,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:38:34",
+  "unit": "file",
+  "source_sha256": "65993073e443f1ebd029fd54186d055a74c26844f49e56c455db9537bee8c483",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

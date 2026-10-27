@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0318",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions in CRT.lean (primeSquareProduct, validResiduesMod, localDensityProduct). I grepped the DeadEnds directory for how these definitions are unfolded. The file has no @[simp] declarations of its own. The main simp-interface weakness is that the definitions have no unfolding or cast lemmas, so proofs unfold them by hand with `simp only [...]`, `unfold` and `simp_all`. I did not run Lean, so I make no claim about how the simplifier actually behaves. I did not recommend simp attributes for the arithmetic helper lemmas, because they have hypotheses and are not canonical rewrites. I also did not flag the repeated filter expression, because that is a duplication or abstraction issue rather than a simp one.",
+  "findings": [
+    {
+      "declaration": "count_finite_prime_approx",
+      "start_line": 143,
+      "end_line": 152,
+      "excerpt": "simp only [primeSquareProduct, localDensityProduct] at h\n  simp_all",
+      "problem": "primeSquareProduct and localDensityProduct are plain defs in CRT.lean with no unfolding or cast lemma, and none is a simp lemma. This statement is error_bound with the defs unfolded and the \u2115\u2192\u211d cast of the product pushed inside. It is closed by unfolding the defs and then running a non-terminal-style `simp_all`, which also rewrites every other hypothesis in context. The same hand-unfolding occurs in several places: Counting.lean:56 `rw [localDensityProduct]`, Counting.lean:269 `unfold localDensityProduct jointSquarefreeDensity`, and CRT.lean:276 `simp only [primeSquareProduct, localDensityProduct, Nat.cast_prod, Nat.cast_pow]`. Each site re-derives the same normal form (the product as a Finset product, with casts pushed inside).",
+      "proposed_change": "In CRT.lean, next to the definitions, add equation lemmas such as `primeSquareProduct_cast_real (S) : (primeSquareProduct S : \u211d) = \u220f p \u2208 S, ((p : \u2115) : \u211d) ^ 2` (proved by `simp [primeSquareProduct]`) and `localDensityProduct_def : localDensityProduct b T S = \u220f p \u2208 S, localDensityFactor (p : \u2115) b T` (by `rfl`). Consider tagging the cast lemma `@[simp]`, since the cast-pushed product is the canonical form. Then this proof becomes `by simpa [primeSquareProduct_cast_real, localDensityProduct_def] using error_bound b hb T hT S X`, and the other sites can use `rw [localDensityProduct_def]` instead of `unfold`.",
+      "benefit": "Callers get one named, directed rewrite from the opaque defs to the Finset-product normal form. This replaces ad hoc `unfold` and `simp_all` calls that depend on whatever else is in context, so proofs are shorter and less fragile.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DeadEnds/CRT.lean",
+          "declaration": "primeSquareProduct",
+          "excerpt": "noncomputable def primeSquareProduct (S : Finset Nat.Primes) : \u2115 :=\n  \u220f p \u2208 S, (p : \u2115) ^ 2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DeadEnds/CRT.lean",
+          "declaration": "validResidues_card_eq_mul",
+          "excerpt": "simp only [primeSquareProduct, localDensityProduct, Nat.cast_prod, Nat.cast_pow]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DeadEnds/Counting.lean",
+          "declaration": "localDensityProduct_nonneg",
+          "excerpt": "rw [localDensityProduct]"
+        }
+      ]
+    },
+    {
+      "declaration": "countFinitePrime",
+      "start_line": 208,
+      "end_line": 211,
+      "excerpt": "noncomputable def countFinitePrime (b : \u2115) (T : Finset \u2115) (S : Finset Nat.Primes) (X : \u2115) : \u2115 :=\n  ((Finset.Icc 1 X).filter fun N =>",
+      "problem": "countFinitePrime is introduced after count_bounds, error_bound and count_finite_prime_approx, which all state the same filter-card expression inline. No bridging lemma links the definition to that expression. As a result, crt_error_bound has to be proved separately from error_bound, with the same hypotheses and the same conclusion once the def is unfolded. Later lemmas (count_ge_finite_minus_violations, count_finite_lower) mention only the folded form, while the earlier ones mention only the unfolded form. A `simp` or `rw` call cannot move between the two, and the file relies on `change`/`let` instead (for example in count_ge_finite_minus_violations).",
+      "proposed_change": "Move the definition of countFinitePrime above count_upper_bound. Add one unfolding lemma, `countFinitePrime_eq : countFinitePrime b T S X = ((Finset.Icc 1 X).filter fun N => \u2200 p \u2208 S, \u00ac((p:\u2115)^2 \u2223 N) \u2227 \u2200 d \u2208 T, \u00ac((p:\u2115)^2 \u2223 b*N+d)).card := rfl`. State count_bounds, error_bound and count_finite_prime_approx in terms of countFinitePrime. Then crt_error_bound is `error_bound` verbatim and the duplicate proof is removed.",
+      "benefit": "There is a single canonical form for the count, and readers do not need to unfold it by hand or re-prove the same bound under two names.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DeadEnds/Counting.lean",
+          "declaration": "error_bound",
+          "excerpt": "|(count : \u211d) - (X : \u211d) * L| \u2264 (M : \u211d) := by\n  intro M L count"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DeadEnds/Counting.lean",
+          "declaration": "crt_error_bound",
+          "excerpt": "|(countFinitePrime b T S X : \u211d) - (X : \u211d) * localDensityProduct b T S| \u2264"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18467,
+    "cache_read_input_tokens": 60485,
+    "output_tokens": 4222,
+    "output_tokens_details": {
+      "thinking_tokens": 1142
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18467,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2670,
+        "cache_read_input_tokens": 21191,
+        "cache_creation_input_tokens": 1289,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1289
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.12215249999999998,
+  "duration_ms": 37227,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:34:46",
+  "unit": "file",
+  "source_sha256": "1be02d805b45af4b447f8624533fa5aa28c4ef040f834ca529816b245e8bf841",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

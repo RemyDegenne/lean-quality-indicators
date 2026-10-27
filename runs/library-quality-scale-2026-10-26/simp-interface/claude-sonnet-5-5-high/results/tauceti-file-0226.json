@@ -1,0 +1,99 @@
+{
+  "id": "tauceti-file-0226",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of Adic.lean. I also read the simp-tagged lemmas in Place/Basic.lean (`mem_integers_iff`, `ord_valuation`, `integers_def`) and Mathlib's `HeightOneSpectrum.valuation_of_algebraMap`, `valuation_le_one` and `valuation_lt_one_iff_mem`. I searched the repo for uses of the `ofPrime` algebraMap lemmas. No Lean was run, so everything below is reasoning about simp behaviour from the lemma statements. In particular I did not test whether `simp` fails on these goals, and the clash in finding 2 is a prediction. The existing simp lemmas `algebraMap_residueField_ofPrime_eq_zero_iff` and `quotientAlgEquivResidueFieldOfPrime_mk` look well oriented, and I found no competing rule for them.",
+  "findings": [
+    {
+      "declaration": "valuation_ofPrime_algebraMap / valuation_ofPrime_algebraMap_lt_one_iff / algebraMap_mem_integers_ofPrime (interaction with simp lemmas valuation_ofPrime and mem_integers_iff)",
+      "start_line": 99,
+      "end_line": 110,
+      "excerpt": "(ofPrime k F p).valuation (algebraMap R F r) = p.intValuation r",
+      "problem": "`valuation_ofPrime` (simp) and `Place.mem_integers_iff` (simp) both rewrite away the expression `(ofPrime k F p).valuation` / `\u2208 (ofPrime k F p).integers`. The three lemmas about `algebraMap R F r` have exactly those shapes as their left-hand sides. They therefore cannot be tagged `@[simp]`, and `simp` cannot use them. After `simp` unfolds the place, the goal is `p.valuation F (algebraMap R F r) \u2264 1` (or `< 1`). The Mathlib lemmas that would finish it (`valuation_of_algebraMap`, `valuation_le_one`, `valuation_lt_one_iff_mem`) are not simp. The `ofPrime` interface therefore has no simp route from an `algebraMap R F r` valuation or membership statement to `intValuation r` or `r \u2208 p.asIdeal`. Downstream code works around this with manual `rw`, for example Map/Place.lean line 117 and the uses of `valuation_ofPrime_algebraMap_lt_one_iff` in GenericPoint/Reduction.lean lines 65 and 73 and in Kummer.lean line 173.",
+      "proposed_change": "State the algebraMap lemmas in the simp-normal form that `valuation_ofPrime` produces, i.e. about `p.valuation F (algebraMap R F r)`, and then mark them simp. A cheaper option is to add `attribute [local simp] HeightOneSpectrum.valuation_of_algebraMap` or a local simp lemma `p.valuation F (algebraMap R F r) = p.intValuation r`. Keep the current `ofPrime`-phrased versions as non-simp rewriting lemmas. Mark `valuation_ofPrime_algebraMap_lt_one_iff` as simp only if the Mathlib form `HeightOneSpectrum.valuation_lt_one_iff_mem` is also normalized, so the two do not conflict. Also add a simp-normal form of `algebraMap_mem_integers_ofPrime`, namely `p.valuation_le_one r`, or tag that Mathlib lemma simp locally.",
+      "benefit": "`simp` could then reduce valuations, orders and membership of `algebraMap R F r` at an adic place to statements about `p.intValuation r` and `r \u2208 p.asIdeal`. Several downstream `rw [Place.valuation_ofPrime_algebraMap\u2026]` proofs could become `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/FieldTheory/FunctionField/Place/Basic.lean",
+          "declaration": "TauCeti.Place.mem_integers_iff",
+          "excerpt": "theorem mem_integers_iff {f : F} : f \u2208 P.integers \u2194 P.valuation f \u2264 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/RingTheory/DedekindDomain/AdicValuation/Valuation.lean",
+          "declaration": "IsDedekindDomain.HeightOneSpectrum.valuation_of_algebraMap",
+          "excerpt": "theorem valuation_of_algebraMap (r : R) : v.valuation K r = v.intValuation r"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/AlgebraicGeometry/EllipticCurve/Affine/FunctionField/Map/Place.lean",
+          "declaration": "use of Place.valuation_ofPrime_algebraMap",
+          "excerpt": "Place.valuation_ofPrime_algebraMap, hr1]"
+        }
+      ]
+    },
+    {
+      "declaration": "valuation_ofPrime",
+      "start_line": 81,
+      "end_line": 83,
+      "excerpt": "theorem valuation_ofPrime (p : HeightOneSpectrum R) : (ofPrime k F p).valuation = p.valuation F :=",
+      "problem": "This simp lemma rewrites the inner term `Place.valuation (ofPrime k F p)`. The simp lemma `Place.ord_valuation` has left-hand side `Valuation.ord P.valuation f`, with the place `P` as a variable. Simp rewrites subterms first. So on `Valuation.ord (ofPrime k F p).valuation f`, `valuation_ofPrime` would very likely fire on the argument first, giving `Valuation.ord (p.valuation F) f`. That form no longer matches `ord_valuation`, so it cannot return to `(ofPrime k F p).ord f`. The result is two competing normal forms for the order at an adic place, `Place.ord (ofPrime k F p) f` and `Valuation.ord (p.valuation F) f`. The file's own lemmas (`ord_ofPrime_algebraMap`, `ord_ofPrime_algebraMap_pos_iff_mem`, `isUniformizer_ofPrime_algebraMap`) are stated with `Place.ord`. This is a prediction from the lemma shapes; I did not run it.",
+      "proposed_change": "Add a companion simp lemma that closes the cycle. For example, `Valuation.ord (p.valuation F) f = (ofPrime k F p).ord f`, proved by `rfl`, so both routes reach the `Place.ord` form. Alternatively, drop `@[simp]` from `valuation_ofPrime`, since it is only used via explicit `rw` in this file, and instead add simp lemmas for the specific consequences that are needed. If simp does fire on `.valuation`, the choice of normal form for `ord` should be stated deliberately.",
+      "benefit": "Order statements at adic places keep a single canonical form, `(ofPrime k F p).ord`. The file's `ord_ofPrime_*` lemmas then stay applicable after `simp`, and the unfolded `p.valuation F` form no longer leaks into the order API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/FieldTheory/FunctionField/Place/Basic.lean",
+          "declaration": "TauCeti.Place.ord_valuation",
+          "excerpt": "theorem ord_valuation (f : F) : Valuation.ord P.valuation f = P.ord f :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 22117,
+    "cache_read_input_tokens": 81526,
+    "output_tokens": 7542,
+    "output_tokens_details": {
+      "thinking_tokens": 3336
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22117,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2851,
+        "cache_read_input_tokens": 22422,
+        "cache_creation_input_tokens": 3708,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3708
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1720646,
+  "duration_ms": 54070,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T00:34:17",
+  "unit": "file",
+  "source_sha256": "8d3e751b24719d2411a8d598d3adba2454ecfe078f6d03700d3968085fe863a0",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

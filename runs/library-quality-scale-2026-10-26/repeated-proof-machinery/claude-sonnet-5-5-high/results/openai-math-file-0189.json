@@ -1,0 +1,88 @@
+{
+  "id": "openai-math-file-0189",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I then read FiniteMedianConfidence.lean, RootedEstimatorAmplification.lean and CompanionEstimatorAmplification.lean. I also checked the definitions of uniformAverage_equiv, gridWordEquiv and oracleWalkWordEquiv. The repeated median-amplification tail appears in three theorems: `success` here, `medianEstimate_success` in RootedEstimatorAmplification.lean, and `medianEstimate_success` in CompanionEstimatorAmplification.lean. I did not report the smaller repetition inside `success`, namely the two `average_ext_instances ... split_ifs <;> rfl` calls. That repetition is short and is not duplicated across proofs. The proposed lemma has not been compiled. The `nlinarith` side goals and the definitional unfolding of `bitCount`/`estimate` to the product-indexed form are the most likely places for small adjustments.",
+  "findings": [
+    {
+      "declaration": "ContingencyTables.RootedCountingAmplification.success",
+      "start_line": 72,
+      "end_line": 94,
+      "excerpt": "  have hm := median_confidence_real f\n    ((1-(epsilon:\u211d))*tableCount A) ((1-(epsilon:\u211d)/2)*tableCount A)\n    ((1+(epsilon:\u211d)/2)*tableCount A) ((1+(epsilon:\u211d))*tableCount A)\n    (by nlinarith) (by nlinarith) delta hd hbad",
+      "problem": "The last third of `success` is a generic \"relative-error median amplification with an equivalence transport\" argument. It is repeated almost verbatim in two other proofs, both named `medianEstimate_success`. These are the Rooted one in RootedEstimatorAmplification.lean (lines 42-77) and the Companion one in CompanionEstimatorAmplification.lean (lines 45-80). Each repeats the same steps. First, `heR : 0 < (epsilon:\u211d)` is cast from `he0`. Then four thresholds `(1\u2213\u03b5)t` and `(1\u2213\u03b5/2)t` are built, with two `by nlinarith` side goals for `L < L'` and `U' < U`. Then `median_confidence_real` is applied. Then a `test` function is defined and `uniformAverage_equiv` is applied along a word equivalence. Finally the goal is closed with `hm.trans_eq`, after a `change` or a `rfl`-based `htransport` that re-states the whole indicator. The only differences are the sample function (`f`, or `wordEstimate ...`), the target value (`tableCount A`, or `h A ...`), and the equivalence (`gridWordEquiv`, or `oracleWalkWordEquiv`). Both equivalences are the same term, `(Equiv.arrowCongr finProdFinEquiv.symm (Equiv.refl Bool)).trans (Equiv.curry _ _ _)`. The estimate-specific part is only the construction of `hbad`. Each copy restates the long indicator expression several times. A change to the threshold scheme, for example a different bad-probability constant, must be made in all three places.",
+      "proposed_change": "Add one lemma to Transport/FiniteMedianConfidence.lean, next to `median_confidence_real`. It needs `uniformAverage_equiv` (from CommonBasesFPRAS, already imported) and `repetitionCount`.\n\n```lean\ntheorem median_confidence_relative {X Y : Type*} [Fintype X] [Fintype Y] [Nonempty X]\n    (delta : \u211a) (hdelta : 0 < delta) (e : Y \u2243 (Fin (repetitionCount delta) \u2192 X))\n    (output : X \u2192 \u211a) (t : \u211d) (ht : 0 < t) (epsilon : \u211a) (he : 0 < epsilon)\n    (hbad : uniformAverage (fun x =>\n      if (output x:\u211d) < (1-(epsilon:\u211d)/2)*t \u2228 (1+(epsilon:\u211d)/2)*t < (output x:\u211d)\n      then (1:\u211d) else 0) \u2264 5/16) :\n    1-(delta:\u211d) \u2264 uniformAverage (fun y : Y =>\n      if (1-(epsilon:\u211d))*t \u2264 (rationalMedian (List.ofFn (fun i => output (e y i))):\u211d) \u2227\n        (rationalMedian (List.ofFn (fun i => output (e y i))):\u211d) \u2264 (1+(epsilon:\u211d))*t\n      then (1:\u211d) else 0)\n```\n\nProof sketch:\n1. Get `heR : (0:\u211d) < epsilon` by `exact_mod_cast he`.\n2. Call `median_confidence_real output ((1-\u03b5)*t) ((1-\u03b5/2)*t) ((1+\u03b5/2)*t) ((1+\u03b5)*t) _ _ delta hdelta hbad`. The two side goals follow from `nlinarith [mul_pos heR ht]`.\n3. Rewrite its right-hand side with `(uniformAverage_equiv e (fun xs => ...)).symm` and close with `hm.trans_eq`.\n\nRewritten uses:\n- In `success`, delete lines 72-94 (`heR`, `hm`, `test`, `heq`, `htransport`, `exact`). Keep `hZ` and `hbad`, and finish with `exact median_confidence_relative delta hd (gridWordEquiv (repetitionCount delta) (RootedCountingWords.bitCount A s)) f (tableCount A) hZ epsilon he0 hbad`. The goal agrees with the lemma's conclusion up to unfolding `bitCount` and `estimate`. The existing `htransport` already closes this by `rfl`.\n- In both `medianEstimate_success` proofs, replace everything after `hbad` by `exact median_confidence_relative delta hd (oracleWalkWordEquiv (repetitionCount delta) (estimatorWordBits A C K j (innerTolerance (epsilon/2) j) 1)) (wordEstimate ...) (h ...) ht epsilon he0 hbad`. The `heR`, `hm`, `test`, `he` and `change` lines go away. The `h` / `RootedCountIdentification.h` target is the argument `t`, and `ht` is already in context.",
+      "benefit": "About 20-25 lines of error-prone, heavily repeated real-interval bookkeeping are removed from each of three proofs. In each proof only the estimator-specific `hbad` (or the `constant_success` conversion) remains. The threshold arithmetic and the equivalence transport are proved and maintained once. Each theorem then reads as \"constant-confidence bound, then amplify\". Future estimators can reuse the lemma instead of copying this block a fourth time.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Rooted/RootedEstimatorAmplification.lean",
+          "declaration": "ContingencyTables.RootedOracleDensity.medianEstimate_success",
+          "excerpt": "  have hm := median_confidence_real\n    (wordEstimate A R C z K hK hW j (epsilon/2) 1 v)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Counting/CompanionEstimatorAmplification.lean",
+          "declaration": "ContingencyTables.CompanionOracleDensity.medianEstimate_success",
+          "excerpt": "  have hm := median_confidence_real\n    (wordEstimate A C z K hK hW j (epsilon/2) 1 v)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Transport/FiniteMedianConfidence.lean",
+          "declaration": "ContingencyTables.FiniteMedianConfidence.median_confidence_real",
+          "excerpt": "theorem median_confidence_real {X : Type*} [Fintype X] [Nonempty X]\n    (output : X \u2192 \u211a) (L L' U' U : \u211d) (hL : L < L') (hU : U' < U)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/ContingencyTables/Counting/CompanionOracleDraw.lean",
+          "declaration": "oracleWalkWordEquiv",
+          "excerpt": "def oracleWalkWordEquiv (n k : \u2115) : (Fin (n*k) \u2192 Bool) \u2243 (Fin n \u2192 Fin k \u2192 Bool) :=\n  (Equiv.arrowCongr finProdFinEquiv.symm (Equiv.refl Bool)).trans (Equiv.curry _ _ _)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 26186,
+    "cache_read_input_tokens": 76429,
+    "output_tokens": 6055,
+    "output_tokens_details": {
+      "thinking_tokens": 1978
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26186,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3217,
+        "cache_read_input_tokens": 26603,
+        "cache_creation_input_tokens": 3512,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3512
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1729569,
+  "duration_ms": 44261,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:19:57",
+  "unit": "file",
+  "source_sha256": "7afe4e8f06d5d46ce6cdbfba2219df2520a65816a92a6bfaeca26904fb156a57",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

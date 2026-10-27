@@ -1,0 +1,99 @@
+{
+  "id": "tauceti-file-0295",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, the companion Projective determinant file's simp lemmas, and Mathlib's Algebra.norm lemmas and their simp attributes. I also checked the downstream use in Extension.lean, which uses rw only and not simp. The findings come from reasoning about simp lemma interaction; I did not run Lean. Whether a given lemma is shadowed depends on simp's matching order and instance availability, so it is a credible risk and not an observed failure. I found no loops. projectiveNorm_apply is rightly not simp, since it would unfold the definition.",
+  "findings": [
+    {
+      "declaration": "Algebra.projectiveNorm_eq_norm (together with @[simp] projectiveNorm_baseChange_tmul)",
+      "start_line": 104,
+      "end_line": 106,
+      "excerpt": "@[simp]\ntheorem projectiveNorm_eq_norm [Module.Free R S] (x : S) : projectiveNorm R x = norm R x := by",
+      "problem": "Both `projectiveNorm_eq_norm` and `projectiveNorm_baseChange_tmul` are simp lemmas. For `S` free and finite over `R`, `A \u2297[R] S` is also free and finite over `A`. Then `projectiveNorm A (1 \u2297\u209c x)` matches both lemmas, and `projectiveNorm_eq_norm` is declared later. If it fires first, the term becomes `Algebra.norm A (1 \u2297\u209c x)`. I found no Mathlib simp lemma for the norm of a base-changed element, so simp is stuck there. The base-change lemma is then useless in the free case, which is the most common one. The rewrite to `Algebra.norm` also removes the `projectiveNorm` form that the other simp lemmas (`isUnit_projectiveNorm_iff`) are stated for. The file therefore has two competing simp normal forms and no single canonical one.",
+      "proposed_change": "Choose one normal form. Either drop `@[simp]` from `projectiveNorm_eq_norm`, which is only used via `rw` in Extension.lean, so the projective API stays canonical. Or keep it and also add a free-case simp lemma `Algebra.norm A (1 \u2297\u209c[R] x) = algebraMap R A (Algebra.norm R x)`, stated as a corollary of `projectiveNorm_baseChange_tmul` and `projectiveNorm_eq_norm`. Alternatively, give `projectiveNorm_baseChange_tmul` higher priority so it fires first.",
+      "benefit": "`simp` on the norm of `1 \u2297\u209c x` gives the same predictable result, `algebraMap R A (norm R x)` or its `projectiveNorm` form, whether or not `S` happens to be free. It avoids landing in an unsimplifiable `Algebra.norm A (1 \u2297\u209c x)`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RingTheory/Norm/Projective.lean",
+          "declaration": "Algebra.projectiveNorm_baseChange_tmul",
+          "excerpt": "projectiveNorm A ((1 : A) \u2297\u209c[R] x) = algebraMap R A (projectiveNorm R x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/RingTheory/Norm/Defs.lean",
+          "declaration": "Algebra.norm_apply",
+          "excerpt": "theorem norm_apply (x : S) : norm R x = LinearMap.det (lmul R S x) := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "Algebra.isUnit_projectiveNorm_iff",
+      "start_line": 97,
+      "end_line": 99,
+      "excerpt": "@[simp]\ntheorem isUnit_projectiveNorm_iff {x : S} : IsUnit (projectiveNorm R x) \u2194 IsUnit x := by",
+      "problem": "This simp lemma has `projectiveNorm R x` in its LHS. When `S` is free, the later simp lemma `projectiveNorm_eq_norm` rewrites that subterm to `Algebra.norm R x` first. Simp rewrites subterms before the enclosing term, so `isUnit_projectiveNorm_iff` never applies. Mathlib has no simp lemma `IsUnit (Algebra.norm R x) \u2194 IsUnit x` for general rings; I found only number-field specific versions. In the free case `simp` therefore leaves `IsUnit (Algebra.norm R x)`, and the `@[simp]` attribute is dead exactly where the goal is most likely to arise.",
+      "proposed_change": "Either remove `@[simp]` from `projectiveNorm_eq_norm`, so projective statements stay in `projectiveNorm` form and `isUnit_projectiveNorm_iff` fires. Or add a free-case companion `Algebra.isUnit_norm_iff [Module.Free R S] [Module.Finite R S] : IsUnit (Algebra.norm R x) \u2194 IsUnit x`, proved from `isUnit_projectiveNorm_iff` and `projectiveNorm_eq_norm`, and mark it simp.",
+      "benefit": "`IsUnit` goals about norms simplify to `IsUnit x` for free algebras as well as projective ones. The simp set is then coherent, and the attribute on this lemma does something in the free case.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RingTheory/Norm/Projective.lean",
+          "declaration": "Algebra.projectiveNorm_eq_norm",
+          "excerpt": "theorem projectiveNorm_eq_norm [Module.Free R S] (x : S) : projectiveNorm R x = norm R x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/NumberTheory/NumberField/Norm.lean",
+          "declaration": "RingOfIntegers.isUnit_norm",
+          "excerpt": "theorem isUnit_norm [CharZero K] {x : \ud835\udcde F} : IsUnit (norm K x) \u2194 IsUnit x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 14921,
+    "cache_read_input_tokens": 56371,
+    "output_tokens": 5298,
+    "output_tokens_details": {
+      "thinking_tokens": 1691
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14921,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2257,
+        "cache_read_input_tokens": 17666,
+        "cache_creation_input_tokens": 1268,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1268
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1183211,
+  "duration_ms": 41723,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:17:16",
+  "unit": "file",
+  "source_sha256": "ab0333019529d8034116e7fcc60ada964a07281ea7d517137598ddd2216dc288",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

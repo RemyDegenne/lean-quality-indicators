@@ -1,0 +1,104 @@
+{
+  "id": "mathlib-file-0050",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped Mathlib for outside uses of these declarations. I found almost none: the other hits are mostly the unrelated `List.foldl_map`. I did not find a credible rewrite loop. The four `*_map` simp lemmas and `toList_eq_self` look reasonable. The two findings below are about the interface, and I did not run Lean. I did not check whether `@[simps]` generates the `_apply` lemmas under exactly those names, and the claim that they fire before the composition lemmas is an inference. It is not something I observed.",
+  "findings": [
+    {
+      "declaration": "Traversable.foldl.ofFreeMonoid_comp_of (and foldr/foldlM/foldrM variants)",
+      "start_line": 286,
+      "end_line": 312,
+      "excerpt": "Foldl.ofFreeMonoid f \u2218 FreeMonoid.of = Foldl.mk \u2218 flip f",
+      "problem": "These four `@[simp]` lemmas state the fact point-free as an equation between composed functions. Such a rule only matches when the term is syntactically `\u21d1(Foldl.ofFreeMonoid f) \u2218 FreeMonoid.of`. It does not match the applied form `Foldl.ofFreeMonoid f (FreeMonoid.of x)`. That applied form is what a user's goal would normally contain. Each `ofFreeMonoid` is also tagged `@[simps]`, so its generated `_apply` lemma (the name is inferred) would probably unfold the applied form into `op (.of (\u21be flip (List.foldl f) (FreeMonoid.toList (of x))))` and then into raw `List.foldl` terms. That is a competing rule. The result is never the intended `Foldl.mk (flip f x)` normal form. The rules fire only in the specific `simp only [foldMap_hom_free, \u2026]` chains inside this file, where `foldMap_hom_free` happens to produce a composition. As simp lemmas they are close to dead weight.",
+      "proposed_change": "Keep the composition forms as non-simp lemmas, or leave them simp for the `foldMap_hom_free` pipeline. Add applied versions and prefer them over the `_apply` expansion, for example `Foldl.ofFreeMonoid f (FreeMonoid.of x) = Foldl.mk (flip f x)`, and likewise for `Foldr`, `foldlM` and `foldrM`. These could be proved by `rfl` or by the existing proofs applied after `funext`. If the unfolding is unwanted, use `@[simps -isSimp]` or `@[simps (config := .lemmasOnly)]` and register the intended lemmas explicitly.",
+      "benefit": "Users and downstream proofs get a rewrite that fires on the term shape they actually write. It also gives a single canonical form, `Foldl.mk (flip f x)`, in place of an ad hoc unfolding to `List.foldl` over `[x]`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Fold.lean",
+          "declaration": "Monoid.Foldl.ofFreeMonoid",
+          "excerpt": "def Foldl.ofFreeMonoid (f : \u03b2 \u2192 \u03b1 \u2192 \u03b2) : FreeMonoid \u03b1 \u2192* Monoid.Foldl \u03b2 where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Fold.lean",
+          "declaration": "Traversable.foldr.ofFreeMonoid_comp_of",
+          "excerpt": "Foldr.ofFreeMonoid f \u2218 FreeMonoid.of = Foldr.mk \u2218 f"
+        }
+      ]
+    },
+    {
+      "declaration": "Monoid.Foldl.get / Foldl.mk (and Foldr, foldlM, foldrM analogues)",
+      "start_line": 112,
+      "end_line": 117,
+      "excerpt": "def Foldl.get (x : Foldl \u03b1) : \u03b1 \u2192 \u03b1 :=\n  ConcreteCategory.hom (unop x).asHom",
+      "problem": "There is no simp-level interface for the `mk`/`get` pairs, such as `Foldl.get (Foldl.mk f) = f`. The simp lemmas stated in terms of `Foldl.mk`, for example `ofFreeMonoid_comp_of`, leave `Foldl.get (Foldl.mk \u2026)` behind. Every proof that uses them has to put the raw definition `Foldl.get` into its `simp only` list. This unfolds the abstraction into `ConcreteCategory.hom (unop \u2026).asHom`. Examples are `toList_spec`, `foldl_toList`, `foldr_toList`, `foldlM_toList` and `foldrM_toList`. The `mk`/`get` definitions are not `@[simp]` and have no characterising lemma.",
+      "proposed_change": "Add the lemmas `Foldl.get_mk (f) : (Foldl.mk f).get = f`, `Foldr.get_mk`, `foldlM.get_mk` and `foldrM.get_mk`. Most likely each is provable by `rfl`. Tag them `@[simp]`: the left side is a head-symbol application of `get` to `mk`, so the rule is terminating and unambiguous. Then replace the `Foldl.get` and `Monoid.foldlM.get` entries in the `simp only` calls with these lemmas.",
+      "benefit": "The definitions `Foldl.get` and `Foldl.mk` stay opaque in proofs. Simp can finish `foldl`/`foldMap` computations without unfolding to `ConcreteCategory.hom`, and the interface has a stable normal form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Fold.lean",
+          "declaration": "Traversable.foldl_toList",
+          "excerpt": "simp only [foldl, toList_spec, foldMap_hom_free, foldl.ofFreeMonoid_comp_of, Foldl.get,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Fold.lean",
+          "declaration": "Traversable.foldrM_toList",
+          "excerpt": "foldrM.ofFreeMonoid_comp_of, Monoid.foldrM.get, FreeMonoid.ofList_toList]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Control/Fold.lean",
+          "declaration": "Traversable.foldl",
+          "excerpt": "(foldMap (Foldl.mk \u2218 flip f) xs).get x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 14499,
+    "cache_read_input_tokens": 48143,
+    "output_tokens": 6038,
+    "output_tokens_details": {
+      "thinking_tokens": 3012
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14499,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2398,
+        "cache_read_input_tokens": 16131,
+        "cache_creation_input_tokens": 2381,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2381
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1232063,
+  "duration_ms": 47827,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T22:54:06",
+  "unit": "file",
+  "source_sha256": "5589c0729c120b5c4bad79aa07b485506bfd9c22c028472db924d15246ce2223",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

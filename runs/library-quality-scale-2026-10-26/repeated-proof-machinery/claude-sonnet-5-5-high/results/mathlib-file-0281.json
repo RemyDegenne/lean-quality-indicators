@@ -1,0 +1,109 @@
+{
+  "id": "mathlib-file-0281",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the related API: Associates.le_singleton_iff and prime_pow_dvd_iff_le, WithZeroMulInt.toNNReal and its lemmas, and the FinitePlace consumer of adicAbv. Two real repeated-reasoning patterns turned up. (1) The translation \"r \u2208 v\u207f \u2194 n \u2264 count of v in factors of (r)\" is redone by hand in four places. (2) The nonarchimedean proof for the toNNReal-composed valuation is duplicated. Pattern (2) is only about five lines per copy, so it is the weaker finding. I did not check whether the private lemma in pattern (1) can sit before map_add_le_max' without extra imports. I believe it can, because it only needs Associates facts that are already imported. I have not compiled either rewrite. Other similar-looking code is a thin wrapper or short routine unfolding (valuation_le_one, adicAbv_coe_*, intAdicAbv_* lemmas, h_dvd_x/h_dvd_y duplicated within one proof only), so I did not report it.",
+  "findings": [
+    {
+      "declaration": "IsDedekindDomain.HeightOneSpectrum.intValuation.map_add_le_max' (with intValuation_le_pow_iff_dvd and intValuation_exists_uniformizer)",
+      "start_line": 141,
+      "end_line": 156,
+      "excerpt": "rw [\u2190 Associates.le_singleton_iff x nmin _,\n            Associates.prime_pow_dvd_iff_le (Associates.mk_ne_zero'.mpr hx) _]",
+      "problem": "The same conversion is repeated by hand in several proofs: for r \u2260 0, `r \u2208 v.asIdeal ^ n \u2194 n \u2264 (Associates.mk v.asIdeal).count (Associates.mk (Ideal.span {r})).factors`. It is done as `Associates.le_singleton_iff` followed by `Associates.prime_pow_dvd_iff_le (Associates.mk_ne_zero'.mpr hr) v.associates_irreducible`. The copies are lines 141\u2013145 (x), 146\u2013150 (y), 151\u2013156 (x+y, in the reverse direction), 240\u2013241 in `intValuation_le_pow_iff_dvd`, and 280\u2013281 in `intValuation_exists_uniformizer`. In `map_add_le_max'` each use also leaves a side goal `exact v.associates_irreducible`, and the `_` placeholders make the rewrites hard to follow. `intValuation_le_pow_iff_dvd` is itself this lemma stated for the valuation, but it comes after `map_add_le_max'` and cannot be used there.",
+      "proposed_change": "Before `intValuation.map_add_le_max'`, add a private lemma:\n`private lemma mem_pow_iff_le_count {r : R} (hr : r \u2260 0) (n : \u2115) : r \u2208 v.asIdeal ^ n \u2194 n \u2264 (Associates.mk v.asIdeal).count (Associates.mk (Ideal.span {r})).factors := by rw [\u2190 Associates.le_singleton_iff, Associates.prime_pow_dvd_iff_le (Associates.mk_ne_zero'.mpr hr) v.associates_irreducible]`.\nIts proof is one rewrite with the two existing lemmas.\nUses:\n- `map_add_le_max'`: `h_dvd_x := (v.mem_pow_iff_le_count hx _).2 (min_le_left _ _)`, and similarly `h_dvd_y` with `min_le_right`. The conclusion is `(v.mem_pow_iff_le_count hxy _).1 (Ideal.add_mem _ h_dvd_x h_dvd_y)`. This replaces the three `have` blocks and the trailing `exact v.associates_irreducible` goals.\n- `intValuation_le_pow_iff_dvd`: after `Ideal.dvd_span_singleton`, finish with `(v.mem_pow_iff_le_count hr n).symm`.\n- `intValuation_exists_uniformizer`: `mem : \u03c0 \u2208 v^1` and `notMem : \u03c0 \u2209 v^2` become `1 \u2264 count` and `\u00ac 2 \u2264 count` by `mem_pow_iff_le_count`, then `Nat.eq_of_le_of_lt_succ` closes the goal.\nThe lemma needs only imports the file already has.",
+      "benefit": "The Associates/count bookkeeping is stated and proved once instead of in four to five rewritten forms. The ultrametric proof then reads as the real argument: `x, y \u2208 v^min` gives `x+y \u2208 v^min`, so `min \u2264 count(x+y)`. The irreducibility and nonzero side goals no longer clutter `map_add_le_max'`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/DedekindDomain/AdicValuation/Valuation.lean",
+          "declaration": "IsDedekindDomain.HeightOneSpectrum.intValuation_le_pow_iff_dvd",
+          "excerpt": "Associates.prime_pow_dvd_iff_le (Associates.mk_ne_zero'.mpr hr) v.associates_irreducible]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/DedekindDomain/AdicValuation/Valuation.lean",
+          "declaration": "IsDedekindDomain.HeightOneSpectrum.intValuation_exists_uniformizer",
+          "excerpt": "rw [\u2190 pow_one (Associates.mk v.asIdeal), Associates.prime_pow_dvd_iff_le h\u03c0 hv] at mem"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/DedekindDomain/Ideal/Lemmas.lean",
+          "declaration": "Associates.le_singleton_iff",
+          "excerpt": "Associates.mk I ^ n \u2264 Associates.mk (Ideal.span {x}) \u2194 x \u2208 I ^ n"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/UniqueFactorizationDomain/FactorSet.lean",
+          "declaration": "Associates.prime_pow_dvd_iff_le",
+          "excerpt": "p ^ k \u2264 m \u2194 k \u2264 count p m.factors"
+        }
+      ]
+    },
+    {
+      "declaration": "IsDedekindDomain.HeightOneSpectrum.isNonarchimedean_intAdicAbvDef / isNonarchimedean_adicAbvDef",
+      "start_line": 586,
+      "end_line": 592,
+      "excerpt": "have h_mono := (toNNReal_strictMono hb).monotone\n  rw [\u2190 h_mono.map_max]\n  exact h_mono <| v.intValuation.map_add x y",
+      "problem": "`isNonarchimedean_intAdicAbvDef` (lines 586\u2013592) and `isNonarchimedean_adicAbvDef` (lines 621\u2013627) have the same proof. Both unfold the definition, take `toNNReal_strictMono hb` as a monotone map, rewrite `\u2190 h_mono.map_max`, and apply `map_add` of the underlying valuation. Only the valuation differs (`v.intValuation` vs `v.valuation K`). Nothing in the argument depends on `R` or `K`. The `AbsoluteValue` structures `intAdicAbv` and `adicAbv` (lines 597\u2013603 and 632\u2013638) repeat the same `map_mul'`, `nonneg'` and `add_le'` fields.",
+      "proposed_change": "Prove the statement once for an arbitrary valuation `w : Valuation A \u2124\u1d50\u2070` on a ring `A`:\n`lemma isNonarchimedean_toNNReal_comp (hb : 1 < b) (w : Valuation A \u2124\u1d50\u2070) : IsNonarchimedean (fun a => toNNReal (ne_zero_of_lt hb) (w a))`.\nThe proof is the existing five lines with `w.map_add`.\nThen `isNonarchimedean_intAdicAbvDef v hb := isNonarchimedean_toNNReal_comp hb v.intValuation` and `isNonarchimedean_adicAbvDef v hb := isNonarchimedean_toNNReal_comp hb (v.valuation K)`. The `AbsoluteValue` structures could also be built from a single generic constructor, `Valuation \u2124\u1d50\u2070` plus `1 < b` giving `AbsoluteValue A \u211d`. `intAdicAbv` and `adicAbv` would then be two instantiations.",
+      "benefit": "The comparison with the monotone `toNNReal` map, the actual mathematical content, is written once. Any change to `toNNReal` or `IsNonarchimedean` API is fixed in one place. It also makes clear that `adicAbv` extends `intAdicAbv` simply because the underlying valuation extends. The saving is modest, since each copy is about five lines, but the duplication is exact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/DedekindDomain/AdicValuation/Valuation.lean",
+          "declaration": "IsDedekindDomain.HeightOneSpectrum.isNonarchimedean_adicAbvDef",
+          "excerpt": "exact h_mono ((v.valuation _).map_add x y)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Int/WithZero.lean",
+          "declaration": "WithZeroMulInt.toNNReal_strictMono",
+          "excerpt": "theorem toNNReal_strictMono {e : \u211d\u22650} (he : 1 < e) :\n    StrictMono (toNNReal he.ne_zero)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 31842,
+    "cache_read_input_tokens": 176961,
+    "output_tokens": 7368,
+    "output_tokens_details": {
+      "thinking_tokens": 2030
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31842,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3548,
+        "cache_read_input_tokens": 34213,
+        "cache_creation_input_tokens": 1558,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1558
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.21877209999999997,
+  "duration_ms": 50872,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T00:56:44",
+  "unit": "file",
+  "source_sha256": "79e963b638f19065c0c5cd10bc1e6fa18956721866e5a9d2f184b31081826e61",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

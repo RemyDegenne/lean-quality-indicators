@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0188",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, all uses of repeatBlock/repeatBlockHom across formal-frontier (DivisionRingRank.lean, the PublicAPIClient test), and Mathlib's blockDiagonal simp lemmas (blockDiagonal_apply_eq, blockDiagonal_one, blockDiagonal_add, blockDiagonal_mul). I did not run Lean, so I make no claim that simp fails or loops; the competing-rule point is stated only as a possible ambiguity. The only simp lemma in the file is repeatBlockHom_apply; the rest of the interface is missing.",
+  "findings": [
+    {
+      "declaration": "Matrix.repeatBlockHom_apply",
+      "start_line": 63,
+      "end_line": 66,
+      "excerpt": "@[simp]\ntheorem repeatBlockHom_apply (A : Matrix m m R) :\n    repeatBlockHom (R := R) (m := m) (o := o) A = repeatBlock (o := o) A :=\n  rfl",
+      "problem": "The only @[simp] lemma rewrites the bundled ring hom application into `repeatBlock`, a plain `def` that has no simp API (no entry, zero/one, add, mul, or transpose lemmas). Once simp applies this rule, the term is on an opaque head: expressions like `repeatBlockHom (A * B)` or `repeatBlockHom 1` can no longer use the generic `map_mul` / `map_one` / `map_add` simp lemmas, and `repeatBlock (A * B)` has no rule at all. The rule `repeatBlockHom_apply` also competes with `map_mul`, `map_one` and similar rules on the same redex, since both match `repeatBlockHom (A * B)`. The test file proves multiplicativity of the hom only by calling `map_mul _ _ _` explicitly, and the library's own uses of `repeatBlock` (e.g. `rowRank_repeatBlock`) are used only through `rw`. So the simp normal form is a dead end.",
+      "proposed_change": "Either (a) drop `@[simp]` from `repeatBlockHom_apply` so the bundled hom keeps the `map_*` simp lemmas, or (b) keep it and give `repeatBlock` a simp API: `repeatBlock_apply` (entry `repeatBlock A (i, k) (j, l) = if k = l then A i j else 0`, or via `blockDiagonal_apply_eq` for equal indices), plus `repeatBlock_zero`, `repeatBlock_one`, `repeatBlock_add`, and `repeatBlock_mul` (the last needs `[Fintype n] [Fintype o]`), proved from Mathlib's simp lemmas `blockDiagonal_one`, `blockDiagonal_add`, `blockDiagonal_mul`. Option (b) makes `repeatBlock` the canonical simp normal form, as the current simp lemma intends.",
+      "benefit": "Users calling `simp` on goals containing `repeatBlockHom (A * B)` or `repeatBlock (A + B)` get a predictable normal form. They no longer have to fall back on explicit `map_mul` or `blockDiagonal` unfolding, and the ambiguity between two competing rewrites on the same redex is removed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/stable-range/tests/StableRangeTests/PublicAPIClient.lean",
+          "declaration": "block_hom_mul",
+          "excerpt": "  map_mul _ _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Data/Matrix/Block.lean",
+          "declaration": "Matrix.blockDiagonal_mul",
+          "excerpt": "theorem blockDiagonal_mul [Fintype n] [Fintype o] [NonUnitalNonAssocSemiring \u03b1]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Data/Matrix/Block.lean",
+          "declaration": "Matrix.blockDiagonal_apply_eq",
+          "excerpt": "theorem blockDiagonal_apply_eq (M : o \u2192 Matrix m n \u03b1) (i j k) :"
+        }
+      ]
+    },
+    {
+      "declaration": "Matrix.repeatBlock",
+      "start_line": 41,
+      "end_line": 43,
+      "excerpt": "def repeatBlock (A : Matrix m n R) : Matrix (m \u00d7 o) (n \u00d7 o) R :=\n  blockDiagonal (fun _ : o => A)",
+      "problem": "`repeatBlock` is a new definition with no entry-level simp lemma. Entries of `repeatBlock A` can only be reached by unfolding to `blockDiagonal` and then applying Mathlib's `blockDiagonal_apply`. The downstream proof `repeatBlockCoordinates_apply` and the injectivity proof in this file both use `change`/unfolding rather than a named lemma. No lemma such as `repeatBlock_apply` exists, and `repeatBlock_eq_kronecker_one` is correctly not simp (it would trade one canonical form for another), so simp has no way to evaluate entries.",
+      "proposed_change": "Add a `@[simp] theorem repeatBlock_apply (A : Matrix m n R) (i k j l) : repeatBlock (o := o) A (i, k) (j, l) = if k = l then A i j else 0`, proved by `simp [repeatBlock, blockDiagonal_apply]`. Alternatively, add `@[simp] repeatBlock_apply_same` for the diagonal case `k = l`, mirroring Mathlib's `blockDiagonal_apply_eq`.",
+      "benefit": "Entry computations on repeated blocks become a single simp step, and the injectivity proof and downstream arguments no longer need `change ... blockDiagonal`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Data/Matrix/Block.lean",
+          "declaration": "Matrix.blockDiagonal_apply_eq",
+          "excerpt": "theorem blockDiagonal_apply_eq (M : o \u2192 Matrix m n \u03b1) (i j k) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/stable-range/StableRange/RepeatedBlock.lean",
+          "declaration": "Matrix.repeatBlockHom_injective",
+          "excerpt": "  change blockDiagonal (fun _ : o => A) =\n    blockDiagonal (fun _ : o => B) at h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 7817,
+    "cache_read_input_tokens": 20981,
+    "output_tokens": 3469,
+    "output_tokens_details": {
+      "thinking_tokens": 519
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 7817,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2394,
+        "cache_read_input_tokens": 10589,
+        "cache_creation_input_tokens": 1241,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1241
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0680681,
+  "duration_ms": 23457,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T23:19:26",
+  "unit": "file",
+  "source_sha256": "63521851fb07cddf0a652853d045169d81f4d583343477ff5d05192f2d4dc3c6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

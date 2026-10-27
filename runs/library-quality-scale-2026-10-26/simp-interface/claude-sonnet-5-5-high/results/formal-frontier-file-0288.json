@@ -1,0 +1,105 @@
+{
+  "id": "formal-frontier-file-0288",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked its simp lemmas against Mathlib's simp set. I looked at `Ideal.Quotient.mk_algebraMap` and `Ideal.Quotient.algebraMap_eq` in Ideal/Quotient/Operations.lean. I also looked at `TrivSqZeroExt.fstHom`, which is declared with `@[simps]`, and at `TrivSqZeroExt.algebraMap_eq_inl`. I did not run Lean, so the claims about which lemmas fire are inferred from simp's inside-out rewriting and the stated attributes. They are not observed behaviour. `mem_augmentationIdeal_iff` as a simp lemma, the `mk_\u03b9` lemmas and the two `cotangentIdealEquivKerIdeal` apply lemmas looked fine. I did not report them.",
+  "findings": [
+    {
+      "declaration": "squareZeroQuotientEquiv_mk_algebraMap (and squareZeroQuotientEquiv_symm_inl)",
+      "start_line": 200,
+      "end_line": 212,
+      "excerpt": "      (Ideal.Quotient.mk _ (algebraMap R (SymmetricAlgebra R M) r)) =\n        TrivSqZeroExt.inl r := by",
+      "problem": "The simp lemma `squareZeroQuotientEquiv_mk_algebraMap` has the subterm `Ideal.Quotient.mk _ (algebraMap R (SymmetricAlgebra R M) r)` on its left-hand side. Mathlib's `@[simp] Ideal.Quotient.mk_algebraMap` rewrites exactly that subterm to `algebraMap R (A \u29f8 I) r`. Simp simplifies arguments before the head, so the lemma's left-hand side should normally be rewritten away and the lemma should rarely fire. `squareZeroQuotientEquiv_symm_inl` has the same fault on its right-hand side. It leaves a result that simp immediately rewrites to `algebraMap R _ r`. Also, `TrivSqZeroExt.algebraMap_eq_inl` is not simp, so the `algebraMap` normal form is never connected to `inl r`.",
+      "proposed_change": "State the lemmas in the simp-normal form, with `algebraMap R (SymmetricAlgebra R M \u29f8 augmentationIdeal ^ 2) r` as the argument and result. For the forward direction, `squareZeroQuotientEquiv (algebraMap R _ r) = TrivSqZeroExt.inl r` is just `AlgEquiv.commutes` plus `TrivSqZeroExt.algebraMap_eq_inl`, which are already simp-usable. Make `symm_inl` read `(squareZeroQuotientEquiv).symm (inl r) = algebraMap R _ r`. Keep the `mk _ (algebraMap ..)` forms as non-simp lemmas if they are still needed for `rw`.",
+      "benefit": "The `@[simp]` lemmas then match terms simp actually produces. Goals involving classes of scalars reduce reliably, and the file no longer claims simp coverage it does not provide.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/Ideal/Quotient/Operations.lean",
+          "declaration": "Ideal.Quotient.mk_algebraMap",
+          "excerpt": "Quotient.mk I (algebraMap R\u2081 A x) = algebraMap R\u2081 (A \u29f8 I) x"
+        }
+      ]
+    },
+    {
+      "declaration": "squareZeroQuotientAugmentation_mk_algebraMap",
+      "start_line": 115,
+      "end_line": 118,
+      "excerpt": "      (Ideal.Quotient.mk _ (algebraMap R (SymmetricAlgebra R M) r)) = r := by",
+      "problem": "The simp lemma's left-hand side contains `Ideal.Quotient.mk _ (algebraMap R _ r)`. Mathlib's simp lemma `Ideal.Quotient.mk_algebraMap` rewrites that to `algebraMap R (A \u29f8 I) r` first. The lemma's left-hand side is therefore not in simp normal form and will usually not match. The simp lemma that is actually useful would be about `squareZeroQuotientAugmentation (algebraMap R _ r)`.",
+      "proposed_change": "Restate it as `squareZeroQuotientAugmentation (R := R) (M := M) (algebraMap R (SymmetricAlgebra R M \u29f8 augmentationIdeal ^ 2) r) = r`. This follows from `AlgHom.commutes`, which is already simp. The statement then needs no custom simp lemma, and the `mk` version can be kept as a plain theorem. Alternatively, drop the `@[simp]` attribute from the current form.",
+      "benefit": "This avoids a dead simp lemma. Simp can then evaluate the augmentation on scalar classes from the normal form it actually produces.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/Ideal/Quotient/Operations.lean",
+          "declaration": "Ideal.Quotient.mk_algebraMap",
+          "excerpt": "Quotient.mk I (algebraMap R\u2081 A x) = algebraMap R\u2081 (A \u29f8 I) x"
+        }
+      ]
+    },
+    {
+      "declaration": "squareZeroQuotientEquiv_fst",
+      "start_line": 223,
+      "end_line": 227,
+      "excerpt": "    TrivSqZeroExt.fstHom R R M\n      (squareZeroQuotientEquiv (R := R) (M := M) (Ideal.Quotient.mk _ x)) =\n        algebraMapInv (R := R) (M := M) x := by",
+      "problem": "The simp lemma is stated with `TrivSqZeroExt.fstHom R R M (...)` on the left. `fstHom` is declared with `@[simps]`, so `TrivSqZeroExt.fstHom_apply : fstHom S R M x = x.fst` is a simp lemma. Simp will turn the left-hand side into `(squareZeroQuotientEquiv (mk x)).fst` before this lemma can match. The simp lemma is therefore not in normal form, and the useful simp statement about `.fst` is missing.",
+      "proposed_change": "Add or switch to a simp lemma with left-hand side `(squareZeroQuotientEquiv (R := R) (M := M) (Ideal.Quotient.mk _ x)).fst` and right-hand side `algebraMapInv x`. Derive it from the current `fstHom` version, and keep that version un-simp'd for the `rw` uses at lines 249 and 262. A `.snd` companion would also be useful, since the file already needs `.snd` at line 314.",
+      "benefit": "Simp can compute the scalar component of a quotient-class image. This is the form that appears after `fstHom_apply` and `TrivSqZeroExt.fst_*` lemmas fire, and it currently does not reduce.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/TrivSqZeroExt/Basic.lean",
+          "declaration": "TrivSqZeroExt.fstHom",
+          "excerpt": "@[simps]\ndef fstHom : tsze R M \u2192\u2090[S] R where"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 24075,
+    "cache_read_input_tokens": 64508,
+    "output_tokens": 5581,
+    "output_tokens_details": {
+      "thinking_tokens": 1796
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24075,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3254,
+        "cache_read_input_tokens": 24914,
+        "cache_creation_input_tokens": 3174,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3174
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1585768,
+  "duration_ms": 40427,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:08:47",
+  "unit": "file",
+  "source_sha256": "73f555b92fb67b1ac4c2ace8c3728fa4270583af431dc2b74e4f44fcc3265167",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0228",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and looked at the definitions of archDeriv and casimir1/2/3 in Definitions/Def_LanglandsTunnell_CubicInduction_ArchCentre3.lean. I also checked the sibling files that restate the same lemmas. The file has no @[simp] declarations of its own. The large `attribute [-simp]` and `[-instance]` preambles only switch off lemmas that come from other files, so I did not treat them as defects. I found no rewrite cycles or competing rules. The two findings are about missing simp-normal-form lemmas and about proofs that rebuild them by hand. The first is weaker. Making the lemmas simp could expose `casimirN` to the unfolding lemmas `casimirN_eq` if those were also made simp, so I recommend marking only the `_smul` lemmas. I could not run Lean, so I did not check that the replacements compile or what the downstream simp effects are.",
+  "findings": [
+    {
+      "declaration": "AsmAux.D_smul / AsmAux.casimir1_smul / AsmAux.casimir2_smul / AsmAux.casimir3_smul",
+      "start_line": 111,
+      "end_line": 129,
+      "excerpt": "rw [D_smul, D_smul, D_smul]",
+      "problem": "The unconditional scalar-linearity rules `archDeriv i j (c \u2022 \u03c6) = c \u2022 archDeriv i j \u03c6` and `casimirN (c \u2022 w) = c \u2022 casimirN w` are not simp lemmas, and the file works around this. `casimir3_smul` does `rw [casimir3_eq, casimir3_eq, Finset.smul_sum]`, then three `Finset.sum_congr` layers with `Finset.smul_sum`, then `rw [D_smul, D_smul, D_smul]`. `D_smul` is applied by hand at every use. The same lemmas, with no simp attribute, are restated in other files of the project (for example `D_smul`, `casimir1_smul`, `casimir2_smul` and `casimir3_smul` in the file about the joint Casimir eigenvector). They also appear as `archDeriv_smul` in several other files. That points to a missing canonical, shared simp rule. At the call sites (the `smul_mem'` field of V and the eigenvalue steps for `archDeriv c\u2080 d\u2080 v`) the goals are of the form `casimir1 (a \u2022 v) = lam\u2081 \u2022 (a \u2022 v)`. Each needs a manual `rw [casimir1_smul, hev.1, smul_comm]` or `rw [..., AsmAux.D_smul]`.",
+      "proposed_change": "Put `archDeriv_smul` and `casimir1_smul`, `casimir2_smul`, `casimir3_smul` next to the definitions, in Def_LanglandsTunnell_CubicInduction_ArchCentre3 or the WhittakerBlock namespace, and mark them `@[simp]`. Keep the `_eq` unfolding lemmas non-simp, since the file uses `casimirN_eq` in both directions (`rw [\u2190 AsmAux.casimir1_eq]`). `D_add` and `casimirN_add` need smoothness hypotheses, so they should stay as explicit lemmas. After that, `casimir3_smul` can be a short `simp [casimir3_eq, Finset.smul_sum, archDeriv_smul]` or can follow directly from a linear-map packaging. The eigenvalue goals then close with `simp [hev.1, smul_comm]`.",
+      "benefit": "Each file that needs scalar linearity of the Casimir operators no longer re-proves the lemma and rewrites by hand. The file would also lose about 20 lines of nested `Finset.sum_congr` boilerplate. The unconditional rules are safe orientations: the right-hand side moves the scalar outward and the expression gets smaller, so simp cannot loop.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_CubicInduction_exists_joint_casimir_eigenvector_apply_ne_zero_of_positive_skew_form.lean",
+          "declaration": "D_smul",
+          "excerpt": "theorem D_smul (c : \u2102) (\u03c6 : G \u2192 \u2102) (i j : Fin 3) : archDeriv i j (c \u2022 \u03c6) = c \u2022 archDeriv i j \u03c6 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_CubicInduction_WhittakerBlock_isArchSmooth3_archDeriv_and_archDeriv_add_smul_comm_translate.lean",
+          "declaration": "RaySupplyK1.archDeriv_smul",
+          "excerpt": "theorem archDeriv_smul (c : \u2102) (\u03c6 : G3 \u2192 \u2102) (i j : Fin 3) : archDeriv i j (c \u2022 \u03c6) = c \u2022 archDeriv i j \u03c6 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_CubicInduction_WhittakerBlock_sum_archDeriv_rev_eq_casimir3_add_casimir1_casimir1_sub_three_smul_casimir2.lean",
+          "declaration": "casimir3_smul",
+          "excerpt": "theorem casimir3_smul (c : \u2102) (F : G3 \u2192 \u2102) : casimir3 (c \u2022 F) = c \u2022 casimir3 F := by"
+        }
+      ]
+    },
+    {
+      "declaration": "solution (the `smul_mem'` field of V and `hsmulBlk`); `hsum`",
+      "start_line": 474,
+      "end_line": 484,
+      "excerpt": "have e1 : (fun g => \u2211 l : Fin 1, (![a] : Fin 1 \u2192 \u2102) l * (![v] : Fin 1 \u2192 _) l g) = a \u2022 v := by funext g; simp",
+      "problem": "`hsum` states the closure of `Blk` under linear combinations only through `Fin m`-indexed sums and `![...]` vectors. Every consumer then has to convert the instance back to its simp-normal form by hand. For scalar multiplication the same conversion is written three times. The three `have e1/e2/e3 \u2026 := by funext \u2026; simp` blocks, followed by `rw [e1, e2, e3] at hb'`, appear inline in `smul_mem'` (around line 449) and again in `hsmulBlk` (line 474 onwards). The addition case in `add_mem'` has an analogous `Fin 2` version. `hsum3` has a third version over `Fin 3`. The reshaping lemmas `e1/e2/e3` are one-off statements about `![a] l * ![v] l g`, so no simp lemma or interface lemma is shared. `smul_mem'` could use `hsmulBlk` if the latter were defined earlier. The `Fin.sum_univ_two` and `Fin.sum_univ_one` simp calls are also repeated.",
+      "proposed_change": "State `Blk` closure lemmas in their normal forms (`Blk.add`, `Blk.smul`, `Blk.sum`) once, and derive them from `joint_expansion_sum_mul` once. Define `hsmulBlk` before V, with an `a \u2022 v` conclusion, and let `smul_mem'` call `hsmulBlk a v (hMcont v hv) cv cv' hb` and `add_mem'` call the analogous `Blk.add`. Also add one lemma, such as `Blk.smul_eq`, that rewrites `Blk \u03c1 \u03b4 n J e (fun g => \u2211 l : Fin 1, \u2026) \u2026` to the normal form, so downstream proofs do not re-prove `e1/e2/e3`.",
+      "benefit": "The about 30 duplicated lines of funext/simp reshaping reduce to single applications. The `Fin.sum_univ_*` simp normalisation is done once, so it cannot drift between the copies. Readers see the actual closure properties of `Blk` instead of reshaping noise.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_CubicInduction_exists_submodule_inducedPicture_package_of_doubleSlotCoeff_top.lean",
+          "declaration": "solution (smul_mem' field of V)",
+          "excerpt": "have e1 : (fun g => \u2211 l : Fin 1, (![a] : Fin 1 \u2192 \u2102) l * (![v] : Fin 1 \u2192 _) l g) = a \u2022 v := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_CubicInduction_exists_submodule_inducedPicture_package_of_doubleSlotCoeff_top.lean",
+          "declaration": "solution (hsmulBlk)",
+          "excerpt": "have e3 : (fun i j i' j' k => \u2211 l : Fin 1, (![a] : Fin 1 \u2192 \u2102) l * (![cv'] : Fin 1 \u2192 _) l i j i' j' k) ="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 45224,
+    "cache_read_input_tokens": 171079,
+    "output_tokens": 6407,
+    "output_tokens_details": {
+      "thinking_tokens": 1685
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 45224,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3493,
+        "cache_read_input_tokens": 46491,
+        "cache_creation_input_tokens": 2746,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2746
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.26209389999999994,
+  "duration_ms": 46054,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T00:34:58",
+  "unit": "file",
+  "source_sha256": "a0f0377fc8653f3281b43ea7b35f9aad1e057a7a73fabfc2bd0215337be00a08",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,115 @@
+{
+  "id": "openai-math-file-0228",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the definitions of pivotalDistance (Exploration/Goodness.lean) and the other uses of separatingBonds_card and mem_separatingBonds across the repo. I could not run Lean, so I make no claim that any simp loop or failure occurs. The findings are modest interface issues. The existing @[simp] lemmas mem_domainBits, exchangeState_first and exchangeState_at look fine. I did not recommend simp attributes on the other small identities, such as the Finset/Set exchange lemmas.",
+  "findings": [
+    {
+      "declaration": "Percolation.separatingBonds_card",
+      "start_line": 542,
+      "end_line": 547,
+      "excerpt": "@[simp] theorem separatingBonds_card (G : BondGraph V E) (\u03c9 : Set E) (x z : V) :\n    (separatingBonds G \u03c9 x z).card = pivotalDistance G \u03c9 x z",
+      "problem": "The lemma is tagged @[simp] and rewrites a transparent `Finset.card` of `separatingBonds` into `pivotalDistance`. `pivotalDistance` is an ncard-based def that simp cannot unfold. Every consumer in this file goes the other way. Lines 614, 657 and 671 all use `rw [\u2190 separatingBonds_card]` to get back to `.card` so that `Finset.card_le_card` and `Finset.card_filter_le` apply. The definitions and statements `traceHeadGap`, `decodeGapOrdinals` use and `bridge_terminal_gap_le_internal_distance` all state `(separatingBonds ..).card` (the last mixes `.card` with `pivotalDistance` in one inequality). The `.card` forms are the working normal form. A downstream `simp` would therefore rewrite them into the opaque `pivotalDistance`, which hides the filter/card structure that `bridgeIndex` and the gap-code lemmas need. I found no use anywhere in the repo that relies on the simp direction.",
+      "proposed_change": "Remove the @[simp] attribute and keep the lemma as an explicit rewrite lemma. Alternatively, if `pivotalDistance` is meant to be the normal form, state the bounds and `traceHeadGap` with `pivotalDistance` rather than `.card`. Do not mix the two, and do not leave a simp rule pointing away from the form the proofs use.",
+      "benefit": "This removes a simp rule that disagrees with how every proof uses it. Downstream `simp` calls stop converting the Finset cardinalities (with their filter structure) into an opaque ncard-based definition. Callers also see a single canonical form for the number of separating bonds.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/UnimodularPercolation/Exploration/Goodness.lean",
+          "declaration": "pivotalDistance",
+          "excerpt": "noncomputable def pivotalDistance (G : BondGraph V E) (\u03c9 : Set E) (a b : V) : \u2115 :=\n  {e | OpenMarkedPivotal G \u03c9 {b} a e}.ncard"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/UnimodularPercolation/Splicing/GapCodes.lean",
+          "declaration": "Percolation.bridgeInterval_card_le",
+          "excerpt": "rw [\u2190 separatingBonds_card]\n  apply Finset.card_le_card"
+        }
+      ]
+    },
+    {
+      "declaration": "Percolation.exchangeState_away",
+      "start_line": 35,
+      "end_line": 38,
+      "excerpt": "theorem exchangeState_away (mask : Set E) (i l : \u2115) (s : SpliceState E) (hli : l \u2260 i) :\n    (exchangeState mask i s).2 l = s.2 l",
+      "problem": "The two sibling lemmas `exchangeState_first` and `exchangeState_at` are @[simp], but the third projection case `exchangeState_away` is not. This leaves the simp set for `exchangeState` incomplete. Callers rewrite by hand with positional placeholders, for example `rw [exchangeState_away _ _ _ _ hli, exchangeState_away _ _ _ _ hli]` (line 50), the `by omega` call at line 136 and the call at line 345. The lemma is a conditional rewrite whose side condition `l \u2260 i` is a plain hypothesis, so simp could discharge it. Elsewhere in the file (line 31) the proof falls back on `simp [exchangeState, Function.update_of_ne hli]`, which unfolds the definition instead of using the lemma.",
+      "proposed_change": "Mark `exchangeState_away` with @[simp]. The side condition `l \u2260 i` is discharged from a hypothesis `hli` in the simp set, or by `omega`/`decide` for literal indices. Then the involutivity proof and the `SpliceTrace.realize` proof can use `simp [hli]` instead of positional `rw` with four underscores.",
+      "benefit": "The projection lemmas for `exchangeState` become complete. Proofs no longer unfold `exchangeState` or pass four placeholder arguments. The lemma has a hypothesis and cannot loop, because its RHS is smaller than its LHS.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/UnimodularPercolation/Splicing/GapCodes.lean",
+          "declaration": "Percolation.exchangeState_involutive",
+          "excerpt": "rw [exchangeState_away _ _ _ _ hli, exchangeState_away _ _ _ _ hli]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/UnimodularPercolation/Splicing/GapCodes.lean",
+          "declaration": "Percolation.exchangeState_at",
+          "excerpt": "@[simp] theorem exchangeState_at"
+        }
+      ]
+    },
+    {
+      "declaration": "Percolation.gapLetterWeight",
+      "start_line": 1207,
+      "end_line": 1207,
+      "excerpt": "noncomputable def gapLetterWeight (L : \u211d) (l : \u2115) : \u211d := if l = 0 then 1 else gapWeight L l",
+      "problem": "`gapLetterWeight` is an `if l = 0` definition with no equation lemmas for its two cases. `sum_gapLetterWeight` has to unfold it and then clean up with an ad hoc simp set (`Fin.val_zero, gapLetterWeight, Fin.val_succ, Nat.add_eq_zero_iff, Nat.one_ne_zero, and_false, ite_false`) just to decide `if (i+1) = 0`. `total_gap_code_mass` and `valid_gap_code_mass_le` also depend on this sum. The way `gapLetterWeight L (n+1)` reduces is therefore only encoded in a fragile simp-only list inside one proof.",
+      "proposed_change": "Add `@[simp] theorem gapLetterWeight_zero (L : \u211d) : gapLetterWeight L 0 = 1` and `@[simp] theorem gapLetterWeight_succ (L : \u211d) (n : \u2115) : gapLetterWeight L (n+1) = gapWeight L (n+1)`. Then rewrite `sum_gapLetterWeight` as `rw [Fin.sum_univ_succ]; simp [sum_fin_succ_eq_Icc, inverseCodeMass]` or similar. (I have not compiled this.)",
+      "benefit": "The two cases of the definition get stable simp lemmas. The proof no longer depends on a long list of arithmetic simp lemmas for the `if`, and later uses of `gapLetterWeight` can reduce it without unfolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/UnimodularPercolation/Splicing/GapCodes.lean",
+          "declaration": "Percolation.sum_gapLetterWeight",
+          "excerpt": "simp only [Fin.val_zero,gapLetterWeight,Fin.val_succ,Nat.add_eq_zero_iff,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 42000,
+    "cache_read_input_tokens": 89300,
+    "output_tokens": 5856,
+    "output_tokens_details": {
+      "thinking_tokens": 2394
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 42000,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3042,
+        "cache_read_input_tokens": 43958,
+        "cache_creation_input_tokens": 2055,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2055
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.23550200000000002,
+  "duration_ms": 41637,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T00:34:54",
+  "unit": "file",
+  "source_sha256": "f374942a6e663706ae49d7dd87d8065297b4e4a3da6378da6c5486579f0f2601",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

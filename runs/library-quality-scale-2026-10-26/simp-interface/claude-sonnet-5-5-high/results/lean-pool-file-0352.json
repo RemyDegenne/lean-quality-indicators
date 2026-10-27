@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0352",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, the definitions of inverseNormPower/primeIdealNorm/primeIdealFactor in sibling files, and Mathlib's Function.extend simp lemmas. I did not run Lean, so I make no claim that the proposed simp lemmas compile or fire. Other lemmas, such as primeIdealAtCode_eq_some_iff and absNorm_idealOfPrimeFactors, looked fine without simp attributes. I found no loops or competing simp rules.",
+  "findings": [
+    {
+      "declaration": "extendByZero_apply / extendByZero_eq_zero_of_not_mem_range / hasSum_extendByZero / summable_extendByZero",
+      "start_line": 28,
+      "end_line": 53,
+      "excerpt": "noncomputable def extendByZero [AddCommMonoid E] (e : \u03b1 \u2192 \u03b2) (f : \u03b1 \u2192 E) (b : \u03b2) : E :=\n  Function.extend e f 0 b",
+      "problem": "extendByZero is a plain def wrapping Function.extend, so Mathlib's simp lemmas Function.Injective.extend_apply and Function.extend_apply' cannot fire on it. The two evaluation lemmas are not simp lemmas. Their Function.extend counterparts are @[simp] with the same shape: a hypothesis for the injective case, and a not-in-range hypothesis for the off-range case. As a result the proofs of hasSum_extendByZero and summable_extendByZero begin with `unfold extendByZero` followed by `simp_all`. The two later uses (lines 436 and 476) call the evaluation lemma by hand with `rw [extendByZero_apply (idealPrimeCode K) (idealPrimeCode_injective K), ...]`.",
+      "proposed_change": "Tag `extendByZero_apply` and `extendByZero_eq_zero_of_not_mem_range` with @[simp], following Function.Injective.extend_apply and Function.extend_apply'. Their hypotheses (injectivity, non-membership in the range) are side conditions that simp can discharge from hypotheses or simp lemmas such as `idealPrimeCode_injective`. The proofs of the two extendByZero summability lemmas and the later `rw [extendByZero_apply ...]` calls could then use simp without unfolding the def.",
+      "benefit": "Callers get the same normal form for extendByZero as for Function.extend. They no longer need to unfold the wrapper or name the injectivity proof in each rewrite.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Logic/Function/Basic.lean",
+          "declaration": "Function.Injective.extend_apply",
+          "excerpt": "theorem Injective.extend_apply (hf : Injective f) (g : \u03b1 \u2192 \u03b3) (e' : \u03b2 \u2192 \u03b3) (a : \u03b1) :\n    extend f g e' (f a) = g a :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Logic/Function/Basic.lean",
+          "declaration": "Function.extend_apply'",
+          "excerpt": "theorem extend_apply' (g : \u03b1 \u2192 \u03b3) (e' : \u03b2 \u2192 \u03b3) (b : \u03b2) (hb : \u00ac\u2203 a, f a = b) :"
+        }
+      ]
+    },
+    {
+      "declaration": "primeValueHom (no simp lemma for nonzero arguments)",
+      "start_line": 114,
+      "end_line": 125,
+      "excerpt": "  toFun n :=\n    if n = 0 then 0 else\n      n.factorization.prod fun p e \u21a6 a p ^ e",
+      "problem": "The only simp lemmas for primeValueHom are for 1, for primes, and for Nat.Primes. For a general nonzero n there is no lemma that evaluates it as the factorization product. Callers therefore unfold the structure definition inside simp: `simpa [encodedIdealSummand, primeValueHom, hn0] using hn` at line 371, and `rw [primeValueHom]` in primeValueHom_apply_of_prime. Unfolding a `MonoidWithZeroHom` structure literal exposes the `if n = 0 then ... else` term and the coercion internals, rather than a stable normal form.",
+      "proposed_change": "Add a lemma such as `primeValueHom_apply_of_ne_zero (a : \u2115 \u2192 M) {n : \u2115} (hn : n \u2260 0) : primeValueHom a n = n.factorization.prod fun p e \u21a6 a p ^ e`, with a `primeValueHom_zero`-style companion if it is wanted. Tag it @[simp] so that the side condition `n \u2260 0` is discharged from the context. Then replace `simpa [encodedIdealSummand, primeValueHom, hn0]` with a simp call that uses the lemma. Also use it in primeValueHom_apply_of_prime.",
+      "benefit": "The characterisation of primeValueHom becomes a reusable lemma. Downstream simp calls no longer need `simp [primeValueHom]`, which depends on the exact definition and the form of the coercion.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/DedekindZeta/PrimeIdealEulerProduct.lean",
+          "declaration": "exists_idealPrimeCode_eq_of_encodedIdealSummand_ne_zero",
+          "excerpt": "simpa [encodedIdealSummand, primeValueHom, hn0] using hn"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/DedekindZeta/PrimeIdealEulerProduct.lean",
+          "declaration": "primeValueHom_apply_of_prime",
+          "excerpt": "  rw [primeValueHom]\n  simp [hp.ne_zero, hp.factorization]"
+        }
+      ]
+    },
+    {
+      "declaration": "encodedIdealSummand (missing simp lemmas at primes / prime-ideal codes)",
+      "start_line": 310,
+      "end_line": 312,
+      "excerpt": "noncomputable def encodedIdealSummand (s : \u2102) : \u2115 \u2192*\u2080 \u2102 :=\n  primeValueHom (encodedPrimeIdealWeight K s)",
+      "problem": "The simp lemmas stop at primeValueHom and at encodedPrimeIdealWeight (the latter has a @[simp] lemma for primeIdealCode K P). encodedIdealSummand is a def, so simp cannot see through it. Two lemmas therefore repeat the manual pattern `rw [encodedIdealFactor, encodedIdealSummand, ...primeValueHom_apply_of_prime/primeValueHom_apply_prime_subtype ...]`. The coercion `((primeIdealCodeEmbedding K P : Nat.Primes) : \u2115) = primeIdealCode K P` is proved inline with `show ... by rfl` instead of being a simp lemma. Because the `primeValueHom_apply_prime_subtype` rewrite needs `encodedIdealSummand` unfolded first, the rewrite chains cannot be a plain simp call.",
+      "proposed_change": "Add @[simp] lemmas `encodedIdealSummand_primeIdealCode : encodedIdealSummand K s (primeIdealCode K P) = inverseNormPower (primeIdealNorm K P) s` and `encodedIdealSummand_coe_primes (p : Nat.Primes) : encodedIdealSummand K s p = encodedPrimeIdealWeight K s p`. Add a @[simp] lemma `primeIdealCodeEmbedding_apply_coe : (primeIdealCodeEmbedding K P : \u2115) = primeIdealCode K P` (rfl). Then encodedIdealFactor_primeIdealCode and encodedIdealFactor_eq_one_of_not_mem_range can be closed by `simp [encodedIdealFactor, primeIdealFactor, localFactor]` plus the hnone fact, instead of the explicit unfolding rewrites.",
+      "benefit": "This gives a canonical simp normal form for evaluating the Euler-factor summand at prime codes. It removes duplicated unfold-and-rewrite chains and makes later lemmas about encodedIdealFactor easier to write.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/DedekindZeta/PrimeIdealEulerProduct.lean",
+          "declaration": "encodedIdealFactor_primeIdealCode",
+          "excerpt": "rw [encodedIdealFactor, encodedIdealSummand,\n    show ((primeIdealCodeEmbedding K P : Nat.Primes) : \u2115) =\n      primeIdealCode K P by rfl]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Odlyzko/DedekindZeta/PrimeIdealEulerProduct.lean",
+          "declaration": "encodedIdealFactor_eq_one_of_not_mem_range",
+          "excerpt": "rw [encodedIdealFactor, encodedIdealSummand,\n    primeValueHom_apply_prime_subtype, encodedPrimeIdealWeight, hnone]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 22422,
+    "cache_read_input_tokens": 89637,
+    "output_tokens": 6765,
+    "output_tokens_details": {
+      "thinking_tokens": 2168
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22422,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3289,
+        "cache_read_input_tokens": 24834,
+        "cache_creation_input_tokens": 1601,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1601
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1663217,
+  "duration_ms": 46321,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T01:57:09",
+  "unit": "file",
+  "source_sha256": "1dd6f83279c9ecdad4bfd05c3900a16b5ecc2832fcf19af5c495149c47e5244c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

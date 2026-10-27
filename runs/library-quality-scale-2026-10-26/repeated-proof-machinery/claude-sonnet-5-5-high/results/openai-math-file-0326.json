@@ -1,0 +1,83 @@
+{
+  "id": "openai-math-file-0326",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I then read CavityRootInnovationLaw.lean and CavityQuadraticOneReplica.lean (lines 90\u2013143) in full. I read CavityRootedReplicaTransport.lean lines 55\u2013134 and grepped every use of cavity_innovation_covariance_posSemidef and cavity_tilt_covariance_posSemidef. The rooted-Gaussian proof contains one repeated fragment: assembling PosSemidef of \u03a3\u1d62 S'\u1d62 + cavityResolvent K (H n) from the per-step lemma and the tilt lemma. I also checked the shorter repeated fragments: the translation `map (a + \u00b7) (gaussian 0 T) = gaussian a T` via cavity_multivariateGaussian_affine_image, and the conjugation PSD fact `hS\u2080.mul_mul_conjTranspose_same`. I judged them too thin (a single existing-lemma call) to report. The rest of the proof (lintegral kernel unfolding, map_prod_map) is specific to this theorem; the nearby proofs share only its general shape. I have not compiled the proposed helper. In particular, the arguments to `Matrix.posSemidef_sum` are copied from existing working code, but the helper's elaboration with `Fin n` sums is untested.",
+  "findings": [
+    {
+      "declaration": "InvariantIsing.cavity_rooted_quadratic_gaussian (hT)",
+      "start_line": 40,
+      "end_line": 43,
+      "excerpt": "have hT : T.PosSemidef := (Matrix.posSemidef_sum Finset.univ (fun (i : Fin n) _ =>\n    cavity_innovation_covariance_posSemidef K (H i) (H (i + 1)) (S i) (hS i)\n      (b i) (hdet i) (hdet (i + 1)) (h\u0394 i) (hQ i))).add\n        (cavity_tilt_covariance_posSemidef K (H n) hR hQR)",
+      "problem": "The proof that the total rooted covariance `\u03a3\u1d62 (1-H\u1d62K)\u207b\u00b9 S\u1d62 (1-H_{i+1}K)\u207b\u00b9\u1d40 + cavityResolvent K (H n)` is positive semidefinite is spelled out inline. It sums the per-step PSD lemma over `Fin n` with `Matrix.posSemidef_sum` and then adds the tilt-covariance lemma. The same four-line argument, with the same nine hypotheses, is repeated in at least three other proofs. In CavityRootedReplicaTransport it appears inside `hT`, in CavitySpectralMoment inside the `Sfull` PSD proof, and in CavityQuadraticOneReplica as `hsum`. Any change to the hypotheses of `cavity_innovation_covariance_posSemidef` has to be made at every copy. A reader also has to re-verify each time that the block is the same fact.",
+      "proposed_change": "Add one lemma next to `cavity_innovation_covariance_posSemidef`, for example in CavityInnovationCovariancePositive.lean (or a file importing both lemmas). Its statement is:\n\ntheorem cavity_total_covariance_posSemidef {d : \u2115} (n : \u2115) (K : Matrix (Fin d) (Fin d) \u211d) (H S : \u2115 \u2192 Matrix (Fin d) (Fin d) \u211d) (b : \u2115 \u2192 \u211d) (hS : \u2200 i, (S i).PosSemidef) (hdet : \u2200 i, IsUnit (1 - H i * K).det) (h\u0394 : \u2200 i, H i - H (i + 1) = b i \u2022 S i) (hQ : \u2200 i, (cavityFactorPrecision (b i \u2022 cavityBackwardQuadratic K (H (i + 1))) (CFC.sqrt (S i))).PosDef) (hR : (H n).PosSemidef) (hQR : (cavityFactorPrecision K (CFC.sqrt (H n))).PosDef) : ((\u2211 i : Fin n, (1 - H i * K)\u207b\u00b9 * S i * ((1 - H (i + 1) * K)\u207b\u00b9).transpose) + cavityResolvent K (H n)).PosSemidef\n\nThe proof is exactly the existing term, `(Matrix.posSemidef_sum Finset.univ (fun (i : Fin n) _ => cavity_innovation_covariance_posSemidef K (H i) (H (i + 1)) (S i) (hS i) (b i) (hdet i) (hdet (i + 1)) (h\u0394 i) (hQ i))).add (cavity_tilt_covariance_posSemidef K (H n) hR hQR)`.\n\nRewritten uses:\n- Target: `have hT : T.PosSemidef := cavity_total_covariance_posSemidef n K H S b hS hdet h\u0394 hQ hR hQR`. `T` is a `let` with the same body, so this is definitional.\n- CavityRootedReplicaTransport `hT`: `exact hroot.add (cavity_total_covariance_posSemidef n K H S b hS hdet h\u0394 hQ hR hQR)`.\n- CavityQuadraticOneReplica: `hsum` becomes the same call, and `hS'` and `hR'` are kept only if used elsewhere in that proof.\n- CavitySpectralMoment: the second bullet becomes `exact cavity_total_covariance_posSemidef n K H S b hS hdet h\u0394 hQ hR hQR`.",
+      "benefit": "The roughly four-line PSD assembly is replaced by a single named fact, so each caller states what it needs instead of re-deriving it. Hypothesis changes are made once. The theorem proofs, including this one, are shorter, and their remaining content is the measure-theoretic argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityRootedReplicaTransport.lean",
+          "declaration": "cavity_rooted_full_integrability (hT)",
+          "excerpt": "exact hroot.add ((Matrix.posSemidef_sum Finset.univ (fun (i : Fin n) _ =>\n      cavity_innovation_covariance_posSemidef K (H i) (H (i + 1)) (S i) (hS i)\n        (b i) (hdet i) (hdet (i + 1)) (h\u0394 i) (hQ i))).add\n          (cavity_tilt_covariance_posSemidef K (H n) hR hQR))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavityQuadraticOneReplica.lean",
+          "declaration": "cavity_quadratic_one_gaussian (hsum)",
+          "excerpt": "have hsum : ((\u2211 i : Fin n, S' i) + R).PosSemidef :=\n    (Matrix.posSemidef_sum (x := fun i : Fin n => S' i)\n      Finset.univ (fun i _ => hS' i)).add hR'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/InvariantIsing/Cavity/CavitySpectralMoment.lean",
+          "declaration": "Sfull PSD proof",
+          "excerpt": "\u00b7 exact (Matrix.posSemidef_sum Finset.univ (fun (i : Fin n) _ =>\n        cavity_innovation_covariance_posSemidef K (H i) (H (i + 1)) (S i) (hS i)\n          (b i) (hdet i) (hdet (i + 1)) (h\u0394 i) (hQ i))).add\n            (cavity_tilt_covariance_posSemidef K (H n) hR hQR)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 27258,
+    "cache_read_input_tokens": 94031,
+    "output_tokens": 5353,
+    "output_tokens_details": {
+      "thinking_tokens": 1349
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27258,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3576,
+        "cache_read_input_tokens": 27435,
+        "cache_creation_input_tokens": 3752,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3752
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17198909999999998,
+  "duration_ms": 38258,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:36:44",
+  "unit": "file",
+  "source_sha256": "6bd88b0646ab4371d0a7be84d136ebb792b48f145d847080701326c0d14dc4b0",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

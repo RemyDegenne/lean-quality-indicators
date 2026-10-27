@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0269",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and the sibling files it copies: Pair/EnergyReturn.lean (physicalScaling_normSq_le, pair_energy_return, pair_window_return) and Asymptotics/TruncatedScaling.lean (truncatedModeFactor, truncatedModeFactor_pos). Also checked the definitions of exteriorScaling, physicalScaling, exteriorScaling_coordinate, occupationNormSq, and both intertwining theorems. The two proof pairs are the same argument except for the scaling and intertwining lemma used. pair_window_return and truncated_pair_window_return differ only in the omega side goals, so I did not report them. I did not check the exact form of pairFactor_one_le. Both proofs derive 1 \u2264 pairFactor^2 from it with nlinarith, so the helper below takes 1 \u2264 r as a hypothesis. I could not compile any of the proposed changes.",
+  "findings": [
+    {
+      "declaration": "OAI.Laughlin.Fock.truncatedScaling_normSq_le",
+      "start_line": 8,
+      "end_line": 25,
+      "excerpt": "  rw [exteriorScaling_coordinate,norm_mul,mul_pow]\n  have hb : \u2016\u220f i \u2208 A, (truncatedModeFactor L Q i : \u2102)\u2016 \u2264 1 := by\n    rw [norm_prod]\n    apply Finset.prod_le_one\u2080",
+      "problem": "The proof repeats the body of physicalScaling_normSq_le in Pair/EnergyReturn.lean almost line for line. Both unfold occupationNormSq, apply Finset.sum_le_sum, rewrite with exteriorScaling_coordinate, norm_mul and mul_pow, and bound \u2016\u220f d i\u2016 \u2264 1 via norm_prod and Finset.prod_le_one\u2080. Both then square that bound and finish with mul_le_mul_of_nonneg_right ... trans_eq (one_mul _). The only difference is the per-mode fact \u2016d i\u2016 \u2264 1. The general fact is that an exterior scaling with every |d i| \u2264 1 does not increase occupationNormSq, and it is proved twice.",
+      "proposed_change": "Add one lemma in EnergyReturn.lean, or in Exterior/OccupationMetric.lean next to exteriorScaling_coordinate:\n\ntheorem exteriorScaling_normSq_le (Q : \u2115) (d : Fin (Q+1) \u2192 \u2102) (hd : \u2200 i, \u2016d i\u2016 \u2264 1) (x : Space Q) :\n    occupationNormSq Q (exteriorScaling Q d x) \u2264 occupationNormSq Q x\n\nProof sketch: this is the current block with d in place of the mode factors. Use sum_le_sum, exteriorScaling_coordinate, norm_mul and mul_pow. Then use norm_prod and Finset.prod_le_one\u2080 with hd to get \u2016\u220f i \u2208 A, d i\u2016 \u2264 1, square it, and conclude as before.\n\nThen physicalScaling_normSq_le becomes `unfold physicalScaling; exact exteriorScaling_normSq_le Q _ (fun i => by simpa only [Complex.norm_real, Real.norm_eq_abs, abs_of_nonneg (modeFactor_nonneg Q i.val)] using modeFactor_le_one Q i.val hQ) x`.\n\ntruncatedScaling_normSq_le becomes `unfold truncatedScaling; exact exteriorScaling_normSq_le L Q ...`. Its per-mode obligation is the existing residual: `rw [Complex.norm_real, Real.norm_eq_abs, abs_of_pos (truncatedModeFactor_pos L Q hQ i)]; unfold truncatedModeFactor; split_ifs; exact modeFactor_le_one Q i.val hQ; exact le_rfl`. Pass Q, not L, as the first argument of the helper.",
+      "benefit": "The product-norm and sum-comparison argument is stated and maintained once. Each scaling lemma then reduces to the one fact that differs, a per-mode bound \u2016d i\u2016 \u2264 1. A change to the occupation metric or to exteriorScaling_coordinate would need one edit, not two copied proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Laughlin/Pair/EnergyReturn.lean",
+          "declaration": "OAI.Laughlin.Fock.physicalScaling_normSq_le",
+          "excerpt": "  rw [exteriorScaling_coordinate,norm_mul,mul_pow]\n  have hb : \u2016\u220f i \u2208 A, (modeFactor Q i.val : \u2102)\u2016 \u2264 1 := by\n    rw [norm_prod]\n    apply Finset.prod_le_one\u2080"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Laughlin/Exterior/PairConjugation.lean",
+          "declaration": "OAI.Laughlin.Fock.physicalScaling",
+          "excerpt": "exteriorScaling Q (fun i => (modeFactor Q i.val : \u2102))"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.Laughlin.Fock.truncated_pair_energy_return",
+      "start_line": 28,
+      "end_line": 43,
+      "excerpt": "  have he := congrArg (occupationNormSq Q) (truncated_sourcePair_intertwining L Q p hQ hp hL x)\n  rw [occupationNormSq_smul,Complex.norm_real,Real.norm_eq_abs,\n    abs_of_nonneg (show 0 \u2264 pairFactor Q p from Real.sqrt_nonneg _)] at he",
+      "problem": "The proof of truncated_pair_energy_return is a copy of pair_energy_return in Pair/EnergyReturn.lean. Only the scaling (physicalScaling or truncatedScaling) and the intertwining lemma differ. Both proofs take occupationNormSq of the intertwining identity S(E x) = r \u2022 E'(S x). They rewrite with occupationNormSq_smul, Complex.norm_real and abs_of_nonneg, derive 1 \u2264 r^2 by nlinarith, and run the same three-step calc: u \u2264 r^2\u00b7u = \u2016S(E x)\u2016\u00b2 \u2264 \u2016E x\u2016\u00b2. The argument that a scalar r \u2265 1 intertwining with a norm-nonincreasing S gives a return bound is real reasoning, and it is written twice.",
+      "proposed_change": "Add an abstract lemma next to occupationNormSq_smul in EnergyReturn.lean:\n\ntheorem occupationNormSq_le_of_smul_eq (Q : \u2115) (r : \u211d) (hr : 1 \u2264 r) (u v w : Space Q)\n    (h : w = (r : \u2102) \u2022 u) (hw : occupationNormSq Q w \u2264 occupationNormSq Q v) :\n    occupationNormSq Q u \u2264 occupationNormSq Q v\n\nProof sketch: subst h and rw [occupationNormSq_smul, Complex.norm_real, Real.norm_eq_abs, abs_of_nonneg (by linarith)] at hw. Then 1 \u2264 r^2 by nlinarith, and u \u2264 r^2\u00b7u by mul_le_mul_of_nonneg_right with occupationNormSq_nonneg.\n\nThen pair_energy_return becomes `exact occupationNormSq_le_of_smul_eq Q _ (pairFactor_one_le Q p hp) _ _ _ (sourcePair_intertwining Q p hQ hp x) (physicalScaling_normSq_le Q hQ _)`.\n\ntruncated_pair_energy_return becomes `exact occupationNormSq_le_of_smul_eq Q _ (pairFactor_one_le Q p hp) _ _ _ (truncated_sourcePair_intertwining L Q p hQ hp hL x) (truncatedScaling_normSq_le L Q hQ _)`. This assumes pairFactor_one_le states 1 \u2264 pairFactor Q p, which its use here suggests. If it states something else, adjust hr accordingly.",
+      "benefit": "Each theorem shrinks from about 15 lines to one application, and its two inputs (the intertwining identity and the norm bound) are visible. The scalar/norm manipulation, which is easy to get subtly wrong, lives in one place instead of drifting between a physical and a truncated copy.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Laughlin/Pair/EnergyReturn.lean",
+          "declaration": "OAI.Laughlin.Fock.pair_energy_return",
+          "excerpt": "  have he := congrArg (occupationNormSq Q) (sourcePair_intertwining Q p hQ hp x)\n  rw [occupationNormSq_smul,Complex.norm_real,Real.norm_eq_abs,\n    abs_of_nonneg (show 0 \u2264 pairFactor Q p from Real.sqrt_nonneg _)] at he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Laughlin/Pair/EnergyReturn.lean",
+          "declaration": "OAI.Laughlin.Fock.occupationNormSq_smul",
+          "excerpt": "occupationNormSq Q (c \u2022 x) = \u2016c\u2016^2 * occupationNormSq Q x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 14080,
+    "cache_read_input_tokens": 41022,
+    "output_tokens": 5327,
+    "output_tokens_details": {
+      "thinking_tokens": 1240
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14080,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4211,
+        "cache_read_input_tokens": 14964,
+        "cache_creation_input_tokens": 3045,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3045
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11370820000000001,
+  "duration_ms": 34460,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:46:44",
+  "unit": "file",
+  "source_sha256": "8681e4af8d2df6e4c07491688b485b07920bac1a952458aae79356975c3187c7",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

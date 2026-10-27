@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0229",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it depends on in AlgorithmicSpec.lean (binaryListCode, rationalEntryBinaryCode, rationalMatrixBinaryCode). I grepped downstream uses of the wrapper definitions (machineListHead, machineListTail, machineMatrixRowsWord, and the others) across LeanPool/BeyondBethe. I read the call sites in MachineKuhnRunner, MachineOptimizerMatrixBitBound and MachineRationalVectorSum. I did not run Lean. The suggestions are untested, and I don't claim any simp failure was observed. The wrappers are plain, non-reducible defs, so they do not unfold during simp. The existing `_cons` and `_encode` lemmas are stated at the code-constructor level (`binaryListCode _ (x :: xs)`, `rationalEntryBinaryCode q`, `rationalMatrixBinaryEncoding.encode`). Because of that, the interface breaks once a caller's simp set also unfolds `binaryListCode`. I found no loop, competing-rule or orientation problems.",
+  "findings": [
+    {
+      "declaration": "machineListHead_cons / machineListTail_cons (missing pair-level simp lemmas for machineListHead / machineListTail)",
+      "start_line": 92,
+      "end_line": 101,
+      "excerpt": "machineListHead (binaryListCode encode (x :: xs)) = encode x := by\n  simp [machineListHead, binaryListCode]",
+      "problem": "The only simp lemmas for `machineListHead` and `machineListTail` are keyed on `binaryListCode encode (x :: xs)`. The wrappers are non-reducible defs, so `machinePairFirst_pair` and `machinePairSecond_pair` do not fire on `machineListHead (pair a b)`. Callers already simp with `binaryListCode` unfolded. That turns the argument into `pair (encode x) (binaryListCode encode xs)` before `machineListHead_cons` can match. They then have to add `machineListHead, machineListTail` to the simp set to expose the pair lemmas, for example in MachineKuhnRunner (`binaryListCode, machineKuhnStackPush, List.finRange_succ, machineListHead, machineListTail`) and MachineOptimizerMatrixBitBound (`matrixEntryLengthSemCode, machineListHead, machineListTail`). Unfolding the wrappers leaks the implementation `machinePairFirst`/`machinePairSecond`, which this file was meant to hide.",
+      "proposed_change": "Add `@[simp] theorem machineListHead_pair (left right : List Bool) : machineListHead (pair left right) = left := machinePairFirst_pair left right` and the matching `machineListTail_pair` for `machinePairSecond_pair`. Keep the `_cons` lemmas and define them via these pair lemmas. Do the same for the other wrappers (`machineMatrixDimensionWord_pair`, `machineMatrixRowsWord_pair`, `machineRationalEntryNumeratorWord_pair`, `machineRationalEntryDenominatorWord_pair`). Callers can then drop the unfold lemmas for the wrappers from their simp sets.",
+      "benefit": "Simp normalizes `machineListHead`/`machineListTail` applied to a `pair` whether or not `binaryListCode` has been unfolded. Downstream simp calls no longer need to unfold the wrapper definitions, and the interface stays abstract.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/MachineKuhnRunner.lean",
+          "declaration": "simp call in the succ case of the Kuhn init-control proof",
+          "excerpt": "List.finRange_succ, machineListHead, machineListTail,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/MachineOptimizerMatrixBitBound.lean",
+          "declaration": "matrix entry length semantics proof (cons row rows case)",
+          "excerpt": "matrixEntryLengthSemCode, machineListHead, machineListTail]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/AlgorithmicSpec.lean",
+          "declaration": "binaryListCode",
+          "excerpt": "| x :: xs => pair (encode x) (binaryListCode encode xs)"
+        }
+      ]
+    },
+    {
+      "declaration": "machineMatrixDimensionWord_encode / machineMatrixRowsWord_encode (no simp lemmas for machineMatrixDimensionWord / machineMatrixRowsWord on a `pair`)",
+      "start_line": 64,
+      "end_line": 78,
+      "excerpt": "@[simp] theorem machineMatrixRowsWord_encode {n : \u2115}",
+      "problem": "Both `machineMatrixDimensionWord` and `machineMatrixRowsWord` are non-reducible defs. Their only simp lemmas are stated on `rationalMatrixBinaryEncoding.encode \u27e8n, A\u27e9`, a projection of a structure constant. After a caller unfolds the code to `pair n.bits (binaryListCode \u2026)`, or when the argument is a general `pair` such as one produced by `machineMatrixRowsWord (machineRowUpperMatrixWord word)`, no simp lemma applies. Callers end up unfolding the wrapper by hand, as in MachineRationalVectorSum: `simp [machineMatrixRawSumInit, \u2026, binaryListCode, machineMatrixRowsWord]`.",
+      "proposed_change": "Add `@[simp] theorem machineMatrixDimensionWord_pair (l r : List Bool) : machineMatrixDimensionWord (pair l r) = l` and `@[simp] theorem machineMatrixRowsWord_pair (l r : List Bool) : machineMatrixRowsWord (pair l r) = r`, proved from `machinePairFirst_pair`/`machinePairSecond_pair`. Consider also stating the `_encode` lemmas for `rationalMatrixBinaryCode \u27e8n, A\u27e9`, which is the form `AlgorithmicSpec` uses in `F (rationalMatrixBinaryCode x) = \u2026`. They would then fire without going through `rationalMatrixBinaryEncoding.encode`.",
+      "benefit": "The simp interface for the matrix accessors is complete on both the abstract `pair` form and the concrete code form. Proofs can stop unfolding `machineMatrixRowsWord` and `machineMatrixDimensionWord`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/MachineRationalVectorSum.lean",
+          "declaration": "hinit step of the matrix raw sum semantics proof",
+          "excerpt": "binaryListCode, machineMatrixRowsWord]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/AlgorithmicSpec.lean",
+          "declaration": "rationalMatrixBinaryCode",
+          "excerpt": "def rationalMatrixBinaryCode (x : RationalMatrixInput) : List Bool :=\n  pair x.1.bits"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 22061,
+    "cache_read_input_tokens": 130505,
+    "output_tokens": 6745,
+    "output_tokens_details": {
+      "thinking_tokens": 1769
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22061,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2708,
+        "cache_read_input_tokens": 28386,
+        "cache_creation_input_tokens": 1078,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1078
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1687725,
+  "duration_ms": 51870,
+  "turns": 13,
+  "attempts": 2,
+  "judged": "2026-10-27T00:36:08",
+  "unit": "file",
+  "source_sha256": "06038618aa0cdfa0aa2fa836c5d1a5a54d6f3c10fe78ba560bac04d1723de7a8",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

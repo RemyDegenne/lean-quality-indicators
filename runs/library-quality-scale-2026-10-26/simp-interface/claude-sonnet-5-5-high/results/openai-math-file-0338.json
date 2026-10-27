@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0338",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it depends on: logPhase, logPhase_norm, logPhase_add_frequency, profileMode, tripleCoefficient. I grepped the repo for uses of logPhase_norm and logPhase_neg_argument. I did not run Lean, so I make no claim about simp behaviour that I observed. The file declares no simp attributes of its own. The only simp-interface issues I found are the unregistered norm lemma and the parallel hand-written reflection-style rewrite lemmas. I checked the other lemmas and `simp only` calls for loops and competing rules and found none.",
+  "findings": [
+    {
+      "declaration": "pureProfileMode_norm (use of FourierBridge.logPhase_norm as an explicit simp argument)",
+      "start_line": 58,
+      "end_line": 60,
+      "excerpt": "simp [pureProfileMode, norm_prod,  logPhase_norm]",
+      "problem": "`FourierBridge.logPhase_norm : \u2016logPhase t y\u2016 = 1` is the canonical normal form for the modulus of a unit phase, but it has no `@[simp]` attribute. Every norm computation has to pass it by hand. Here `simp` needs it as an explicit argument. The repo mentions `logPhase_norm` at about 77 sites across 56 files, usually as a manual `simp only [..., norm_mul, logPhase_norm, mul_one]`. Examples are KernelSeparation `kernelCoordinateWeight_norm`, InverseRawCompact `childLogTest_norm`, TupleWeights, and TwistedProfiles `cases negative <;> simp [FourierBridge.logPhase_norm]`. Because default `simp` does not know the rule, a norm goal containing logPhase factors is not simplified automatically.",
+      "proposed_change": "Mark `FourierBridge.logPhase_norm` (LocalProductAssembly.lean, line 182) as `@[simp]`. The statement `\u2016logPhase t y\u2016 = 1` is unconditional, its left side is a head-symbol pattern, and its right side is the literal `1`. It cannot loop and does not conflict with any other rule. Then `pureProfileMode_norm` can be `by simp [pureProfileMode, norm_prod]`, and the other call sites can drop the explicit argument. Also consider `@[simp]` on `pureProfileMode_norm` itself. It is a unit-modulus fact with a `1` right side. It would let norm goals about `pureProfileMode` close without unfolding the definition.",
+      "benefit": "Norm goals for products of phases normalize to `1` with plain `simp`. This removes the repeated boilerplate `logPhase_norm` arguments across the DirichletL files and makes the simp set for phase moduli canonical.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/GaussSum/LocalProductAssembly.lean",
+          "declaration": "FourierBridge.logPhase_norm",
+          "excerpt": "theorem logPhase_norm (t y : \u211d) : \u2016logPhase t y\u2016 = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/Reflection/KernelSeparation.lean",
+          "declaration": "kernelCoordinateWeight_norm",
+          "excerpt": "simp only [kernelCoordinateWeight,norm_mul,logPhase_norm,mul_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/CubicSieve/TwistedProfiles.lean",
+          "declaration": "firstCoreModeProfile_norm",
+          "excerpt": "cases negative <;> simp [FourierBridge.logPhase_norm]"
+        }
+      ]
+    },
+    {
+      "declaration": "logPhase_scaled_coordinate (and its role in pureProfileMode_height)",
+      "start_line": 123,
+      "end_line": 133,
+      "excerpt": "lemma logPhase_scaled_coordinate (t a y : \u211d) : logPhase t (a*y) = logPhase (a*t) y := by",
+      "problem": "The phase rewrite lemmas have no shared simp interface. `logPhase_scaled_coordinate` is a local lemma that moves a scalar from the argument to the frequency. The special case a = -1, `logPhase t (-s) = logPhase (-t) s`, is proved separately as `logPhase_neg_argument` in two other files (TwistedProfiles.lean:227 and GaussianSlots.lean:28), each with the same unfold/congr/push_cast/ring proof. `logPhase_add_frequency` lives in FrequencyTwists and is not simp. This file then uses these lemmas via `simp only [profileHeight, logPhase_add_frequency, logPhase_scaled_coordinate]`. Because the lemmas are neither centrally placed nor tagged, each file re-derives and hand-lists its own rewrite set, and the competing orientations (`a*y` moved to the frequency here, a negation moved to the frequency elsewhere) are not reconciled.",
+      "proposed_change": "Move `logPhase_scaled_coordinate` next to `logPhase_add_frequency` in FrequencyTwists (or into the FourierBridge namespace). Derive `logPhase_neg_argument` from it with a = -1 and `neg_one_mul`, so there is one canonical rewrite. State a single orientation (scalar into the frequency). Optionally state the `mul_comm` variant, with the scalar moved into the argument, separately, so that call sites need not duplicate proofs. Keep both unsimped, or make the shared lemma `@[simp]` only after checking that the `logPhase t (a*y)` rewrite terminates. It does terminate, since the argument shrinks structurally.",
+      "benefit": "One canonical, documented phase-scaling rule replaces three near-duplicate lemmas, so later files can call one name. The simp-set choices are made in one place instead of per file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/CubicSieve/TwistedProfiles.lean",
+          "declaration": "logPhase_neg_argument",
+          "excerpt": "lemma logPhase_neg_argument (t s : \u211d) : logPhase t (-s) = logPhase (-t) s := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/Detector/GaussianSlots.lean",
+          "declaration": "logPhase_neg_argument",
+          "excerpt": "lemma logPhase_neg_argument (t y : \u211d) : logPhase t (-y)=logPhase (-t) y := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/Fourier/FrequencyTwists.lean",
+          "declaration": "logPhase_add_frequency",
+          "excerpt": "logPhase (t + s) x = logPhase t x * logPhase s x := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 33577,
+    "cache_read_input_tokens": 160447,
+    "output_tokens": 4991,
+    "output_tokens_details": {
+      "thinking_tokens": 655
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33577,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2585,
+        "cache_read_input_tokens": 36714,
+        "cache_creation_input_tokens": 876,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 876
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2002907,
+  "duration_ms": 47654,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T01:39:30",
+  "unit": "file",
+  "source_sha256": "615b7d415c0e5e29f3544f24a15c3a45dc65165e5103012f012438ec3bc4a9ed",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

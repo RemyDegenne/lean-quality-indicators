@@ -1,0 +1,88 @@
+{
+  "id": "lean-pool-file-0290",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the upstream non-interval theorem `bu_affine_derivative_l2` in BUAffineL2.lean (lines 168-295), the signatures of `bu_affine_l2_smul_interval` and `bu_affine_weak_derivatives_interval`, the import chain, and the downstream uses of `bu_affine_derivative_l2` (BUTimeStep, BUShortTraceData, BUFullSlab). The target's proof from line 53 to the end repeats the proof of `bu_affine_derivative_l2` almost verbatim. Only the `bu_affine_*` lemma names and the extra `hSsub` restriction differ. BUAffineIntervalL2 imports BUAffineL2, so the older theorem is upstream, and a shared lemma must go in BUAffineL2 or earlier. Its mathematical content is the measurability and additivity splitting of the lintegral, which doesn't mention the interval, so that placement works. I did not compile anything. The proposed lemma statement and the rewrites are sketches. The main uncertainty is exact elaboration, such as how the `buAffineDw` coercions unify with `c \u2022 f \u2218 buAffinePoint`. A smaller point inside this file is that `hDwL2`, `hD2L2` and `hDtL2` are three copies of one monotonicity argument. I folded them into the same finding, since the extracted lemma covers them.",
+  "findings": [
+    {
+      "declaration": "ESS.bu_affine_derivative_l2_interval",
+      "start_line": 86,
+      "end_line": 148,
+      "excerpt": "have hsum :\n      (\u222b\u207b z in K,\n        \u2016(buAffineDw \u03c4 scale Dw) z\u2016\u2091 ^ (2 : \u211d) +\n        \u2016(buAffineD2w \u03c4 scale D2w) z\u2016\u2091 ^ (2 : \u211d) +\n        \u2016(buAffineDtw \u03c4 scale Dtw) z\u2016\u2091 ^ (2 : \u211d)) =",
+      "problem": "The proof after the three `bu_affine_l2_smul_interval` calls is a copy of the proof of `bu_affine_derivative_l2` in BUAffineL2.lean (lines 233-295), and so is lines 54-76 (hDwL2/hD2L2/hDtL2 vs BUAffineL2 lines 201-223). The duplicated blocks are: (1) the AEMeasurable facts `hmDw`/`hmD2`, built from `ENNReal.continuous_rpow_const.measurable.comp_aemeasurable` and `aestronglyMeasurable.enorm`; (2) the two-step `lintegral_add_left'` splitting `hsum`/`h12`/`h123`; (3) the `hDwEq`/`hD2Eq`/`hDtEq` `funext \u2026 rfl` identifications followed by two nested `ENNReal.add_lt_top` applications; (4) the three `lintegral_mono \u2026 le_add_of_nonneg_*` projections of the summed hypothesis `hL2` to single terms. Only the source of `hscaled` and of the three bounds differs. Any change, such as a different exponent or a fourth term, must be made twice, in about 60 lines each.",
+      "proposed_change": "Add shared lemmas in BUAffineL2.lean, before `bu_affine_derivative_l2`, so both theorems can use them.\n\n(A) A projection lemma, for any measure \u03bc and nonnegative-valued f g h:\n`lintegral_lt_top_of_add3 {f g h : \u03b1 \u2192 \u211d\u22650\u221e} (H : (\u222b\u207b z in S, f z + g z + h z) < \u22a4) : (\u222b\u207b z in S, f z) < \u22a4 \u2227 (\u222b\u207b z in S, g z) < \u22a4 \u2227 (\u222b\u207b z in S, h z) < \u22a4`.\nProof: three times `(lintegral_mono fun z => ...).trans_lt H`, with the `le_add_of_nonneg_*` chains currently written out in hDwL2/hD2L2/hDtL2. The `hL2` hypotheses are then `(lintegral_lt_top_of_add3 (hL2 S hS hSb)).1`, `.2.1` and `.2.2`.\n\n(B) The assembly lemma, stated for `K` and the scaled derivative fields directly:\n`bu_affine_derivative_sum_lt_top (\u03c4 scale) (Dw D2w Dtw) (K) (hmDw : AEStronglyMeasurable (buAffineDw \u03c4 scale Dw) (volume.restrict K)) (hmD2 : AEStronglyMeasurable (buAffineD2w \u03c4 scale D2w) (volume.restrict K)) (hDwK : (\u222b\u207b z in K, \u2016scale \u2022 Dw (buAffinePoint \u03c4 scale z)\u2016\u2091 ^ (2:\u211d)) < \u22a4) (hD2K : \u2026 scale ^ 2 \u2022 D2w \u2026) (hDtK : \u2026 scale ^ 2 \u2022 Dtw \u2026) : (\u222b\u207b z in K, \u2016buAffineDw \u03c4 scale Dw z\u2016\u2091 ^ (2:\u211d) + \u2016buAffineD2w \u03c4 scale D2w z\u2016\u2091 ^ (2:\u211d) + \u2016buAffineDtw \u03c4 scale Dtw z\u2016\u2091 ^ (2:\u211d)) < \u22a4`.\nProof sketch: move the current body of lines 86-148 into it. That is: build hmDw/hmD2 via the rpow \u2218 enorm measurability, split the integral with `lintegral_add_left'` twice, rewrite with the three `funext \u2026 rfl` equalities, and finish with `ENNReal.add_lt_top`.\n\nRewritten uses:\n- `bu_affine_derivative_l2` (hypotheses `h\u03c4 hscale hupper`, with `hSsub` kept): `obtain \u27e8h1,h2,h3\u27e9 := fun S hS hSb => lintegral_lt_top_of_add3 (hL2 S (hSsub S hS) hSb)`, then `exact bu_affine_derivative_sum_lt_top \u03c4 scale Dw D2w Dtw K (hscaled.2.1.mono_set hKsub).aestronglyMeasurable (hscaled.2.2.1.mono_set hKsub).aestronglyMeasurable (bu_affine_l2_smul \u2026 hDwL2 K hKsub hKb) \u2026`, with `hscaled` and the `hweakS` projections supplied exactly as now.\n- `bu_affine_derivative_l2_interval` (hypotheses `hscale hscale1`, `hweak`, `hL2`): the same call, with `bu_affine_l2_smul_interval` and `bu_affine_weak_derivatives_interval` supplying the three finiteness facts and `hscaled`.\n\nEach theorem body then shrinks to roughly 15 lines (apply lemma A, three `smul` calls, apply lemma B).",
+      "benefit": "About 60 lines of nontrivial measure-theoretic bookkeeping (measurability of the rpow of the enorm, splitting an ENNReal lintegral into three terms, scalar-field identification) would live in one lemma instead of two. The two theorems would then differ only in which weak-derivative and L\u00b2 inputs they supply, and a fix to the energy functional needs one edit. A reader also sees directly that the interval version and the `[0,1]`-restricted version differ only in the time-restriction step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/Linear/BUAffineL2.lean",
+          "declaration": "ESS.bu_affine_derivative_l2",
+          "excerpt": "have hsum :\n      (\u222b\u207b z in K,\n        \u2016(buAffineDw \u03c4 scale Dw) z\u2016\u2091 ^ (2 : \u211d) +\n        \u2016(buAffineD2w \u03c4 scale D2w) z\u2016\u2091 ^ (2 : \u211d) +\n        \u2016(buAffineDtw \u03c4 scale Dtw) z\u2016\u2091 ^ (2 : \u211d)) ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/Linear/BUAffineL2.lean",
+          "declaration": "ESS.bu_affine_derivative_l2",
+          "excerpt": "simpa only [Pi.add_apply] using\n        (lintegral_add_left' (hmDw.add hmD2)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/Linear/BUAffineL2.lean",
+          "declaration": "ESS.bu_affine_derivative_l2",
+          "excerpt": "exact le_add_of_nonneg_left (by positivity) |>.trans\n      (le_add_of_nonneg_right (by positivity))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/Linear/BUAffineIntervalL2.lean",
+          "declaration": "ESS.bu_affine_l2_smul_interval",
+          "excerpt": "(\u222b\u207b z in K, \u2016c \u2022 f (buAffinePoint \u03c4 scale z)\u2016\u2091 ^ (2 : \u211d)) < \u22a4"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 23454,
+    "cache_read_input_tokens": 84514,
+    "output_tokens": 7126,
+    "output_tokens_details": {
+      "thinking_tokens": 2557
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23454,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3363,
+        "cache_read_input_tokens": 23399,
+        "cache_creation_input_tokens": 3984,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3984
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17355140000000002,
+  "duration_ms": 61280,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:11:22",
+  "unit": "file",
+  "source_sha256": "87f654d1a0f79aa85b6ba37096f34d32d71b89ab5901717a01f629503ceb87e7",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

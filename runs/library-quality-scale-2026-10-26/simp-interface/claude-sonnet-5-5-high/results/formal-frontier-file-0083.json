@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0083",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file, Mathlib's GrpObj.mulRight (Mathlib/CategoryTheory/Monoidal/Grp.lean, @[simps] and mulRight_one), Hom.mul_def/Hom.one_def in Cartesian/Mon.lean, and downstream uses in algebraic-groups (CosetDimension, ClosedPoints, Dimension, ComponentSchemeMap, ComponentGroup, KernelTorsor). Nothing was run. The claim that the expanding simp lemma `mulLeft_hom` shadows `comp_mulLeft_hom` rests on Lean's standard simp traversal (subterms are rewritten before the parent) and was not checked experimentally. The suggested `simp [mulLeft_hom]` fix for `mulLeft_one` is untested. I did not find a rewrite cycle.",
+  "findings": [
+    {
+      "declaration": "CategoryTheory.GrpObj.mulLeft_hom (with comp_mulLeft_hom)",
+      "start_line": 53,
+      "end_line": 66,
+      "excerpt": "@[to_additive (attr := simp)]\nlemma mulLeft_hom {A : C} [GrpObj A] (f : \ud835\udfd9_ C \u27f6 A) :\n    (mulLeft f).hom = lift (toUnit _ \u226b f) (\ud835\udfd9 _) \u226b \u03bc := by",
+      "problem": "Two competing simp rules cover `x \u226b (mulLeft a).hom`. `mulLeft_hom` is simp and rewrites `(mulLeft f).hom` into the expanded `lift (toUnit _ \u226b f) (\ud835\udfd9 _) \u226b \u03bc`. `comp_mulLeft_hom` is also simp and has LHS `x \u226b (mulLeft a).hom`. Simp rewrites subterms before the enclosing term, so the inner `(mulLeft a).hom` is expanded first and the simp lemma `comp_mulLeft_hom` should never get to fire. Its stated normal form `a * x` is then unreachable by `simp`, and users get an expanded `lift \u2026 \u226b \u03bc` term instead. This is unwanted expansion of the iso's `hom`. Existing code does not rely on the simp attribute here: `CosetDimension.lean` and the file's own `mulLeft_trans_mulLeft` call `rw [mulLeft_hom]` explicitly, and `ClosedPoints.lean` uses `comp_mulLeft_hom` by name.",
+      "proposed_change": "Drop `simp` from `mulLeft_hom` and keep it as an explicitly invoked unfolding lemma. Keep `simp` on `comp_mulLeft_hom`, so that `x \u226b (mulLeft a).hom` normalises to `a * x` for points. Adjust `mulLeft_one` (line 96) to `ext; simp [mulLeft_hom]` if it needs the expansion; I have not verified that proof. This also follows the file's own rule that the canonical simp form for points is `a * x`.",
+      "benefit": "`simp` produces the intended `a * x` form for left translation of points instead of an expanded `lift \u2026 \u226b \u03bc` term. The simp set no longer contains a dead lemma that shadows its own special case. Users can still unfold the definition on demand with `rw`/`simp [mulLeft_hom]`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupObject/Translation.lean",
+          "declaration": "CategoryTheory.GrpObj.comp_mulLeft_hom",
+          "excerpt": "@[to_additive (attr := simp) /-- Additive left translation acts on points by addition. -/]\nlemma comp_mulLeft_hom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/CosetDimension.lean",
+          "declaration": "cosetTranslate_comp",
+          "excerpt": "rw [GrpObj.mulLeft_hom]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/ClosedPoints.lean",
+          "declaration": "groupSchemeMulLeftClosedPointsHomeomorph_apply (use of comp_mulLeft_hom)",
+          "excerpt": "(CategoryTheory.GrpObj.comp_mulLeft_hom a x)"
+        }
+      ]
+    },
+    {
+      "declaration": "CategoryTheory.GrpObj.unit_comp_mulLeft_hom",
+      "start_line": 68,
+      "end_line": 77,
+      "excerpt": "lemma unit_comp_mulLeft_hom {A : C} [GrpObj A] (a : \ud835\udfd9_ C \u27f6 A) :\n    \u03b7[A] \u226b (mulLeft a).hom = a := by",
+      "problem": "The unit-point case `\u03b7[A] \u226b (mulLeft a).hom = a` is not simp, although the neighbouring `comp_mulLeft_hom` is. Even if `comp_mulLeft_hom` fired, `\u03b7[A] \u226b (mulLeft a).hom` would become `a * \u03b7[A]`. That term is not closed by `mul_one`, because `\u03b7[A]` is not syntactically `1` in the Hom monoid (`Hom.one_def : (1 : X \u27f6 M) = toUnit X \u226b \u03b7`). The proof of this lemma needs a manual `simpa` with `Hom.mul_def` and `Hom.one_def`, which shows that `simp` cannot reach `a` unaided. Downstream code needs the explicit lemma: `Dimension.lean` and `ComponentSchemeMap.lean` call `rw [CategoryTheory.GrpObj.unit_comp_mulLeft_hom]`, and the latter applies it with `exact`.",
+      "proposed_change": "Mark `unit_comp_mulLeft_hom` (and its additive twin) `simp`, together with the fix to `mulLeft_hom` above. Its LHS is more specific than `comp_mulLeft_hom`, so both rules agree on the result: the plain point `a`. The more specific lemma should go straight to `a`, skipping the stuck `a * \u03b7[A]`.",
+      "benefit": "`simp` can then close goals like `\u03b7[A] \u226b (mulLeft a).hom = a`. It would no longer leave the non-normal form `a * \u03b7[A]`, and the downstream `rw`/`exact` calls could become plain `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/Dimension.lean",
+          "declaration": "(use of unit_comp_mulLeft_hom)",
+          "excerpt": "rw [CategoryTheory.GrpObj.unit_comp_mulLeft_hom]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/CategoryTheory/Monoidal/Cartesian/Mon.lean",
+          "declaration": "CategoryTheory.MonObj.Hom.one_def",
+          "excerpt": "lemma Hom.one_def : (1 : X \u27f6 M) = toUnit X \u226b \u03b7 := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 22884,
+    "cache_read_input_tokens": 64918,
+    "output_tokens": 7072,
+    "output_tokens_details": {
+      "thinking_tokens": 2805
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22884,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3245,
+        "cache_read_input_tokens": 23061,
+        "cache_creation_input_tokens": 3836,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3836
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.16876780000000002,
+  "duration_ms": 47757,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T22:59:39",
+  "unit": "file",
+  "source_sha256": "5af428ec5e0193901b504b880f475a47f7c7ee420486318907902cb541117315",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

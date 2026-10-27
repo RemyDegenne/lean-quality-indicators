@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0040",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definitions and membership lemmas for deg3Set, hubSet and isoTwins in DoubleStar.lean, and for closeSet in CompactCell.lean. I grepped the ACMax tree for how those lemmas are used. DoubleStar.lean has no @[simp] attribute at all. I found no loops or competing simp rules. The findings concern missing canonical simp lemmas. I did not run Lean, so the proposed attributes and lemmas are untested. In particular, whether `@[simp]` on `mem_isoTwins` interacts badly with other lemmas in downstream files is unchecked.",
+  "findings": [
+    {
+      "declaration": "dist_le_three_of_mem_closeSet",
+      "start_line": 112,
+      "end_line": 114,
+      "excerpt": "unfold closeSet at hv\n  rw [Finset.mem_insert, Finset.mem_union, Finset.mem_union] at hv\n  rcases hv with rfl | (hA | hB) | hC",
+      "problem": "`closeSet` has no canonical membership characterisation (`mem_closeSet`) in the simp set. CompactCell.lean only has one-directional introduction lemmas (`mem_closeSet_self`, `mem_closeSet_of_adj`, ...). To eliminate `v \u2208 closeSet G u\u2080`, this proof unfolds the definition and replays a manual `rw [mem_insert, mem_union, mem_union]` in the order the unions are nested. `simp` cannot normalise `x \u2208 closeSet G u\u2080` on its own. The same unfold-and-case-split pattern is repeated in `card_closeSet_le_light_twoball` (`unfold closeSet at hx`), so the implementation shape leaks into every consumer.",
+      "proposed_change": "In CompactCell.lean next to `closeSet`, add a `@[simp]` (or at least a plain) lemma `mem_closeSet : v \u2208 closeSet G u\u2080 \u2194 v = u\u2080 \u2228 G.Adj u\u2080 v \u2228 (\u2203 w, G.Adj u\u2080 w \u2227 G.Adj w v) \u2228 \u2203 w x, G.Adj u\u2080 w \u2227 G.Adj w x \u2227 G.Adj x v`, proved once from `Finset.mem_insert`, `mem_union`, `mem_biUnion` and `SimpleGraph.mem_neighborFinset`. Then use `rw [mem_closeSet] at hv` (or `simp only [mem_closeSet] at hv`) here. This removes the `unfold` and the nested-union bookkeeping from this proof and the other eliminators.",
+      "benefit": "Consumers get a single canonical, definition-independent normal form for ball membership. Their proofs no longer depend on how the unions and biUnions are nested, and `simp` can reduce closeSet membership goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ACMax/Counting/CompactCell.lean",
+          "declaration": "card_closeSet_le_light_twoball",
+          "excerpt": "unfold closeSet at hx\n    rw [\u2190 hA, \u2190 hB] at hx"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ACMax/Counting/CompactCell.lean",
+          "declaration": "mem_closeSet_of_adj_adj",
+          "excerpt": "theorem mem_closeSet_of_adj_adj (G : SimpleGraph (Fin n)) {u\u2080 w v : Fin n}"
+        }
+      ]
+    },
+    {
+      "declaration": "deg3_eq_isoTwins_of_s0 / twin_incidence_total (use of mem_deg3Set, mem_isoTwins, mem_hubSet)",
+      "start_line": 168,
+      "end_line": 172,
+      "excerpt": "have hvd3 : G.degree v = 3 := mem_deg3Set.mp hv\n    exact mem_isoTwins.mpr \u27e8hvd3, fun w hadj hw3 => hs0 v w hvd3 hw3 hadj\u27e9",
+      "problem": "`deg3Set`, `hubSet` and `isoTwins` are opaque `noncomputable def`s whose only API is the iff lemmas `mem_deg3Set`, `mem_hubSet` and `mem_isoTwins`. None of these is tagged `@[simp]`; DoubleStar.lean has no `@[simp]` attribute at all. Each membership step in this file is therefore a manual `.mp`/`.mpr`/`rw`, as in `deg3_eq_isoTwins_of_s0` and `twin_incidence_total` (lines 190\u2013197). Elsewhere the library repeatedly writes `simp only [..., mem_deg3Set]` or `simp only [Finset.mem_filter, mem_hubSet, ...]`. Plain `simp` cannot reduce `v \u2208 deg3Set G` to `G.degree v = 3`, because the definitions are not unfolded and the lemmas are not registered.",
+      "proposed_change": "In DoubleStar.lean, mark `mem_deg3Set`, `mem_hubSet` and `mem_isoTwins` as `@[simp]`. Their right-hand sides are strictly simpler: degree predicates, with no re-introduction of the sets, so there is no loop risk. Then the proofs here can shrink to `simp`-based ones, for example `ext v; simp [mem_isoTwins]; ...` for `deg3_eq_isoTwins_of_s0` and `simp` for the `fun v => mem_deg3Set` hypotheses. The many `simp only [..., mem_deg3Set]` calls elsewhere can then be plain `simp`.",
+      "benefit": "Membership in these three named sets gets one canonical simp normal form (degree predicates). That shortens the proofs in this file and the dozens of call sites in SigmaCloud, StarvedCensus and elsewhere, and avoids a missed `mem_*` rewrite when a new goal mentions these sets.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ACMax/Counting/DoubleStar.lean",
+          "declaration": "mem_deg3Set",
+          "excerpt": "theorem mem_deg3Set {G : SimpleGraph V} {v : V} : v \u2208 deg3Set G \u2194 G.degree v = 3 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ACMax/Counting/DoubleStar.lean",
+          "declaration": "mem_isoTwins",
+          "excerpt": "t \u2208 isoTwins G \u2194 G.degree t = 3 \u2227 \u2200 w : V, G.Adj t w \u2192 G.degree w \u2260 3"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ACMax/Counting/StarvedCensus.lean",
+          "declaration": "(proof using mem_hubSet / mem_deg3Set)",
+          "excerpt": "simp only [Finset.mem_union, mem_hubSet, mem_deg3Set, Finset.mem_univ, iff_true]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ACMax/Counting/SigmaCloud.lean",
+          "declaration": "(proof using mem_deg3Set)",
+          "excerpt": "simp only [Finset.mem_filter, Finset.mem_inter, mem_deg3Set]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 20410,
+    "cache_read_input_tokens": 82480,
+    "output_tokens": 6249,
+    "output_tokens_details": {
+      "thinking_tokens": 2238
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20410,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2785,
+        "cache_read_input_tokens": 20268,
+        "cache_creation_input_tokens": 4155,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4155
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.15240199999999998,
+  "duration_ms": 43461,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:11",
+  "unit": "file",
+  "source_sha256": "a6aab9175b0279346e2134db5e369328c57ff8764620e9384303305934d79246",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,125 @@
+{
+  "id": "openai-math-file-0199",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Mathlib HomogeneousLocalization API (val_mk, awayMap_mk, val_awayMap are @[simp] or usable there). I also read the downstream uses in RootOverlap.lean, RootRestriction.lean and ReesRootMap.lean. I did not run Lean, so every point about simp behaviour is a judgement from the lemma shapes. The three findings are about the interface being hard to use with simp: there is no unfolding lemma for `evaluate`, `evaluate_mk` has a hypothesis variable that simp cannot instantiate, and the `awayMap_comp`/`awayMap_one` pair needs a workaround at its uses. The last finding is the least certain, because the right fix there is a design choice.",
+  "findings": [
+    {
+      "declaration": "evaluate_mk",
+      "start_line": 20,
+      "end_line": 23,
+      "excerpt": "(v : B) (hv : \u03c6 f * v = 1) (j : \u2115) (a : A) (ha : a \u2208 G (j \u2022 d)) :\n    evaluate G \u03c6 f hu (Away.mk G hf j a ha) = \u03c6 a * v ^ j",
+      "problem": "`evaluate_mk` is the main computation rule for `evaluate` on `Away.mk`, but it cannot be a simp lemma as stated. The inverse `v` appears only in the right-hand side and is tied to `\u03c6 f` by the hypothesis `hv`, so simp cannot instantiate it from the left-hand side. It is also not tagged `@[simp]`. The one non-trivial use, `scalarAt_equiv` in RootOverlap.lean, has to build the inverse by hand: it supplies `\u2191((targetUnit R n k)\u207b\u00b9)`, proves `hv` by `change ... rw [... Units.mul_inv]`, and then finishes with `.trans ?_`. That is a manual `refine` chain instead of a simp or rw step.",
+      "proposed_change": "Add a simp-friendly variant whose right-hand side uses the canonical inverse from `hu`, for example `evaluate G \u03c6 f hu (Away.mk G hf j a ha) = \u03c6 a * \u2191(hu.unit\u207b\u00b9) ^ j`, and mark it `@[simp]`. Prove it from the current `evaluate_mk` with `v := \u2191hu.unit\u207b\u00b9` and `hv` from `hu.mul_val_inv`. Keep the general `v`-version as the explicit rule that users can instantiate with their own inverse.",
+      "benefit": "The simplifier can then evaluate `evaluate` on `Away.mk` terms with no supplied inverse or side goal. Downstream proofs such as `scalarAt_equiv` would shrink from a long hand-built `refine` chain to `simp` plus unit algebra, and `evaluate_mk` would have a stable normal form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RingTheory/Multiplicity/RootOverlap.lean",
+          "declaration": "scalarAt_equiv",
+          "excerpt": "refine (HomogeneousEval.evaluate_mk (ProjectiveCoefficientChart.grading R n)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/RingTheory/GradedAlgebra/HomogeneousLocalization.lean",
+          "declaration": "awayMap_mk",
+          "excerpt": "@[simp]\nlemma awayMap_mk {d : \u03b9} (n : \u2115) (hf : f \u2208 \ud835\udc9c d)"
+        }
+      ]
+    },
+    {
+      "declaration": "evaluate",
+      "start_line": 16,
+      "end_line": 18,
+      "excerpt": "def evaluate (f : A) (hf : IsUnit (\u03c6 f)) : Away G f \u2192+* B :=\n  (Localization.awayLift \u03c6 f hf).comp\n    (algebraMap (Away G f) (Localization.Away f))",
+      "problem": "`evaluate` is a plain `def` with no unfolding lemma such as `evaluate_apply` or `evaluate_val`, and no `@[simp]` rule that reduces it to `Localization.awayLift \u03c6 f hf a.val`. Every proof that needs the underlying formula starts with a manual `change`. `evaluate_awayMap` does this at line 30, and `scalarAt.commutes'` in RootOverlap.lean does it twice. The proofs depend on the definitional unfolding and not on a named rewrite rule.",
+      "proposed_change": "Add `lemma evaluate_apply (a : Away G f) : evaluate G \u03c6 f hf a = Localization.awayLift \u03c6 f hf a.val := rfl`. It could be `@[simp]`, but the `evaluate_mk` simp form above should take priority on `Away.mk` arguments. Alternatively, keep it as a non-simp rewrite lemma. Then replace the `change` steps with `rw [evaluate_apply]`.",
+      "benefit": "The unfolding is stated once, so proofs no longer rely on definitional unfolding of `evaluate`. Users can combine it with Mathlib's simp lemma `val_awayMap` and with `IsLocalization.Away.lift_eq` through the simplifier. This is also the missing bridge between `evaluate` and the `.val` API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RingTheory/Multiplicity/HomogeneousEval.lean",
+          "declaration": "evaluate_awayMap",
+          "excerpt": "change Localization.awayLift \u03c6 x hxx (awayMap G hg hx a).val = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RingTheory/Multiplicity/RootOverlap.lean",
+          "declaration": "scalarAt",
+          "excerpt": "change Localization.awayLift (coefficientEvaluation R n).toRingHom f hu\n      (algebraMap R (Away (ProjectiveCoefficientChart.grading R n) f) r).val = _"
+        }
+      ]
+    },
+    {
+      "declaration": "awayMap_comp / awayMap_one",
+      "start_line": 44,
+      "end_line": 60,
+      "excerpt": "lemma awayMap_one {d : \u2115} (hf : f \u2208 G d) (hx : f = f * 1) (a : Away G f) :\n    awayMap G (show (1 : A) \u2208 G 0 from SetLike.one_mem_graded G) hx a = a",
+      "problem": "These are the functoriality rules for `awayMap`, but they are stated in a way simp cannot use. In `awayMap_one`, the extra homogeneity witness `hf : f \u2208 G d` and the degree `d` do not occur in the left-hand side, so simp cannot instantiate them. In `awayMap_comp`, `hf`, `d` and the three proof hypotheses `hx`, `hy`, `hz` are all extra, and the right-hand side contains a new `awayMap` whose `g * h` index differs from the left-hand side. As a result every use needs a hand-written chain. `ringRestriction_self` and `ReesRootMap` combine `awayMap_same` with `awayMap_one` through `.trans`, and `ringRestriction_comp` combines `awayMap_comp` with `awayMap_same`. Neither lemma is tagged `@[simp]`.",
+      "proposed_change": "Restate `awayMap_one` so that it needs no `hf` and no `hx` proof. For example, take `hg : g = 1` and `hx : x = f * g` and conclude `awayMap G hg' hx a = a`, or reduce it via `val_awayMap` and `Localization.awayLift` to an identity. Then mark it `@[simp]`. Also state `awayMap_comp` with the composite homomorphism, as `(awayMap .. hh hy).comp (awayMap .. hg hx) = awayMap ..`, and fold `awayMap_same` into a version that quantifies over the proof arguments. Together these give simp-usable normal forms. If `hf` really is needed, keep it as a side condition that simp can discharge, which means it must appear in the left-hand side.",
+      "benefit": "Restriction maps that compose or are the identity would normalise by `simp`. That would replace the three `.trans` chains that combine `awayMap_same` with `awayMap_one` or `awayMap_comp` in RootRestriction.lean and ReesRootMap.lean, and avoid repeated manual proof-term plumbing.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RingTheory/Multiplicity/RootRestriction.lean",
+          "declaration": "ringRestriction_self",
+          "excerpt": "(HomogeneousEval.awayMap_one _ (product_homogeneous R n s) h1 a)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RingTheory/Multiplicity/RootRestriction.lean",
+          "declaration": "ringRestriction_comp",
+          "excerpt": "h1 h2 h3 a).trans (HomogeneousEval.awayMap_same _ _ _ _ _ _)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RingTheory/Multiplicity/ReesRootMap.lean",
+          "declaration": "awayMap_one use",
+          "excerpt": "(HomogeneousEval.awayMap_one _ (denominator_mem I z hz s) h1 a)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 20702,
+    "cache_read_input_tokens": 53108,
+    "output_tokens": 6163,
+    "output_tokens_details": {
+      "thinking_tokens": 2018
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20702,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3557,
+        "cache_read_input_tokens": 21425,
+        "cache_creation_input_tokens": 3290,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3290
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14976479999999998,
+  "duration_ms": 43751,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:22:29",
+  "unit": "file",
+  "source_sha256": "a1b31c7d6a4c334beb0e7014a87d61cb55e2fe4abc8d39a85ac7aa5d42781dc4",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

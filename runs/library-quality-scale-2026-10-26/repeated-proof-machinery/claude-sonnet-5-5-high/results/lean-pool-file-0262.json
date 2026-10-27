@@ -1,0 +1,88 @@
+{
+  "id": "lean-pool-file-0262",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (one theorem) and its imported lemmas localDivCurlSmooth_wordDeriv_sum and localDivCurlSmooth_wordDeriv_spatialDeriv. I grepped for other users of the sum lemma and read SmoothingOrderedProduct.lean (lines 150-186) and SmoothingSolenoidalWords.lean (lines 39-65). The same \"word derivative of a divergence-form sum\" argument appears in all three files. The proposed lemma has not been compiled. Its unification with the `F` and `H` definitions should be fine because the `g` argument is supplied explicitly. The existing `hHword` needs one extra `sum_congr` pass for the inner commutation after the shared lemma is applied. I considered the term-level duplication inside `hH` and `hF` but judged it too small to report on its own.",
+  "findings": [
+    {
+      "declaration": "ESS.lps_regularized_equation_wordDeriv (hHword / hFword blocks)",
+      "start_line": 74,
+      "end_line": 104,
+      "excerpt": "have hsum := congrFun (localDivCurlSmooth_wordDeriv_sum \u03b1 hFj) x\n    change wordDeriv \u03b1 F x = _ at hsum\n    rw [hsum]\n    apply Finset.sum_congr rfl\n    intro j _",
+      "problem": "The proof repeats a nontrivial argument that is also used in two other proofs. The argument has four steps. First, a divergence-form sum `\u2211 j, spatialDeriv (g j) j` is shown smooth via `contDiff_wordDeriv _ [j]`. Second, `wordDeriv` is pushed through the sum with `localDivCurlSmooth_wordDeriv_sum`. Third, `Finset.sum_congr` is applied. Fourth, `wordDeriv` is commuted past `spatialDeriv j` termwise with `localDivCurlSmooth_wordDeriv_spatialDeriv`. Here it appears twice, as `hHword` (with `g j = spatialDeriv u_i j`) and `hFword` (with `g j = v_j * u_i`). In `lps_ordered_transport_divergence` (SmoothingOrderedProduct.lean, lines 175-183) it appears with `g j = v_j * u_i`, followed by the Leibniz rewrite. In `lps_wordDeriv_solenoidal` (SmoothingSolenoidalWords.lean, lines 49-63) it appears with `g i = u_i`. Each site re-derives the smoothness side condition, the `congrFun`/`change` plumbing and the termwise commutation by hand.",
+      "proposed_change": "Add one lemma to SmoothingOrderedProduct.lean, which all three files already import:\n\ntheorem lps_wordDeriv_sum_spatialDeriv {g : Fin 3 \u2192 Vec3 \u2192 \u211d} (hg : \u2200 j, ContDiff \u211d (\u22a4 : \u2115\u221e) (g j)) (\u03b1 : List (Fin 3)) (x : Vec3) :\n    wordDeriv \u03b1 (fun y => \u2211 j : Fin 3, spatialDeriv (g j) j y) x =\n      \u2211 j : Fin 3, spatialDeriv (wordDeriv \u03b1 (g j)) j x\n\nProof sketch: set `hsm j := contDiff_wordDeriv (hg j) [j]`. Then `have h := congrFun (localDivCurlSmooth_wordDeriv_sum \u03b1 hsm) x`, `rw [h]`, `refine Finset.sum_congr rfl fun j _ => ?_`, and `exact congrFun (localDivCurlSmooth_wordDeriv_spatialDeriv (hg j) \u03b1 j) x`.\n\nUses:\n- `hFword` becomes `lps_wordDeriv_sum_spatialDeriv (g := fun j y => v y j * u y i) (fun j => (hv j).mul (hu i)) \u03b1 x`.\n- `hHword` becomes `(lps_wordDeriv_sum_spatialDeriv (g := fun j => spatialDeriv (fun y => u y i) j) (fun j => contDiff_wordDeriv (hu i) [j]) \u03b1 x).trans (Finset.sum_congr rfl fun j _ => congrFun (congrArg (spatialDeriv \u00b7 j) (localDivCurlSmooth_wordDeriv_spatialDeriv (hu i) \u03b1 j)) x)`. Alternatively, keep the existing inner `calc` step for this part.\n- `lps_wordDeriv_solenoidal` uses it with `g := fun i y => u y i` and `hdivFun`. The `hcomm` block and the `simpa` go away.\n- `lps_ordered_transport_divergence` uses it with `g := fun j y => v y j * u y i`, followed by the Leibniz rewrite.\n\nThe two `hsum`/`change` blocks and the `hHj`/`hFj` smoothness bookkeeping in the target shrink accordingly.",
+      "benefit": "The commutation of ordered derivatives with a divergence sum is stated and proved once, with its smoothness side condition. The main theorem then reads as: differentiate the three terms, apply the shared lemma to the two divergence terms, and commute the pressure gradient. A change to how `wordDeriv` or `localDivCurlSmooth_*` is stated needs one edit instead of four.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/LPS/SmoothingOrderedProduct.lean",
+          "declaration": "ESS.lps_ordered_transport_divergence",
+          "excerpt": "rw [localDivCurlSmooth_wordDeriv_sum \u03b1 hsmooth]\n  funext x\n  apply Finset.sum_congr rfl\n  intro j _\n  rw [localDivCurlSmooth_wordDeriv_spatialDeriv ((hv j).mul (hu i)) \u03b1 j]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/LPS/SmoothingSolenoidalWords.lean",
+          "declaration": "ESS.lps_wordDeriv_solenoidal",
+          "excerpt": "have hsum := congrFun (localDivCurlSmooth_wordDeriv_sum \u03b1 hsmooth) x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/LPS/SmoothingSolenoidalWords.lean",
+          "declaration": "ESS.lps_wordDeriv_solenoidal",
+          "excerpt": "exact congrFun (localDivCurlSmooth_wordDeriv_spatialDeriv (hu i) \u03b1 i) x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/Endpoint/LocalDivCurlSmooth.lean",
+          "declaration": "localDivCurlSmooth_wordDeriv_sum",
+          "excerpt": "wordDeriv \u03b1 (fun x => \u2211 i : Fin 3, f i x) =\n      fun x => \u2211 i : Fin 3, wordDeriv \u03b1 (f i) x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 10123,
+    "cache_read_input_tokens": 42951,
+    "output_tokens": 4768,
+    "output_tokens_details": {
+      "thinking_tokens": 1138
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10123,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2644,
+        "cache_read_input_tokens": 12506,
+        "cache_creation_input_tokens": 1546,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1546
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0924871,
+  "duration_ms": 32995,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:44:30",
+  "unit": "file",
+  "source_sha256": "204b624d553dc62b165acce7bb1b08cd7be91c435e236c8293d56b1c93d4e6b6",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

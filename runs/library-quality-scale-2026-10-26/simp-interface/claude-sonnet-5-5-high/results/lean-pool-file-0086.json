@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0086",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, the `ConvexFlag.Point` structure and `Point.coord` in ConvexFlag/Basic.lean, and grepped the ErdosGinzburgZiv directory for any simp lemmas about `Point.map` or a `point_val`. I found none. The main `SubdivisionMap` simp lemmas (`point_base`, `comp_point`, `face_carrier`, `preimage_carrier`) are reasonable. I did not run Lean, so the suggestions are untested. I do not recommend making `point_coord` simp: `h` appears only on its right-hand side, which would likely stop simp from instantiating it. A coord lemma for `Point.map` would have the same problem.",
+  "findings": [
+    {
+      "declaration": "EGZ.ConvexFlag.Point.map",
+      "start_line": 31,
+      "end_line": 37,
+      "excerpt": "\u27e8node q.base, fibre q.base q.val, hpolytope q.base q.val_mem\u27e9",
+      "problem": "`Point.map` builds a structure with no simp lemmas for its projections. `Point.coord_base` is simp in the same API, but `Point.map` has no `map_base` or `map_val`. Reducing `(q.map node fibre hpolytope).base` or `.val` therefore depends on `rfl`, `change` or unfolding. `ConvexCombination.map_on_polytope` does this itself with `change fibre result.base result.val = _` and with the final `congr 1; exact hcomm ...` step, where the goal contains `((points i).map ...).coord ...`.",
+      "proposed_change": "Add `@[simp] theorem Point.map_base ... : (q.map node fibre hpolytope).base = node q.base := rfl` and `@[simp] theorem Point.map_val ... : (q.map node fibre hpolytope).val = fibre q.base q.val := rfl`. Then replace the `change` calls in `map_on_polytope` with `simp only [Point.map_val]` or `rw`.",
+      "benefit": "Terms built by `Point.map` have a canonical simp normal form. Proofs that use `Point.map` (for example `ofLocalGenerators.proper`) no longer need `change` or definitional unfolding, and downstream files can use `simp` on mapped points.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/ConvexFlag/Basic.lean",
+          "declaration": "EGZ.ConvexFlag.Point.coord_base",
+          "excerpt": "theorem coord_base {F : ConvexFlag} (q : F.Point) : q.coord (le_refl q.base) = q.val"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/Decomposition/FacePreservation.lean",
+          "declaration": "EGZ.ConvexFlag.ConvexCombination.map_on_polytope",
+          "excerpt": "change fibre result.base result.val = _"
+        }
+      ]
+    },
+    {
+      "declaration": "EGZ.FlagDecomposition.SubdivisionMap.point",
+      "start_line": 203,
+      "end_line": 208,
+      "excerpt": "theorem point_base (q : \u03a8.flag.Point) : (M.point q).base = M.node q.base := rfl",
+      "problem": "There are two parallel, unrelated normal forms for the same point. `M.point q` is a new definition with a simp lemma only for `base`. The identical point is also written as `q.map M.node M.fibre M.polytope_mem`, and as an anonymous constructor in the `proper` field. `ofLocalGenerators` mixes them: `hgenerators` is stated with `q.map`, while `proper` is stated with `\u27e8node q.base, ...\u27e9`. Simp cannot identify `M.point q` with `q.map ...`, so `comp_point` and `point_base` do not fire on `Point.map` terms. `point` also has no `point_val` simp lemma, which is needed for the `val` projection. This is why `isRealizedFace` has to `change` a goal about `(M.point q)`-style data into `M.fibre x (...)`.",
+      "proposed_change": "Define `point q := q.map M.node M.fibre M.polytope_mem`, or add a `point_eq_map : M.point q = q.map M.node M.fibre M.polytope_mem := rfl` bridge lemma. Add `@[simp] point_val : (M.point q).val = M.fibre q.base q.val := rfl`. State the `proper` field via `Point.map`, so one canonical form is shared with `ofLocalGenerators`.",
+      "benefit": "This gives one canonical form for mapped points. Simp can compute both projections of `M.point q`, so the `change` calls at the start of the `isRealizedFace` proof can become `simp`/`rw`. Statements about `M.point` and `Point.map` become interchangeable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/Decomposition/FacePreservation.lean",
+          "declaration": "EGZ.FlagDecomposition.SubdivisionMap.proper",
+          "excerpt": "(\u27e8node q.base, fibre q.base q.val, polytope_mem q.base q.val_mem\u27e9 : \u03a6.flag.Point) \u2208"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/Decomposition/FacePreservation.lean",
+          "declaration": "EGZ.FlagDecomposition.SubdivisionMap.isRealizedFace",
+          "excerpt": "change M.fibre x ((\u03a8.flag.transition (\u03a8.faceIndex_le x (M.face x \u0393 hne))).real q) \u2208"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 5266,
+    "cache_read_input_tokens": 52844,
+    "output_tokens": 4926,
+    "output_tokens_details": {
+      "thinking_tokens": 2153
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 5266,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2187,
+        "cache_read_input_tokens": 14943,
+        "cache_creation_input_tokens": 2412,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2412
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0756244,
+  "duration_ms": 40566,
+  "turns": 6,
+  "attempts": 3,
+  "judged": "2026-10-26T23:01:30",
+  "unit": "file",
+  "source_sha256": "6124869d8977dcff082ba7ad80a4f1408933261cf1005f277b45b3dc3e48ac99",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

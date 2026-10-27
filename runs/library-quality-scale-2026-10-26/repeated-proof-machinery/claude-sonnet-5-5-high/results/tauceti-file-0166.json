@@ -1,0 +1,135 @@
+{
+  "id": "tauceti-file-0166",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I compared it with the sibling files Dihedral/Three.lean and QuaternionEight.lean, and with Rational/Solver.lean, Rational/Basic.lean and Dixon/ExactChecker.lean. The `fin_cases ... <;> decide` blocks are short routine checks and I did not report them. Two multi-step assembly proofs are repeated verbatim, up to renaming, in at least three files. One is the tail of the solver-success theorem. The other is the Nat.card-to-Fintype.card adaptation of the spec fields. I did not run Lean, so the proposed helpers are untested. The second helper needs a generic group `G` with `Fintype G` and `DecidableEq G`, as `ClassData` already assumes. The first helper's `p` hypothesis follows `isSome_dixonRationalCharacterTable_iff`.",
+  "findings": [
+    {
+      "declaration": "TauCeti.isSome_dixonRationalCharacterTable_dihedralGroupFour",
+      "start_line": 251,
+      "end_line": 259,
+      "excerpt": "  refine \u27e8\u27e8dihedralGroupFourCentralCharacterTable, dihedralGroupFourCharacterTable,\n    dihedralGroupFourCharacterDegrees\u27e9, ?_, isIntegerCharacterTableSpec_dihedralGroupFour\u27e9\n  intro i\n  rw [dihedralGroupFour_liftedCentralRows]\n  exact Finset.mem_image.mpr \u27e8i, Finset.mem_univ i, rfl\u27e9",
+      "problem": "The proof turns the lifted-rows equation into row membership and then builds the existential witness. The same steps appear in `isSome_dixonRationalCharacterTable_dihedralGroupThree` and `isSome_dixonRationalCharacterTable_quaternionGroupTwo`. Each copy differs only in the group name. Nothing in the proof is specific to the dihedral group. The logic is: if `liftedCentralRows p = univ.image omega` and `(omega, table, degree)` satisfies the integer spec, then the solver succeeds. That reasoning is rebuilt in every group file.",
+      "proposed_change": "Add to Rational/Solver.lean, next to `isSome_dixonRationalCharacterTable_iff`:\n\ntheorem isSome_dixonRationalCharacterTable_of_liftedCentralRows_eq (p : \u2115) [Fact p.Prime] {omega table : Matrix (Fin d.numClasses) (Fin d.numClasses) \u2124} {degree : Fin d.numClasses \u2192 \u2115} (hrows : d.liftedCentralRows p = Finset.univ.image fun i => omega i) (hspec : d.IsIntegerCharacterTableSpec omega table degree) : (d.dixonRationalCharacterTable? p).isSome = true.\n\nProof: `rw [d.isSome_dixonRationalCharacterTable_iff]; refine \u27e8\u27e8omega, table, degree\u27e9, fun i => ?_, hspec\u27e9; rw [hrows]; exact Finset.mem_image.mpr \u27e8i, Finset.mem_univ i, rfl\u27e9`.\n\nThe target proof becomes `isSome_dixonRationalCharacterTable_of_liftedCentralRows_eq _ _ dihedralGroupFour_liftedCentralRows isIntegerCharacterTableSpec_dihedralGroupFour`. The Three, QuaternionEight and CyclicTwo files use the same one-liner with their own `liftedCentralRows` and spec theorems.",
+      "benefit": "The solver-success argument is stated and proved once, next to the iff it comes from. Each per-group file then only supplies its two certificates, `liftedCentralRows` and the spec. If the shape of `IntegerCharacterTableData` or the iff changes, one proof needs updating instead of one per group file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/CharacterTable/Dixon/Rational/Dihedral/Three.lean",
+          "declaration": "TauCeti.isSome_dixonRationalCharacterTable_dihedralGroupThree",
+          "excerpt": "  rw [dihedralGroupThree_liftedCentralRows]\n  exact Finset.mem_image.mpr \u27e8i, Finset.mem_univ i, rfl\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/CharacterTable/Dixon/Rational/QuaternionEight.lean",
+          "declaration": "TauCeti.isSome_dixonRationalCharacterTable_quaternionGroupTwo",
+          "excerpt": "  rw [quaternionGroupTwo_liftedCentralRows]\n  exact Finset.mem_image.mpr \u27e8i, Finset.mem_univ i, rfl\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/CharacterTable/Dixon/Rational/Solver.lean",
+          "declaration": "TauCeti.ClassData.isSome_dixonRationalCharacterTable_iff",
+          "excerpt": "      \u2203 output : d.IntegerCharacterTableData,\n        (\u2200 i, output.omega i \u2208 d.liftedCentralRows p) \u2227"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.isIntegerCharacterTableSpec_dihedralGroupFour",
+      "start_line": 224,
+      "end_line": 239,
+      "excerpt": "  degree_dvd i := by\n    simpa only [Nat.card_eq_fintype_card] using\n      (dihedralGroupFour_characterDegrees_pos_and_dvd i).2\n  sum_degree_sq := by\n    simpa only [Nat.card_eq_fintype_card] using dihedralGroupFour_sum_characterDegrees_sq",
+      "problem": "The supporting lemmas (`_characterDegrees_pos_and_dvd`, `_sum_characterDegrees_sq`, `_characterTable_orthogonal`) are all stated with `Nat.card (DihedralGroup 4)`. The spec structure uses `Fintype.card G`. So the spec proof has to convert between the two with `simpa only [Nat.card_eq_fintype_card, Nat.cast_ite, Nat.cast_zero]`. The same conversion and field-by-field assembly appear in `isIntegerCharacterTableSpec_dihedralGroupThree` and `isIntegerCharacterTableSpec_quaternionGroupTwo`. Each file also states these `Nat.card` lemmas only to convert them again, and each starts the proofs with `rw [DihedralGroup.nat_card]` or a similar rewrite.",
+      "proposed_change": "Add one constructor lemma next to the spec definition, for example `ClassData.IsIntegerCharacterTableSpec.of_natCard`. Its hypotheses are `central_one`, `central_eigen`, `degree_pos`, `degree_dvd` and `sum_degree_sq`, the last two stated with `Nat.card G`. It also takes `degree_mul_central`, and `row_orthogonal` with `if i = j then (Nat.card G : \u2124) else 0`, matching the file's existing orthogonality lemma. The proof is `simpa only [Nat.card_eq_fintype_card, Nat.cast_ite, Nat.cast_zero]` applied once to each of the three affected fields. The target theorem then reduces to `.of_natCard (by intro i; fin_cases i <;> decide) isModularEigenrow_..._int (fun i => (\u2026pos_and_dvd i).1) (fun i => (\u2026pos_and_dvd i).2) \u2026sum_characterDegrees_sq \u2026degree_mul_centralCharacterTable \u2026characterTable_orthogonal`.\n\nAlternatively, restate the per-group lemmas with `Fintype.card` and drop the conversions. Either way the Nat.card-to-Fintype.card plumbing exists in one place.",
+      "benefit": "The three or more group files no longer carry the same field-by-field conversion boilerplate. A reader sees only the group-specific facts. A future change to the spec fields is fixed in one lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/CharacterTable/Dixon/Rational/Dihedral/Three.lean",
+          "declaration": "TauCeti.isIntegerCharacterTableSpec_dihedralGroupThree",
+          "excerpt": "    simpa only [Nat.card_eq_fintype_card, Nat.cast_ite, Nat.cast_zero] using\n      dihedralGroupThree_characterTable_orthogonal i j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/CharacterTable/Dixon/Rational/QuaternionEight.lean",
+          "declaration": "TauCeti.isIntegerCharacterTableSpec_quaternionGroupTwo",
+          "excerpt": "    simpa only [Nat.card_eq_fintype_card, Nat.cast_ite, Nat.cast_zero] using\n      quaternionGroupTwo_characterTable_orthogonal i j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/CharacterTable/Dixon/ExactChecker.lean",
+          "declaration": "TauCeti.ClassData.IsExactCharacterTableSpec",
+          "excerpt": "  degree_dvd : \u2200 i, degree i \u2223 Fintype.card G"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.dihedralGroupFour_centralCharacterSearch / TauCeti.dihedralGroupFour_liftedCentralRows",
+      "start_line": 127,
+      "end_line": 153,
+      "excerpt": "    (by\n      have hcard := card_dihedralGroupFourModularCentralRows\n      rw [\u2190 dihedralGroupFourDixonPrimeData_p] at hcard\n      exact hcard)",
+      "problem": "Two theorems repeat the same pipeline in `Three.lean` and `QuaternionEight.lean`, and in this file. The first is `centralCharacterSearch_eq_rowsOfMap_of_isGoodDixonPrime` followed by the `(by intro i; fin_cases i <;> decide)` normalization check, then the integer-to-ZMod eigenrow transport, then a card hypothesis. The second is `liftedCentralRows_eq_image_of_centralCharacterSearch_eq` followed by a `fin_cases i <;> fin_cases j <;> decide` bound check on `2 * natAbs < p`. In each file the second theorem is also proved from the first. Both are then repeated for every group. The `rw [\u2190 \u2026DihedralPrimeData_p] at hcard` step exists only to bridge the literal `5` and `p`, so it is bookkeeping and not mathematics.",
+      "proposed_change": "Add one wrapper in Rational/Basic.lean that takes an integral matrix `M` together with:\n- `isGoodDixonPrime` for `p`;\n- `\u2200 i, M i (d.index 1) = 1`;\n- `\u2200 i, d.IsModularEigenrow (M i)` over \u2124;\n- the card of the `rowsOfMap` set;\n- the `2 * natAbs < p` bound.\n\nIt would return both `centralCharacterSearch = rowsOfMap \u2026` and `liftedCentralRows p = univ.image M`. It would internally apply `IsModularEigenrow.map (Int.castRingHom (ZMod p))`, which is exactly the `_zmod` theorem proved in this file. Each group file would then reduce to a single call with the group's matrix and its decidable side conditions. The `_zmod` theorem would no longer be needed as a separate declaration.",
+      "benefit": "Every group file would shrink to its genuinely specific data. The argument that a reduced integral table recovers the whole search and the lifted rows would be stated once. It also removes the `ZMod 5` versus `p` rewriting that each file has to handle by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/CharacterTable/Dixon/Rational/Dihedral/Three.lean",
+          "declaration": "TauCeti.dihedralGroupThree_centralCharacterSearch",
+          "excerpt": "      have hcard := card_dihedralGroupThreeModularCentralRows\n      rw [\u2190 dihedralGroupThreeDixonPrimeData_p] at hcard"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/CharacterTable/Dixon/Rational/QuaternionEight.lean",
+          "declaration": "TauCeti.quaternionGroupTwo_liftedCentralRows",
+          "excerpt": "  apply (quaternionClassData 2).liftedCentralRows_eq_image_of_centralCharacterSearch_eq\n    quaternionGroupTwoCentralCharacterTable"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/CharacterTable/Dixon/Rational/Basic.lean",
+          "declaration": "TauCeti.ClassData.liftedCentralRows_eq_image_of_centralCharacterSearch_eq",
+          "excerpt": "    (hbound : \u2200 i j, 2 * (M i j).natAbs < p) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 32196,
+    "cache_read_input_tokens": 205929,
+    "output_tokens": 7441,
+    "output_tokens_details": {
+      "thinking_tokens": 807
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32196,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4861,
+        "cache_read_input_tokens": 34747,
+        "cache_creation_input_tokens": 1378,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1378
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22382290000000002,
+  "duration_ms": 50509,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-26T23:15:26",
+  "unit": "file",
+  "source_sha256": "1c93bc4ff950d572b0bd8237dcebe1e26bb639f7d8b0480f5a9ccb4220f526be",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

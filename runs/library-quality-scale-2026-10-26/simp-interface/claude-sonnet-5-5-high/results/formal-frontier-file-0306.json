@@ -1,0 +1,125 @@
+{
+  "id": "formal-frontier-file-0306",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole Order.lean, the simp lemmas about ofPNat in Basic.lean, and the uses of ofFiniteCard/ofFiniteIndex/profiniteIndex_whole in Tower.lean, Characters.lean and ReleaseClients.lean. I did not run Lean, so I make no claims about simp behavior beyond what the sources show. The suggested simp lemmas are untested. Whether `profiniteIndex_whole` fires as a simp lemma depends on unification with the `wholeClosedSubgroup G` term, which should be fine because the head symbol is a fixed constant.",
+  "findings": [
+    {
+      "declaration": "Supernatural.profiniteIndex_whole",
+      "start_line": 78,
+      "end_line": 88,
+      "excerpt": "    simp only [ofFiniteIndex, wholeClosedSubgroup, Subgroup.map_top,\n      QuotientGroup.range_mk', Subgroup.index_top, PNat.mk_ofNat, ofPNat_one]",
+      "problem": "The file has no simp or unfolding lemmas for `ofFiniteIndex`, only the bare definition. The proof therefore spells out the same 5-lemma `simp only` unfolding twice, once per `le_antisymm` direction, and this is a poor interface. The needed fact is that the map of `\u22a4` to any quotient has index 1, so `ofFiniteIndex = 1`. That fact is not stated as a lemma, and the result `profiniteIndex_whole` itself is not tagged simp. The client test has to ask for it explicitly with `simpa [profiniteIndex_whole]`.",
+      "proposed_change": "Add a lemma such as `ofFiniteIndex_eq_one_of_index_eq_one` (or `ofFiniteIndex_top`), plus `@[simp] theorem ofFiniteIndex_eq_ofPNat`-style equations. Add `@[simp] theorem wholeClosedSubgroup_toSubgroup : (wholeClosedSubgroup G).toSubgroup = \u22a4 := rfl`. Mark `profiniteIndex_whole` `@[simp]`. Then `profiniteIndex_whole` can be proved with `simp [profiniteIndex, ...]` or `iSup_const`-style reasoning, rather than two duplicated unfold blocks.",
+      "benefit": "Clients would get `profiniteIndex (wholeClosedSubgroup G) = 1` from the default simp set, and the unfolding would not be repeated. The explicit `simpa [profiniteIndex_whole]` in the downstream test would become a plain `simpa`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbersTests/ReleaseClients.lean",
+          "declaration": "finite_closed_tower_reduced",
+          "excerpt": "simpa [profiniteIndex_whole] using finite_closed_tower"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Basic.lean",
+          "declaration": "ofPNat_one",
+          "excerpt": "theorem ofPNat_one : ofPNat 1 = 1"
+        }
+      ]
+    },
+    {
+      "declaration": "Supernatural.ofFiniteCard / Supernatural.ofFiniteIndex",
+      "start_line": 25,
+      "end_line": 31,
+      "excerpt": "noncomputable def ofFiniteCard (X : Type*) [Finite X] [Nonempty X] : Supernatural :=\n  ofPNat \u27e8Nat.card X, Nat.card_pos\u27e9",
+      "problem": "The two wrapper definitions have no simp interface, such as an unfolding equation or an `ofPNat`-injectivity or order lemma phrased in terms of `Nat.card` or `index`. Every downstream use therefore does `simp only [ofFiniteCard]` or `unfold ofFiniteCard`, and then manually runs `congrArg ofPNat; Subtype.ext` or `ofPNat_le_ofPNat_iff.mpr; PNat.dvd_iff.mpr`. This pattern appears in `torsionOrder_eq_ofFiniteCard`, `profiniteIndex_antitone`, `profiniteIndex_trivial` (which unfolds both defs inside `simp`), Characters.lean and the test file. Unfolding the defs exposes the `PNat` subtype structure that the wrapper was meant to hide.",
+      "proposed_change": "State and tag the interface lemmas: `theorem ofFiniteCard_le_ofFiniteCard_iff` as `ofFiniteCard X \u2264 ofFiniteCard Y \u2194 Nat.card X \u2223 Nat.card Y`, and the same for `ofFiniteIndex` with `H.index \u2223 K.index`. Add a congruence lemma `ofFiniteCard_congr` (from `Nat.card X = Nat.card Y`). Add `@[simp] ofFiniteCard_eq_ofNat`-style lemmas (`ofFiniteCard X = ofNat (Nat.card X)`). With these, `simp` could rewrite without unfolding, and `profiniteIndex_trivial` would not need to unfold `ofFiniteIndex`, `ofFiniteCard` and `trivialClosedSubgroup` by name.",
+      "benefit": "The proofs in this file and the clients become short, stable rewrites that do not depend on the internal `PNat` encoding. The `finite_character_cardinality` test needs only `Nat.card (ZMod 6) = 6` rather than the manual `unfold`/`Subtype.ext` calc step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Characters.lean",
+          "declaration": "torsionOrder_eq_profiniteOrder_dual (proof, calc step)",
+          "excerpt": "simp only [ofFiniteCard]\n            apply congrArg ofPNat\n            apply Subtype.ext"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbersTests/ReleaseClients.lean",
+          "declaration": "finite_character_cardinality",
+          "excerpt": "unfold ofFiniteCard\n      apply congrArg ofPNat\n      apply Subtype.ext"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Basic.lean",
+          "declaration": "ofPNat_le_ofPNat_iff",
+          "excerpt": "theorem ofPNat_le_ofPNat_iff {m n : \u2115+} : ofPNat m \u2264 ofPNat n \u2194 m \u2223 n"
+        }
+      ]
+    },
+    {
+      "declaration": "Supernatural.profiniteIndex_trivial (with trivialClosedSubgroup, wholeClosedSubgroup)",
+      "start_line": 72,
+      "end_line": 75,
+      "excerpt": "simp [profiniteIndex, profiniteOrder, ofFiniteIndex, ofFiniteCard, trivialClosedSubgroup]",
+      "problem": "`trivialClosedSubgroup` and `wholeClosedSubgroup` are plain defs with no simp lemma for their underlying subgroup. The proof must unfold the definitions by name in an unrestricted `simp` call. That call also unfolds the `ofFiniteIndex` and `ofFiniteCard` wrappers, so its behavior relies on the whole default simp set interacting with the unfolded `PNat` terms. Any client that meets `(trivialClosedSubgroup G).toSubgroup` or membership in it gets no normal form `\u22a5` or `\u22a4` unless it unfolds the def.",
+      "proposed_change": "Add `@[simp] theorem trivialClosedSubgroup_toSubgroup (G) : (trivialClosedSubgroup G).toSubgroup = \u22a5 := rfl` and the analogous `wholeClosedSubgroup_toSubgroup = \u22a4`. Add `@[simp]` equations for the `wholeOpenNormalSubgroup` coercion. Keep the `def`s opaque to simp. Then `simp only [profiniteIndex, profiniteOrder, trivialClosedSubgroup_toSubgroup, ...]` can be used with the usual `Subgroup.map_bot` and index lemmas, instead of unfolding the constructor definitions.",
+      "benefit": "There is a canonical simp normal form (`\u22a5`/`\u22a4`) for these named subgroups. The proofs stop depending on unfolding definitions, and clients such as `Tower.lean` and the tests can simplify with the existing Mathlib `Subgroup.map_bot` and `Subgroup.map_top` lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbersTests/ReleaseClients.lean",
+          "declaration": "finite_closed_tower",
+          "excerpt": "change (\u22a5 : Subgroup cyclicSixProfinite) \u2264 \u22a4"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Order.lean",
+          "declaration": "profiniteIndex_whole",
+          "excerpt": "simp only [ofFiniteIndex, wholeClosedSubgroup, Subgroup.map_top,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 13421,
+    "cache_read_input_tokens": 46891,
+    "output_tokens": 5225,
+    "output_tokens_details": {
+      "thinking_tokens": 784
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13421,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3411,
+        "cache_read_input_tokens": 14360,
+        "cache_creation_input_tokens": 3074,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3074
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1106431,
+  "duration_ms": 35705,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T01:30:05",
+  "unit": "file",
+  "source_sha256": "b10fdb5374d2be9d985ff525456cbe1d3806c7e67ee157bce9d36a2587a0c1d5",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

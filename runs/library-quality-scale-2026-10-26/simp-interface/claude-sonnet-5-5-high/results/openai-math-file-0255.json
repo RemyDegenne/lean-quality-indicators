@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0255",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it depends on (crossFacet, mem_crossFacet, crossFacet_card in Coefficients.lean). I also checked the other user of flipAt (BoolCubeConstant.lean) and the unrelated flipAt in Ising/Colorings.lean. I did not run Lean, so I don't know whether the proposed simp lemmas would fire as intended or whether they interact with other simp sets in files that import this one. I found no rewrite cycles or competing simp rules, because the file has no simp attributes at all. The findings are about missing simp interface pieces.",
+  "findings": [
+    {
+      "declaration": "flipAt (and its call sites flipAt_ne, crossRidge_parents)",
+      "start_line": 10,
+      "end_line": 11,
+      "excerpt": "Function.update b i (! b i)",
+      "problem": "flipAt has no evaluation lemmas, so every proof that needs its value does `simp [flipAt]`. That unfolds it to Function.update and relies on Function.update simp lemmas (`update_self`, `update_of_ne`) plus side conditions. The call sites are flipAt_ne (line 16), crossRidge_parents (lines 81, 82, 85) and bool_cube_constant (`simp only [d, flipAt, hflip]`). Unfolding exposes the Function.update implementation in each caller. Because `flipAt` is an ordinary def, `simp` will not see through it in downstream goals unless the caller unfolds it. A plain `simp` call therefore cannot normalise `flipAt b i i` or `flipAt b i j` for j \u2260 i.",
+      "proposed_change": "Add two @[simp] evaluation lemmas right after the definition: `flipAt_apply_self : flipAt b i i = !b i` (proved by `Function.update_self`) and `flipAt_apply_of_ne (h : j \u2260 i) : flipAt b i j = b j` (proved by `Function.update_of_ne h`). Alternatively, state `flipAt_apply j : flipAt b i j = if j = i then !b i else b j`, as the Ising development already does for its own flipAt. Then replace `simp [flipAt]` and `simp [flipAt, hj]` with `simp` or `simp [hj]`, and make flipAt_ne `simpa using congrFun he i`.",
+      "benefit": "Callers get one canonical normal form for flipAt values and no longer unfold to Function.update. The proofs in this file and in bool_cube_constant get shorter and don't depend on how flipAt is implemented.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/Simplicial/Flip.lean",
+          "declaration": "crossRidge_parents",
+          "excerpt": "\u00b7 simpa [flipAt, hj] using h j hj"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/Simplicial/BoolCubeConstant.lean",
+          "declaration": "bool_cube_constant",
+          "excerpt": "have hdflip : d = flipAt b i := by simp only [d, flipAt, hflip]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/Ising/Colorings.lean",
+          "declaration": "flipAt_apply",
+          "excerpt": "flipAt x \u03c3 y = if y = x then !(\u03c3 y) else \u03c3 y"
+        }
+      ]
+    },
+    {
+      "declaration": "crossRidge_card / mem_crossRidge / crossRidge_subset_iff (cross-facet and ridge API)",
+      "start_line": 29,
+      "end_line": 64,
+      "excerpt": "(crossRidge n b i).card = n-1",
+      "problem": "The membership and cardinality lemmas for crossFacet and crossRidge (`mem_crossFacet`, `crossFacet_card`, `mem_crossRidge`, `crossRidge_card`) are not simp lemmas, and none of the definitions is irreducible or has a simp set. Each proof therefore rewrites by hand: `(mem_crossFacet n b _).mpr \u27e8i,rfl\u27e9`, `rw [crossRidge, Finset.card_erase_of_mem \u2026, crossFacet_card]`, and `change 0 < (crossRidge n b i).card` followed by `rw [crossRidge_card]`. Because crossRidge is a plain def, `simp` can neither compute the card of a ridge nor decide membership, and goals have to be unfolded with `change` and `rw`. The statement `n-1` (natural subtraction) also forces an `omega` after rewriting.",
+      "proposed_change": "Mark `crossFacet_card` and `crossRidge_card` as @[simp]. Both have a clean left-hand side and a right-hand side that is a simpler term. Mark `mem_crossFacet` and `mem_crossRidge` as @[simp] as well, if the existential form is acceptable as a normal form. Then crossRidge_mem could be `simp`-driven, and the `(mem_crossFacet n b _).mpr \u27e8i,rfl\u27e9` terms could become `by simp`. If `mem_crossFacet` is not made simp, add a specialised `@[simp] lemma mk_mem_crossFacet : (i.val, b i) \u2208 crossFacet n b` that covers the repeated `\u27e8i,rfl\u27e9` witnesses (lines 21, 31, 64 and LabelRegion.lean line 96).",
+      "benefit": "Cardinality and membership goals about crossFacet and crossRidge could be closed or normalised by `simp`. The repeated `(mem_crossFacet n b _).mpr \u27e8i,rfl\u27e9` boilerplate would go away, and downstream files would not need to rediscover these lemma names.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/Simplicial/Coefficients.lean",
+          "declaration": "crossFacet_card",
+          "excerpt": "lemma crossFacet_card (n : \u2115) (b : Fin n \u2192 Bool) : (crossFacet n b).card = n"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/Simplicial/Coefficients.lean",
+          "declaration": "mem_crossFacet",
+          "excerpt": "v \u2208 crossFacet n b \u2194 \u2203 i : Fin n, v = (i.val,b i)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Borsuk/Simplicial/LabelRegion.lean",
+          "declaration": "(proof using mem_crossFacet)",
+          "excerpt": "exact (mem_crossFacet m b _).mpr \u27e8i,rfl\u27e9"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 14546,
+    "cache_read_input_tokens": 51432,
+    "output_tokens": 3689,
+    "output_tokens_details": {
+      "thinking_tokens": 402
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14546,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2736,
+        "cache_read_input_tokens": 17969,
+        "cache_creation_input_tokens": 590,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 590
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10023320000000001,
+  "duration_ms": 26041,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:42:38",
+  "unit": "file",
+  "source_sha256": "9297c0f1041ce6800d67998dab936c034b18238f65b9afadf5758dfafa788702",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

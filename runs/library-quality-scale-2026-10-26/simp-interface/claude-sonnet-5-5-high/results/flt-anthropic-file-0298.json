@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0298",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the AdjoinRoot simp lemmas in Mathlib (`lift_root`, `lift_of` and `eval\u2082_root` are `@[simp]`). I grepped the repository for other uses of the helper lemmas. The matching files looked like unrelated name coincidences, so I treated the lemmas as local to this file. I could not run Lean. The findings are about the shape of the simp interface for the local `\u03c8\u2081`, `\u03c8` and `\u03b8` constructions, not about observed simp failures. I did not find any rewrite-direction problem or credible loop. The `abbrev` definitions of `fA` and `fK` let the generic `eval\u2082_*` lemmas fire, and I did not flag that. The main uncertainty is whether tagging the lemmas `@[simp]` would interact with other simp lemmas about `Algebra.TensorProduct.lift` and `AdjoinRoot` once the target type is unfolded. The suggestion is therefore to try it and keep only the lemmas that behave well.",
+  "findings": [
+    {
+      "declaration": "\u03c8_tmul / \u03c8\u2081_root / \u03b8_of / \u03b8_root (characterising lemmas of \u03c8\u2081, \u03c8, \u03b8)",
+      "start_line": 68,
+      "end_line": 94,
+      "excerpt": "theorem \u03c8_tmul (n : \u2115) (u : A) (s : AdjoinRoot (fA n u)) (k : K) :\n    \u03c8 n u (s \u2297\u209c[A] k) = \u03c8\u2081 n u s * algebraMap K (AdjoinRoot (fK K n u)) k := by\n  simp [\u03c8]",
+      "problem": "`\u03c8\u2081`, `\u03c8` and `\u03b8` are opaque `def`s, and these four lemmas are their only computation rules. None is `@[simp]`, so `simp` cannot evaluate `\u03c8 n u (s \u2297\u209c k)`, `\u03c8\u2081 n u (root _)`, `\u03b8 n u (root _)` or `\u03b8 n u (of _ k)`. Every use is a hand-written `rw` chain ending in the same unit clean-up: `rw [\u03c8_tmul, map_one, one_mul]` (l.113), `rw [\u03b8_root, \u03c8_tmul, map_one, mul_one, \u03c8\u2081_root]` (l.119) and `rw [..., \u03c8_tmul, map_one, mul_one] at this` (l.146). Each lemma is proved by `simp [def]`, so the unfolding is already simp-shaped. The remaining rewrites (`map_one`, `mul_one`, `one_mul`) are already simp lemmas, but the user has to order them by hand.",
+      "proposed_change": "Mark `\u03c8\u2081_root`, `\u03c8_tmul`, `\u03b8_of` and `\u03b8_root` as `@[simp]`. The left-hand sides are constructor-headed applications of the new definitions, and the right-hand sides use only the target's own constants, so I see no loop. Then `\u03c8\u03b8_eq_id` can end in `simp`, or `simp [\u03c8\u03b8]`. The `commutes'` field of `\u03c8\u03b8` and the `hx_eq` step can use `simp` instead of the `rw` plus `change` chains. If simp-normalising `\u03c8 n u (\u03b8 n u x)` is wanted, also state a simp-normal form of `\u03c8_\u03b8`.",
+      "benefit": "Later proofs about `\u03c8`, `\u03b8` and `\u03c8\u03b8` could use plain `simp`, with no manual ordering of `rw [\u03c8_tmul, map_one, mul_one]`. The three copies of that chain, and the `change` steps that expose the head symbol, would shrink or go away. The API would also be more robust if `\u03c8` or `\u03b8` are redefined.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_IsIntegrallyClosed_integralClosure_eq_adjoin_root_X_pow_sub_C_of_isUnit.lean",
+          "declaration": "\u03c8\u03b8_eq_id",
+          "excerpt": "rw [\u03b8_root, \u03c8_tmul, map_one, mul_one, \u03c8\u2081_root]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_IsIntegrallyClosed_integralClosure_eq_adjoin_root_X_pow_sub_C_of_isUnit.lean",
+          "declaration": "\u03c8\u03b8",
+          "excerpt": "rw [\u03c8_tmul, map_one, one_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/AdjoinRoot.lean",
+          "declaration": "AdjoinRoot.lift_root",
+          "excerpt": "theorem lift_root : lift i a h (root f) = a"
+        }
+      ]
+    },
+    {
+      "declaration": "root_fK_pow / root_fA_pow and the repeated eval\u2082 simp-only chain",
+      "start_line": 31,
+      "end_line": 61,
+      "excerpt": "simp only [eval\u2082_sub, eval\u2082_X_pow, eval\u2082_C] at h",
+      "problem": "The same unfolding `simp only [eval\u2082_sub, eval\u2082_X_pow, eval\u2082_C, ...]` is repeated in `root_fK_pow`, `root_fA_pow`, the proof obligation of `\u03c8\u2081` (l.66), the proof obligation of `\u03b8` (l.83) and the last line of the main theorem (l.159). The two lemmas `root_fK_pow` and `root_fA_pow` state `root ^ n = algebraMap u`, which is the right orientation for rewriting. But they are not simp lemmas, and there is no lemma saying that `fA n u` or `fK K n u` evaluates to `0` at the root. So each place that needs this vanishing rebuilds it with a hand-picked `simp only` list that includes `root_fK_pow` and `sub_self`.",
+      "proposed_change": "Add one lemma such as `eval\u2082_fK_root : (fK K n u).eval\u2082 (algebraMap A (AdjoinRoot (fK K n u))) (root _) = 0`, and the `fA` analogue if needed. Tag `root_fK_pow` and `root_fA_pow` with `@[simp]` if they are not harmful in context. The `root ^ n` form is a canonical normal form, since the generic `AdjoinRoot` lemmas do not rewrite it. The `\u03c8\u2081` obligation and the final integrality goal then close with `simp` or one `exact`.",
+      "benefit": "This removes the five-way copy of the same unfolding list, so a change to the polynomial definitions is made in one place. It also gives the later `IsIntegral` and `liftAlgHom` obligations a single normal form to hit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_IsIntegrallyClosed_integralClosure_eq_adjoin_root_X_pow_sub_C_of_isUnit.lean",
+          "declaration": "integralClosure_eq_adjoin",
+          "excerpt": "simp only [eval\u2082_sub, eval\u2082_X_pow, eval\u2082_C, root_fK_pow, sub_self]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_IsIntegrallyClosed_integralClosure_eq_adjoin_root_X_pow_sub_C_of_isUnit.lean",
+          "declaration": "\u03c8\u2081",
+          "excerpt": "simp only [eval\u2082_sub, eval\u2082_X_pow, eval\u2082_C, root_fK_pow, sub_self])"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/AdjoinRoot.lean",
+          "declaration": "AdjoinRoot.eval\u2082_root",
+          "excerpt": "theorem eval\u2082_root (f : R[X]) : f.eval\u2082 (of f) (root f) = 0"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 7218,
+    "cache_read_input_tokens": 32079,
+    "output_tokens": 5470,
+    "output_tokens_details": {
+      "thinking_tokens": 1988
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 7218,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3194,
+        "cache_read_input_tokens": 12635,
+        "cache_creation_input_tokens": 4305,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4305
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.08679189999999999,
+  "duration_ms": 39444,
+  "turns": 5,
+  "attempts": 2,
+  "judged": "2026-10-27T01:22:32",
+  "unit": "file",
+  "source_sha256": "3f5d2a2d092d59d751dc136f65b517e884e1d185a10007122d74aff1439c4ad6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

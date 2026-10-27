@@ -1,0 +1,99 @@
+{
+  "id": "formal-frontier-file-0050",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read Mathlib's GrothendieckGroup.lean to see the simp coverage of `lift`, `of` and `lift.symm`. I read the downstream Ring.lean in the same library to see how these lemmas are used. I did not run Lean, so both findings come from reading the simp sets and from how simp normally orders rewriting. The `lift\u2082_of` redundancy is the more certain finding. The `lift_add` finding rests on `liftAddEquiv_apply` and `map_add` both applying to `liftAddEquiv (f + g)`, and I can't say which one simp would pick. Things I looked at and left alone: `liftAddEquiv_toEquiv` (rfl, harmless), `liftAddEquiv_symm_apply` (no clash with Mathlib's `lift_symm_apply`, because the head symbols differ), and `lift\u2082_of_right` (its orientation is consistent with `lift\u2082_of_left`).",
+  "findings": [
+    {
+      "declaration": "Algebra.GrothendieckAddGroup.lift\u2082_of",
+      "start_line": 94,
+      "end_line": 98,
+      "excerpt": "theorem lift\u2082_of (f : A \u2192+ B \u2192+ G) (a : A) (b : B) :\n    lift\u2082 f (of a) (of b) = f a b := by",
+      "problem": "`lift\u2082_of` is tagged `@[simp]` next to `lift\u2082_of_left` (simp) and `lift_of` (simp). In `lift\u2082 f (of a) (of b)`, simp simplifies the argument `lift\u2082 f (of a)` before it tries the outer application. `lift\u2082_of_left` rewrites that argument to `lift (f a)`, and `lift_of` then gives `f a b`. So the `lift\u2082_of` simp lemma looks unreachable on its own LHS, and it duplicates a two-step path that already exists. The proof of `lift\u2082_of` itself uses `lift\u2082_of_left` and `lift_of`, which shows the redundancy. The downstream `mulAddHom_of` in Ring.lean proves its statement with `exact lift\u2082_of ...` rather than relying on simp.",
+      "proposed_change": "Keep `lift\u2082_of` as a plain theorem, since the explicit statement is useful for `rw` and `exact`, and drop its `@[simp]` attribute. Leave simp to `lift\u2082_of_left` followed by `lift_of`. If a one-step rule is wanted, mark `lift\u2082_of` with a higher priority or mark `lift\u2082_of_left` non-simp, so that exactly one canonical path is registered.",
+      "benefit": "The simp set then has one canonical route for generator-on-generator evaluation. This removes a dead simp lemma and any doubt about which rule actually fires, and `lift\u2082_of` stays available for explicit rewriting.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/group-theory/GroupTheory/MonoidLocalization/GrothendieckGroup.lean",
+          "declaration": "Algebra.GrothendieckAddGroup.lift\u2082_of_left",
+          "excerpt": "lift\u2082 f (of a) = lift (f a) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/group-theory/GroupTheory/MonoidLocalization/GrothendieckGroup/Ring.lean",
+          "declaration": "Algebra.GrothendieckAddGroup.mulAddHom_of",
+          "excerpt": "exact lift\u2082_of ((AddMonoidHom.mul : A \u2192+ A \u2192+ A).compr\u2082 of) a b"
+        }
+      ]
+    },
+    {
+      "declaration": "Algebra.GrothendieckAddGroup.lift_add / liftAddEquiv_apply",
+      "start_line": 55,
+      "end_line": 73,
+      "excerpt": "theorem lift_add (f g : A \u2192+ G) : lift (f + g) = lift f + lift g := by",
+      "problem": "`liftAddEquiv_apply` is `@[simp]` and rewrites `liftAddEquiv f` to `lift f`. `lift_add`, the additivity of `lift` that justifies the `\u2243+` structure, is not simp. For `liftAddEquiv (f + g)`, simp can therefore end in two forms. If `liftAddEquiv_apply` fires first, the result is the stuck term `lift (f + g)`. If the generic simp lemma `map_add` for the `AddEquiv` fires first, the result is `lift f + lift g`. I haven't run Lean to see which one it picks. The first outcome is clearly poor, because the additivity is only recorded as the non-simp `lift_add`. Mathlib's `lift` is a plain `Equiv`, and the cited Mathlib file has no additivity lemma for it, so nothing else normalises `lift (f + g)`.",
+      "proposed_change": "Mark `lift_add` as `@[simp]`. The RHS `lift f + lift g` is built from smaller arguments, so it cannot loop. Add a matching `lift_zero : lift (0 : A \u2192+ G) = 0` with the same attribute, so that the `lift` of a pointwise-structured homomorphism has one normal form regardless of whether `liftAddEquiv_apply` or `map_add` fires first.",
+      "benefit": "After a bundled `liftAddEquiv` has been unfolded to `lift`, simp can still push `lift` through pointwise sums, and the result no longer depends on rule order. Clients that use `lift (f + g)`, such as the Ring.lean constructions that mix `lift` and `liftAddEquiv`, no longer need a manual `rw [lift_add]`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/group-theory/GroupTheory/MonoidLocalization/GrothendieckGroup.lean",
+          "declaration": "Algebra.GrothendieckAddGroup.liftAddEquiv_apply",
+          "excerpt": "theorem liftAddEquiv_apply (f : A \u2192+ G) : liftAddEquiv f = lift f := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/GroupTheory/MonoidLocalization/GrothendieckGroup.lean",
+          "declaration": "Algebra.GrothendieckGroup.lift",
+          "excerpt": "noncomputable def lift : (M \u2192* G) \u2243 (GrothendieckGroup M \u2192* G) where"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 26998,
+    "cache_read_input_tokens": 83261,
+    "output_tokens": 7567,
+    "output_tokens_details": {
+      "thinking_tokens": 3787
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26998,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2320,
+        "cache_read_input_tokens": 29064,
+        "cache_creation_input_tokens": 1947,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1947
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1920121,
+  "duration_ms": 58524,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T22:54:18",
+  "unit": "file",
+  "source_sha256": "f152ad21b5314f78bb0086d32776d1738d1c4789287d6b0192ccb842ef55e094",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

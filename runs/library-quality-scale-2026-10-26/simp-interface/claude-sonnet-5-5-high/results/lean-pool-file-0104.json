@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0104",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, with a focus on simp attributes, unfolding lists and definitions that are reduced by hand. Grepped the repo for uses of phaseSign, basisMatrix and construction_* to see how they are consumed. I did not run Lean, so the suggested lemmas are untested and I make no claims about simp behaviour. I considered, and did not report, the rfl-lemmas construction_* (only used by explicit name elsewhere), the mixed @[simp] coverage of the restrict_* lemmas, and the lack of simp lemmas for modelNormal/modelTransverse. All of these are weak.",
+  "findings": [
+    {
+      "declaration": "NavierStokes.PrimaryTargetBounds.phaseSign (and PrimaryGeometryAssembly.phaseSign)",
+      "start_line": 752,
+      "end_line": 755,
+      "excerpt": "noncomputable def phaseSign (j : Fin 2) : \u211d := if j = 0 then 1 else -1",
+      "problem": "phaseSign is an if-then-else on a Fin 2 index, but the file has no simp lemmas for its two values. Every proof that needs them unfolds the definition inside a simp set and relies on fin_cases plus \u2193reduceIte, one_ne_zero and Fin.mk_one. Examples are phaseSign_abs, phase_signs (`norm_num [family, phaseSign]`), the `phaseSign` entry in modelMatrix_column's simp list, and the `hs` step in modelVector_column. The same definition is also declared twice, in PrimaryGeometryAssembly (line 346) and in PrimaryTargetBounds (line 752). CompatiblePair.sign uses the second copy, while the first copy supplies `sigma := fun _ => phaseSign c`. prepared_pair only closes with `rfl` because the two copies are definitionally equal. Any simp-normal form therefore depends on which copy is in scope, and a lemma proved for one copy does not fire on the other.",
+      "proposed_change": "Keep a single phaseSign. Either move it to a shared earlier section, or make one a reducible alias of the other, and have the later section reuse the first. Add `@[simp] theorem phaseSign_zero : phaseSign 0 = 1` and `@[simp] theorem phaseSign_one : phaseSign 1 = -1`. Keep phaseSign_abs, and consider a simp lemma such as `phaseSign_sq : phaseSign j ^ 2 = 1`. Then fin_cases proofs such as modelVector_column's `hs` and modelMatrix_column can use these lemmas instead of unfolding `phaseSign`, and `phase_signs` no longer needs `family` unfolded.",
+      "benefit": "Gives phaseSign a canonical simp normal form on the two concrete indices, and removes the two-copy ambiguity. This shortens the fin_cases/unfold simp calls and stops the definition body leaking into goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryTargetBounds.lean",
+          "declaration": "NavierStokes.PrimaryGeometryAssembly.phaseSign",
+          "excerpt": "noncomputable def phaseSign (c : Fin 2) : \u211d := if c = 0 then 1 else -1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryTargetBounds.lean",
+          "declaration": "NavierStokes.PrimaryGeometryAssembly.phase_signs",
+          "excerpt": "norm_num [family, phaseSign]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryTargetBounds.lean",
+          "declaration": "NavierStokes.PrimaryTargetBounds.modelVector_column",
+          "excerpt": "fin_cases j <;> simp only [phaseSign, Fin.zero_eta, Fin.isValue, \u2193reduceIte, one_mul,"
+        }
+      ]
+    },
+    {
+      "declaration": "NavierStokes.PrimaryTargetBounds.basisMatrix, modelMatrix, with basisMatrix_det, modelMatrix_column, basisMatrix_target",
+      "start_line": 758,
+      "end_line": 763,
+      "excerpt": "noncomputable def basisMatrix (K : Plane) : Mat2 :=\n  fun i j => if j = 0 then MovingFrameODE.quarterTurn K i else K i",
+      "problem": "basisMatrix is a lambda with an `if j = 0`, and it has no entry or column simp lemmas such as `basisMatrix K i 0 = quarterTurn K i` and `basisMatrix K i 1 = K i`. basisMatrix_det, modelMatrix_column and basisMatrix_target each unfold `basisMatrix` by hand. They use long simp only lists that include `ite_mul`, `\u2193reduceIte`, `one_ne_zero`, `Fin.mk_one`, `cons_val_*` and the whole signedModel/modelDirection/radiusProfile chain. These lists are brittle: they depend on how fin_cases presents the index, and they expose the internal if-expression.",
+      "proposed_change": "Add `@[simp] theorem basisMatrix_apply_zero (K : Plane) (i : Fin 2) : basisMatrix K i 0 = MovingFrameODE.quarterTurn K i := by simp [basisMatrix]` and the matching `basisMatrix_apply_one : basisMatrix K i 1 = K i`. Add a lemma such as `modelMatrix_apply_zero`/`modelMatrix_apply_one` (or a simp-normal form of `modelMatrix c u K i j` for literal j). Use these in basisMatrix_det, basisMatrix_target and modelMatrix_column in place of the `basisMatrix`/`ite_mul`/`\u2193reduceIte` entries of the simp lists.",
+      "benefit": "Matrix entries of the model reduce to a canonical form on literal indices, so the three proofs shrink and no longer depend on how the if-expression is displayed. Any later proof that evaluates a basisMatrix entry can use the same lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryTargetBounds.lean",
+          "declaration": "NavierStokes.PrimaryTargetBounds.basisMatrix_det",
+          "excerpt": "simp only [basisMatrix, Matrix.det_fin_two, ite_true, show (1 : Fin 2) \u2260 0 by decide,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryTargetBounds.lean",
+          "declaration": "NavierStokes.PrimaryTargetBounds.modelMatrix_column",
+          "excerpt": "simp only [modelMatrix, Fin.zero_eta, Fin.isValue, Matrix.mul_apply, basisMatrix,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryTargetBounds.lean",
+          "declaration": "NavierStokes.PrimaryTargetBounds.basisMatrix_target",
+          "excerpt": "simp only [mulVec, dotProduct, basisMatrix, Fin.isValue, MovingFrameODE.quarterTurn,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 69063,
+    "cache_read_input_tokens": 189107,
+    "output_tokens": 5292,
+    "output_tokens_details": {
+      "thinking_tokens": 1893
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 69063,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2781,
+        "cache_read_input_tokens": 70718,
+        "cache_creation_input_tokens": 2358,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2358
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.34809870000000004,
+  "duration_ms": 42841,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:03:07",
+  "unit": "file",
+  "source_sha256": "c3cc28ffb163a08408842d55077ce69d63081139c62bbaa3c03b08fa10b02083",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,88 @@
+{
+  "id": "lean-pool-file-0304",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "The file has one theorem. I read it in full. Its `hl` block is the one piece of repeated reasoning I found, so I grepped for the other users of `iterate_word_laplacian_gradient_energy_bound` and read the three other call sites. These are in IteratesActualMaterialGradient, IteratesActualTerminalCurrent and IteratesActualFirstCurrent. I also read the Laplacian lemma's statement in IteratesLaplacianEnergy.lean. The call sites share one substantive block; the rest of the file's proof is specific to this theorem. I did not review the similar nlinarith or factorial-monotonicity steps as separate findings, because they are short and their shapes differ between files. The proposed lemma has not been compiled. The a = 0 instantiation in FirstCurrent relies on `n + 0` reducing to `n` (defeq), and the call site would need checking. The three other call sites are in other files, so I used them as evidence for the same pattern. The cleanup would touch four files.",
+  "findings": [
+    {
+      "declaration": "AVenhance.Infra.Section4.iterate_homogeneous_gradient_material_energy_bound (the `hl` step)",
+      "start_line": 60,
+      "end_line": 64,
+      "excerpt": "have hl := iterate_word_laplacian_gradient_energy_bound hsol.1 w\n    (G := G * ((w.length + 2 + a).factorial : \u211d) * L ^ (w.length + 2))\n    (fun k => by\n      simpa only [List.length_cons, Nat.add_assoc, Nat.reduceAdd, mul_pow, mul_assoc]\n        using hE (k :: k :: w) (by simp only [List.length_cons]; omega))",
+      "problem": "This block applies `iterate_word_laplacian_gradient_energy_bound` to a factorial-weighted hypothesis. It supplies G as scalar \u00d7 (w.length+2+a)! \u00d7 L^(w.length+2). It then discharges the two-letter-extended-word hypothesis with the same `simpa only [List.length_cons, Nat.add_assoc, Nat.reduceAdd, mul_pow, mul_assoc]` followed by `omega`. The same five-line block appears in at least three other proofs: IteratesActualMaterialGradient (with `hcur`, a = 2*(i+1)), IteratesActualTerminalCurrent (with `hprev`, a = 2*i) and IteratesActualFirstCurrent (with `hE`, a = 0). Only the scalar, the hypothesis name and the offset `a` vary. Each copy reasons about how the length, factorial and power weights change when the word is extended by `k :: k`. The fragile simp-set is hand-tuned and repeated, so a change to the bound's shape must be fixed in four places.",
+      "proposed_change": "Add a weighted wrapper next to `iterate_word_laplacian_gradient_energy_bound` in IteratesLaplacianEnergy.lean (the name below is a suggestion):\n\ntheorem iterate_word_laplacian_gradient_energy_bound_weighted {v : \u211d \u2192 Vec 2 \u2192 \u211d}\n    (hv : ContDiffOn \u211d (\u22a4 : \u2115\u221e) (fun z : AmnrSpace => v z.1 z.2) (Set.Ici (0 : \u211d) \u00d7\u02e2 Set.univ))\n    (w : List (Fin 2)) (a : \u2115) {G L : \u211d}\n    (hE : \u2200 q : List (Fin 2), q.length \u2264 w.length + 2 \u2192\n      spaceTimeGradNormSq (fun t => spaceGrad (iterateSpatialWord q (v t))) \u2264\n        G ^ 2 * (((q.length + a).factorial : \u211d) * L ^ q.length) ^ 2) :\n    spaceTimeGradNormSq (fun t x j => spaceLap (fun y => spaceGrad (iterateSpatialWord w (v t)) y j) x) \u2264\n      4 * (G * ((w.length + 2 + a).factorial : \u211d) * L ^ (w.length + 2)) ^ 2\n\nProof sketch: `iterate_word_laplacian_gradient_energy_bound hv w (G := G * ((w.length+2+a).factorial : \u211d) * L^(w.length+2)) (fun k => by simpa only [List.length_cons, Nat.add_assoc, Nat.reduceAdd, mul_pow, mul_assoc] using hE (k :: k :: w) (by simp only [List.length_cons]; omega))`. That is exactly the current block, moved once.\n\nRewritten use in this file, with a := a, G := G, L := L: `have hl := iterate_word_laplacian_gradient_energy_bound_weighted hsol.1 w a (fun q hq => hE q (by omega))`. The `omega` goal is `q.length \u2264 w.length + 2`, which is exactly `hq`, so `hE` could be passed directly. The statement of `hl` is the same as before, so the later `mul_le_mul_of_nonneg_left hl ...` and `nlinarith only [hm, h\u2083, h\u2084]` are unchanged.\n\nOther uses:\n- IteratesActualMaterialGradient: `iterate_word_laplacian_gradient_energy_bound_weighted hu w (2*(i+1)) hcur`.\n- IteratesActualTerminalCurrent: `... hv w (2*i) hprev`.\n- IteratesActualFirstCurrent: `... hsol.1 w 0 hE` with `G := N / Real.sqrt \u03ba`. That case needs `q.length + 0` to be defeq to `q.length` in the hypothesis and conclusion, and the bound has the hypothesis `v.length \u2264 w.length + 3`, which is weaker than needed. Check that case, or keep it local if `+ 0` causes friction.",
+      "benefit": "Four proofs lose the same five-line, fragile simp/omega block. The length-and-weight bookkeeping for `k :: k :: w` sits in one lemma with a readable statement. Each call site becomes a one-line application with an explicit offset `a`. A change to the Laplacian bound's form needs one edit instead of four.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/IteratesActualMaterialGradient.lean",
+          "declaration": "iterate_increment_material_gradient_energy_bound_of_A3",
+          "excerpt": "(G := Gcur * ((w.length + 2 + 2 * (i + 1)).factorial : \u211d) * L ^ (w.length + 2))\n    (fun k => by\n      simpa only [List.length_cons, Nat.add_assoc, Nat.reduceAdd, mul_pow, mul_assoc] using\n        hcur (k :: k :: w) (by simp only [List.length_cons]; omega))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/IteratesActualTerminalCurrent.lean",
+          "declaration": "terminal-current pairing bound (the theorem containing `hLap`)",
+          "excerpt": "(G := B * ((w.length + 2 + 2 * i).factorial : \u211d) * L ^ (w.length + 2))\n    (fun k => by\n      simpa only [List.length_cons, Nat.add_assoc, Nat.reduceAdd, mul_pow, mul_assoc] using\n        hprev (k :: k :: w) (by simp only [List.length_cons]; omega))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/IteratesActualFirstCurrent.lean",
+          "declaration": "first-current pairing bound (the theorem containing `hLap`)",
+          "excerpt": "(G := N / Real.sqrt \u03ba * ((w.length + 2).factorial : \u211d) * L ^ (w.length + 2))\n    (fun k => by\n      simpa only [List.length_cons, Nat.add_assoc, Nat.reduceAdd, mul_pow, mul_assoc] using\n        hE (k :: k :: w) (by simp only [List.length_cons]; omega))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/IteratesLaplacianEnergy.lean",
+          "declaration": "iterate_word_laplacian_gradient_energy_bound",
+          "excerpt": "(hE : \u2200 k : Fin 2,\n      spaceTimeGradNormSq (fun t => spaceGrad (iterateSpatialWord (k :: k :: w) (v t))) \u2264 G ^ 2) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 19179,
+    "cache_read_input_tokens": 50195,
+    "output_tokens": 5442,
+    "output_tokens_details": {
+      "thinking_tokens": 1106
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19179,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3952,
+        "cache_read_input_tokens": 17401,
+        "cache_creation_input_tokens": 5707,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5707
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1361755,
+  "duration_ms": 43584,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:27:41",
+  "unit": "file",
+  "source_sha256": "137dc8eef656220e53f43273767baaf5bb564daa7dce36025f620fe46d17ecf2",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

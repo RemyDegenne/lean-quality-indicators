@@ -1,0 +1,99 @@
+{
+  "id": "flt-anthropic-file-0172",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definition file Def_AlgebraicGeometry_OrderedAffineCoverCechOrdered.lean, which holds ores_apply, od_apply, oext_apply_*, ounitPullback_apply and osort_val. I grepped for downstream uses of ores_oext, ores_od and ores_ocup. None of the relevant lemmas are tagged @[simp], and every proof and downstream use rewrites them by hand with rw. I did not check whether other simp lemmas (for example sign_refl) would interact with the proposed attributes. I could not run Lean, so I make no claim about loops or simp failures. The proposed orientations push ores inward and shrink terms, so I expect no cycle.",
+  "findings": [
+    {
+      "declaration": "ores_oext (with siblings ores_od, ores_ocup)",
+      "start_line": 26,
+      "end_line": 37,
+      "excerpt": "F.ores K n (F.oext K n z) = z",
+      "problem": "ores_oext is a retraction identity (ores \u2218 oext = id) that rewrites a composite to a smaller term, so it fits the simp normal form. ores_od and ores_ocup likewise push `ores` through `od` and `ocup` to their non-ordered versions `d` and `cup`. None of the three is tagged @[simp] or registered in a simp set. Downstream code applies them one at a time, for example `rw [ores_ocup, ores_oext, ores_oext]` and `rw [map_sub, orev_oext, hrev, map_sub, ores_oext, map_zsmul, ...]`. This means a user cannot let simp normalise `ores (oext z)`, and each use needs the exact rewrite order spelled out.",
+      "proposed_change": "Mark ores_oext @[simp]. It has a plain left-hand side and no side conditions. Consider @[simp] on ores_od and ores_ocup as well, since their right-hand sides are `d` and `cup`. This is a normal form for ordered-to-alternating cochains and each rule strictly removes an `o`-operation. Because the lemmas sit inside `DORDProofs` and are reused through exported wrappers, put the attributes on the exported theorems, or on the definition-file versions if moved there. Then downstream steps like the `rw [ores_ocup, ores_oext, ores_oext]` call can be `simp only [ores_ocup, ores_oext]`, or plain `simp`.",
+      "benefit": "Callers that combine `ores` with `oext`, `od` and `ocup` get a canonical normal form. They would no longer repeat `rw [ores_oext, ores_oext]` or depend on the order of rewrites. Chains that rewrite under `map_sub` or `map_zsmul` would also become simp calls.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_OModulePresheaf_cls_mul_comm_graded.lean",
+          "declaration": "use of ores_ocup and ores_oext",
+          "excerpt": "rw [ores_ocup, ores_oext, ores_oext]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_OModulePresheaf_Leray_exists_dTot_eq_single_biAug_unitPullback_sub_single_id.lean",
+          "declaration": "use of ores_oext",
+          "excerpt": "conv_lhs => rw [\u2190 ores_oext (OModulePresheaf.unit (\ud835\udfd9 X \u226b \u03c0)) \ud835\udd13 m z]"
+        }
+      ]
+    },
+    {
+      "declaration": "ores_oext, ores_ounitPullback_oext, od_ounitPullback (use of ores_apply, od_apply, oext_apply_of_not_injective)",
+      "start_line": 55,
+      "end_line": 55,
+      "excerpt": "rw [ores_apply, ounitPullback_apply]",
+      "problem": "The definitional unfolding lemmas ores_apply, od_apply, ounitPullback_apply, oext_apply_of_injective and oext_apply_of_not_injective are not simp lemmas, so the proofs rewrite them manually. The file works around the missing simp coverage with long `change` blocks that restate the unfolded terms. An example is `change (X.presheaf.map _).hom ((h.app _).hom (0 : \u0393(Y, ...))) = ...`. The lemmas are stated with `rfl` or `simp only` proofs and have clear oriented forms. `ores_apply : F.ores K n c s = c s.1` is a projection-style rewrite and is non-looping. `oext_apply_of_not_injective` has the hypothesis `\u00ac Function.Injective t`, which simp can discharge from a local `hinj`.",
+      "proposed_change": "In the definition file, mark `ores_apply` @[simp]. Mark `oext_apply_of_not_injective` @[simp] too. Its right-hand side is `0` and its side condition is a hypothesis that `simp [hinj]` can discharge. Keep `od_apply` and `ounitPullback_apply` as explicit `simp only` or `rw` lemmas. Their right-hand sides expand into sums and presheaf maps, so a global simp tag could cause unwanted expansion. Then the not-injective branch of ores_ounitPullback_oext could be closed by `simp [ores_apply, oext_apply_of_not_injective _ _ _ _ _ hinj, unitPullback_apply_of_not_injective ...]` instead of an explicit `change` and `rw [map_zero, map_zero]`.",
+      "benefit": "`ores` applied to an ordered cochain then reduces automatically to evaluation at `s.1`, and the zero branch of `oext` is handled by hypothesis discharge. This removes the need for hand-written `change` statements in the degenerate (non-injective) case.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicGeometry_OrderedAffineCoverCechOrdered.lean",
+          "declaration": "OModulePresheaf.ores_apply",
+          "excerpt": "theorem ores_apply (n : \u2115) (c : F.ocochain K n) (s : K.Idx n) : F.ores K n c s = c s.1 := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicGeometry_OrderedAffineCoverCechOrdered.lean",
+          "declaration": "OModulePresheaf.oext_apply_of_not_injective",
+          "excerpt": "F.oext K n z t = 0 := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 16979,
+    "cache_read_input_tokens": 61319,
+    "output_tokens": 4564,
+    "output_tokens_details": {
+      "thinking_tokens": 1154
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16979,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2387,
+        "cache_read_input_tokens": 19777,
+        "cache_creation_input_tokens": 1215,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1215
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11970789999999999,
+  "duration_ms": 42949,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:16:36",
+  "unit": "file",
+  "source_sha256": "97dd404a341151ddd2e1916fbddb7211cacdb4d5a394cb4123e02778b8d4bd9f",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

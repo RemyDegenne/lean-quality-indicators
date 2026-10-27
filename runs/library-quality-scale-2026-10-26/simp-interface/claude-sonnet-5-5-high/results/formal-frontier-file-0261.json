@@ -1,0 +1,109 @@
+{
+  "id": "formal-frontier-file-0261",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and its clients: MultivariatePolynomialsTests/BlockSubstitution.lean, MultivariatePolynomials/BlockSubstitutionLaws.lean and IteratedBlockSubstitution.lean. I also checked Mathlib's bind\u2081/eval\u2082Hom_bind\u2081/eval_rename_prod_mk. The file has no simp attributes at all. I found two interface gaps: eval_blockSubst is not simp, and blockSubst has no unfolding equation. The first would send simp's evaluation of blockSubst to the already-simp-normal nested `eval` form with no cycle. For the second I would prefer a rfl equation lemma, not `@[simp]` on the unfolding, to avoid unwanted expansion. I did not run Lean, so I make no claim about simp behaviour; the changes are suggestions.",
+  "findings": [
+    {
+      "declaration": "MvPolynomial.eval_blockSubst",
+      "start_line": 37,
+      "end_line": 44,
+      "excerpt": "eval x (blockSubst p q) = eval (fun i => eval (fun j => x (i, j)) q) p",
+      "problem": "The main evaluation law for the opaque-looking definition `blockSubst` is not tagged `@[simp]`, so `simp` cannot see through `eval x (blockSubst p q)` unless a client unfolds the definition. Clients therefore invoke it by hand: `rw [eval_blockSubst]` followed by `simp` in `twoBlocks`, `simp only [eval_blockSubst]` in `twoStages`, and `simpa only [eval_blockSubst, eval_X, eval_C]` in `constantBlockNotIff`. The lemma is an oriented rewrite. The RHS is a plain `eval` of `p` at a function and contains no `blockSubst`, so the rewrite terminates. In this file the proof of `eval_blockSubst_eq_zero_iff` also rewrites by hand and builds `hinner` manually, work a simp set could do.",
+      "proposed_change": "Mark the lemma `@[simp]`, i.e. `@[simp] theorem eval_blockSubst ...`. The statement is already in the canonical direction (eliminate `blockSubst` under `eval`). Then `twoBlocks` and `twoStages` should reduce to a bare `simp`, and the `rw [eval_blockSubst]` calls in the clients become unnecessary.",
+      "benefit": "Evaluation of block substitutions normalises automatically to nested `eval`s of `p` and `q`. This also composes with Mathlib's `eval_X`/`eval_add`/`eval_C` simp lemmas, so client proofs shrink and nested substitutions (`blockSubst (blockSubst p q) r`) normalise without bespoke `simp only` calls.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomialsTests/BlockSubstitution.lean",
+          "declaration": "BlockSubstitutionClient.twoStages",
+          "excerpt": "simp only [eval_blockSubst]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomialsTests/BlockSubstitution.lean",
+          "declaration": "BlockSubstitutionClient.twoBlocks",
+          "excerpt": "rw [eval_blockSubst]\n  simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomials/IteratedBlockSubstitution.lean",
+          "declaration": "iteratedBlockSubst eval lemma",
+          "excerpt": "rw [iteratedBlockSubst_succ, eval_rename, eval_blockSubst]"
+        }
+      ]
+    },
+    {
+      "declaration": "MvPolynomial.blockSubst",
+      "start_line": 32,
+      "end_line": 35,
+      "excerpt": "bind\u2081 (fun i => rename (Prod.mk i) q) p",
+      "problem": "No unfolding or equation lemma (e.g. `blockSubst_def`, or `coe`-style `aeval`/`bind\u2081` form) is provided, and the definition is not reducible for `simp`. Every consumer must either unfold it with `simp [blockSubst]`, which expands `blockSubst` into raw `bind\u2081`/`rename` terms, or use `change`. The file does this in `eval_blockSubst` (`change eval\u2082Hom (RingHom.id R) x (bind\u2081 ...`). Clients do it too: `homogeneousDegree` uses `change (aeval (fun i => rename (Prod.mk i) q) p).IsHomogeneous`, and the laws file uses `simp only [blockSubst, ...]` throughout. There are also no basic simp lemmas for the degenerate cases that the tests re-derive, such as `blockSubst (X i) q`, `blockSubst 0 q`, `blockSubst (C r) q` and `blockSubst (p + p') q`.",
+      "proposed_change": "Add a non-simp equation `theorem blockSubst_def (p q) : blockSubst p q = bind\u2081 (fun i => rename (Prod.mk i) q) p := rfl`. Add simp lemmas for the canonical constructors that keep `blockSubst` on the LHS: `blockSubst_X : blockSubst (X i) q = rename (Prod.mk i) q`, `blockSubst_zero`, `blockSubst_add`, `blockSubst_C`, and probably `blockSubst_mul`. Their RHS is smaller than the LHS, so there is no cycle. Keep the definition itself out of the default simp set, and use `blockSubst_def` explicitly in the few proofs that need the `bind\u2081` form.",
+      "benefit": "Callers can unfold in a controlled way and avoid `change` with an expression that duplicates the definition body. `simp` can then compute `blockSubst` on explicit polynomials, such as the test `blockSubst (X 0 + X 1) q = rename .. q + rename .. q`, through the structural lemmas. Today that test needs `simp [blockSubst]`, which exposes the internal `bind\u2081` encoding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomialsTests/BlockSubstitution.lean",
+          "declaration": "BlockSubstitutionClient.twoBlocksStructural",
+          "excerpt": "simp [blockSubst]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomialsTests/BlockSubstitution.lean",
+          "declaration": "BlockSubstitutionClient.homogeneousDegree",
+          "excerpt": "change (aeval (fun i => rename (Prod.mk i) q) p).IsHomogeneous (e * d)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/multivariate-polynomials/MultivariatePolynomials/BlockSubstitutionLaws.lean",
+          "declaration": "blockSubst_X_left",
+          "excerpt": "simp [blockSubst, rename_rename]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 13192,
+    "cache_read_input_tokens": 21516,
+    "output_tokens": 4394,
+    "output_tokens_details": {
+      "thinking_tokens": 1083
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13192,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3485,
+        "cache_read_input_tokens": 10639,
+        "cache_creation_input_tokens": 6566,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6566
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0988716,
+  "duration_ms": 28982,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:44:13",
+  "unit": "file",
+  "source_sha256": "fefd16f3f58751e032a8efcde6810f8bb421202728d69ee2907d3155fde87476",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

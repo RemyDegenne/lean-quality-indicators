@@ -1,0 +1,104 @@
+{
+  "id": "mathlib-file-0090",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and its uses in PosPart.lean, Abs.lean and Pointwise/Interval.lean. I also compared with the linear-order `min`/`max` lemmas in Monoid/Unbundled/MinMax.lean. The file has no `@[simp]` attributes at all. The strongest case is `inv_sup`/`inv_inf`: they are one-directional, terminating, push-inward rewrites, and downstream files list them by name in `simp` calls. I did not recommend making `mul_sup`, `sup_mul`, `div_sup` and the similar lemmas simp. They expand terms, and some need non-simp side conditions. The `inf_mul_sup` suggestion is weaker. It is a size-reducing rule that mirrors the existing simp lemma `min_mul_max`. I could not run Lean, so I did not check how it interacts with `min_mul_max` on linear orders, or whether it is confluent with `inv_inf` and `inv_sup`.",
+  "findings": [
+    {
+      "declaration": "inv_sup / inv_inf",
+      "start_line": 81,
+      "end_line": 83,
+      "excerpt": "@[to_additive] lemma inv_sup (a b : \u03b1) : (a \u2294 b)\u207b\u00b9 = a\u207b\u00b9 \u2293 b\u207b\u00b9 := (OrderIso.inv \u03b1).map_sup _ _",
+      "problem": "`inv_sup` and `inv_inf` are not simp lemmas. Downstream files supply them to simp by hand, which shows they are the intended normal form, with inversion pushed to the leaves. Each rule turns `(a \u2294 b)\u207b\u00b9` into `a\u207b\u00b9 \u2293 b\u207b\u00b9` (or the dual) and strictly lowers the nesting depth of `\u207b\u00b9` over lattice operations. The two rules do not feed each other. Together with `inv_inv` they make a terminating, locally confluent set. The lemma `inv_uIcc` is already simp, and the same pushing-inward normal form is what the order-pointwise lemmas want.",
+      "proposed_change": "Mark both lemmas `@[to_additive (attr := simp)]`, so `neg_sup` and `neg_inf` become simp too. Then drop the explicit `inv_sup`/`inv_inf` arguments in `simp [...]` calls that no longer need them. Leave `mul_sup`, `sup_mul`, `div_sup` and the similar lemmas non-simp, since they expand terms.",
+      "benefit": "`simp` could normalise `(a \u2294 b)\u207b\u00b9` and `-(a \u2293 b)` on its own, without callers having to know the lemma names. The `simp [leOnePart, inv_sup, ...]` calls in PosPart.lean and the `simp only [..., inv_sup, inv_inf]` call in Interval.lean would get shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Order/Group/PosPart.lean",
+          "declaration": "leOnePart_max",
+          "excerpt": "simp [leOnePart, inv_sup, sup_inf_right]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Order/Group/PosPart.lean",
+          "declaration": "leOnePart_min",
+          "excerpt": "simp [leOnePart, inv_inf, sup_sup_distrib_right]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Order/Group/Pointwise/Interval.lean",
+          "declaration": "inv_uIcc",
+          "excerpt": "simp only [uIcc, inv_Icc, inv_sup, inv_inf]"
+        }
+      ]
+    },
+    {
+      "declaration": "inf_mul_sup",
+      "start_line": 108,
+      "end_line": 116,
+      "excerpt": "lemma inf_mul_sup [MulLeftMono \u03b1] (a b : \u03b1) : (a \u2293 b) * (a \u2294 b) = a * b :=",
+      "problem": "The linear-order analogue `min_mul_max` is a simp lemma, and so is `max_mul_min`. Its lattice generalisation `inf_mul_sup` has no simp attribute. So simp can collapse `min a b * max a b` but not `(a \u2293 b) * (a \u2294 b)` in a lattice-ordered commutative group. The identity strictly shrinks the term and has no side conditions beyond instances that instance search can find, so it is a plausible simp rule. The swapped form `(a \u2294 b) * (a \u2293 b)` has no lemma in this file at all. The same-named identity for `Associates` is `sup_mul_inf`, which suggests the swapped statement is a natural companion.",
+      "proposed_change": "Mark `inf_mul_sup` `@[to_additive (attr := simp)]`. Consider adding a companion lemma for `(a \u2294 b) * (a \u2293 b) = a * b`, proved by `mul_comm` and `inf_mul_sup`, and making it simp as well. Check that this does not conflict with `min_mul_max` on linear orders, where `\u2293` and `min` may be unified.",
+      "benefit": "Simp could discharge `(a \u2293 b) + (a \u2294 b)` terms in lattice-ordered additive groups, such as \u211d-valued function lattices, as it already does for `min`/`max`. That would remove manual `rw [inf_mul_sup]` steps and make the simp interface of the lattice and linear-order versions consistent.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Order/Monoid/Unbundled/MinMax.lean",
+          "declaration": "min_mul_max",
+          "excerpt": "@[to_additive (attr := simp)]\nlemma min_mul_max (a b : \u03b1) : min a b * max a b = a * b"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Order/Monoid/Unbundled/MinMax.lean",
+          "declaration": "max_mul_min",
+          "excerpt": "@[to_additive (attr := simp, to_dual existing)]\nlemma max_mul_min (a b : \u03b1) : max a b * min a b = a * b"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 23013,
+    "cache_read_input_tokens": 90976,
+    "output_tokens": 5797,
+    "output_tokens_details": {
+      "thinking_tokens": 2016
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23013,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2299,
+        "cache_read_input_tokens": 25453,
+        "cache_creation_input_tokens": 1573,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1573
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1591436,
+  "duration_ms": 42567,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T23:00:39",
+  "unit": "file",
+  "source_sha256": "558ef72f814d5a71e09a7204cdac224ca6521abcd44b8dafa275369705d4511c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

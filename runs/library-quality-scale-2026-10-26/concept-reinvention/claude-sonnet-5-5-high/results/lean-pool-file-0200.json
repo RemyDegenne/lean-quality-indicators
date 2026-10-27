@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0200",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, Mathlib's LinearAlgebra/UnitaryGroup.lean and PiL2 toEuclideanLin, and State.lean's StateVector definition. Counted uses of Gate.ofUnitary/conjTranspose and mulVec across LeanQuantumAlg (many downstream uses, so migration cost is real but the structure is arguably an intentional API choice). I did not inspect downstream files in detail. Two findings: Gate is a hand-built copy of Matrix.unitaryGroup with a partial Monoid+Inv, and HilbertOperator.applyVec is a copy of Matrix.toEuclideanLin applied. Confidence is moderate for the second because the named wrapper is a deliberate API.",
+  "findings": [
+    {
+      "declaration": "QuantumAlg.Gate (structure), with Monoid, Inv, conjTranspose, ofUnitary",
+      "start_line": 160,
+      "end_line": 236,
+      "excerpt": "structure Gate (n : \u2115) where\n  /-- Underlying Hilbert-space operator. -/\n  op : HilbertOperator n\n  /-- Gates are unitary by definition. -/\n  unitary : op \u2208 Matrix.unitaryGroup (Fin (2 ^ n)) \u2102",
+      "problem": "`Gate n` is a bundled copy of the subtype `Matrix.unitaryGroup (Fin (2^n)) \u2102` (Mathlib's `unitary (Matrix ..)`). Mathlib already provides a `Group` and `StarMul` structure on it, with `1`, `*`, `star = \u207b\u00b9`, and coercion lemmas. The file instead re-creates this by hand. It builds a `Monoid` instance with three proofs that go through `ext`/`change`. It defines `conjTranspose` and a separate `Inv` instance. It adds its own `ext`, `Coe`, `CoeFun`, `coe_one`, `coe_mul`, `coe_conjTranspose` and `ofUnitary`/`coe_ofUnitary`. It also adds extra `HMul` instances to mix gates with raw operators. Because only `Monoid` is given, the group laws (`G * G\u207b\u00b9 = 1`) are not available and would need to be reproved. Downstream code (about 60 uses of `ofUnitary`/`conjTranspose`) cannot use Mathlib's unitary-group lemmas without unwrapping `.op`/`.unitary`.",
+      "proposed_change": "Define `abbrev Gate (n : \u2115) := Matrix.unitaryGroup (Fin (2 ^ n)) \u2102`, or keep `structure Gate` but add `Equiv`/coercion bridging to the subtype and derive `Group` via it. This would give `Group`, `Inv = star` and the ext lemma from Mathlib. `Gate.apply` and `Gate.applyVec` can stay as named API on top. If the structure stays for namespacing, at least state the `Group` instance (with `inv := conjTranspose`) and prove `Gate \u2243* Matrix.unitaryGroup _ \u2102`, so Mathlib lemmas transfer. `ofUnitary`, `coe_*` and the `Monoid` boilerplate then reduce to Mathlib instances.",
+      "benefit": "Removes a parallel unitary-group API. Gates get the full `Group` structure and Mathlib's unitary lemmas for free. Downstream files stop converting between `Gate` and `unitaryGroup` membership proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/LinearAlgebra/UnitaryGroup.lean",
+          "declaration": "Matrix.unitaryGroup",
+          "excerpt": "abbrev unitaryGroup : Submonoid (Matrix n n \u03b1) :=\n  unitary (Matrix n n \u03b1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/LinearAlgebra/UnitaryGroup.lean",
+          "declaration": "Matrix.unitaryGroup (Group/StarMul example)",
+          "excerpt": "example : Group (unitaryGroup n \u03b1) := inferInstance"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Core/Gate.lean",
+          "declaration": "QuantumAlg.Gate.conjTranspose",
+          "excerpt": "instance : Inv (Gate n) := \u27e8conjTranspose\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "QuantumAlg.HilbertOperator.applyVec",
+      "start_line": 44,
+      "end_line": 45,
+      "excerpt": "noncomputable def applyVec (A : HilbertOperator n) (\u03c8 : StateVector n) : StateVector n :=\n  WithLp.toLp 2 (A.mulVec \u03c8.ofLp)",
+      "problem": "`StateVector n` is `EuclideanSpace \u2102 (Fin (2^n))`, and `HilbertOperator n` is the matrix type. Mathlib's `Matrix.toEuclideanLin` is exactly the action of a matrix on `EuclideanSpace` as a linear map, being `toLpLin` / `toLin'` conjugated by `WithLp`. The file defines its own `applyVec` as a separate function and then reproves its linearity by hand: `applyVec_add`, `applyVec_sub`, `applyVec_smul`, `applyVec_neg`, `add_applyVec`, `smul_applyVec`, `one_applyVec` and `mul_applyVec`. It does this with `unfold`/`rw [show ... from rfl]`. Gate repeats the same in `Gate.applyVec_*`, `apply_add`, `apply_sub`, `apply_smul` and `apply_neg`. Results about `LinearMap` (injectivity, composition, `map_sum`, adjoint) therefore do not apply to the gate action.",
+      "proposed_change": "Define `HilbertOperator.applyVec A := Matrix.toEuclideanLin A` as a linear map, or keep `applyVec` as an abbreviation or `@[simp]`-equal to `Matrix.toEuclideanLin A \u03c8`. Then derive the linearity lemmas from `map_add`/`map_smul`/`map_neg`/`map_sub`, and `mul_applyVec` from `Matrix.toEuclideanLin` multiplicativity. Drop the duplicated `Gate.apply_add/sub/smul/neg` compatibility names, or make them one-line aliases.",
+      "benefit": "The gate action becomes a genuine `EuclideanSpace \u2192\u2097[\u2102] EuclideanSpace`. Generic linear-map and inner-product API applies, and about a dozen hand-proved linearity lemmas shrink.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/InnerProductSpace/PiL2.lean",
+          "declaration": "Matrix.toEuclideanLin",
+          "excerpt": "abbrev toEuclideanLin : Matrix m n \ud835\udd5c \u2243\u2097[\ud835\udd5c] EuclideanSpace \ud835\udd5c n \u2192\u2097[\ud835\udd5c] EuclideanSpace \ud835\udd5c m :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Core/State.lean",
+          "declaration": "QuantumAlg.StateVector",
+          "excerpt": "abbrev StateVector (n : \u2115) : Type := EuclideanSpace \u2102 (Fin (2 ^ n))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 5282,
+    "cache_read_input_tokens": 73856,
+    "output_tokens": 4584,
+    "output_tokens_details": {
+      "thinking_tokens": 516
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 5282,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2796,
+        "cache_read_input_tokens": 17681,
+        "cache_creation_input_tokens": 468,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 468
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0743736,
+  "duration_ms": 30330,
+  "turns": 9,
+  "attempts": 2,
+  "judged": "2026-10-27T00:23:19",
+  "unit": "file",
+  "source_sha256": "9ca6d0dd85923156753ef835bf7bbc80b04520711f1b3fb7ffe8b70fc5d36884",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

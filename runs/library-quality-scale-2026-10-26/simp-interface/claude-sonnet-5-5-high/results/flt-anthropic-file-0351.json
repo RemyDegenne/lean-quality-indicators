@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0351",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions of kw_lrAddNegDiag_negSubst, kw_lrAddNegDiag_negSubstGen and kw_lrAddNegDiag_negQuotHom in the vocabulary file. I also read two other files that use them (negMor_chartFactor and negMor_over). The file has almost no simp attributes. The main issue is that the negation-substitution API has no simp or canonical lemmas, so each use unfolds the definition by hand. I did not recommend attributes for the other aux_ lemmas, since they have hypotheses or are not normal-form rewrites. I did not run Lean, so I have not checked that the proposed lemmas compile or that they would not conflict with other simp lemmas. Whether simp, rather than an explicit rw, would work for a given goal also depends on how the coercions elaborate, which I could not check.",
+  "findings": [
+    {
+      "declaration": "aux_negQuotHom_mk / aux_negQuotHom_mkX (and their uses in auxNeg_gen, auxNeg_algebraMap)",
+      "start_line": 198,
+      "end_line": 209,
+      "excerpt": "kw_lrAddNegDiag_negQuotHom W (mk\u2083 p) = mk\u2083 (kw_lrAddNegDiag_negSubst W p) :=\n  Ideal.Quotient.lift_mk _ _ _",
+      "problem": "The negation substitution has no canonical simp lemmas. The basic computation rules of kw_lrAddNegDiag_negQuotHom and kw_lrAddNegDiag_negSubst on generators and constants are not simp lemmas. Instead, the file proves a local `aux_negQuotHom_mk` that is not tagged simp, and every use unfolds `kw_lrAddNegDiag_negSubst` by hand and then rewrites with `aeval_X` or `aeval_C`. The same hand-unfolding pattern appears at lines 205, 232\u2013233 and 242\u2013243. Other files redo it with `show \u2026 ; rw [kw_lrAddNegDiag_negSubst, aeval_X]` (negMor_chartFactor `sol_negGradedHom_mk_X`) and `.commutes r` (negMor_over). The rule is hidden in a private-style aux lemma, and the definitions are unfolded, which exposes the `aeval` internals.",
+      "proposed_change": "In the definition file next to `kw_lrAddNegDiag_negQuotHom`, add simp lemmas stating the normal forms:\n- `negQuotHom_mk : kw_lrAddNegDiag_negQuotHom W (mk\u2083 p) = mk\u2083 (kw_lrAddNegDiag_negSubst W p)`, which is the current aux lemma, tagged `@[simp]`.\n- `negSubst_X : kw_lrAddNegDiag_negSubst W (X m) = kw_lrAddNegDiag_negSubstGen W m`, proved by `aeval_X`.\n- `negSubst_C : kw_lrAddNegDiag_negSubst W (C r) = C r`.\nThe definitions stay irreducible to simp, so the RHS is stable: the `negSubstGen` term only reduces further on a concrete index. Then `aux_negQuotHom_mkX`, `auxNeg_gen` and `auxNeg_algebraMap` can use `simp only [negQuotHom_mk, negSubst_X, negSubst_C]` instead of unfolding the definition. Reuse the same lemmas in negMor_chartFactor and negMor_over.",
+      "benefit": "The substitution is stated once as a rewrite rule, so proofs no longer unfold `kw_lrAddNegDiag_negSubst` and rely on `aeval` internals. The three-step `rw` chains in this file (lines 205, 232\u2013233, 242\u2013243) and the `show`-based proofs in the sibling files become single `simp only` calls. A later change to the definition of negSubst would not break every use.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_WeierstrassCurve_ProjModel_GroupLawVocabulary.lean",
+          "declaration": "kw_lrAddNegDiag_negSubst",
+          "excerpt": "def kw_lrAddNegDiag_negSubst : MvPolynomial (Fin 3) R \u2192\u2090[R] MvPolynomial (Fin 3) R :=\n  aeval (kw_lrAddNegDiag_negSubstGen W)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassProjModel_negMor_chartFactor.lean",
+          "declaration": "sol_negGradedHom_mk_X",
+          "excerpt": "rw [kw_lrAddNegDiag_negSubst, aeval_X]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassProjModel_negMor_over.lean",
+          "declaration": "solution (negMor_over helper)",
+          "excerpt": "from (kw_lrAddNegDiag_negSubst W).commutes r]"
+        }
+      ]
+    },
+    {
+      "declaration": "aux_not_dvd_L (evaluation of Projective.polynomial and the linear form under eval\u2082Hom)",
+      "start_line": 103,
+      "end_line": 115,
+      "excerpt": "simp only [map_sub, map_add, map_mul, map_pow, MvPolynomial.eval\u2082Hom_X',\n          Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,\n          Matrix.cons_val_two, Matrix.tail_cons, MvPolynomial.eval\u2082Hom_C]",
+      "problem": "The same `simp only [map_sub, \u2026, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons, Matrix.cons_val_two, Matrix.tail_cons, \u2026]` list is copied four times, at lines 105\u2013108, 112\u2013115, 136\u2013139 and 143\u2013146. Each copy only evaluates `eval\u2082Hom Polynomial.C ![\u2026]` on a polynomial or linear form. The file keeps a `set_option linter.unusedSimpArgs false` header, which hides which of the listed lemmas are needed. Beyond that, it has no named evaluation rules for these two specializations.",
+      "proposed_change": "State the two evaluations once as named lemmas, or define a local `simp` set for them. For example, give `eval\u2082Hom Polynomial.C ![0, X, 1]` and `eval\u2082Hom Polynomial.C ![X, 0, 0]` their own `_X`, `_polynomial` and `_linearForm` simp lemmas. Alternatively, factor out one `simp only [...]` step used by all four sites. Then `aux_not_dvd_L` only rewrites with those lemmas, and the unused-simp-arg linter can be turned back on for this file.",
+      "benefit": "The large simp list appears once, so the intended normal form of each evaluation is visible. The proof of `aux_not_dvd_L` becomes shorter, and the linter can again flag unnecessary simp arguments.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassProjModel_kw_lr_chartTensor_genProd_ne_genTensOne_xzCase.lean",
+          "declaration": "aux_not_dvd_L",
+          "excerpt": "Matrix.cons_val_two, Matrix.tail_cons, MvPolynomial.eval\u2082Hom_C]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassProjModel_kw_lr_chartTensor_genProd_ne_genTensOne_xzCase.lean",
+          "declaration": "file header",
+          "excerpt": "set_option linter.unusedSimpArgs false"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 20269,
+    "cache_read_input_tokens": 77754,
+    "output_tokens": 4704,
+    "output_tokens_details": {
+      "thinking_tokens": 989
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20269,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2846,
+        "cache_read_input_tokens": 22965,
+        "cache_creation_input_tokens": 1317,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1317
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1359114,
+  "duration_ms": 34010,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:56:03",
+  "unit": "file",
+  "source_sha256": "55eb65a95f5d719db68f8c1782ffaec2acf5e6dddf86654e0270519d71ccf45f",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

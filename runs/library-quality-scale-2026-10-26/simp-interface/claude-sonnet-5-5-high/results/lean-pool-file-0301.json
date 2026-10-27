@@ -1,0 +1,135 @@
+{
+  "id": "lean-pool-file-0301",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the sibling files that define lineHeat_zero, cylinderHeat_zero and lineHeatOperator_apply. I searched the repository for uses of the real-parameter heat API. I did not run Lean, so I make no claims about simp loops or failures. Findings 1 and 2 are the strongest, because the file's own proofs repeat the unfolding. Finding 3 is weaker: it is about consistency, and tagging add/smul as simp would need a check against the reverse-direction `rw` at line 422.",
+  "findings": [
+    {
+      "declaration": "EulerGaussianCylinderHeat.realCylinderHeat (missing zero-time simp lemma)",
+      "start_line": 495,
+      "end_line": 495,
+      "excerpt": "def realCylinderHeat (t : \u211d) : LiftL2 period \u2192L[\u211d] LiftL2 period := cylinderHeat period t.toNNReal",
+      "problem": "The sibling real-time extensions have simp lemmas for time zero: `realLineHeat_zero` and `realHeatList_zero_time`. `realCylinderHeat` has none. Each time the file needs `realCylinderHeat period 0 f = f`, it unfolds the definition and replays `Real.toNNReal_zero` and `cylinderHeat_zero` with `simpa only`. This happens in `realCylinderHeat_generator_zero` and again in `realHeat_value_hasDerivWithinAt`. Unfolding the def also leaks the `toNNReal` implementation into the proofs.",
+      "proposed_change": "Add `@[simp] theorem realCylinderHeat_zero (f : LiftL2 period) : realCylinderHeat period 0 f = f := by simp [realCylinderHeat]`, mirroring `realLineHeat_zero`. Then replace `simpa only [Pi.smul_def, realCylinderHeat, Real.toNNReal_zero, cylinderHeat_zero] using ...` at line 541 and `simpa only [realCylinderHeat, Real.toNNReal_zero, cylinderHeat_zero] using h` at line 671 with `simpa only [realCylinderHeat_zero] using ...`. The `Pi.smul_def` in the first one may still be needed.",
+      "benefit": "`realCylinderHeat` gets the same zero-time simp interface as `realLineHeat` and `realHeatList`. Zero-time reasoning no longer unfolds the definition, and the two proofs stop repeating the `toNNReal` unfolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerGaussianCylinderHeat.realCylinderHeat_generator_zero",
+          "excerpt": "simpa only [Pi.smul_def, realCylinderHeat, Real.toNNReal_zero, cylinderHeat_zero] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerSobolevHeatGenerator.realHeat_value_hasDerivWithinAt",
+          "excerpt": "simpa only [realCylinderHeat, Real.toNNReal_zero, cylinderHeat_zero] using h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerGaussianCylinderHeat.realLineHeat_zero",
+          "excerpt": "@[simp] theorem realLineHeat_zero"
+        }
+      ]
+    },
+    {
+      "declaration": "EulerSobolevHeatGenerator.heatFlow_value (and EulerGaussianCylinderHeat.viscousCylinderHeat)",
+      "start_line": 644,
+      "end_line": 644,
+      "excerpt": "value period (heatFlow period q \u03bd t u) = viscousCylinderHeat period \u03bd t (value period u) := rfl",
+      "problem": "The simp lemma `heatFlow_value` rewrites into `viscousCylinderHeat`, which is a plain def with no unfolding or characterising lemma. `viscousCylinderHeat` is definitionally `realCylinderHeat (2*\u03bd*t)`. Without a lemma, simp cannot link the expression to `realCylinderHeat`, which the Lipschitz and derivative lemmas are stated for. The proofs therefore fall back on `change`: `change \u2016realCylinderHeat period (2 * \u03bd * s) ...` in `heatFlow_value_norm_sub_le`, and `change HasDerivAt ... ((2*\u03bd) \u2022 ((1/2 : \u211d) \u2022 realCylinderHeat ...))` in `viscousCylinderHeat_equation`. So the simp normal form of `value (heatFlow ..)` is a dead end for the lemmas that consume it.",
+      "proposed_change": "Add `theorem viscousCylinderHeat_eq (\u03bd t : \u211d) : viscousCylinderHeat period \u03bd t = realCylinderHeat period (2*\u03bd*t) := rfl`. Either tag it `@[simp]`, or state `heatFlow_value` directly with `realCylinderHeat period (2*\u03bd*t)`. Then replace the `change` steps at lines 567\u2013568 and 714\u2013715 with `simp only [viscousCylinderHeat_eq]` or `rw [viscousCylinderHeat_eq]`.",
+      "benefit": "`simp [heatFlow_value]` reaches the canonical `realCylinderHeat` form, so the existing Lipschitz, generator and zero-time lemmas apply without definitional `change` steps. Those steps break if the definition is later changed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerGaussianCylinderHeat.viscousCylinderHeat",
+          "excerpt": "def viscousCylinderHeat (\u03bd t : \u211d) : LiftL2 period \u2192L[\u211d] LiftL2 period := realCylinderHeat period"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerSobolevHeatGenerator.heatFlow_value_norm_sub_le",
+          "excerpt": "change \u2016realCylinderHeat period (2 * \u03bd * s) (value period u) -"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerGaussianCylinderHeat.viscousCylinderHeat_equation",
+          "excerpt": "((2*\u03bd) \u2022 ((1/2 : \u211d) \u2022 realCylinderHeat period (2*\u03bd*t) (jetLaplacian period J))) t at h"
+        }
+      ]
+    },
+    {
+      "declaration": "EulerGaussianCylinderHeat.realLineHeat_add / realLineHeat_smul / realHeatList_add / realHeatList_smul / realHeatList_zero_field",
+      "start_line": 334,
+      "end_line": 359,
+      "excerpt": "realLineHeat period a t (f+g) = realLineHeat period a t f + realLineHeat period a t g",
+      "problem": "The linearity interface of the real heat extensions is inconsistent. `realHeatList_zero_field` is `@[simp]`. `realLineHeat_add`, `realLineHeat_smul`, `realHeatList_add` and `realHeatList_smul` are not simp, even though they are the canonical distribute-over-operations rewrites for the same operators. Their proofs and the statement of `realHeatList_zero_field` also show that the line-level lemma `realLineHeat a t 0 = 0` is missing. Its proof detours through `realLineHeat_eq_toNNReal, \u2190 lineHeatOperator_apply, map_zero`. Because `realLineHeat` and `realHeatList` are bare functions, not `\u2192L`, `map_add` and `map_smul` cannot fire either. Simp therefore cannot push these operators through sums and scalars, while it can simplify the zero case.",
+      "proposed_change": "Add `@[simp] theorem realLineHeat_zero_field` (or `realLineHeat_zero_input`), with the existing `realHeatList_zero_field` proof inlined into it. Consider tagging `realLineHeat_add`, `realLineHeat_smul`, `realHeatList_add` and `realHeatList_smul` with `@[simp]`, since each rewrites to a strictly smaller argument and terminates. Check that the `rw [realLineHeat_smul, \u2190 smul_add, \u2190 realLineHeat_add, \u2190 realHeatList_add]` step at line 422 is unaffected. It uses `rw`, not `simp`, so it should be.",
+      "benefit": "The real-parameter extensions get the same linearity simp API as `map_add`, `map_smul` and `map_zero` for the bundled operators. Downstream goals such as `realHeatList .. (f + c \u2022 g)` simplify automatically, and the zero-input case no longer needs the `\u2190 lineHeatOperator_apply` detour.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerGaussianCylinderHeat.realHeatList_zero_field",
+          "excerpt": "simp only [realHeatList, ih, realLineHeat_eq_toNNReal, \u2190 lineHeatOperator_apply, map_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerGaussianCylinderHeat.realHeatList_smul",
+          "excerpt": "theorem realHeatList_smul (directions : List LiftTangent) (t c : \u211d) (f : LiftL2 period) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerGaussianCylinderHeat.realLineHeatOperator_apply",
+          "excerpt": "@[simp] theorem realLineHeatOperator_apply"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 29187,
+    "cache_read_input_tokens": 55776,
+    "output_tokens": 6673,
+    "output_tokens_details": {
+      "thinking_tokens": 2246
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29187,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4438,
+        "cache_read_input_tokens": 28759,
+        "cache_creation_input_tokens": 4441,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4441
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1890676,
+  "duration_ms": 42615,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T01:24:56",
+  "unit": "file",
+  "source_sha256": "b103d4c5926b34750c2f1c9fa4c81ed6f56ea0368683a64950c5d18db5bb00a6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

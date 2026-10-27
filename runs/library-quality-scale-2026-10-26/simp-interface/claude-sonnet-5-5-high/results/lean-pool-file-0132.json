@@ -1,0 +1,136 @@
+{
+  "id": "lean-pool-file-0132",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it depends on: baseLift, zeroSectionPoint and the simp lemmas in CoisotropicTranslation.lean. I also grepped Stafford38 for uses of `simp [zeroSectionPoint]`, `simp [baseLift]` and `Sum.elim y ... = zeroSectionPoint y`. No simp lemmas exist for baseLift or zeroSectionPoint. The `@[simp]` lemmas in CoisotropicTranslation.lean cover only verticalDeriv and fibreLinePolynomial. I saw no rewrite cycles or competing rules, and I did not run Lean. The proposals add simp lemmas for definitions that are currently unfolded by hand. Whether each lemma fires as intended, and whether `baseLift_X` and `baseLift_C` would clash with the generic `MvPolynomial.rename_X` and `rename_C` simp lemmas, is untested. I suggested the `Sum.elim y 0 = zeroSectionPoint y` lemma only as optional.",
+  "findings": [
+    {
+      "declaration": "eval_basePart (use of zeroSectionPoint)",
+      "start_line": 103,
+      "end_line": 104,
+      "excerpt": "simp [zeroSectionPoint]\n      \u00b7 simp [basePart, zeroSectionPoint]",
+      "problem": "`zeroSectionPoint` is a pattern-matching def with no simp lemmas. Every proof that evaluates at a zero-section point unfolds the definition with `simp [zeroSectionPoint]`, as in lines 103\u2013104. The same idiom appears in CoisotropicTranslation.lean (line 187), BaseZeroSection.lean (line 80), ZeroSectionContainment.lean (line 100) and CanonicalBaseVariety.lean (line 117). So the canonical forms `zeroSectionPoint y (Sum.inl i) = y i` and `zeroSectionPoint y (Sum.inr i) = 0` are not part of the default simp set. Callers must also remember to pass the definition name explicitly.",
+      "proposed_change": "Next to the definition in CoisotropicTranslation.lean, add `@[simp] theorem zeroSectionPoint_inl (y : Fin n \u2192 k) (i : Fin n) : zeroSectionPoint y (Sum.inl i) = y i := rfl` and `@[simp] theorem zeroSectionPoint_inr (y : Fin n \u2192 k) (i : Fin n) : zeroSectionPoint y (Sum.inr i) = 0 := rfl`. Then replace `simp [zeroSectionPoint]` with plain `simp` at the call sites, here and in the files listed above.",
+      "benefit": "Evaluating a polynomial at a zero-section point gets a stable normal form (`y i` or `0`) without unfolding the definition. Proofs such as `eval_basePart` and the later files stop depending on the definition's body.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Stafford38/Stafford38/Geometry/CoisotropicTranslation.lean",
+          "declaration": "zeroSectionPoint",
+          "excerpt": "def zeroSectionPoint (y : Fin n \u2192 k) : PhaseVar n \u2192 k\n  | Sum.inl i => y i\n  | Sum.inr _ => 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Stafford38/Stafford38/Characteristic/BaseZeroSection.lean",
+          "declaration": "eval_fibreZeroSpecialization",
+          "excerpt": "rcases i with i | i <;> simp [zeroSectionPoint]"
+        }
+      ]
+    },
+    {
+      "declaration": "baseLift_basePart_eq_zeroComponent (use of baseLift)",
+      "start_line": 80,
+      "end_line": 80,
+      "excerpt": "simp [basePart, baseLift]",
+      "problem": "`baseLift` is a plain def for `MvPolynomial.rename Sum.inl`, with no simp lemmas of its own. Proofs therefore unfold it to `rename` with `simp [baseLift]`. This happens here and also in GeneralCoisotropicSets.lean (line 71, `simpa [baseLift, MvPolynomial.eval_rename, Function.comp_def]`), BaseZeroSection.lean (lines 111 and 128), CanonicalBaseVariety.lean (line 61) and CoisotropicTranslation.lean (lines 205 and 211). The unfolded form leaks into goals. Stating `eval y (baseLift f)` needs a hand-assembled lemma list: `eval_rename`, `Function.comp_def`, and the evaluation of `Sum.elim y \u03be \u2218 Sum.inl`. The `baseLift_basePart_eq_zeroComponent` and `eval_basePart` proofs use the same unfolded form.",
+      "proposed_change": "In CoisotropicTranslation.lean, next to `baseLift`, add `@[simp] baseLift_X (i : Fin n) : baseLift (X i : MvPolynomial (Fin n) k) = X (Sum.inl i)` and `@[simp] baseLift_C`, each proved from `MvPolynomial.rename_X` and `rename_C`. Also add `@[simp] eval_baseLift_sumElim (y \u03be : Fin n \u2192 k) (f) : MvPolynomial.eval (Sum.elim y \u03be) (baseLift f) = MvPolynomial.eval y f`, proved from `MvPolynomial.eval_rename` and `Sum.elim_comp_inl`. Then drop `baseLift` from the simp sets at the call sites. The `map_mul` and `map_add` rules already apply, since `baseLift` is an `AlgHom`.",
+      "benefit": "Goals such as the `X (inl i)` step on line 80 reduce to a canonical form without exposing `rename`. Call sites no longer carry a long unfolding list for `baseLift`. The orientation matches the existing `fibreLinePolynomial_X_base` and `fibreLinePolynomial_C` simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Stafford38/Stafford38/Geometry/CoisotropicTranslation.lean",
+          "declaration": "baseLift",
+          "excerpt": "def baseLift : MvPolynomial (Fin n) k \u2192\u2090[k] SymbolRing k n :=\n  MvPolynomial.rename Sum.inl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Stafford38/Stafford38/Geometry/GeneralCoisotropicSets.lean",
+          "declaration": "baseProjection_eq_zeroLocus_comap",
+          "excerpt": "simpa [baseLift, MvPolynomial.eval_rename, Function.comp_def] using h"
+        }
+      ]
+    },
+    {
+      "declaration": "basePart",
+      "start_line": 43,
+      "end_line": 45,
+      "excerpt": "private def basePart (g : SymbolRing k n) : MvPolynomial (Fin n) k :=\n  MvPolynomial.eval\u2082Hom (MvPolynomial.C : k \u2192+* MvPolynomial (Fin n) k)\n    (Sum.elim MvPolynomial.X (fun _ => 0)) g",
+      "problem": "`basePart` is a def with no simp or defining lemmas. Its three induction proofs repeatedly call `simp [basePart]` or `simp only [basePart, ...]` to unfold it to `eval\u2082Hom`. Lines 62, 71, 80, 86, 92, 94\u201395, 99, 101 and 104 do this. The `simp only [basePart] at hP hQ` and `simp only [basePart, map_add]` steps in `eval_basePart` unfold it and re-fold it by hand. It is also not an `AlgHom` or `RingHom`, so `map_add` and `map_mul` cannot be used without unfolding.",
+      "proposed_change": "Define `basePart` as a `RingHom` (`MvPolynomial.eval\u2082Hom ...`) or add private simp lemmas `basePart_C`, `basePart_X_inl : basePart (X (Sum.inl i)) = X i`, `basePart_X_inr : basePart (X (Sum.inr i)) = 0`, `basePart_add` and `basePart_mul`. Then the `simp [basePart]` calls become `simp` or `simp only [basePart_X_inl, ...]`, and the unfold-and-refold steps in `eval_basePart` disappear.",
+      "benefit": "The induction cases would rewrite with named, orientation-stable lemmas instead of unfolding `eval\u2082Hom`. That makes the proofs shorter and less fragile to changes in the definition's body.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Stafford38/Stafford38/Geometry/GeneralConormalContainment.lean",
+          "declaration": "eval_basePart",
+          "excerpt": "simp only [basePart] at hP hQ\n      simp only [basePart, map_add]"
+        }
+      ]
+    },
+    {
+      "declaration": "equationConormalLocus_subset_zeroLocus (hsplit)",
+      "start_line": 143,
+      "end_line": 145,
+      "excerpt": "have hsplit : Sum.elim y \u03be = q := by\n    funext i\n    rcases i with i | i <;> rfl",
+      "problem": "There is no reusable simp lemma for the recurring identification of `Sum.elim y \u03be` with a point, and none for the zero-section case. The same `funext; rcases ... <;> rfl` argument is redone locally here, in AffineConormalClosure.lean (line 81), ScalarExtensionPoints.lean (line 388) and BaseZeroSection.lean (line 178). `GeneralCoisotropicSets.lean` line 77 does it for `Sum.elim y (fun _ => 0) = zeroSectionPoint y`. So `Sum.elim y 0` and `zeroSectionPoint y` are two competing spellings of the same point, with no normalising rewrite between them.",
+      "proposed_change": "Add `theorem sumElim_zero_eq_zeroSectionPoint (y : Fin n \u2192 k) : Sum.elim y (0 : Fin n \u2192 k) = zeroSectionPoint y`, and a variant for `fun _ => 0`. Mark it `@[simp]` only if one spelling is chosen as canonical. Otherwise keep it as a named `rw` lemma. Optionally add a lemma stating that `q = Sum.elim (q \u2218 Sum.inl) (q \u2218 Sum.inr)`, if no Mathlib lemma already covers it. Replace the ad hoc `funext` blocks with these.",
+      "benefit": "The two spellings of the zero-section point get one named bridge lemma. Proofs that move between the `Sum.elim`-based API (conormal closure, `equationConormalLocus`) and `zeroSectionPoint` no longer repeat the case split.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Stafford38/Stafford38/Geometry/GeneralCoisotropicSets.lean",
+          "declaration": "baseProjection_eq_zeroLocus_comap",
+          "excerpt": "have hpoint : Sum.elim y (fun _ : Fin n => (0 : k)) = zeroSectionPoint y := by\n      funext i\n      rcases i with i | i <;> rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Stafford38/Stafford38/Characteristic/BaseZeroSection.lean",
+          "declaration": "fibreZeroSpecialization / zero-section containment",
+          "excerpt": "have hpoint : Sum.elim y (0 : Fin n \u2192 k) = zeroSectionPoint y := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 31171,
+    "cache_read_input_tokens": 134682,
+    "output_tokens": 7682,
+    "output_tokens_details": {
+      "thinking_tokens": 1618
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31171,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4208,
+        "cache_read_input_tokens": 31499,
+        "cache_creation_input_tokens": 3685,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3685
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2150002,
+  "duration_ms": 53798,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-26T23:08:51",
+  "unit": "file",
+  "source_sha256": "e232bdcc732c1ce469d17aba31a47cd14e8fcbd2fc20e3c462736a53261b35a0",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

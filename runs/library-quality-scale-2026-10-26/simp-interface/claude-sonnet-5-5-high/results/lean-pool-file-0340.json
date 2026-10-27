@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0340",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the uses of ExchangePattern.label, sign, ofRelation, positive and negative in ExchangeResources.lean, SampleAvailability.lean and RelativeConcentration.lean. I did not run Lean. The only simp lemmas in the file are card_position and sign_natAbs, which look fine. The gaps are in the constructor-level and projection-level simp interface. I did not report the other lemmas, because adding simp to sum_sign_smul or ofRelation_sum would be a design choice that I did not find evidence for.",
+  "findings": [
+    {
+      "declaration": "ExchangePattern.label / ExchangePattern.sign (no simp lemmas on Sum.inl / Sum.inr)",
+      "start_line": 49,
+      "end_line": 53,
+      "excerpt": "def sign (P : ExchangePattern S) : P.Position \u2192 \u2124 := Sum.elim (fun _ \u21a6 1) (fun _ \u21a6 -1)",
+      "problem": "`label` and `sign` are plain defs over `Sum.elim`, and the file gives no simp lemmas for their values on `Sum.inl` or `Sum.inr`. Users have to unfold the definition, which exposes the `Sum.elim` implementation. `sum_sign_smul` does this with a `change` that restates the whole `Sum` type, and `ofPattern_shift` does it with `simp [..., ExchangePattern.sign, ...]` after another `change`. `ofPattern` unfolds `ExchangePattern.label` inside `simpa`.",
+      "proposed_change": "Add the lemmas `@[simp] theorem label_inl (P : ExchangePattern S) (i : \u03a3 q, Fin (P.positive q)) : P.label (Sum.inl i) = i.1 := rfl`, `label_inr` (same with `Sum.inr` and `P.negative`), `sign_inl : P.sign (Sum.inl i) = 1 := rfl`, and `sign_inr : P.sign (Sum.inr i) = -1 := rfl`. Then `sum_sign_smul`, `ofPattern_shift` and `ofPattern` can use `Fintype.sum_sum_type` and these lemmas without the `change` or the explicit unfolding.",
+      "benefit": "The canonical simp normal form for `label` and `sign` on constructors becomes available, so downstream proofs no longer need to unfold the defs. `simp` leaves `1` and `-1` instead of an unfolded `Sum.elim`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/Expansion/ExchangeResources.lean",
+          "declaration": "EGZ.Expansion.Exchange.ofPattern_shift",
+          "excerpt": "simp [Fintype.sum_sum_type, ExchangePattern.sign, sub_eq_add_neg, Finset.sum_neg_distrib]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/Expansion/ExchangeResources.lean",
+          "declaration": "EGZ.Expansion.Exchange.ofPattern",
+          "excerpt": "simpa [ExchangePattern.label, Fintype.sum_sigma] using hlabel"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/Expansion/ExchangePattern.lean",
+          "declaration": "EGZ.Expansion.ExchangePattern.sum_sign_smul",
+          "excerpt": "Sum.elim (fun _ \u21a6 (1 : \u2124)) (fun _ \u21a6 -1) i \u2022"
+        }
+      ]
+    },
+    {
+      "declaration": "ExchangePattern.ofRelation (no simp lemmas for its positive / negative fields)",
+      "start_line": 85,
+      "end_line": 87,
+      "excerpt": "def ofRelation (b : S \u2192 \u2124) : ExchangePattern S := \u27e8fun q \u21a6 (b q).toNat, fun q \u21a6 (-b q).toNat\u27e9",
+      "problem": "`ofRelation` is an ordinary def, and there are no simp or rfl lemmas for `(ofRelation b).positive q` or `(ofRelation b).negative q`. Proofs therefore use `change` to expose `toNat`, as in `ofRelation_sum` and `ofRelation_size`. Downstream, `SampleAvailability` unfolds `ExchangePattern.ofRelation` inside `simpa only [...]`. `relation_mass_eq` and `relation_label_eq` state their goals through `(ExchangePattern.ofRelation b).positive q` and cannot rewrite these terms with simp.",
+      "proposed_change": "Add `@[simp] theorem ofRelation_positive (b : S \u2192 \u2124) (q : S) : (ofRelation b).positive q = (b q).toNat := rfl` and `@[simp] theorem ofRelation_negative (b : S \u2192 \u2124) (q : S) : (ofRelation b).negative q = (-b q).toNat := rfl`. Then replace the `change` steps in `ofRelation_sum` and `ofRelation_size` with `simp only [ofRelation_positive, ofRelation_negative]` or `rw`. Downstream callers can use these lemmas instead of unfolding `ofRelation` in `simpa only`.",
+      "benefit": "There is a single canonical way to reduce the projections of `ofRelation`, and callers no longer depend on the structure-literal definition. Proofs avoid `change`, and `simp` can reduce `.positive` and `.negative` of `ofRelation` terms directly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/Expansion/ExchangePattern.lean",
+          "declaration": "EGZ.Expansion.ExchangePattern.ofRelation_size",
+          "excerpt": "change (b q).toNat + (-b q).toNat = (b q).natAbs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/Expansion/SampleAvailability.lean",
+          "declaration": "sample availability proof (hlab)",
+          "excerpt": "simpa only [map_sum, map_nsmul, f, P, ExchangePattern.ofRelation,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/Expansion/ExchangeResources.lean",
+          "declaration": "EGZ.Expansion.relation_mass_eq",
+          "excerpt": "(\u2211 q, (ExchangePattern.ofRelation b).positive q) ="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 8884,
+    "cache_read_input_tokens": 44637,
+    "output_tokens": 3582,
+    "output_tokens_details": {
+      "thinking_tokens": 414
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 8884,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2478,
+        "cache_read_input_tokens": 15983,
+        "cache_creation_input_tokens": 897,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 897
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0758357,
+  "duration_ms": 24222,
+  "turns": 6,
+  "attempts": 2,
+  "judged": "2026-10-27T01:44:53",
+  "unit": "file",
+  "source_sha256": "c5de361bc595e519d0b5777662a70c5db84e65bad3fdcb44c46744855e5defce",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

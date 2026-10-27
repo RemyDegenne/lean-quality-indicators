@@ -1,0 +1,88 @@
+{
+  "id": "openai-math-file-0309",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file (one lemma, lines 13\u201360) and the helper lemmas it uses in BrownianGenerators.lean (gaussian_square_integral, real_second_taylor_bound, gaussian_abs_moment_integrable, gaussian_abs_cube). I searched the repo for other users of these helpers. The only other proof that repeats the reasoning is smooth_field_taylor_set_error in BrownianGenerators.lean. It has the same shape: decompose the Taylor remainder R, show R is integrable, bound |R| \u2264 K|X|^3, then run the abs-integral \u2192 monotone \u2192 Gaussian cube moment estimate. The two decompositions of \u222bR differ in how the linear and quadratic terms are evaluated (direct Gaussian moments here, Brownian orthogonality there). So I only propose factoring the common remainder estimate, not the whole proof. I could not compile anything, so the proposed lemma and the rewritten uses are untested sketches. Remaining uncertainty: the exact form of the `Measure.restrict_univ` or `setIntegral_univ` rewrite in the target use.",
+  "findings": [
+    {
+      "declaration": "SLEExactGauge.gaussian_second_taylor_integral",
+      "start_line": 52,
+      "end_line": 60,
+      "excerpt": "|\u222b y, R y \u2202\u03bc| \u2264 \u222b y, |R y| \u2202\u03bc := by\n      simpa only [Real.norm_eq_abs] using norm_integral_le_integral_norm (\u03bc := \u03bc) R",
+      "problem": "The closing estimate is a multi-step argument. It takes |\u222bR| \u2264 \u222b|R|, then applies integral_mono against K|X|^3 using integrability of |X|^3, then evaluates the Gaussian cube moment with gaussian_abs_cube and rearranges to K\u00b7\u03b4\u00b7\u221a\u03b4\u00b7m\u2083. The same argument appears almost verbatim at the end of smooth_field_taylor_set_error in BrownianGenerators.lean. There it runs on P.restrict E, with one extra integral_mono_measure step to drop the restriction. The pointwise hypothesis hR/hRb, the integrability hRi, and the final constant are identical in both. Each proof re-derives the hypotheses of the same implication (R integrable, |R| \u2264 K|X|^3, X ~ N(0,\u03b4)) \u21d2 |\u222b_E R| \u2264 K \u03b4 \u221a\u03b4 m\u2083, so any change to the constant or to the cube-moment API has to be made twice.",
+      "proposed_change": "Add one lemma next to gaussian_abs_cube in BrownianGenerators.lean:\n\nlemma abs_setIntegral_le_gaussian_cube {\u03a9 : Type*} [MeasurableSpace \u03a9] {P : Measure \u03a9} {X : \u03a9 \u2192 \u211d} {\u03b4 : \u211d\u22650} (hX : HasLaw X (gaussianReal 0 \u03b4) P) (K : \u211d\u22650) {E : Set \u03a9} {R : \u03a9 \u2192 \u211d} (hRi : Integrable R (P.restrict E)) (hRb : \u2200 \u03c9, |R \u03c9| \u2264 (K:\u211d) * |X \u03c9| ^ 3) : |\u222b \u03c9 in E, R \u03c9 \u2202P| \u2264 (K:\u211d) * (\u03b4:\u211d) * Real.sqrt \u03b4 * standardGaussianAbsMoment 3.\n\nProof: move the existing calc from smooth_field_taylor_set_error unchanged. It uses norm_integral_le_integral_norm, then integral_mono with (gaussian_abs_moment_integrable hX 3 (by decide)).restrict.const_mul K, then integral_mono_measure Measure.restrict_le_self, then integral_const_mul, gaussian_abs_cube hX and ring.\n\nUse in smooth_field_taylor_set_error: after `rw [\u2190 hRint]`, finish with `exact abs_setIntegral_le_gaussian_cube hXlaw K hRi hRb`. This replaces lines 307\u2013318.\n\nUse in gaussian_second_taylor_integral: apply the lemma with \u03a9 = \u211d, P = \u03bc, X = fun y => y (law h\u03bc) and E = univ. After `rw [\u2190 he]`, the goal `|\u222b y, R y \u2202\u03bc| \u2264 \u2026` is closed by `simpa only [Measure.restrict_univ] using abs_setIntegral_le_gaussian_cube h\u03bc K (by simpa only [Measure.restrict_univ] using hRi) hR`. The whole calc in lines 53\u201360 goes. The hypotheses hRi and hR are already in context, and no new imports are needed because the lemma sits in BrownianGenerators.lean, which the file already imports.",
+      "benefit": "The Taylor-remainder-versus-Gaussian-cube estimate is stated and proved once, and both Taylor lemmas shrink to producing the decomposition of R and the pointwise bound. A reader sees the two lemmas differ only in how \u222bR is computed (direct Gaussian moments versus Brownian orthogonality). Maintenance is also easier: the restricted-measure monotonicity step is handled in one place instead of by hand in one proof and silently omitted in the other.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/BrownianGenerators.lean",
+          "declaration": "smooth_field_taylor_set_error",
+          "excerpt": "|\u222b \u03c9 in E, R \u03c9 \u2202P| \u2264 \u222b \u03c9 in E, |R \u03c9| \u2202P := by\n      simpa only [Real.norm_eq_abs] using norm_integral_le_integral_norm (\u03bc := P.restrict E) R"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/BrownianGenerators.lean",
+          "declaration": "smooth_field_taylor_set_error",
+          "excerpt": "rw [integral_const_mul, gaussian_abs_cube hXlaw]\n      ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/BrownianGenerators.lean",
+          "declaration": "gaussian_abs_cube",
+          "excerpt": "(\u222b \u03c9, |X \u03c9| ^ 3 \u2202P) = (\u03b4 : \u211d) * Real.sqrt \u03b4 * standardGaussianAbsMoment 3"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SLE/Stochastic/GaussianTaylorMean.lean",
+          "declaration": "SLEExactGauge.gaussian_second_taylor_integral",
+          "excerpt": "rw [integral_const_mul,gaussian_abs_cube h\u03bc]\n      ring"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 18982,
+    "cache_read_input_tokens": 27553,
+    "output_tokens": 4561,
+    "output_tokens_details": {
+      "thinking_tokens": 1810
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18982,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4191,
+        "cache_read_input_tokens": 12503,
+        "cache_creation_input_tokens": 10408,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 10408
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.12430530000000001,
+  "duration_ms": 33614,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T01:31:25",
+  "unit": "file",
+  "source_sha256": "58d7380494a0e94a02ff50cb8930c9db031728d93ccc08198818361b0fd5c1c2",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

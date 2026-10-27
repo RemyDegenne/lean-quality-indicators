@@ -1,0 +1,114 @@
+{
+  "id": "openai-math-file-0117",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the related definitions: heatTilt, expBCF, heatLog, Jet3.heatLog, Jet3.heatLogPos, and the existing Jet3.heatLog_d1 in Tilt.lean. I grepped for uses of heatGenerator and Jet3.heatLog in Boundary.lean, GeneratorBounds.lean and Tilt.lean. The two findings are about the missing simp interface for heatGenerator and for Jet3.heatLog. I found no loop or competing-rule problem in this file. The file declares no simp lemmas of its own, and its two helper lemmas are not good simp candidates (a reverse equation and a HasFDerivAt statement). Whether the proposed lemmas would work with simp as-is is untested, because I cannot run Lean. I did not check other copies, such as the duplicate in Perceptron/Variational/BcfEvalRingHom.lean, beyond noting that they repeat the same unfolding.",
+  "findings": [
+    {
+      "declaration": "heatGenerator",
+      "start_line": 48,
+      "end_line": 49,
+      "excerpt": "def heatGenerator (d : \u211d\u22650) (g : Jet3) : \u211d \u2192\u1d47 \u211d :=\n  (1/2 : \u211d) \u2022 (g.d2 + (d : \u211d) \u2022 g.d1^2)",
+      "problem": "`heatGenerator` is a plain `def` with no pointwise simp lemma, and `heatGenerator_hasDerivAt` and `heatTilt_heatGenerator` don't have one either. Every use must therefore unfold the definition and rebuild the coercion lemmas by hand. The same long `simp only [heatGenerator, BoundedContinuousFunction.coe_sub, coe_smul, coe_add, coe_pow, Pi.sub_apply, Pi.add_apply, Pi.pow_apply, smul_eq_mul]` list appears twice in Boundary.lean: in the proof of `heatGenerator_sub`, and in the `hg` step before it. Inside this file, `heatGenerator_hasDerivAt` states the function as `heatGenerator d g : \u211d \u2192 \u211d` and then needs an explicit `change HasDerivAt (fun y => (1/2 : \u211d)*(g.d2 y+...))` to expose the pointwise form. Other BCF definitions in the same library already have `@[simp]` apply lemmas, for example `expBCF_apply`, `heatTiltBCF_apply` and `shiftBCF_apply`. `heatGenerator` is the exception. The `(1/2 : \u211d)` literal is also a form that simp's `one_div` rewrites to `2\u207b\u00b9`, so a stated apply lemma should fix one canonical form.",
+      "proposed_change": "Add a pointwise lemma next to the definition, for example `@[simp] lemma heatGenerator_apply (d : \u211d\u22650) (g : Jet3) (x : \u211d) : heatGenerator d g x = (1/2 : \u211d) * (g.d2 x + (d : \u211d) * (g.d1 x)^2) := by simp [heatGenerator]`. If simp rewrites `1/2` to `2\u207b\u00b9` in practice, state it with `2\u207b\u00b9` instead. Then drop the `change` in `heatGenerator_hasDerivAt`, and replace the coe-lemma lists in `heatGenerator_sub` and the preceding `hg` step in Boundary.lean with `simp [heatGenerator_apply]; ring`. The `heatGenerator` unfolding at the start of `heatTilt_heatGenerator` can use it too.",
+      "benefit": "Callers get a stable pointwise normal form and no longer copy the same coercion-lemma list. Later proofs about `heatGenerator` become shorter and more robust.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SphericalField/Heat/Boundary.lean",
+          "declaration": "heatGenerator_sub",
+          "excerpt": "simp only [heatGenerator,BoundedContinuousFunction.coe_sub,BoundedContinuousFunction.coe_smul,\n    BoundedContinuousFunction.coe_add,BoundedContinuousFunction.coe_pow,Pi.sub_apply,\n    Pi.add_apply,Pi.pow_apply,smul_eq_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SphericalField/Heat/Average.lean",
+          "declaration": "expBCF_apply",
+          "excerpt": "@[simp] lemma expBCF_apply (d : \u211d) (f : \u211d \u2192\u1d47 \u211d) (x : \u211d) :\n    expBCF d f x = Real.exp (d * f x) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SphericalField/Heat/TimeDerivative.lean",
+          "declaration": "heatGenerator_hasDerivAt",
+          "excerpt": "change HasDerivAt (fun y => (1/2 : \u211d)*(g.d2 y+(d:\u211d)*(g.d1 y)^2))"
+        }
+      ]
+    },
+    {
+      "declaration": "Jet3.heatLog (use sites in heatLogBCF_time_hasDerivAt and heatTilt_heatGenerator)",
+      "start_line": 89,
+      "end_line": 97,
+      "excerpt": "simp only [Jet3.heatLog,hd,\u2193reduceDIte]",
+      "problem": "`Jet3.heatLog` is a `dite` on `d = 0` over `heatLogPos`, and it has no case-split simp lemmas. The file unfolds it by hand with `simp only [Jet3.heatLog, hd, \u2193reduceDIte]` at lines 58, 89, 197 and 209. It then restates the entire `d2` formula in a `change` block of about 8 lines (lines 90-97 and 211-216). Those `change` blocks stay in sync with `Jet3.heatLogPos` only by definitional unfolding, so any change to the `heatLogPos` formula breaks them. The same manual unfolding appears in Tilt.lean (`Jet3.heatLog_d1`) and GeneratorBounds.lean (`dite_eq_right` / `reduceDIte`). Only `Jet3.heatLog_f` and `Jet3.heatLog_d1` exist as projection lemmas, and nothing exposes `d2`. `Jet3.heatLog_d1` shows the intended style: it is stated through `heatTilt`, so callers need not unfold.",
+      "proposed_change": "Add case-split lemmas next to `Jet3.heatLog`: `Jet3.heatLog_of_eq_zero` / `Jet3.heatLog_zero` (`d = 0 \u2192 g.heatLog s d = g.gaussianAverage s`) and `Jet3.heatLog_of_ne_zero` (`d \u2260 0 \u2192 g.heatLog s d = g.heatLogPos s d hd`). Consider marking the `d = 0` one `@[simp]`, since its hypothesis is `d = 0` and the right side is a normal form. Also add a `Jet3.heatLog_d2` lemma in the style of `Jet3.heatLog_d1`, giving `(g.heatLog s d).d2 x` pointwise in terms of `gaussianAverage` of `(g.exp d).d2`, `(g.exp d).d1` and `expBCF`, for `d \u2260 0`. With it, the `change` blocks and the `heatLog` `dite` unfolding in `heatLogBCF_time_hasDerivAt` and `heatTilt_heatGenerator` reduce to `rw [Jet3.heatLog_d2 ..]` followed by `field_simp; ring`.",
+      "benefit": "The `dite` is unfolded once, in a lemma, instead of at every use site. The `change` blocks that depend on the internal shape of `heatLogPos` go away, so the proofs are shorter and less brittle. The pointwise forms of the `d2` field become reusable by other files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SphericalField/Heat/Derivatives.lean",
+          "declaration": "Jet3.heatLog",
+          "excerpt": "def Jet3.heatLog (s d : \u211d\u22650) (g : Jet3) : Jet3 :=\n  if hd : d = 0 then g.gaussianAverage s else g.heatLogPos s d hd"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SphericalField/Heat/Tilt.lean",
+          "declaration": "Jet3.heatLog_d1",
+          "excerpt": "simp only [Jet3.heatLog,hd,\u2193reduceDIte,Jet3.heatLogPos]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SphericalField/Heat/GeneratorBounds.lean",
+          "declaration": "Jet3.heatLog_uniform_bounds",
+          "excerpt": "rw [Jet3.heatLog, dite_eq_right hd]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SphericalField/Heat/TimeDerivative.lean",
+          "declaration": "heatTilt_heatGenerator",
+          "excerpt": "simp only [heatGenerator,heatTilt_smul,heatTilt_add,Jet3.heatLog,hd,\u2193reduceDIte]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 35844,
+    "cache_read_input_tokens": 132116,
+    "output_tokens": 6808,
+    "output_tokens_details": {
+      "thinking_tokens": 1568
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35844,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4583,
+        "cache_read_input_tokens": 36665,
+        "cache_creation_input_tokens": 3192,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3192
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2246916,
+  "duration_ms": 54349,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-26T23:05:56",
+  "unit": "file",
+  "source_sha256": "170dc887da7f41ca3f11ad69b6abd6df892c517f3b5300148ff5442b48f693c7",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

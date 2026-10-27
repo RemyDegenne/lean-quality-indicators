@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0064",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the Foundation definitions it uses: SemijetRemainder, its closure lemmas, quadraticModel_neg, Jet.neg and HasSecondOrderExpansionWithinAtValue. I also read the later neg-duality lemmas in Semijets/Calculus/ShiftsClosedness.lean. Almost every declaration in the file has a super/sub twin. I only report cases where the repeated proof content is more than trivial unfolding. I did not report the touchesAbove/touchesBelow pair, the `*_of_eventually_le_*` pair or the two `*_iff_exists_eventually_le_*` theorems. Their bodies are short and duplicate mostly routine `rcases`/`filter_upwards`/`rfl` steps, and sharing them would need extra API for TouchesBelowOn and expansion negation. I could not run Lean, so every proposed replacement is a sketch and untested. The duality finding depends on moving lemmas that currently sit in a downstream file, so it is the least certain.",
+  "findings": [
+    {
+      "declaration": "superjetExcess_eq_add_quadraticModel_sub / subjetExcess_eq_add_quadraticModel_sub",
+      "start_line": 128,
+      "end_line": 164,
+      "excerpt": "have h := quadraticModel_sub x (u x) (u x) K.gradient J.gradient\n      K.hessian J.hessian y\n    simpa using h",
+      "problem": "The two theorems repeat the same proof: derive `hq` from `quadraticModel_sub` with the base value `u x` on both sides, rewrite with `Jet.sub_gradient` and `Jet.sub_hessian`, unfold the excess, and close with `ring`. The only difference is that J and K swap places. `SubjetExcess` is definitionally the negation of `SuperjetExcess`, but the file never states that. Each theorem therefore redoes the `quadraticModel_sub` bookkeeping.",
+      "proposed_change": "Add a shared lemma just after the two excess definitions:\n`theorem subjetExcess_eq_neg_superjetExcess (u) (x) (J) (y) : SubjetExcess u x J y = -SuperjetExcess u x J y := by unfold SubjetExcess SuperjetExcess; ring`.\nKeep the superjet identity with its `hq` proof as the only copy of the `quadraticModel_sub` argument. Then derive the subjet identity:\n```\ntheorem subjetExcess_eq_add_quadraticModel_sub ... := by\n  have h := superjetExcess_eq_add_quadraticModel_sub u x K J y\n  -- h : SuperjetExcess u x K y = SuperjetExcess u x J y + quadraticModel x 0 (J - K).gradient (J - K).hessian y\n  rw [subjetExcess_eq_neg_superjetExcess, subjetExcess_eq_neg_superjetExcess]\n  linarith\n```\nThe hypotheses are unchanged. The specialization `superjetExcess_eq_add_quadraticModel_sub u x K J y` yields exactly the `(J - K)` term that appears in the subjet statement.",
+      "benefit": "The `quadraticModel_sub` / `Jet.sub_*` argument is kept in one place. The subjet statement is then visibly the sign-flipped superjet statement. The new negation lemma can also serve other super/sub pairs in the file, such as the continuity lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/ViscositySolns/Semijets/Definitions.lean",
+          "declaration": "subjetExcess_eq_add_quadraticModel_sub",
+          "excerpt": "have h := quadraticModel_sub x (u x) (u x) J.gradient K.gradient\n      J.hessian K.hessian y"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/ViscositySolns/Semijets/Definitions.lean",
+          "declaration": "SubjetExcess",
+          "excerpt": "quadraticModel x (u x) J.gradient J.hessian y - u y"
+        }
+      ]
+    },
+    {
+      "declaration": "superjetExcess_secondOrderNonposWithin / subjetExcess_secondOrderNonposWithin",
+      "start_line": 178,
+      "end_line": 208,
+      "excerpt": "have hrho\u03b5 : \u2200\u1da0 y in nhdsWithin x C, \u2016rho y\u2016 <= \u03b5 * (\u2016y - x\u2016 ^ 2) := by\n    have h := hrho.bound h\u03b5\n    filter_upwards [h] with y hy\n    simpa using hy",
+      "problem": "Both proofs have the same skeleton. They destructure the jet to get `rho`, convert the little-o hypothesis into the eventual bound `\u2016rho y\u2016 \u2264 \u03b5 * \u2016y - x\u2016^2` through `hrho.bound` and a simp step, and intersect it with the main inequality. They differ only in the sign step, `rho y \u2264 \u2016rho y\u2016` versus `-rho y \u2264 \u2016rho y\u2016`. The little-o-to-epsilon conversion is a reusable fact about `SemijetRemainder`, but it sits inside two proofs. It is also not available to other epsilon arguments, such as `secondOrderNonposWithin_positivePart_isLittleO`, which does the reverse conversion by hand.",
+      "proposed_change": "Add a lemma next to `SemijetRemainder`'s API or at the top of this section:\n```\ntheorem SemijetRemainder.eventually_norm_le {C : Set (Point n)} {x : Point n} {rho : Point n -> Real}\n    (hrho : SemijetRemainder C x rho) {\u03b5 : Real} (h\u03b5 : 0 < \u03b5) :\n    \u2200\u1da0 y in nhdsWithin x C, \u2016rho y\u2016 <= \u03b5 * (\u2016y - x\u2016 ^ 2) := by\n  filter_upwards [hrho.bound h\u03b5] with y hy\n  simpa using hy\n```\nOne more step would remove the second copy of the argument. Prove an auxiliary `abs_le`-style bound `|rho y| \u2264 \u03b5 * \u2016y - x\u2016^2` once, or add `SecondOrderNonposWithin` for the sign-flipped excess. Then each theorem becomes:\n```\nintro \u03b5 h\u03b5\nrcases hJ with \u27e8rho, hrho, hineq\u27e9\nfilter_upwards [hineq, hrho.eventually_norm_le h\u03b5] with y hy h\u03c1y\nunfold SuperjetExcess\nhave := le_abs_self (rho y)\nsimp only [Real.norm_eq_abs] at h\u03c1y\nlinarith\n```\nThe subjet version is the same with `neg_le_abs`. The hypotheses (`hJ : J \u2208 Superjet C u x`, or `Subjet`) and the conclusions are unchanged.",
+      "benefit": "The unpacking of the little-o hypothesis is stated and proved once, so each theorem reduces to its sign-specific inequality step. This shortens both proofs. Other epsilon-form arguments about `SemijetRemainder` elsewhere can reuse the lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/ViscositySolns/Semijets/Definitions.lean",
+          "declaration": "subjetExcess_secondOrderNonposWithin",
+          "excerpt": "have h := hrho.bound h\u03b5\n    filter_upwards [h] with y hy\n    simpa using hy"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/ViscositySolns/Foundation.lean",
+          "declaration": "SemijetRemainder",
+          "excerpt": "Asymptotics.IsLittleO (nhdsWithin x0 C) rho (fun x : Point n => \u2016x - x0\u2016 ^ 2)"
+        }
+      ]
+    },
+    {
+      "declaration": "superjet_congr_nhdsWithin / subjet_congr_nhdsWithin",
+      "start_line": 62,
+      "end_line": 89,
+      "excerpt": "theorem subjet_congr_nhdsWithin {C D : Set (Point n)} {u : Point n -> Real}",
+      "problem": "The two proofs are identical, line for line. `Superjet` and `Subjet` are mirror images, and the file proves Sub results from scratch rather than from Super results. The file's Subjet lemmas are all hand-copied duplicates of the Superjet ones (excess identity, nonpos, congruence, expansion bridges). The neg-duality theorems `superjet_neg_iff_subjet` and `subjet_neg_iff_superjet` already exist. They are placed later, in ShiftsClosedness.lean, even though they only use `Jet.neg`, `quadraticModel_neg` and `SemijetRemainder.neg_left`, all of which are available from Foundation. Because they are not available here, this file cannot use them.",
+      "proposed_change": "Move `superjet_neg_iff_subjet` and `subjet_neg_iff_superjet` from ShiftsClosedness.lean to just after the `Subjet` definition. Their proofs need only Foundation material. Then the subjet congruence becomes\n```\ntheorem subjet_congr_nhdsWithin ... := by\n  ext J\n  rw [subjet_neg_iff_superjet, subjet_neg_iff_superjet, superjet_congr_nhdsWithin h]\n```\nThe hypothesis `h : nhdsWithin x C = nhdsWithin x D` is unchanged. After the `rw`, both sides are `J.neg \u2208 Superjet D (fun y => -u y) x`, so `rw` closes the goal by `rfl`. The same duality can later be used to derive other Subjet lemmas from the Superjet ones, for example the touchesBelow bridge at line 331.",
+      "benefit": "This removes a 13-line copy-pasted proof and makes the file's sign symmetry explicit. Later changes to the congruence or bridge proofs are made once instead of twice. It also removes the need for a downstream file to host the dual statements.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/ViscositySolns/Semijets/Calculus/ShiftsClosedness.lean",
+          "declaration": "subjet_neg_iff_superjet",
+          "excerpt": "J \u2208 Subjet C u x \u2194 J.neg \u2208 Superjet C (fun y => -u y) x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ViscositySolutionTheory/ViscositySolns/Foundation.lean",
+          "declaration": "quadraticModel_neg",
+          "excerpt": "theorem quadraticModel_neg (x0 : Point n) (r : Real) (p : Point n) (X : Hessian n)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 26221,
+    "cache_read_input_tokens": 205718,
+    "output_tokens": 9390,
+    "output_tokens_details": {
+      "thinking_tokens": 3071
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26221,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5511,
+        "cache_read_input_tokens": 27894,
+        "cache_creation_input_tokens": 2256,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2256
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2193958,
+  "duration_ms": 83117,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-26T22:57:03",
+  "unit": "file",
+  "source_sha256": "a7cca34e29c18bd9453461751f6c0be41a777da3ca2090b29f7fd093f3644416",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

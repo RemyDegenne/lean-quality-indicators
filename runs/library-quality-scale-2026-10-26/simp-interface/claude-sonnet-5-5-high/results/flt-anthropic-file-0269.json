@@ -1,0 +1,110 @@
+{
+  "id": "flt-anthropic-file-0269",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "partial",
+  "review_notes": "I read the whole file with attention to its simp interface: the three scoped simp lemmas on ValuationSubring (lines 112, 191, 1129), coords_zero and coords_some, the `attribute [-simp]` header, and every simp/simpa call. I checked the Mathlib stabilizerHom_apply (simp) and span_singleton_eq_bot. I did not trace every simp call in the long Lift and Weierstrass proofs. I cannot run Lean, so I make no claim about observed simp behaviour. I found no rewrite loops or competing-rule problems in the file's own simp lemmas. The findings are about missing simp-normal-form lemmas that force fragile fallbacks and repeated ad-hoc simpa calls. How far these fallbacks reflect the P2M scoping or private-def machinery is uncertain.",
+  "findings": [
+    {
+      "declaration": "ValuationSubring.natCast_mem_center",
+      "start_line": 369,
+      "end_line": 372,
+      "excerpt": "first | exact hA | simpa using hA | simpa +zetaDelta using hA",
+      "problem": "After `rw [mem_center_iff, \u2190 mem_nonunits_iff]` the goal is `((p : integralClosure \u2124 _) : AlgebraicClosure \u211a) \u2208 A.nonunits`. This should normalize to `(p : AlgebraicClosure \u211a) \u2208 A.nonunits` through the standard cast lemma for the subring coercion. The proof does not rely on that rule. It tries three alternatives, including `simpa +zetaDelta`, which suggests the author could not tell which cast normal form the simp set produces. By contrast, natCast_mem_primeBelow (lines 148\u2013154) closes the same kind of goal with explicit `map_natCast` rewrites. Because `A.center` is a private def with no simp-normal-form lemma for `((p : integralClosure ..) : _)`, this step depends on defeq or ambient simp behaviour.",
+      "proposed_change": "Replace the `first | ...` chain with one deterministic step. For example, add a small `@[simp]`-free helper or use `rw [mem_center_iff, \u2190 mem_nonunits_iff]; simpa only [Subring.coe_natCast] using hA`. Alternatively, state the cast fact once as a lemma `((p : integralClosure \u2124 (AlgebraicClosure \u211a)) : AlgebraicClosure \u211a) = p` and `rw` with it. The lemma names are not tested.",
+      "benefit": "The proof no longer silently depends on whichever simp-set/defeq path happens to succeed, so it is less likely to break when simp lemmas change, and the intended normal form of a natural-number cast under the coercion is explicit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassCurve_card_range_galoisRep_three_le_two.lean",
+          "declaration": "ValuationSubring.natCast_mem_primeBelow",
+          "excerpt": "rw [map_natCast, map_natCast]"
+        }
+      ]
+    },
+    {
+      "declaration": "ValuationSubring.exists_lift_valuation_sub_lt_one_of_mem_inertia (ht')",
+      "start_line": 690,
+      "end_line": 695,
+      "excerpt": "first | exact h | simpa only [Ideal.Quotient.stabilizerHom_apply, h\u03c6] using h | simpa +zetaDelta only [Ideal.Quotient.stabilizerHom_apply, h\u03c6] using h",
+      "problem": "`ht'` uses a three-way fallback of `exact`, `simpa only`, and `simpa +zetaDelta only` to apply the simp lemma `stabilizerHom_apply` plus the local `h\u03c6`. The goal depends on `let`/`letI` bodies (\u03c6, \u03c6\u2080, actL\u2026), so which branch works depends on whether simp unfolds those `let`s. `h\u03c6 : \u2200 b, \u03c6 (Ideal.Quotient.mk \ud835\udd14 b) = Ideal.Quotient.mk \ud835\udd14 ((rsh g * \u03c3\u2080) \u2022 b)` is stated about a local `let` definition, so it is not a reusable simp rule. The fallback chain shows the simp normal form was not controlled.",
+      "proposed_change": "Make the intended rewriting explicit. Either `rw [Ideal.Quotient.stabilizerHom_apply] at h; exact h.trans (h\u03c6 b)`, or a `calc` that turns `h` into `ht'` without a simp fallback. Alternatively, `obtain \u27e8\u03c6, h\u03c6\u27e9 : \u2203 \u03c6, \u2200 b, \u03c6 (mk b) = mk (\u03c3 \u2022 b)`, to avoid `let` unfolding altogether.",
+      "benefit": "Replaces a trial-and-error `first` combinator with one deterministic step. This removes the `+zetaDelta` dependence and makes the proof robust to changes in how `let` bodies are treated by simp.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/Ideal/Over.lean",
+          "declaration": "Ideal.Quotient.stabilizerHom_apply",
+          "excerpt": "@[simp] theorem stabilizerHom_apply (g : MulAction.stabilizer G P) (b : B)"
+        }
+      ]
+    },
+    {
+      "declaration": "repeated `Ideal.span {(p : \u2124)} \u2260 \u22a5` side goals (span_natCast_isMaximal, card_inertia_primeBelow_eq_ramificationIdx, ramificationIdx_primeBelow_ne_zero, and others)",
+      "start_line": 777,
+      "end_line": 778,
+      "excerpt": "(by simpa [Ideal.span_singleton_eq_bot] using hp.ne_zero)",
+      "problem": "The same unnamed fact `Ideal.span {(p : \u2124)} \u2260 \u22a5` for prime `p` is proved by an identical `simpa [Ideal.span_singleton_eq_bot] using hp.ne_zero` at lines 159, 778, 795, 820 and 884. Each use needs a non-reducible simp call whose result depends on how simp normalizes `((p : \u2115) : \u2124) = 0`. The \u2124-ideal side, `Ideal.span {(p:\u2124)} \u2260 \u22a5`, has no canonical lemma or simp normal form. By contrast, the \u2124[\ud835\udcde L]-side facts `hp0`, `hspan0`, `hmap0` are each derived separately in adicValuation_natCast_eq_exp_neg_ramificationIdx.",
+      "proposed_change": "Add one lemma next to `span_natCast_isMaximal`, e.g. `theorem span_natCast_ne_bot (hp : p.Prime) : Ideal.span {(p : \u2124)} \u2260 \u22a5 := by simpa [Ideal.span_singleton_eq_bot] using hp.ne_zero`. Then pass `(span_natCast_ne_bot hp)` at the five call sites. It can also be derived from `(span_natCast_isMaximal hp).ne_top`-style facts, or reuse `IsMaximal.ne_bot` if available. This lemma should not be `@[simp]` because it carries a hypothesis.",
+      "benefit": "Removes five copies of an assumption-dependent simp call and gives the side condition a single named, auditable form. If `Int.natCast_eq_zero`/`Ideal.span_singleton_eq_bot` simp behaviour changes, only one proof needs repair.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassCurve_card_range_galoisRep_three_le_two.lean",
+          "declaration": "ValuationSubring.ramificationIdx_primeBelow_ne_zero",
+          "excerpt": "(by simpa [Ideal.span_singleton_eq_bot] using hp.ne_zero)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassCurve_card_range_galoisRep_three_le_two.lean",
+          "declaration": "span_natCast_isMaximal",
+          "excerpt": "(by simpa [Ideal.span_singleton_eq_bot] using hp.ne_zero)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 74118,
+    "cache_read_input_tokens": 228215,
+    "output_tokens": 5361,
+    "output_tokens_details": {
+      "thinking_tokens": 1502
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 74118,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3117,
+        "cache_read_input_tokens": 76483,
+        "cache_creation_input_tokens": 1648,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1648
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3729195,
+  "duration_ms": 43524,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:47:00",
+  "unit": "file",
+  "source_sha256": "0b05f1db8672306947d950217ce507281936fe8776085dc041d8f5af062c9aa8",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0212",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it depends on: `leviForm` and `leviForm_eq_fderiv` in LeviForm.lean, `complexPart`, `complexPart_apply`, `re_complexPart` and `IsComplexTangent` in LeviConvexity.lean, and `Complex.coe_smul` in Mathlib. The file has no simp attributes at all. I looked for missing canonical simp lemmas, competing rules and rewrite cycles, and found no loop risk because nothing is tagged simp. The two findings are about missing simp lemmas for the real-scaling and zero cases, and both rest on reading the definitions and proofs, not on running Lean. I did not flag `leviBilinear_I_smul_left/right` or `isComplexTangent_iff_complexPart_eq_zero` for simp tagging. The first pair is fine as plain rewrite lemmas. The second would change the normal form of the `IsComplexTangent` predicate. I could not check whether other files in the project use these lemmas in ways that would conflict with a simp tag. The claim that `simp` cannot push `complexPart` through a real scalar rests on `Complex.coe_smul` being `@[simp]` and on `map_smul` needing the \u2102-action.",
+  "findings": [
+    {
+      "declaration": "SeveralComplexVariables.complexPart_real_smul (and leviForm_smul_real)",
+      "start_line": 240,
+      "end_line": 256,
+      "excerpt": "complexPart \u2113 (r \u2022 w) = (r : \u2102) * complexPart \u2113 w := by\n  rw [\u2190 Complex.coe_smul, map_smul, smul_eq_mul]",
+      "problem": "The real-scaling lemmas `leviForm_smul_real` and `complexPart_real_smul` are not simp lemmas, although simp cannot derive them. `complexPart \u2113` is a \u2102-linear map, and Mathlib's `Complex.coe_smul : (x:\u2102) \u2022 y = x \u2022 y` is `@[simp]`, so simp's normal form for scaling by a real number is the \u211d-action `r \u2022 w`. `map_smul` for the \u2102-linear map `complexPart \u2113` cannot fire on that form. The proof of `complexPart_real_smul` has to undo the simp normal form with `rw [\u2190 Complex.coe_smul, ...]`. So any later `simp` call on `complexPart \u2113 (r \u2022 w)` or `leviForm f p (t \u2022 w)` gets stuck. The only use, in `exists_leviForm_add_normSq_ge`, is a hand-sequenced `rw [leviForm_smul_real, complexPart_real_smul, norm_mul, Complex.norm_real, norm_inv, norm_norm, mul_pow]` followed by `convert`/`field_simp`.",
+      "proposed_change": "Tag both lemmas `@[simp]`. Each rewrites a scaled argument into a strictly smaller expression with the scalar factored out, so it cannot loop, and no hypotheses are needed. Then the `rw` chain at line 288 can become a `simp only [leviForm_smul_real, complexPart_real_smul, norm_mul, Complex.norm_real, ...]` step, or a plain `simp`. Any further use on normalized vectors then needs no hand-ordered rewrite list.",
+      "benefit": "Real-scaling normalizations, such as the unit-vector rescaling in the compactness proof, can be handled by `simp`. Readers and users no longer need to know the `Complex.coe_smul` orientation trap or the order in which the `rw`s must fire.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/LinearAlgebra/Complex/Module.lean",
+          "declaration": "Complex.coe_smul",
+          "excerpt": "@[simp, norm_cast]\ntheorem Complex.coe_smul {E : Type*} [AddCommGroup E] [Module \u2102 E] (x : \u211d) (y : E) :\n    (x : \u2102) \u2022 y = x \u2022 y"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/SeveralComplexVariables/SeveralComplexVariables/LeviConvexity/Peak.lean",
+          "declaration": "SeveralComplexVariables.exists_leviForm_add_normSq_ge",
+          "excerpt": "rw [leviForm_smul_real, complexPart_real_smul, norm_mul, Complex.norm_real, norm_inv, norm_norm,"
+        }
+      ]
+    },
+    {
+      "declaration": "SeveralComplexVariables.exists_leviForm_add_normSq_ge (local facts hw0/h0/h1; missing `leviForm_zero`)",
+      "start_line": 280,
+      "end_line": 285,
+      "excerpt": "have h0 : leviForm \u03c1 p 0 = 0 := by simp [leviForm_eq_fderiv]\n      have h1 : complexPart \u2113 0 = 0 := by simp [complexPart_apply]",
+      "problem": "There is no canonical simp lemma for the zero direction of the Levi form. `leviForm` is a plain def and `leviForm_eq_fderiv` is not simp, so each use has to unfold it with `simp [leviForm_eq_fderiv]`. That is done at lines 244 (`leviForm_smul_real`), 249 (`continuous_leviForm`), 282 and 421. The `leviForm \u03c1 p 0 = 0` fact is proved as a local `have` instead of a reusable lemma. The companion fact `complexPart \u2113 0 = 0` is proved with `simp [complexPart_apply]`, which unfolds the abbreviation into `\u2113 c - I * \u2113 (I \u2022 c)` and bypasses the structural `map_zero` rule for the `E \u2192L[\u2102] \u2102` map. That is an unwanted expansion into the primitive formula for a fact `map_zero` already gives.",
+      "proposed_change": "Add `@[simp] theorem leviForm_zero (f : E \u2192 \u211d) (p : E) : leviForm f p 0 = 0` next to `leviForm_smul_real`. Its proof is the existing `by simp [leviForm_eq_fderiv]`. Replace `h1` by plain `simp`, so `map_zero` applies, or fold the whole degenerate-case argument into `simp at hw`. Do not make `leviForm_eq_fderiv` itself simp, because that would expand every `leviForm` occurrence.",
+      "benefit": "The `w = 0` case of positive-definiteness arguments, which is the degenerate case every such argument has to treat, is discharged by `simp` without opening `leviForm` or `complexPart`. This replaces the three-line `h0`/`h1`/`rw`/`simp` block. Keeping `leviForm` folded also keeps goals readable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/SeveralComplexVariables/SeveralComplexVariables/LeviForm.lean",
+          "declaration": "SeveralComplexVariables.leviForm_eq_fderiv",
+          "excerpt": "theorem leviForm_eq_fderiv (f : E \u2192 \u211d) (a w : E) :\n    leviForm f a w = (fderiv \u211d (fderiv \u211d f) a w w + fderiv \u211d (fderiv \u211d f) a (I \u2022 w) (I \u2022 w)) / 4"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/SeveralComplexVariables/SeveralComplexVariables/LeviConvexity.lean",
+          "declaration": "SeveralComplexVariables.complexPart",
+          "excerpt": "abbrev complexPart (\u2113 : E \u2192L[\u211d] \u211d) : E \u2192L[\u2102] \u2102 := StrongDual.extendRCLike \u2113"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 40160,
+    "cache_read_input_tokens": 271378,
+    "output_tokens": 7890,
+    "output_tokens_details": {
+      "thinking_tokens": 2810
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40160,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2835,
+        "cache_read_input_tokens": 42422,
+        "cache_creation_input_tokens": 1751,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1751
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2667138,
+  "duration_ms": 57151,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-27T00:30:12",
+  "unit": "file",
+  "source_sha256": "ad1dbb536d95514ba720e0c83d5ca36d548967251d3e089195d952a7d386db77",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

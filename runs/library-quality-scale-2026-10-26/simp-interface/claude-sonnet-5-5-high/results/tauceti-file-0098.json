@@ -1,0 +1,110 @@
+{
+  "id": "tauceti-file-0098",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and the sole downstream user (TauCeti/AlgebraicTopology/Singular/Coefficients/TwoDivisible.lean, lines 55-70), and checked Mathlib's ModuleCat.hom_smul simp lemma. I could not run Lean. My claims about how the simp discrimination tree treats the abbrev are inferences, not observations. The `htwo` duplication and the `simp\u2193` rationale are less certain, because I found no Mathlib `(2 : ZMod 2) = 0` simp lemma and did not check every simp-attribute convention.",
+  "findings": [
+    {
+      "declaration": "TauCeti.modTwoCoefficientSequence_g_apply",
+      "start_line": 51,
+      "end_line": 54,
+      "excerpt": "theorem modTwoCoefficientSequence_g_apply (z : \u2124) :\n    modTwoCoefficientSequence.{u}.g (ULift.up z) = ULift.up (z : ZMod 2) := rfl",
+      "problem": "The only element-level simp lemma for `g` fires on the literal constructor form `ULift.up z`. The proofs in this file work with variable elements `a : ULift \u2124` (lines 62-74), so the lemma never applies there. Each proof instead unfolds `modTwoCoefficientSequence`, `AddEquiv.ulift` and `Equiv.ulift` by hand to compute `.down` of `g a`. The `simp\u2193` pre-lemma attribute is also unusual here. It only compensates for the lhs having to match before the `ULift.up` argument is rewritten, and it is not needed if the lemma is stated in `.down` form.",
+      "proposed_change": "State the lemma on an arbitrary element in `.down` form, for example `(modTwoCoefficientSequence.{u}.g a).down = (a.down : ZMod 2)`, proved by `rfl` and tagged plain `@[simp]`. Keep the `ULift.up` version, if wanted, as a plain `@[simp]` lemma. Add the matching lemma `(modTwoCoefficientSequence.{u}.f a).down = 2 * a.down`. The exactness proof can then use `simp [htwo]` without unfolding `AddEquiv.ulift` or `Equiv.ulift`.",
+      "benefit": "Users and the file's own proofs get one canonical normal form for `.down` of `f` and `g` on arbitrary elements. They no longer need to unfold the implementation of the `ULift` additive equivalences, and `simp\u2193` is no longer needed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Category/ModuleCat/ModTwo.lean",
+          "declaration": "TauCeti.modTwoCoefficientSequence_shortExact",
+          "excerpt": "simp [modTwoCoefficientSequence, AddEquiv.ulift, Equiv.ulift, htwo]"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.modTwoCoefficientSequence_f",
+      "start_line": 45,
+      "end_line": 49,
+      "excerpt": "theorem modTwoCoefficientSequence_f :\n    modTwoCoefficientSequence.{u}.f =\n      (2 : \u2124) \u2022 \ud835\udfd9 (ModuleCat.of \u2124 (ULift.{u} \u2124)) := rfl",
+      "problem": "`modTwoCoefficientSequence` is an `abbrev`, so it is reducible. `.f` applied to the `ShortComplex.mk` structure literal reduces by projection. The simp lemma's lhs can therefore be normalised to the same term as its rhs. Because the lemma is proved by `rfl`, it may be ineffective or have a degenerate key. This is an inference about discrimination-tree behaviour. I did not run Lean. The file's own proofs list `modTwoCoefficientSequence` explicitly in `simp [...]` calls (lines 66, 70, 74), as though this lemma did not do the work. Together with the abbrev, this makes the simp interface unclear. The sequence's `f` is stated in two ways, as a smul of `\ud835\udfd9` and, via the missing element lemma, not at all.",
+      "proposed_change": "Decide on one mechanism. Either make `modTwoCoefficientSequence` a `def` with `@[simps]`-style or hand-written simp lemmas for `f`, `g`, `X\u2081`, `X\u2082` and `X\u2083`, so the simp normal form is controlled. Or keep the abbrev and drop the redundant `_f` simp attribute, replacing it with the element-level `.down` lemmas above. In both cases, remove the `modTwoCoefficientSequence` unfolding argument from the proofs' `simp` calls.",
+      "benefit": "This gives a predictable simp normal form for downstream code such as `simp [T, S, two_smul]` in TwoDivisible.lean, which maps `f` through a functor. It also avoids a simp lemma whose lhs and rhs coincide after reducible unfolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/AlgebraicTopology/Singular/Coefficients/TwoDivisible.lean",
+          "declaration": "isUniquelyTwoDivisible_singularHomology_of_isZero_mod_two",
+          "excerpt": "simp [T, S, two_smul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Algebra/Category/ModuleCat/Basic.lean",
+          "declaration": "ModuleCat.hom_smul",
+          "excerpt": "@[simp] lemma hom_smul (s : S) (f : M \u27f6 N) : (s \u2022 f).hom = s \u2022 f.hom := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.modTwoCoefficientSequence",
+      "start_line": 35,
+      "end_line": 43,
+      "excerpt": "have htwo : (2 : ZMod 2) = 0 := by decide",
+      "problem": "The fact `(2 : ZMod 2) = 0` is proved ad hoc as a local `htwo` here and again at line 69 in `modTwoCoefficientSequence_shortExact`, then passed to `simp` each time. There is no shared simp lemma for it. Each use of the sequence that needs `g \u2218 f = 0` at the element level must rediscover the fact.",
+      "proposed_change": "Add one private or public lemma, for example `theorem two_eq_zero_zmod_two : (2 : ZMod 2) = 0 := by decide`, and use it in both places. Alternatively, state the element-level lemma `(g (f a)).down = 0` once and reuse it. Tag it `@[simp]` only if no existing Mathlib simp lemma already normalises this literal. I found none in Mathlib/Data/ZMod.",
+      "benefit": "This removes the duplicated local hypothesis and gives the simp calls a single named rule, so the simp set is explicit and consistent.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Category/ModuleCat/ModTwo.lean",
+          "declaration": "TauCeti.modTwoCoefficientSequence_shortExact",
+          "excerpt": "have htwo : (2 : ZMod 2) = 0 := by decide"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 7739,
+    "cache_read_input_tokens": 29486,
+    "output_tokens": 5392,
+    "output_tokens_details": {
+      "thinking_tokens": 1898
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 7739,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2808,
+        "cache_read_input_tokens": 10221,
+        "cache_creation_input_tokens": 1531,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1531
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.08784059999999999,
+  "duration_ms": 38164,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:01:52",
+  "unit": "file",
+  "source_sha256": "7464901595a19a1f1ea68bab9beccdd7813c4d09c0d3bdad099d60725d80462d",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

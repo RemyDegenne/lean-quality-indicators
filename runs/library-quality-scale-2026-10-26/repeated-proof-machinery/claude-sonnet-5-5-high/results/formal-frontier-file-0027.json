@@ -1,0 +1,88 @@
+{
+  "id": "formal-frontier-file-0027",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the relevant Mathlib API in Mathlib/Order/DirectedInverseSystem.lean. That file has DirectLimit.induction, exists_eq_mk, and exists_eq_mk\u2082/\u2083 and induction\u2082/\u2083, but all of them are for one family F and one system f. I also grepped formal-frontier for an existing mixed-family helper and found none. The same common-stage step recurs across the file: pick an upper bound, then rewrite each representative with DirectLimit.eq_of_le. It appears in mul_smul, smul_add, add_smul, pairing_add_left/right, pairing_smul_left/right, fromTensorLimitDef_smul and fromTensorLimit_toTensorLimit. The strongest instance is the pair pairing_smul_left/right, which have identical 14-line prefixes. I did not try the rewrite in Lean. The proposed helper needs `[DirectedSystem]` instances for every family it touches. The A, M, N and tensor-product systems all have them in scope here, but in pairing_add_*, pairing_smul_* and tensorOf_* the `omit [DirectedSystem A ...]` lines mean only M, N and the tensor system matter. I left out the second-order duplication in tensorToLimits_map, fromTensorLimit_toTensorLimit, toTensorLimit_fromTensorLimit and the DirectedSystem instance (TensorProduct.inductionOn plus add case), since each is a short routine pattern.",
+  "findings": [
+    {
+      "declaration": "pairing_smul_left / pairing_smul_right",
+      "start_line": 231,
+      "end_line": 269,
+      "excerpt": "obtain \u27e8k, hik, hjk, hlk\u27e9 := directed_of\u2083 (\u00b7 \u2264 \u00b7) i j l\n        rw [DirectLimit.eq_of_le \u27e8i, a\u27e9 k hik,\n          DirectLimit.eq_of_le \u27e8j, m\u27e9 k hjk,\n          DirectLimit.eq_of_le \u27e8l, n\u27e9 k hlk,",
+      "problem": "The two theorems have the same three nested `induction` blocks and the same `directed_of\u2083` step. They also have the same three `DirectLimit.eq_of_le` rewrites that move a, m, n to a common stage k. Only the final `\u2190 TensorProduct.smul_tmul'` versus `TensorProduct.tmul_smul` differs. The same 'push representatives of different families to a common stage' argument appears in `mul_smul`, `smul_add`, `add_smul`, `pairing_add_left/right`, `fromTensorLimitDef_smul` and `fromTensorLimit_toTensorLimit`. Mathlib's `exists_eq_mk\u2082/\u2083` and `induction\u2082/\u2083` only cover representatives of one and the same limit, so each proof redoes the mixed-family case by hand.",
+      "proposed_change": "Add one helper for mixed families, placed in `namespace DirectLimit.VaryingScalar` before `instModule`, with a two-family variant for the other uses. Its statement is: `theorem exists_eq_mk\u2083' {F\u2081 F\u2082 F\u2083 : \u03b9 \u2192 Type*} {T\u2081 T\u2082 T\u2083 \u2026} (f\u2081 f\u2082 f\u2083 \u2026) [FunLike \u2026] [DirectedSystem F\u2081 (f\u2081 \u00b7 \u00b7 \u00b7)] [DirectedSystem F\u2082 (f\u2082 \u00b7 \u00b7 \u00b7)] [DirectedSystem F\u2083 (f\u2083 \u00b7 \u00b7 \u00b7)] (a : DirectLimit F\u2081 f\u2081) (b : DirectLimit F\u2082 f\u2082) (c : DirectLimit F\u2083 f\u2083) : \u2203 k a' b' c', a = \u27e6\u27e8k, a'\u27e9\u27e7 \u2227 b = \u27e6\u27e8k, b'\u27e9\u27e7 \u2227 c = \u27e6\u27e8k, c'\u27e9\u27e7`. The proof is: `induction a, b, c` one at a time with `DirectLimit.induction`, take `\u27e8k, hik, hjk, hlk\u27e9 := directed_of\u2083 (\u00b7 \u2264 \u00b7) i j l`, and return `\u27e8k, f\u2081 i k hik a, f\u2082 j k hjk b, f\u2083 l k hlk c, eq_of_le .., eq_of_le .., eq_of_le ..\u27e9`. The two-family variant `exists_eq_mk\u2082'` is proved the same way with `exists_ge_ge`. Then `pairing_smul_left` becomes: `obtain \u27e8k, a, m, n, rfl, rfl, rfl\u27e9 := exists_eq_mk\u2083' (f \u00b7 \u00b7 \u00b7) (g \u00b7 \u00b7 \u00b7) (h \u00b7 \u00b7 \u00b7) a m n; rw [smul_mk, pairing_mk, pairing_mk, tensorOf_apply, tensorOf_apply, smul_mk, \u2190 TensorProduct.smul_tmul']`. `pairing_smul_right` is the same, ending in `TensorProduct.tmul_smul`. The remaining uses become `obtain \u2026 := exists_eq_mk\u2082' \u2026; rw [add_def, \u2026]`: `pairing_add_left/right`, `mul_smul`, `smul_add`, `add_smul`, `fromTensorLimitDef_smul` and `fromTensorLimit_toTensorLimit`. In the last two, `obtain \u27e8k, m', n', rfl, rfl\u27e9` replaces the `eq_of_le (f := \u2026)` rewrites with their explicit `(f := fun i j hij \u21a6 \u2026)` arguments.",
+      "benefit": "The directedness argument is written and checked once, and each call site shrinks by about 6\u20138 lines to a single `obtain` plus the computation specific to it. The explicit `(f := fun i j hij \u21a6 \u2026)` annotations that are needed to make `eq_of_le` elaborate for the tensor system are confined to one place. A change to the quotient representation or to the `DirectedSystem` hypotheses is then fixed in one lemma instead of eight proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Order/DirectedInverseSystem.lean",
+          "declaration": "DirectLimit.exists_eq_mk\u2083",
+          "excerpt": "theorem exists_eq_mk\u2083 (w u v : DirectLimit F f) :\n    \u2203 i x y z, w = \u27e6\u27e8i, x\u27e9\u27e7 \u2227 u = \u27e6\u27e8i, y\u27e9\u27e7 \u2227 v = \u27e6\u27e8i, z\u27e9\u27e7"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-direct-limits/AlgebraicDirectLimits/VaryingScalar.lean",
+          "declaration": "pairing_smul_right",
+          "excerpt": "obtain \u27e8k, hik, hjk, hlk\u27e9 := directed_of\u2083 (\u00b7 \u2264 \u00b7) i j l"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-direct-limits/AlgebraicDirectLimits/VaryingScalar.lean",
+          "declaration": "pairing_add_right",
+          "excerpt": "obtain \u27e8k, hik, hjk\u27e9 := exists_ge_ge i j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-direct-limits/AlgebraicDirectLimits/VaryingScalar.lean",
+          "declaration": "fromTensorLimitDef_smul",
+          "excerpt": "rw [DirectLimit.eq_of_le (f := fun i j hij \u21a6 f i j hij) \u27e8i, a\u27e9 k hik,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 24898,
+    "cache_read_input_tokens": 135412,
+    "output_tokens": 6501,
+    "output_tokens_details": {
+      "thinking_tokens": 2127
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24898,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2737,
+        "cache_read_input_tokens": 27999,
+        "cache_creation_input_tokens": 828,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 828
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17817120000000003,
+  "duration_ms": 55197,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T22:48:35",
+  "unit": "file",
+  "source_sha256": "e60c2d8a92ee5c7d47d4f322b517211737f9910139a2eaf78c031aacc2ad7515",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

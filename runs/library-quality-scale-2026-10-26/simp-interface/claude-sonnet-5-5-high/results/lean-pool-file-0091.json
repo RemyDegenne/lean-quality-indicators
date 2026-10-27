@@ -1,0 +1,114 @@
+{
+  "id": "lean-pool-file-0091",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definitions of CKN.scalingSpace, rescaledSpace, vecEuclideanNorm and vec3EuclideanNorm. I searched the repository for existing bridge or simp lemmas between them and found none marked @[simp]. The `ESS` theorem has no simp attribute and no cycle risk, so I limited myself to missing canonical simp lemmas that this proof works around. I did not run Lean. How well the proposed lemmas would fire as simp rules depends on the exact elaborated forms, which I have not tested. The lemma `vec3EuclideanNorm_eq_vecEuclideanNorm` cited as evidence lives in CIVAxisymmetric and may not be imported by the files that need the new lemma, so it would probably have to move to a foundation file.",
+  "findings": [
+    {
+      "declaration": "ESS.pressureSplit_scaledSpatial_sup_le (hEsubset step: vecEuclideanNorm \u2194 vec3EuclideanNorm conversion)",
+      "start_line": 73,
+      "end_line": 82,
+      "excerpt": "simp [CKN.vecEuclideanNorm, vec3EuclideanNorm, vecNormSq, vecDot, pow_two]",
+      "problem": "The library has no canonical simp lemma relating `CKN.vecEuclideanNorm` on `Vec3` to `vec3EuclideanNorm`. The proof unfolds both definitions with a long ad hoc simp set (`vecNormSq`, `vecDot`, `pow_two`) twice. The first use is inside `simpa` at lines 74\u201375 and the second is the local `hnormEq` at lines 78\u201379. Each unfolding expands to raw `Fin 3` sums, which is brittle. The same local equation is re-proved in many other files: `vecEuclideanNorm_eq_vec3_local` appears as a private lemma in two files, there is an inline `hnormEq` in SobolevPoincareBallFaithfulL1, and CutoffExistence proves the reverse orientation. None of these is a shared simp lemma.",
+      "proposed_change": "Add one public lemma next to the definitions, for example `vecEuclideanNorm_eq_vec3EuclideanNorm (v : Vec3) : vecEuclideanNorm v = vec3EuclideanNorm v`. Mark it `@[simp]`, so the conversion normalises to `vec3EuclideanNorm`. The unfolding proof would then live in exactly one place. Replace the `simpa [...]` at lines 74\u201375 with `simpa using hnorm'`, or with `rwa [sub_zero, vecEuclideanNorm_eq_vec3EuclideanNorm] at hnorm'`. Delete `hnormEq` and use `rw [sub_zero, vecEuclideanNorm_eq_vec3EuclideanNorm]` instead. Delete the private copies. If a simp attribute is thought too aggressive, at least make the lemma public and non-private.",
+      "benefit": "The normal form becomes predictable. Callers no longer unfold `vecNormSq` and `vecDot` into `Fin 3` sums. The repeated simp-set proofs, which break whenever those definitions change, disappear from the file and from the other files that re-prove the same equation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Closure/CutoffExistence.lean",
+          "declaration": "vec3EuclideanNorm_eq_vecEuclideanNorm",
+          "excerpt": "simp [vec3EuclideanNorm, CKN.vecEuclideanNorm, CKN.vecNormSq, CKN.vecDot, pow_two]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Pressure/Lin34SliceForceLp.lean",
+          "declaration": "vecEuclideanNorm_eq_vec3_local",
+          "excerpt": "simp [vec3EuclideanNorm, vecEuclideanNorm, vecNormSq, vecDot, pow_two]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Step4/SliceSelectedGradientForceSlices.lean",
+          "declaration": "vecEuclideanNorm_eq_vec3_local",
+          "excerpt": "simp [vec3EuclideanNorm, vecEuclideanNorm, vecNormSq, vecDot, pow_two]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Basic.lean",
+          "declaration": "vec3EuclideanNorm",
+          "excerpt": "def vec3EuclideanNorm (v : Vec3) : \u211d := Real.sqrt (\u2211 i, v i ^ 2)"
+        }
+      ]
+    },
+    {
+      "declaration": "ESS.pressureSplit_scaledSpatial_sup_le (h\u03c6 / hpre / hscaled: scalingSpace unfolding)",
+      "start_line": 43,
+      "end_line": 56,
+      "excerpt": "have h\u03c6 : (fun x : Vec3 => \u03c6 x) = CKN.scalingSpace r x\u2080 := by",
+      "problem": "`CKN.scalingSpace` and `CKN.rescaledSpace` are plain defs with no simp or rewrite lemmas. There is no `scalingSpace_apply` and no membership or preimage lemma for `rescaledSpace`. The proof therefore rebuilds the homeomorphism by hand and uses `rfl` to relate it to `scalingSpace`. It then uses `change` to unfold `rescaledSpace`, and repeatedly uses `rw [\u2190 h\u03c6]` and `simpa only [h\u03c6]` (lines 51, 55, 61, and `hscaled`). These steps are manual simp-interface workarounds for a missing canonical rewrite. The same fact is also kept as the private `scalingSpace_eq_homeomorph` and the public `scalingSpaceHomeomorph`, but the target file does not use either.",
+      "proposed_change": "In ScalingInvarianceBasic add `@[simp] theorem scalingSpace_apply (\u03bc : \u211d) (x\u2080 y : Vec3) : scalingSpace \u03bc x\u2080 y = x\u2080 + \u03bc \u2022 y := rfl`. Also add `@[simp] theorem mem_rescaledSpace_iff : y \u2208 rescaledSpace \u03bc x\u2080 \u03a9 \u2194 scalingSpace \u03bc x\u2080 y \u2208 \u03a9 := Iff.rfl`. Make `scalingSpace_eq_homeomorph` public, or state it as a coercion lemma `\u21d1(scalingSpaceHomeomorph \u03bc h\u03bc x\u2080) = scalingSpace \u03bc x\u2080`. Then take \u03c6 := CKN.scalingSpaceHomeomorph r hr x\u2080 in this proof and replace the `h\u03c6` rewrites with that single lemma. The `change` and `rfl` unfoldings at lines 47 and 54 would go away.",
+      "benefit": "Rewriting with `scalingSpace` and `rescaledSpace` would be stable, and the one equation between the homeomorphism and the function would be stated once. Each downstream proof would not need to re-derive `h\u03c6` and thread it through `rw`/`simpa`. This would shorten the proof and make it less sensitive to how the definitions are unfolded.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceBasic.lean",
+          "declaration": "scalingSpace",
+          "excerpt": "def scalingSpace (\u03bc : \u211d) (x\u2080 : Vec3) : Vec3 \u2192 Vec3 :=\n  fun y => x\u2080 + \u03bc \u2022 y"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceBasic.lean",
+          "declaration": "scalingSpaceHomeomorph",
+          "excerpt": "(Homeomorph.smulOfNeZero \u03bc h\u03bc.ne').trans (Homeomorph.addLeft x\u2080)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceBasic.lean",
+          "declaration": "scalingSpace_eq_homeomorph",
+          "excerpt": "private theorem scalingSpace_eq_homeomorph (\u03bc : \u211d) (h\u03bc : 0 < \u03bc) (x\u2080 : Vec3) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 27470,
+    "cache_read_input_tokens": 115217,
+    "output_tokens": 6439,
+    "output_tokens_details": {
+      "thinking_tokens": 1037
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27470,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3253,
+        "cache_read_input_tokens": 28814,
+        "cache_creation_input_tokens": 2669,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2669
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18581970000000003,
+  "duration_ms": 51804,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-26T23:01:00",
+  "unit": "file",
+  "source_sha256": "4acde210023851d8b35c20f1ab23dff4808ce6aa7d83f1d68e0aa8d11f8a3c2a",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

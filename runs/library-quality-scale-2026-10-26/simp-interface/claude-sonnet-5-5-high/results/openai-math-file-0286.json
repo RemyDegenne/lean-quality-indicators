@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0286",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the supplied Serialization.lean (encodeWords simp lemmas). I also read the Lean core simp lemmas for List.length_flatMap and length_flatten, and the downstream users of the length lemmas. I did not run Lean. The claims about simp behaviour come from reading the lemma statements. The two @[simp] parse/decode round-trip lemmas (parseEquation_encoded, parseEquations_encoded, decodeInputWords_encoded, decodeInputBits_encoded) look fine. Their LHS patterns use un-unfolded defs and do not compete with other rules. Other files in the repo define identical copies of these length lemmas in different namespaces; I did not treat that as a simp finding. Remaining uncertainty is the exact normal form simp produces for `(map (fun _ => 4) l).sum`.",
+  "findings": [
+    {
+      "declaration": "equationsWords_length (and its use in inputWords_length)",
+      "start_line": 137,
+      "end_line": 149,
+      "excerpt": "theorem equationsWords_length {n : Nat} (equations : List (CloneGap.Equation (Fin n))) :\n    (equations.flatMap equationWords).length = 4 * equations.length := by",
+      "problem": "The sibling lemmas equationWords_length and inputWords_length are @[simp], but equationsWords_length is not. It is the lemma that inputWords_length needs, and inputWords_length has to cite it by name in `simp only`. Core's `List.length_flatMap` is @[simp] and rewrites `(l.flatMap f).length` to `(l.map fun a => (f a).length).sum`. So a plain `simp` on `(input.equations.flatMap equationWords).length` takes that route instead and never produces the stated `4 * equations.length`. Together with the simp lemma equationWords_length, that route most likely ends in a `List.sum` of a constant map, probably `len * 4` or `len \u2022 4` (I did not run Lean). This does not match the lemma's `4 * len`. The file is therefore inconsistent: some length lemmas are simp lemmas and others are not. In the file's own `inputBits_length` statement (lines 169\u2013174), the `flatMap` length term has no canonical simp form that matches the file's lemmas.",
+      "proposed_change": "Mark `equationsWords_length` as a simp lemma, giving it a priority that beats the generic `List.length_flatMap` (for example `@[simp high]`). Alternatively, restate it in the shape that simp reaches after `length_flatMap` and `equationWords_length`, and still give it priority. Then `inputWords_length` can be proved by `simp [inputWords]`. Downstream proofs that call `simp only [..., inputWords_length]` can use plain `simp`.",
+      "benefit": "Simp then reduces the length of the flat-mapped equation words to one stable form (`4 * equations.length`). Length goals no longer depend on whether `List.length_flatMap` or the local lemma fires first, and callers need not cite `equationsWords_length` by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.34.1/src/lean/Init/Data/List/Lemmas.lean",
+          "declaration": "List.length_flatMap",
+          "excerpt": "@[simp]\ntheorem length_flatMap {l : List \u03b1} {f : \u03b1 \u2192 List \u03b2} :\n    length (l.flatMap f) = sum (map (fun a => (f a).length) l)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/VertexCover/Reduction/SourceEncoding.lean",
+          "declaration": "inputWords_length",
+          "excerpt": "@[simp] theorem inputWords_length (input : Input) :\n    (inputWords input).length = 2 + 4 * input.equations.length"
+        }
+      ]
+    },
+    {
+      "declaration": "inputBits_length (together with equationBits_length_le / equationsBits_length_le)",
+      "start_line": 169,
+      "end_line": 174,
+      "excerpt": "theorem inputBits_length (input : Input) :\n    (inputBits input).length = input.\u00abvariables\u00bb + input.equations.length + 2 +\n      (encodeWords (input.equations.flatMap equationWords)).length := by",
+      "problem": "The right-hand side keeps `(encodeWords (...)).length`. In Serialization.lean, `encodeWords_length` is a simp lemma that rewrites exactly this term to `ns.sum + ns.length`. So the statement is not in simp-normal form. Simp would rewrite its own RHS, and then `List.length_flatMap` fires too. The lemma is also not a simp lemma, so `(inputBits input).length` has no simp rule here. The file cannot be used as a simp interface for bit lengths. Downstream code recomputes the length by hand, for example `simp only [inputBits, encodeWords_length, inputWords_length]; omega` in `equations_length_le_input` (which proves the same fact as `inputBits_length_ge_equations`). The same mismatch affects `equationBits_length_le` and `equationsBits_length_le` (lines 151\u2013167). Their LHS is `(encodeWords ...).length`, which simp rewrites before any `rw`/`apply` use.",
+      "proposed_change": "Restate `inputBits_length` in terms that simp can chain from existing simp lemmas. For example, give the exact length as `(inputWords input).sum + (2 + 4 * input.equations.length)`, which follows from `encodeWords_length` and `inputWords_length`. Or keep the current form for the bound lemmas, but note that they are used with `rw`/`.trans`, not simp. Then either tag the exact-length lemma @[simp], or prove `inputBits_length_ge_*` and the bound by `simp [inputBits]` plus `omega`, so that downstream files need no hand-written `simp only` chain.",
+      "benefit": "The statement matches the normal form simp produces, so it can be fed to `simp`/`rw` without being rewritten away. Simp lemmas about `inputBits` would not compete with the global `encodeWords_length`. Callers like the length proof in SourceEquationLookupLemmas could use a single lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/VertexCover/Encoding/Serialization.lean",
+          "declaration": "encodeWords_length",
+          "excerpt": "@[simp] theorem encodeWords_length (ns : List Nat) :\n    (encodeWords ns).length = ns.sum + ns.length"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/UniqueGames/Reduction/SourceEquationLookupLemmas.lean",
+          "declaration": "equations_length_le_input",
+          "excerpt": "simp only [inputBits, encodeWords_length, inputWords_length]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 14769,
+    "cache_read_input_tokens": 132755,
+    "output_tokens": 6666,
+    "output_tokens_details": {
+      "thinking_tokens": 2561
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14769,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2449,
+        "cache_read_input_tokens": 25791,
+        "cache_creation_input_tokens": 1225,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1225
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1390395,
+  "duration_ms": 59524,
+  "turns": 11,
+  "attempts": 2,
+  "judged": "2026-10-27T01:07:34",
+  "unit": "file",
+  "source_sha256": "bdca10116e729eb88b26ce63a77a099905cc8cc9be2b06ef4a706ca47b8ac845",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

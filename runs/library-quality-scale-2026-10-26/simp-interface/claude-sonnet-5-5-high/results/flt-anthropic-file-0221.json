@@ -1,0 +1,115 @@
+{
+  "id": "flt-anthropic-file-0221",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped for simp attributes and for how USet, shell and mulHaar are used. The file has no @[simp] lemmas at all. Its new definitions (USet, shell, mulHaar) have no membership or unfolding lemmas. I did not check how other files use these definitions, and I did not run Lean. The findings are about missing interface lemmas and attributes. They are not claims of observed simp failures.",
+  "findings": [
+    {
+      "declaration": "TorusShellSumEngine.USet / TorusShellSumEngine.shell (and shell_zero)",
+      "start_line": 135,
+      "end_line": 141,
+      "excerpt": "def USet : Set (v.adicCompletion K)\u02e3 := {u : (v.adicCompletion K)\u02e3 | Valued.v (u : (v.adicCompletion K)) = 1}",
+      "problem": "USet and shell are plain defs with no membership characterisation lemmas. Every consumer has to unfold the def by hand. `shell_zero` uses `simp [shell, USet]`. `pairwise_disjoint_shell` uses `simp only [shell, Set.mem_setOf_eq] at hym hyn`. `preimage_shell` and `preimage_mul_left_shell` unfold `shell` and `USet` inside `simp only`. The main theorem then re-proves `y \u2208 U \u2194 Valued.v y = 1` as a local `hUmem` by `Iff.rfl` and rewrites with it manually. Unfolding these defs in simp sets leaks the `setOf` form, so downstream goals depend on the definition's internals. There is also no canonical normal form for `shell v 0` versus `USet v`.",
+      "proposed_change": "Add `@[simp] theorem mem_USet {u} : u \u2208 USet v \u2194 Valued.v (u : v.adicCompletion K) = 1 := Iff.rfl` and `@[simp] theorem mem_shell {n y} : y \u2208 shell v n \u2194 Valued.v (y : v.adicCompletion K) = WithZero.exp (-n) := Iff.rfl`. Consider `@[simp] shell_zero`, oriented `shell v 0 = USet v` as it is now. The two membership lemmas are non-looping and their left sides are definitionally the right-hand predicates. Use them in `shell_zero`, `pairwise_disjoint_shell`, `preimage_shell` and `preimage_mul_left_shell` (replacing `simp only [shell, USet, ...]`). Use them in `solution` instead of the local `hUmem`.",
+      "benefit": "The definitions stay opaque for simp users, and membership has a single canonical rewrite. The repeated unfold-and-setOf boilerplate and the ad hoc `hUmem` in `solution` (used in `rw [hUmem]`, `(hUmem y).mpr` and `.mp`) go away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_RankinSelberg_exists_mem_span_forall_torusZeta_twist_eq_const_and_dual_of_irreducible_admissible.lean",
+          "declaration": "solution (local hUmem)",
+          "excerpt": "have hUmem : \u2200 y : (p.adicCompletion \u211a)\u02e3, y \u2208 U \u2194 Valued.v (y : p.adicCompletion \u211a) = 1 := fun y => Iff.rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_RankinSelberg_exists_mem_span_forall_torusZeta_twist_eq_const_and_dual_of_irreducible_admissible.lean",
+          "declaration": "TorusShellSumEngine.pairwise_disjoint_shell",
+          "excerpt": "simp only [shell, Set.mem_setOf_eq] at hym hyn"
+        }
+      ]
+    },
+    {
+      "declaration": "solution (local hmodU) / TorusShellSumEngine.modulus_of_valued",
+      "start_line": 657,
+      "end_line": 662,
+      "excerpt": "have hmodU : \u2200 y : (p.adicCompletion \u211a)\u02e3, Valued.v (y : p.adicCompletion \u211a) = 1 \u2192",
+      "problem": "The file proves `modulus_of_valued` and `modulus_shell` for general exponents. It has no simp-usable special case for valuation 1, i.e. the units of the integers. `solution` re-derives the case by hand as a local `hmodU`: it instantiates `modulus_of_valued` at `m := 0`, rewrites `zpow_zero`, and finishes with `simp`. It then rewrites with `hmodU y hy` in both `hI\u2081` and `hI\u2082`. `modulus_shell` has the shape `modulus y = absNorm ^ (-n)` under a hypothesis `y \u2208 shell v n`. `n = 0` leaves `-0` and `zpow` terms that simp has to normalise each time.",
+      "proposed_change": "State a named lemma `modulus_eq_one_of_valued_eq_one (h : Valued.v x = 1) : modulus x = 1`, plus a simp-normal `modulus_USet`/`modulus_of_mem_USet` form of the cast to \u2102. Prove it from `modulus_of_valued v (m := 0)` with `WithZero.exp_zero` and `zpow_zero`. Tag it `@[simp]` only if the hypothesis is dischargeable by `mem_USet`. Otherwise use it as an explicit `simp [modulus_eq_one_of_valued_eq_one v hy]` argument. Replace the local `hmodU`.",
+      "benefit": "The factor `modulus y ^ (s - 1/2)` collapses to 1 on the unit shell by one reusable lemma. This avoids duplicated `rw [hmodU y hy, Complex.one_cpow, ...]` chains in `hI\u2081` and `hI\u2082`. It also removes the dependence on `zpow_zero` and `-0` normalisation inside the theorem body.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_RankinSelberg_exists_mem_span_forall_torusZeta_twist_eq_const_and_dual_of_irreducible_admissible.lean",
+          "declaration": "TorusShellSumEngine.modulus_of_valued",
+          "excerpt": "modulus x = (Ideal.absNorm v.asIdeal : \u211d\u22650) ^ m"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_RankinSelberg_exists_mem_span_forall_torusZeta_twist_eq_const_and_dual_of_irreducible_admissible.lean",
+          "declaration": "solution (hI\u2081)",
+          "excerpt": "rw [hmodU y hy, Complex.one_cpow, mul_one, inv_mul_cancel\u2080 (Units.ne_zero _)]"
+        }
+      ]
+    },
+    {
+      "declaration": "TorusShellSumEngine.mulHaar",
+      "start_line": 279,
+      "end_line": 279,
+      "excerpt": "def mulHaar : Measure (v.adicCompletion K)\u02e3 := Measure.comap Units.val (mulMeasure \u03bc)",
+      "problem": "`mulHaar` is a def that is only an abbreviation for `Measure.comap Units.val (mulMeasure \u03bc)`. It has no unfolding lemma (`mulHaar_def`, or an `abbrev`). The only link between the two forms is a rfl-proved local `h\u03bcx` in `solution`. The theorem statement is written with the raw `Measure.comap ...` form, while the library lemmas (`setIntegral_shell_eq`, `integrableOn_shell_iff`, `mulHaar_USet_lt_top`) are stated for `mulHaar`. So simp and rw cannot match the two forms. `solution` needs `rw [h\u03bcx]` to transfer instances and finiteness, and it states `hHaar` separately.",
+      "proposed_change": "Make it an `abbrev`, or add `theorem mulHaar_def : mulHaar v \u03bc = Measure.comap Units.val (mulMeasure \u03bc) := rfl`. Use it so that `solution` can drop `h\u03bcx` and rewrite or simp directly. Do not tag `mulHaar_def` as simp unless the raw comap form is the intended normal form. If `mulHaar` is the preferred normal form, add the reverse-direction lemma and use it to normalise the raw comap form to `mulHaar`. Do not add both as simp lemmas, since that would loop.",
+      "benefit": "There is one canonical measure expression. `solution` no longer needs the ad hoc `h\u03bcx` bridge or the `rw [h\u03bcx]` steps for Haar-ness and finiteness. Lemmas about the shell integrals apply without defeq-only conversions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_LanglandsTunnell_RankinSelberg_exists_mem_span_forall_torusZeta_twist_eq_const_and_dual_of_irreducible_admissible.lean",
+          "declaration": "solution (h\u03bcx)",
+          "excerpt": "TorusShellSumEngine.mulHaar p (selfDualHaarAt \u211a p) := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 25625,
+    "cache_read_input_tokens": 58669,
+    "output_tokens": 4573,
+    "output_tokens_details": {
+      "thinking_tokens": 554
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25625,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3352,
+        "cache_read_input_tokens": 27978,
+        "cache_creation_input_tokens": 1660,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1660
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1541089,
+  "duration_ms": 31375,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T00:32:34",
+  "unit": "file",
+  "source_sha256": "1a6d75e90fe50219d30402498b34641d4570b884ee54cf9cc3cd36bafdd5ee52",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

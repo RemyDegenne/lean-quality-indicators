@@ -1,0 +1,99 @@
+{
+  "id": "flt-anthropic-file-0225",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I checked Mathlib's iCocycles_mk and cocyclesMk in GroupCohomology/Basic.lean, and the IsGradedCupProduct definition file, which has no simp attributes. The file has no @[simp] attributes at all, and its characterising lemmas (i_zcup, cupZ_apply, \u03c0_cupZH, \u03c0_cupHH, i_toCocycles, \u03c0_toCocycles, d_iCocycles) are applied by hand through long rw chains. I did not run Lean, so I cannot say whether the proposed attributes would loop or clash with existing Mathlib simp lemmas. The first finding is the most solid. The second is more tentative and needs a check that simp does not unfold cupZ against \u03c0_cupZH.",
+  "findings": [
+    {
+      "declaration": "i_zcup (and sibling characterising lemmas i_toCocycles, d_iCocycles)",
+      "start_line": 63,
+      "end_line": 66,
+      "excerpt": "theorem i_zcup (p q : \u2115) (x : cocycles A p) (y : cocycles B q) :\n    (iCocycles (A \u2297 B) (p + q)).hom (zcup A B p q x y)",
+      "problem": "i_zcup is the canonical rewrite for iCocycles applied to zcup. Its direction already reduces the term: the LHS is a composite and the RHS is the explicit cochainCup. Like Mathlib's iCocycles_mk, it carries no @[simp] attribute. The file then re-applies it by hand through repeated rw steps, for example `rw [map_add, i_zcup, i_zcup, i_zcup]; simp only [map_add, LinearMap.add_apply]` in cupZ's linearity proofs, and `rw [i_zcup, map_smul, i_toCocycles, i_toCocycles, ...]` in cupZ_right_boundary. i_toCocycles has the same shape, with (iCocycles).hom ((toCocycles ..).hom w) on the LHS and the differential on the RHS. Every rewrite site has to name these lemmas and count their occurrences (three i_zcup in a row), so the simp interface is incomplete.",
+      "proposed_change": "Mark `i_zcup` and `i_toCocycles` with `@[simp]`. They are oriented toward the simpler form, and nothing else in the file rewrites the same LHS. The cupZ linearity proofs could then be `simp [map_add]` or `simp [map_smul]` after `iCocycles_injective`. The rw chains in cupZ_right_boundary and cupZ_left_boundary can drop the repeated `i_zcup, i_toCocycles, i_toCocycles` entries.",
+      "benefit": "The proofs no longer depend on the number of occurrences, and downstream users who unfold a cup product on cocycles get the cochain-level expression automatically instead of having to know the lemma names.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_groupCohomology_exists_isGradedCupProduct.lean",
+          "declaration": "cupZ",
+          "excerpt": "rw [map_add, i_zcup, i_zcup, i_zcup]; simp only [map_add, LinearMap.add_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RepresentationTheory/Homological/GroupCohomology/Basic.lean",
+          "declaration": "iCocycles_mk",
+          "excerpt": "iCocycles A n (cocyclesMk f h) = f"
+        }
+      ]
+    },
+    {
+      "declaration": "cupZ_apply, \u03c0_cupZH, \u03c0_cupHH",
+      "start_line": 97,
+      "end_line": 99,
+      "excerpt": "theorem cupZ_apply (p q : \u2115) (x : cocycles A p) (y : cocycles B q) :\n    cupZ A B p q x y = (groupCohomology.\u03c0 (A \u2297 B) (p + q)).hom (zcup A B p q x y) := rfl",
+      "problem": "The three defining equations of the cup construction are proved as separate, unattributed lemmas: cupZ_apply, \u03c0_cupZH (cupZH applied to \u03c0 y gives cupZ x y) and \u03c0_cupHH (cupHH applied to \u03c0 x gives cupZH x). Each is a clean, terminating rewrite from a composite to a simpler term. The final theorem has to chain them manually: `rw [\u03c0_cupHH, \u03c0_cupZH, cupZ_apply]` followed by `rfl`, and cupZ_right_boundary and cupZ_left_boundary also start with `rw [cupZ_apply, key, ...]`. Without simp lemmas, `simp` cannot evaluate cupHH on representatives. That is the main use of these constructions, and it is what IsGradedCupProduct.compat requires.",
+      "proposed_change": "Add `@[simp]` to `\u03c0_cupZH` and `\u03c0_cupHH`, whose LHS is a quotient-map composite that is always eliminated. For `cupZ_apply`, add `@[simp]` only if the aim is to normalise cupZ into \u03c0 \u2218 zcup. Otherwise keep it as a plain rw lemma and make `\u03c0_cupZH` the simp lemma that stops at cupZ. Then isGradedCupProduct_cup can be `simp [cup, \u03c0_cupHH, \u03c0_cupZH, cupZ_apply]` or just `simp`. The choice of normal form (cupZ versus \u03c0 (zcup ..)) should be documented.",
+      "benefit": "There is one canonical way to evaluate the cup product on classes represented by cocycles. The final theorem and any later uses stop depending on the exact rw order, and the `rfl` fallback is no longer needed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_groupCohomology_exists_isGradedCupProduct.lean",
+          "declaration": "isGradedCupProduct_cup",
+          "excerpt": "rw [\u03c0_cupHH, \u03c0_cupZH, cupZ_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_groupCohomology_exists_isGradedCupProduct.lean",
+          "declaration": "\u03c0_cupHH",
+          "excerpt": "(cupHH A B p q).hom ((groupCohomology.\u03c0 A p).hom x) = (cupZH A B p q x).hom"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 9031,
+    "cache_read_input_tokens": 26523,
+    "output_tokens": 3675,
+    "output_tokens_details": {
+      "thinking_tokens": 720
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 9031,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2309,
+        "cache_read_input_tokens": 11740,
+        "cache_creation_input_tokens": 1304,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1304
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0755383,
+  "duration_ms": 25820,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T00:33:38",
+  "unit": "file",
+  "source_sha256": "3428c478e8fea18dd2ffdf6aa5f663c65fae5c581cc0758ca9c37e70781b375f",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

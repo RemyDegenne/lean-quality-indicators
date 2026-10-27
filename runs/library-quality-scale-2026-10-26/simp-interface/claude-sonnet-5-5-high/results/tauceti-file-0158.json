@@ -1,0 +1,109 @@
+{
+  "id": "tauceti-file-0158",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the module-level lemmas it depends on: Cohomology.lean (`differential_apply`, `cycles_def`, `mem_cycles`), Components.lean (`taylor_tmul_one`, `m_apply`) and Hom/Components.lean (`linearPart_apply`). I also read CoaugmentedBar.lean (`coaugmentedBarMap_one/id/comp`) and the downstream DGFunctor.lean. The existing simp set looks mostly sound. `restrictScalars_grading`, `restrictScalars_taylor`, `restrictScalars_differential`, `restrictScalars_cycles`, `restrictScalars_boundaries` and the Hom and Cat lemmas are directionally fine. I saw no cycles and no competing rules. `restrictScalars_barDifferential` is correctly not simp. The two findings are interface gaps: the arity-one operation and the module-level composition lemma. Both are modest, and I did not run Lean. I did not check whether other files already rewrite with `restrictScalars_comp` explicitly. Doing that would show whether making it simp breaks `simp only` or `rw` call sites.",
+  "findings": [
+    {
+      "declaration": "TauCeti.AInfinityRightModule.restrictScalars_differential / restrictScalars_toAInfinityHom_m",
+      "start_line": 301,
+      "end_line": 338,
+      "excerpt": "theorem restrictScalars_differential :\n    (MM.restrictScalars f).differential = MM.differential",
+      "problem": "`differential_apply` is a simp lemma. It rewrites `MM.differential x` to `MM.m 1 x (fun i \u21a6 i.elim0)`, so `m 1` is the simp normal form of the unary operation. The file states 'restriction does not change the differential' only in the `differential` form. A term `(MM.restrictScalars f).m 1 x a` has no simp lemma for any `f`, because the only `.m` lemma is `restrictScalars_toAInfinityHom_m`, which needs a strict morphism and is not simp. After `differential_apply` fires, a user is left with a `m 1` term that `restrictScalars_differential` cannot match. They have to rewrite `differential_apply` backwards by hand.",
+      "proposed_change": "Add a simp lemma `(MM.restrictScalars f).m 1 x a = MM.m 1 x a`, proved from `taylor_tmul_one` and `AInfinityHom.coaugmentedBarMap_one`. Use `a : Fin 0 \u2192 A` for the left side and a matching `Fin 0 \u2192 B`-typed argument for the right (e.g. `fun i \u21a6 i.elim0`); the two can be identified because `Fin 0` is empty. Also consider tagging `restrictScalars_toAInfinityHom_m` with `@[simp]`. It is oriented towards the module's own operation, its left side has the fixed head `.m (n+1)`, and it cannot loop.",
+      "benefit": "Simp can then reduce arity-one operations and strict restrictions to the original module without manual `differential_apply` reversals. The simp normal form `m 1` and the stated invariance of the differential would agree.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Homology/AInfinity/Module/Right/Cohomology.lean",
+          "declaration": "TauCeti.AInfinityRightModule.differential_apply",
+          "excerpt": "MM.differential x = MM.m 1 x (fun i \u21a6 i.elim0)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Homology/AInfinity/Module/Right/Components.lean",
+          "declaration": "TauCeti.AInfinityRightModule.taylor_tmul_one",
+          "excerpt": "MM.taylor (x \u2297\u209c[R] (1 : TensorWords R A)) = MM.m 1 x a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Homology/AInfinity/Module/Right/Restriction/Basic.lean",
+          "declaration": "TauCeti.AInfinityRightModule.restrictScalars_toAInfinityHom_m",
+          "excerpt": "(MM.restrictScalars g.toAInfinityHom).m (n + 1) x a = MM.m (n + 1) x fun i \u21a6 g (a i)"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.AInfinityRightModule.restrictScalars_comp",
+      "start_line": 327,
+      "end_line": 329,
+      "excerpt": "theorem restrictScalars_comp (g : AInfinityHom BB CC) (MM : AInfinityRightModule CC M) :\n    MM.restrictScalars (g.comp f) = (MM.restrictScalars g).restrictScalars f :=",
+      "problem": "The functoriality lemmas are marked inconsistently. The module-level `restrictScalars_id` is `@[simp]`. The Hom-level `restrictScalars_id` and `restrictScalars_comp` are `@[simp]`. `AInfinityHom.coaugmentedBarMap_comp` is simp. The module-level composition lemma is the only one without `@[simp]`. So the Hom-level simp lemma `(\u03c8.comp \u03c6).restrictScalars f = ...` produces morphisms between `MM.restrictScalars f`-style modules. When the algebra morphism is a composite `g.comp f`, the module `MM.restrictScalars (g.comp f)` stays unnormalised, and simp does not use the stated equality. A single `simp` call cannot unify the two forms. The mismatch also shows in the Cat-level `restrictScalars_obj_str`.",
+      "proposed_change": "Mark `restrictScalars_comp` with `@[simp]`. Its left side is a `restrictScalars` along an explicit `comp`, and the right side nests restrictions along strictly smaller morphisms, so it terminates and cannot loop. Before doing so, check that no existing proof relies on the unnormalised form: the lemma is used in `rw`/`simp only` calls elsewhere, and `rw [restrictScalars_comp]` still works.",
+      "benefit": "Restriction along composites normalises to iterated restriction. This matches how `coaugmentedBarMap_comp` and the Hom-level `restrictScalars_comp` already behave, so there is one consistent normal form for the functoriality lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Homology/AInfinity/Module/Right/Restriction/Basic.lean",
+          "declaration": "TauCeti.AInfinityRightModuleHom.restrictScalars_comp",
+          "excerpt": "(\u03c8.comp \u03c6).restrictScalars f = (\u03c8.restrictScalars f).comp (\u03c6.restrictScalars f)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Homology/AInfinity/Algebra/Hom/CoaugmentedBar.lean",
+          "declaration": "TauCeti.AInfinityHom.coaugmentedBarMap_comp",
+          "excerpt": "(g.comp f).coaugmentedBarMap = g.coaugmentedBarMap \u2218\u2097 f.coaugmentedBarMap"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Homology/AInfinity/Module/Right/Restriction/Basic.lean",
+          "declaration": "TauCeti.AInfinityRightModule.restrictScalars_id",
+          "excerpt": "theorem restrictScalars_id : MM.restrictScalars (AInfinityHom.id BB) = MM"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 45899,
+    "cache_read_input_tokens": 171780,
+    "output_tokens": 9120,
+    "output_tokens_details": {
+      "thinking_tokens": 4678
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 45899,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2929,
+        "cache_read_input_tokens": 46789,
+        "cache_creation_input_tokens": 3123,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3123
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.291998,
+  "duration_ms": 63339,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T23:14:03",
+  "unit": "file",
+  "source_sha256": "10d38a8145c13c189269e997ca9728c5a5f652477be697a74a3e5007318bb680",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

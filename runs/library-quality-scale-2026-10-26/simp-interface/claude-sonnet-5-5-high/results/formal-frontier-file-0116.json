@@ -1,0 +1,115 @@
+{
+  "id": "formal-frontier-file-0116",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the clients in graded-rings/test (PrimeInterface.lean, PrimeRootInterface.lean, RootClient.lean). I did not read Mathlib's Valuation simp set in detail, so the claim that `map_mul`, `map_one` and `map_pow` compete with `valuation_apply` rests on those being the standard simp lemmas for `MonoidWithZeroHomClass`. I could not run Lean, so I do not claim any observed simp loop or failure. The findings describe interface design and likely behaviour, not tested behaviour. The `isDomain`/`omit` structure and the `localizationValuation_mk'` and `awayValuation_mk'` simp lemmas look fine.",
+  "findings": [
+    {
+      "declaration": "PrimeMultiplicity.valuation_apply",
+      "start_line": 112,
+      "end_line": 115,
+      "excerpt": "theorem valuation_apply (hp : Prime p) (r : R) :\n    valuation hp r = valuationDef p r :=\n  rfl",
+      "problem": "This simp lemma unfolds the bundled `Valuation` into the raw function `valuationDef p`. Once that happens, the generic simp lemmas for bundled valuations (`map_mul`, `map_one`, `map_pow`) no longer apply. The replacement lemmas for the raw function are not in the simp set: `valuationDef_mul`, `valuationDef_of_ne_zero` and `valuation_apply_of_ne_zero` are all unannotated. `valuationDef_one` and `valuationDef_pow` are simp, but their `hp : Prime p` is not in the left-hand side, so simp must discharge it. The clients show this: `simp [hp]` is needed for `valuation hp (p ^ n)`. On a goal like `valuation hp (x * y)`, `valuation_apply` and `map_mul` both match the outer term. If `valuation_apply` fires, simp is stuck at `valuationDef p (x * y)`, because `valuationDef_mul` is not simp. This makes the normal form depend on which rule wins.",
+      "proposed_change": "Remove `@[simp]` from `valuation_apply` and keep it as an explicit `rfl` unfolding lemma. Keep goals in terms of `valuation hp` so Mathlib's `map_mul`, `map_one` and `map_inv\u2080` apply, and put the prime-specific simp lemmas on `valuation hp`. If the raw `valuationDef` form is wanted, tag `valuationDef_mul` as simp as well, so both forms have a complete rule set.",
+      "benefit": "Simp has one canonical form, the bundled valuation. Expressions such as `valuation hp (x * y)` and `valuation hp x * (valuation hp y)\u207b\u00b9`, which `localizationValuation_mk'` produces, reduce through generic API instead of getting stuck on `valuationDef`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/PrimeMultiplicity.lean",
+          "declaration": "PrimeMultiplicity.valuationDef_mul",
+          "excerpt": "theorem valuationDef_mul (hp : Prime p) (x y : R) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/test/PrimeInterface.lean",
+          "declaration": "valuation_pow_simp (client test)",
+          "excerpt": "PrimeMultiplicity.valuation hp (p ^ n) = exp (-(n : \u2124)) := by simp [hp]"
+        }
+      ]
+    },
+    {
+      "declaration": "PrimeMultiplicity.valuationDef_pow / PrimeMultiplicity.valuation_apply_pow",
+      "start_line": 55,
+      "end_line": 63,
+      "excerpt": "@[simp]\ntheorem valuationDef_pow (hp : Prime p) (n : \u2115) :\n    valuationDef p (p ^ n) = exp (-(n : \u2124)) := by",
+      "problem": "The simp attribute is on the raw-function lemma `valuationDef_pow`, whose hypothesis `hp` is not in the left-hand side. Simp has to discharge `Prime p` from the simp set, which is why clients write `simp [hp]`. The bundled statement `valuation_apply_pow` (line 121) is not simp. Its left-hand side `valuation hp (p ^ n)` contains `hp`, so it would fire without any side-condition discharge. It also has to compete with the simp lemma `map_pow`, which rewrites `valuation hp (p ^ n)` to `(valuation hp p) ^ n`. No simp lemma gives the normal form of `valuation hp p`, so that route ends in `(valuation hp p) ^ n`. `valuationDef_pow` and `valuation_apply_pow` are also duplicates with the same proof.",
+      "proposed_change": "Make `valuation_apply_pow` the simp lemma. Add a lemma for `valuation hp p`, such as `exp (-1)`, if the `map_pow` route should reach the same form. Then either drop `@[simp]` from `valuationDef_pow` or prove `valuation_apply_pow` from it. Decide explicitly whether `valuation_apply` stays simp (see the first finding).",
+      "benefit": "`valuation hp (p ^ n)` simplifies to `exp (-(n : \u2124))` with plain `simp`, without supplying `hp` as a discharge fact. The result no longer depends on a rule race between `map_pow` and `valuation_apply`. The duplicated statement and proof is also removed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/PrimeMultiplicity.lean",
+          "declaration": "PrimeMultiplicity.valuation_apply_pow",
+          "excerpt": "theorem valuation_apply_pow (hp : Prime p) (n : \u2115) :\n    valuation hp (p ^ n) = exp (-(n : \u2124)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/test/PrimeInterface.lean",
+          "declaration": "valuationDef_pow_simp (client test)",
+          "excerpt": "PrimeMultiplicity.valuationDef p (p ^ n) = exp (-(n : \u2124)) := by simp [hp]"
+        }
+      ]
+    },
+    {
+      "declaration": "PrimeMultiplicity.valuation_apply_of_ne_zero",
+      "start_line": 117,
+      "end_line": 119,
+      "excerpt": "theorem valuation_apply_of_ne_zero (hp : Prime p) {r : R} (hr : r \u2260 0) :\n    valuation hp r = exp (-(multiplicity p r : \u2124)) :=",
+      "problem": "The simp set can compute `valuation hp r` only for `r = 0`, `1` or `p ^ n`. For any other `r \u2260 0` it stops at `valuationDef p r`. The lemma that gives the closed form (`valuation_apply_of_ne_zero`, and its raw twin `valuationDef_of_ne_zero`) is not simp. Even with `simp [valuation_apply_of_ne_zero hp hr]`, it competes with the simp lemma `valuation_apply`, which can rewrite the term first and leave the explicit instance unable to fire. The proofs on lines 74\u201375 and 98\u201399 use `rw` with this lemma repeatedly, which suggests simp has no usable route.",
+      "proposed_change": "After deciding the canonical form for the bundled valuation (see the first finding), expose the nonzero case to simp in one orientation only. For example, tag `valuation_apply_of_ne_zero` or `valuationDef_of_ne_zero` with `@[simp]`, since `hr : r \u2260 0` is dischargeable by simp. Check it against `valuationDef_pow`/`valuation_apply_pow` first, so the prime-power case still yields `exp (-(n : \u2124))` and not `exp (-(multiplicity p (p ^ n)))`.",
+      "benefit": "Goals with `r \u2260 0` in context reduce to `exp (-(multiplicity p r))` and can be handled by the multiplicity API. Proofs such as `valuationDef_mul`, `valuationDef_add_le_max` and `awayValuation_mk_pow_of_ne_zero` can then use `simp [hx]` and need less manual `rw` chaining.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/PrimeMultiplicity.lean",
+          "declaration": "PrimeMultiplicity.valuationDef_mul",
+          "excerpt": "rw [valuationDef_of_ne_zero p hxy, valuationDef_of_ne_zero p hx,\n    valuationDef_of_ne_zero p hy, multiplicity_mul hp hfin]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 12381,
+    "cache_read_input_tokens": 12754,
+    "output_tokens": 6521,
+    "output_tokens_details": {
+      "thinking_tokens": 2918
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12381,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4934,
+        "cache_read_input_tokens": 8741,
+        "cache_creation_input_tokens": 7653,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 7653
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1160174,
+  "duration_ms": 44621,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:05:33",
+  "unit": "file",
+  "source_sha256": "a1c5c069c024290026a6b9fb75b936ca14f24215a332c629222c42f4fa96da9e",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

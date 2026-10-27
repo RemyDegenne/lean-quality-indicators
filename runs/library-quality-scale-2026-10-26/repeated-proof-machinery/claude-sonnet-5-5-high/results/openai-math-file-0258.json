@@ -1,0 +1,83 @@
+{
+  "id": "openai-math-file-0258",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I grepped the repo for uses of second_fderiv_comp_stationary and second_fderiv_comp_affine, and I read Calculus/JetPullback.lean, which defines second_fderiv_comp_affine. second_fderiv_sub and second_fderiv_const_mul are short and use different mechanisms, so I did not report them. The fixedJoin* lemmas are specific, and fixedJoinMiddle_rescale already reuses second_fderiv_comp_affine. The one real duplication is the second-derivative chain-rule proof written twice, once in each of the two comp lemmas. The rewrite sketches are untested: I could not compile them, and the Lean lemma names I cite for the general version are the existing ones already used in the two proofs. A general lemma would have to be placed in JetPullback.lean, or in a file both modules import, so the dependency ordering needs checking. StationaryPullback already gets second_fderiv_comp_affine transitively, so it can import the new lemma in the same way.",
+  "findings": [
+    {
+      "declaration": "WeakMTWTransport.second_fderiv_comp_stationary (duplicates WeakMTWTransport.second_fderiv_comp_affine)",
+      "start_line": 37,
+      "end_line": 58,
+      "excerpt": "have hd := hd1.clm_comp hd2\n  have heq : (fun a => (fderiv \u211d f (g a)).comp (fderiv \u211d g a)) =\u1da0[\ud835\udcdd x]\n      fderiv \u211d (fun a => f (g a)) := by",
+      "problem": "This proof and the proof of second_fderiv_comp_affine in Calculus/JetPullback.lean are the same second-order chain-rule argument. Each one (1) gets HasFDerivAt for a \u21a6 fderiv f (g a) by composing hf.fderiv_right with the derivative of g, (2) uses clm_comp to differentiate a \u21a6 (fderiv f (g a)).comp (fderiv g a), (3) shows that map is eventually equal to fderiv (f \u2218 g), using continuity of g and hf.eventually to get differentiability of f near g x, (4) applies congr_of_eventuallyEq and .fderiv, evaluates at v w, and closes with a long simpa only list (comp_apply, compL_apply, flip_apply, add_apply, zero_add ...). The stationary version only adds a hypothesis that kills the fderiv f \u00b7 (D\u00b2g) term, and the affine version only specializes g to b + L h, where D\u00b2g = 0. The eventual-equality block and the product-rule block are therefore written twice and must be kept in sync. This is a real duplication of reasoning, not just unfolding.",
+      "proposed_change": "Prove one general lemma next to second_fderiv_comp_affine in JetPullback.lean:\n\nlemma second_fderiv_comp {f : F \u2192 \u211d} {g : E \u2192 F} {x : E}\n    (hf : ContDiffAt \u211d 2 f (g x)) (hg : ContDiffAt \u211d 2 g x) (v w : E) :\n    fderiv \u211d (fderiv \u211d (fun a => f (g a))) x v w =\n      fderiv \u211d (fderiv \u211d f) (g x) (fderiv \u211d g x v) (fderiv \u211d g x w) +\n        fderiv \u211d f (g x) (fderiv \u211d (fderiv \u211d g) x v w)\n\nThe proof is the current body of second_fderiv_comp_stationary (hgd, hd1, hd2, hd, heq, H) with the same simpa only, minus hzero and the zero_comp/zero_apply/zero_add simp lemmas that discharge the second term.\n\nThen:\n- second_fderiv_comp_stationary := by rw [second_fderiv_comp hf hg, hzero]; simp (the second summand is `0 (\u2026) = 0`).\n- second_fderiv_comp_affine: take g := fun h => b + L h. Then ContDiffAt follows from contDiffAt_const.add L.contDiff.contDiffAt, and fderiv g = fun _ => L comes from the hL family (HasFDerivAt.fderiv), so fderiv (fderiv g) = 0 via fderiv_const, and the extra term simplifies to 0.\n\nBoth current ~20-line proofs become short corollaries of one verified chain-rule lemma.",
+      "benefit": "The delicate filter/eventual-equality and clm_comp bookkeeping is stated and maintained once. The 'stationary' and 'affine' lemmas then show their only extra input (first derivative zero, or second derivative of the inner map zero). A reader no longer has to compare two near-identical 20-line proofs, and any change to Mathlib's fderiv_right/clm_comp API needs fixing in one place. Other callers of the lemmas, such as CenteredQuadratic, DividedPullback and MovingPrefix, can also use the general form directly when neither special case fits.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/BiholderTransport/Calculus/JetPullback.lean",
+          "declaration": "WeakMTWTransport.second_fderiv_comp_affine",
+          "excerpt": "have H := hd.clm_comp (hasFDerivAt_const L x)\n  have heq : (fun h => fderiv \u211d f (b+L h) |>.comp L) =\u1da0[\ud835\udcdd x]\n      (fderiv \u211d (fun h => f (b+L h))) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/BiholderTransport/Calculus/JetPullback.lean",
+          "declaration": "WeakMTWTransport.second_fderiv_comp_affine",
+          "excerpt": "have he := congrArg (fun B : E \u2192L[\u211d] E \u2192L[\u211d] \u211d => B v w)\n    (H.congr_of_eventuallyEq heq.symm).fderiv"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/BiholderTransport/Regularity/StationaryPullback.lean",
+          "declaration": "WeakMTWTransport.second_fderiv_comp_stationary",
+          "excerpt": "have H := congrArg (fun A : E \u2192L[\u211d] E \u2192L[\u211d] \u211d => A v w)\n    (hd.congr_of_eventuallyEq heq.symm).fderiv"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19276,
+    "cache_read_input_tokens": 56954,
+    "output_tokens": 4501,
+    "output_tokens_details": {
+      "thinking_tokens": 1707
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19276,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2673,
+        "cache_read_input_tokens": 21029,
+        "cache_creation_input_tokens": 2176,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2176
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1278254,
+  "duration_ms": 34436,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T00:43:29",
+  "unit": "file",
+  "source_sha256": "6ea5b7018039807524cc5c30525ad529841605ed9b281c84005a49ea4bc82eb4",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

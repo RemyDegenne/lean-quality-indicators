@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0147",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the defining file IndependentRadiusProjections.lean. That file has only the `radiusPairProjection_apply_zero` and `radiusPairProjection_apply_one` simp lemmas. It has no equality/ext characterisation for `radiusPairProjection` and no apply lemmas for `radiusTripleProjection`. I grepped for other uses of the same PiLp ext pattern; it appears three times in the radius-projection files (lines 30 and 47 of the definition file, line 53 of the target). I did not run Lean, so the suggested lemma and its simp behaviour are untested. I found no loops or competing simp rules; the problem is a missing canonical lemma.",
+  "findings": [
+    {
+      "declaration": "ClosedSurfaceR4.PublishedInputs.exists_generic_coordinate_levels (local hpairEq)",
+      "start_line": 46,
+      "end_line": 57,
+      "excerpt": "have hpairEq (a : \u03b1) (i j : \u03b9) (hij : i \u2260 j) (x : Plane) :\n      f (a,\u27e8(i,j),hij\u27e9) x = p (a,\u27e8(i,j),hij\u27e9) r \u2194\n        \u03c1 a i x = r i \u2227 \u03c1 a j x = r j := by",
+      "problem": "The proof needs the fact that two values of `radiusPairProjection i j` are equal exactly when their i and j coordinates agree. The defining file has no simp or ext lemma for this. It only has `radiusPairProjection_apply_zero` and `radiusPairProjection_apply_one`, which evaluate at 0 and 1 but cannot decide equality of two Plane points. So the proof rebuilds the fact by hand inside a local `have`. It applies `PiLp.continuousLinearEquiv ... .injective`, then `funext` and `fin_cases`. The same unfolding is repeated at lines 30 and 47 of IndependentRadiusProjections.lean. The local statement is also stated for the `f`/`p` lets rather than the projection itself, so no other file can reuse it.",
+      "proposed_change": "In IndependentRadiusProjections.lean, add a lemma such as `radiusPairProjection_eq_iff (i j) (t s : \u03b9 \u2192 \u211d) : radiusPairProjection i j t = radiusPairProjection i j s \u2194 t i = s i \u2227 t j = s j`. Mark it `@[simp]`. Its left side is a head-symbol equation and its right side is strictly simpler, so it cannot loop. It can reuse the existing `_apply_zero` and `_apply_one` lemmas for the forward direction. The proof of `hpairEq` then reduces to `simp [f, p, radiusPairProjection_eq_iff]`, or to a direct `.mpr`/`.mp` call.",
+      "benefit": "The projection-equality normal form `t i = s i \u2227 t j = s j` becomes available to every later user of these projections, including the surjectivity proofs and the GenericSurfaceLevels/GenericCircularRadii consumers. It removes the repeated PiLp/fin_cases boilerplate.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Geometry/IndependentRadiusProjections.lean",
+          "declaration": "radiusPairProjection_surjective",
+          "excerpt": "apply (PiLp.continuousLinearEquiv 2 \u211d (fun _ : Fin 2 => \u211d)).injective\n  funext a\n  fin_cases a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Geometry/IndependentRadiusProjections.lean",
+          "declaration": "radiusPairProjection_apply_zero",
+          "excerpt": "@[simp] lemma radiusPairProjection_apply_zero (i j : \u03b9) (t : \u03b9 \u2192 \u211d) :\n    radiusPairProjection i j t 0 = t i"
+        }
+      ]
+    },
+    {
+      "declaration": "ClosedSurfaceR4.PublishedInputs.exists_generic_coordinate_levels (triple equality step)",
+      "start_line": 64,
+      "end_line": 68,
+      "excerpt": "    apply Prod.ext\n    \u00b7 exact (hpairEq a i j hij x).mpr \u27e8he.1,he.2.1\u27e9\n    \u00b7 exact he.2.2",
+      "problem": "`radiusTripleProjection` is a plain `def` built with `.prod`. It has no simp lemmas, neither for the Prod components nor for equality. To prove equality of two triple-projection values, the proof applies `Prod.ext`, reuses the local pair lemma, and relies on `he.2.2` being definitionally `(proj k) _ = ...`. In the definition file, `radiusTripleProjection_surjective` has to use `change radiusPairProjection i j _ = y.1` and `simp [radiusTripleProjection]`. The triple projection therefore has no canonical simp normal form, and users must unfold it or rely on defeq.",
+      "proposed_change": "Add `@[simp]` lemmas next to the definition. These are `radiusTripleProjection_apply_fst : (radiusTripleProjection i j k t).1 = radiusPairProjection i j t` and `radiusTripleProjection_apply_snd : (radiusTripleProjection i j k t).2 = t k`. Also add an `radiusTripleProjection_eq_iff` stating `t i = s i \u2227 t j = s j \u2227 t k = s k`, built from the pair lemma and `Prod.ext_iff`. The final bullet then becomes `(radiusTripleProjection_eq_iff ..).mpr \u27e8..\u27e9`. Alternatively, `simp [g, q, radiusTripleProjection]` closes it without relying on defeq.",
+      "benefit": "The triple projection gets a canonical simp normal form, and its use stops depending on definitional unfolding through `Prod.ext`. It would also fix the ad-hoc `change` in `radiusTripleProjection_surjective`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Geometry/IndependentRadiusProjections.lean",
+          "declaration": "radiusTripleProjection",
+          "excerpt": "(radiusPairProjection i j).prod (ContinuousLinearMap.proj k)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Geometry/IndependentRadiusProjections.lean",
+          "declaration": "radiusTripleProjection_surjective",
+          "excerpt": "\u00b7 change radiusPairProjection i j _ = y.1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 13557,
+    "cache_read_input_tokens": 60525,
+    "output_tokens": 3565,
+    "output_tokens_details": {
+      "thinking_tokens": 515
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13557,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2428,
+        "cache_read_input_tokens": 16355,
+        "cache_creation_input_tokens": 1215,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1215
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.09595050000000001,
+  "duration_ms": 30598,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:11:28",
+  "unit": "file",
+  "source_sha256": "f831369c1852d551d2a724300106cb91399e03d381029b1ca6d06d30a269c570",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

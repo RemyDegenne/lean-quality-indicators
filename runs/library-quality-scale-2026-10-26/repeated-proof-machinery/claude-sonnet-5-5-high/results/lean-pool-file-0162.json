@@ -1,0 +1,88 @@
+{
+  "id": "lean-pool-file-0162",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it uses: testCls, partialCls, testGraph, testGraph_zero, testGraph_succ and inner_toLp_eq in Sobolev/Basic.lean. I also read norm_sq_L2_eq in Analysis/L2Norm.lean, norm_toLp_sq_eq_integral_sq in Spectrum/RellichW12.lean, and partialCls_norm_sq_eq in Spectrum/RellichDischarge.lean. The main proof, poincare_testfn, and laplaceBilin_coercive_of_slices have no repeated machinery beyond the one finding. The finding's strength is limited: each duplicated proof is only four lines. It is still the same inner-product/ae-congruence argument written out in four places. I could not check whether Poincare/Geometry.lean could import Analysis/L2Norm.lean transitively. I believe it can, because the file imports Sobolev/Basic, which most likely imports it, but I did not trace this. Nothing was compiled, so the rewritten proofs are untested sketches.",
+  "findings": [
+    {
+      "declaration": "norm_testGraph_zero_sq_eq / norm_testGraph_succ_sq_eq",
+      "start_line": 53,
+      "end_line": 70,
+      "excerpt": "rw [\u2190 real_inner_self_eq_norm_sq, inner_toLp_eq h.mem_lp h.mem_lp]\n  exact integral_congr_ae (Filter.Eventually.of_forall fun x => (pow_two _).symm)",
+      "problem": "The two lemmas prove the same fact: for `f` with `MemLp f 2 (volume.restrict \u03a9)`, `\u2016hf.toLp f\u2016 ^ 2 = \u222b x in \u03a9, f x ^ 2`. Each one unfolds a graph coordinate and then repeats the same three steps: turn the norm square into a self inner product, apply `inner_toLp_eq`, and convert `f * f` to `f ^ 2` by `integral_congr_ae`. The same fact is proved again in at least two other places. `partialCls_norm_sq_eq` in Spectrum/RellichDischarge.lean proves the `partialCls` case through `norm_sq_L2_eq` plus `coeFn_toLp`. `norm_toLp_sq_eq_integral_sq` in Spectrum/RellichW12.lean proves it again for `MemLp F 2 volume` on the whole space. So the library has no single lemma for the norm of `hf.toLp f`. Each use rebuilds the argument for one measure and one function.",
+      "proposed_change": "Add one general lemma, for example in Analysis/L2Norm.lean next to `norm_sq_L2_eq`, which Geometry.lean most likely already imports:\n\nlemma norm_toLp_sq_eq_integral_sq' {\u03b1 : Type*} [MeasurableSpace \u03b1] {\u03bc : Measure \u03b1} {f : \u03b1 \u2192 \u211d} (hf : MemLp f 2 \u03bc) : \u2016hf.toLp f\u2016 ^ 2 = \u222b x, f x ^ 2 \u2202\u03bc\n\nProof sketch: `rw [norm_sq_L2_eq]; refine integral_congr_ae ?_; filter_upwards [hf.coeFn_toLp] with x hx; rw [hx]`. This is the proof of `norm_toLp_sq_eq_integral_sq` in RellichW12.lean with the measure generalised.\n\nThe two target lemmas then become:\n\nlemma norm_testGraph_zero_sq_eq ... := by\n  rw [IsTestFn.testGraph_zero]; exact norm_toLp_sq_eq_integral_sq' h.mem_lp\n\nlemma norm_testGraph_succ_sq_eq ... := by\n  rw [IsTestFn.testGraph_succ]; exact norm_toLp_sq_eq_integral_sq' (h.memLp_partialD i)\n\n`testCls` and `partialCls` are defs that unfold to `hf.toLp f`, so `exact` should close the goals up to unfolding. Use `simp only [IsTestFn.testCls]` as in the current proofs if it does not. With `\u03bc := volume.restrict \u03a9`, the lemma gives exactly the stated right-hand sides, since `\u222b x, _ \u2202(volume.restrict \u03a9)` is `\u222b x in \u03a9, _`.\n\n`partialCls_norm_sq_eq` becomes a one-line use of the same lemma. `norm_toLp_sq_eq_integral_sq` becomes its specialisation to `volume`, or is replaced by it.",
+      "benefit": "The `L\u00b2`-norm-as-integral argument is stated and proved once, for any measure, instead of four times. The two Geometry lemmas shrink to a rewrite plus one application, so a reader sees the actual content: a graph coordinate is `toLp` of a function. A future coordinate-type lemma needs no new inner-product and ae-congruence proof. The generality also removes the split between the whole-space version in RellichW12 and the restricted-measure versions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EllipticPDE/Spectrum/RellichDischarge.lean",
+          "declaration": "EllipticPdes.Sobolev.partialCls_norm_sq_eq",
+          "excerpt": "rw [norm_sq_L2_eq (h.partialCls i)]\n  refine integral_congr_ae ?_\n  filter_upwards [(h.memLp_partialD i).coeFn_toLp] with x hx"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EllipticPDE/Spectrum/RellichW12.lean",
+          "declaration": "EllipticPdes.Sobolev.norm_toLp_sq_eq_integral_sq",
+          "excerpt": "(hF : MemLp F 2 volume) : \u2016hF.toLp F\u2016 ^ 2 = \u222b x, F x ^ 2 := by\n  rw [norm_sq_eq_integral_sq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EllipticPDE/Analysis/L2Norm.lean",
+          "declaration": "EllipticPdes.Sobolev.norm_sq_L2_eq",
+          "excerpt": "lemma norm_sq_L2_eq {\u03b1 : Type*} [MeasurableSpace \u03b1] {\u03bc : Measure \u03b1} (f : Lp \u211d 2 \u03bc) :\n    \u2016f\u2016 ^ 2 = \u222b x, (f x) ^ 2 \u2202\u03bc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EllipticPDE/Sobolev/Basic.lean",
+          "declaration": "EllipticPdes.Sobolev.IsTestFn.partialCls",
+          "excerpt": "def partialCls (h : IsTestFn \u03a9 \u03c6) (i : Fin d) : L2D \u03a9 :=\n  (h.memLp_partialD i).toLp (partialD i \u03c6)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 26269,
+    "cache_read_input_tokens": 108445,
+    "output_tokens": 5346,
+    "output_tokens_details": {
+      "thinking_tokens": 960
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26269,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2586,
+        "cache_read_input_tokens": 28811,
+        "cache_creation_input_tokens": 1387,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1387
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1694085,
+  "duration_ms": 51094,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-26T23:14:43",
+  "unit": "file",
+  "source_sha256": "080376e9ff2a5323674436b964d8c0f182b3657269778ad761ba6b4ffb87203d",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

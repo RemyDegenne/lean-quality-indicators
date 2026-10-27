@@ -1,0 +1,120 @@
+{
+  "id": "openai-math-file-0360",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the `Diagram`/`Hom` definitions in IntervalBar.lean. I also checked Mathlib's `CommSq.vert_inv`/`horiz_inv`. Nothing was compiled, so the proposed lemma statements are sketches. In particular, the exact form of the `\ud835\udfd9 _` factors after `change` depends on how `Diagram.map` and `wideSubcategoryInclusion` unfold. I did not read `Diagram.map`'s definition, and I did not check whether `RestrictedNerve.Strings` has a ready-made evaluation functor or iso-from-components lemma. I did not report the nine-line `reindexMonoidal` block or the `restricted_isIso`/`strings_isIso` pair, because the repeated parts there are short or routine.",
+  "findings": [
+    {
+      "declaration": "RestrictedNerve.stringVertexMap, transposeDiagramHom, untransposeDiagramObj, untransposeDiagramHom (unit/cut law normalisation)",
+      "start_line": 176,
+      "end_line": 332,
+      "excerpt": "erw [Category.id_comp, Category.id_comp]",
+      "problem": "Five proofs need the `Hom.unit` and `Hom.cut` laws of a morphism that has been pushed through `diagramInclusion`. Each time, the proof writes out a long `change` that spells the law with `\ud835\udfd9 _ \u226b \u2026` and `\u2026 \u226b \ud835\udfd9 _` factors. It then strips those factors with `erw [Category.id_comp, Category.comp_id]`, and only afterwards applies the underlying law. This happens at lines 182-190 (`stringVertexMap`), 206-214 (`transposeDiagramHom`), 239-246 and 250-253 (unit, in `untransposeDiagramObj`), 269-273 and 278-282 (cut, in `untransposeDiagramObj`), and 315-332 (`untransposeDiagramHom`). The `change` statements are long and fragile, and each copy contains the same bookkeeping about the inclusion's identity factors.",
+      "proposed_change": "Prove two lemmas once, next to `diagramInclusion`. Each states the `Hom.unit` / `Hom.cut` law for `(diagramInclusion W I).map f` with the identity factors already removed. Their statements take the form `(F.app i i le_rfl) \u226b (B.unit i).hom = (A.unit i).hom` and `(F.app i j hij \u2297\u2098 F.app j k hjk) \u226b (B.cut i j k hij hjk).hom = (A.cut i j k hij hjk).hom \u226b F.app i k _`. The cut statement is the `Hom.cut` field in IntervalBar.lean, with the inclusion's `\ud835\udfd9 _` factors stripped. Each lemma is proved once by `change` followed by `simp`. Ideally the lemmas are phrased as `Hom` fields on the underlying morphism, so that `exact (f.hom.app t).hom.unit i` and `exact (F.obj.map f).hom.cut i j k hij hjk` close the goals. The five proofs then shrink to one-line applications. The `he`/`change`/`erw` blocks disappear, and the `erw` calls (which can be brittle) go with them.",
+      "benefit": "The definitions and proof-state massaging stay in one place. The two `Hom` laws now look the same wherever they are used. The long `change` statements, which are sensitive to how `Diagram.map` unfolds, are written once. Changing the representation of `diagramInclusion` later means fixing two lemmas instead of about ten proof blocks.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Simplicial/IntervalBar.lean",
+          "declaration": "OAI.IntervalBar.Diagram.Hom",
+          "excerpt": "unit : \u2200i, app i i le_rfl \u226b (E.unit i).hom = (D.unit i).hom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Simplicial/RestrictedMonoidal.lean",
+          "declaration": "RestrictedNerve.untransposeDiagramHom",
+          "excerpt": "erw [Category.id_comp, Category.id_comp] at he"
+        }
+      ]
+    },
+    {
+      "declaration": "RestrictedNerve.untransposeDiagramObj (inverse naturality of unit and cut)",
+      "start_line": 247,
+      "end_line": 291,
+      "excerpt": "apply (cancel_mono ((F.obj.obj s).unit i).hom.hom).mp",
+      "problem": "For both `unit` and `cut`, the isomorphism is rebuilt in `Strings W n` from the componentwise isos `(F.obj.obj t).unit i` and `(F.obj.obj t).cut i j k \u2026`. Only the naturality of `hom` is available, from `(F.obj.map f).hom.unit` and `.cut`. The naturality of `inv` is therefore re-derived by hand in each case. The `unit` version (lines 254-257) cancels a mono and the `cut` version (lines 283-290) cancels an epi. Both rewrite with `wide_inv_hom` / `wide_hom_inv`, `Category.assoc` and `he`. This is the same argument, 'the inverse of a commuting square of isos commutes', written twice. The two copies differ only in which side is cancelled, and the `cut` copy uses a fragile `repeat' erw [\u2190 Category.assoc]`.",
+      "proposed_change": "Add one helper that builds an isomorphism in `Strings W n` from componentwise isos plus naturality of the forward components, and derives inverse naturality once. For example: `def Strings.isoOfComponents (e : \u2200 t, U.obj.obj t \u2245 V.obj.obj t) (nat : \u2200 t s f, U.obj.map f \u226b (e s).hom.hom = (e t).hom.hom \u226b V.obj.map f) : U \u2245 V`. It would be proved with `NatIso.ofComponents`, or from `CommSq.vert_inv` / `CommSq.horiz_inv` applied to the commuting square built from `nat`. Both `unit` and `cut` then supply only `nat`, which is the existing `he` after normalisation, and `hom_inv_id`/`inv_hom_id` come for free. The squares are over `WideSubcategory` morphisms. The helper therefore has to carry the `W`-membership proofs `f.property`, which is why a small `Strings`-specific lemma is needed instead of calling Mathlib directly.",
+      "benefit": "The inverse-naturality argument is written and checked once. The two blocks (about 45 lines) reduce to a naturality square each, and the `cancel_mono`/`cancel_epi` and `repeat' erw` manipulations leave the main definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Simplicial/RestrictedMonoidal.lean",
+          "declaration": "RestrictedNerve.untransposeDiagramObj",
+          "excerpt": "apply (cancel_epi ((F.obj.obj t).cut i j k hij hjk).hom.hom).mp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/CategoryTheory/CommSq.lean",
+          "declaration": "CategoryTheory.CommSq.vert_inv",
+          "excerpt": "theorem vert_inv {g : W \u2245 Y} {h : X \u2245 Z} (p : CommSq f g.hom h.hom i) :"
+        }
+      ]
+    },
+    {
+      "declaration": "RestrictedNerve.stringVertex and untransposeDiagramObj (iso and axiom transport at a string vertex)",
+      "start_line": 149,
+      "end_line": 175,
+      "excerpt": "exact congrArg (fun f => f.hom.app t) (A.cut i j k hij hjk).inv_hom_id",
+      "problem": "`stringVertex` evaluates every isomorphism of `A` (`unit`, `cut`) at a vertex `t`. For each one it rebuilds the `hom`/`inv` pair, with the `W`-membership proof, and re-proves `hom_inv_id` and `inv_hom_id` by `congrArg (fun f => f.hom.app t)`. The blocks for `unit` (lines 149-157) and `cut` (lines 158-166) are identical apart from the iso being evaluated. The three coherence axioms (lines 167-175) repeat the same `hom_ext; congrArg \u2026app t` pattern. `untransposeDiagramObj` does the converse at lines 259-306: it forgets the `W`-property componentwise, again with a copy per iso and per axiom. So the 'apply a `Strings`-iso at a vertex' reasoning is spread over about ten near-identical blocks.",
+      "proposed_change": "Define once an evaluation of an isomorphism in `Strings W n` at a vertex, `Strings.evalIso (e : U \u2245 V) (t : Fin (n+1)) : (\u27e8U.obj.obj t\u27e9 : WideSubcategory W) \u2245 \u27e8V.obj.obj t\u27e9`. Its `hom` is `\u27e8e.hom.hom.app t, e.hom.property t\u27e9`, and its `hom_inv_id`/`inv_hom_id` come from `congrArg (fun f => f.hom.app t)`. Then `unit i := evalIso (A.unit i) t` and `cut i j k hij hjk := evalIso (A.cut i j k hij hjk) t`. The three axioms use the same lemma `evalIso_hom : (evalIso e t).hom.hom = e.hom.hom.app t` applied to `A.left_unit`, `A.right_unit` and `A.associativity`.",
+      "benefit": "This removes about 25 lines of copy-paste in `stringVertex`. The only mathematical fact used (evaluating a natural isomorphism at an object gives an isomorphism) is stated once. It also fits with the iso-from-components helper in the previous finding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Simplicial/RestrictedMonoidal.lean",
+          "declaration": "RestrictedNerve.stringVertex",
+          "excerpt": "inv := \u27e8(A.cut i j k hij hjk).inv.hom.app t,(A.cut i j k hij hjk).inv.property t\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Simplicial/RestrictedMonoidal.lean",
+          "declaration": "RestrictedNerve.stringVertex",
+          "excerpt": "hom := \u27e8(A.unit i).hom.hom.app t,(A.unit i).hom.property t\u27e9"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 31412,
+    "cache_read_input_tokens": 139362,
+    "output_tokens": 7611,
+    "output_tokens_details": {
+      "thinking_tokens": 2312
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31412,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4991,
+        "cache_read_input_tokens": 33003,
+        "cache_creation_input_tokens": 2338,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2338
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.21571819999999997,
+  "duration_ms": 64735,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T02:02:45",
+  "unit": "file",
+  "source_sha256": "3e4472dbd98f49955ab40b7b5cdafddc2b357ca62e3087ef6b6b947a154e0c10",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

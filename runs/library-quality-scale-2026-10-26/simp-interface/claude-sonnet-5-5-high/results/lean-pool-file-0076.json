@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0076",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the main downstream user, SubdivisionPrismAffine.lean (chart_spatial_eq_linear, chart_time_eq_linear). I also grepped other users of staircaseTime_lower and staircaseTime_upper. I did not run Lean, so I make no claim about how simp behaves on these terms. The findings come from the declarations as written and from how downstream proofs unfold them. I did not check whether staircaseSpatial or staircaseWeight lemmas exist elsewhere; the grep showed only uses of the definitions.",
+  "findings": [
+    {
+      "declaration": "spatialPoint / intervalPoint / staircasePoint / chart (missing coordinate simp lemmas)",
+      "start_line": 69,
+      "end_line": 133,
+      "excerpt": "noncomputable def staircasePoint\n    (hp : Nat.Prime p) (k : Fin p) (w : StandardSimplex p) :\n    StandardSimplex (p - 1) \u00d7 Set.Icc (0 : Real) 1 :=\n  (spatialPoint hp k w, intervalPoint k w)",
+      "problem": "The file defines the bundled-subtype points `spatialPoint` and `intervalPoint`, the pair `staircasePoint`, and the `chart` (whose `toFun` is a `let`-block). It states no simp lemma for any of them. Examples would be `(spatialPoint hp k w).1 = spatialWeight hp k w`, `(intervalPoint k w).1 = intervalWeight k w`, `staircasePoint hp k w = (spatialPoint hp k w, intervalPoint k w)`, and `chart hp N L q w = ...`. Without these, users must unfold the definitions themselves. The `simp only` list in `chart_spatial_eq_linear` is long and fragile: it includes `staircasePoint, spatialPoint, ContinuousMap.coe_mk, ...`. `chart_time_eq_linear` has to unfold `staircasePoint, intervalPoint, intervalWeight, StandardSimplex.ofDelta`. The proof of `continuous_toFun` also needs several `change` steps to expose the weight sums.",
+      "proposed_change": "Add canonical projection lemmas right after the definitions. They would be `@[simp] theorem spatialPoint_val : (spatialPoint hp k w).1 = spatialWeight hp k w := rfl`, `@[simp] theorem intervalPoint_val : (intervalPoint k w).1 = intervalWeight k w := rfl`, and `@[simp] theorem staircasePoint_fst/_snd`. Add a `chart_apply` lemma for the `ContinuousMap` coercion that states the value as a pair (the `let` block eliminated). Then downstream proofs can use `simp` with the weight definitions only, not a hand-maintained unfolding list.",
+      "benefit": "Callers stop depending on the definitions' internal structure. The `simp only` lists in `SubdivisionPrismAffine.lean` become much shorter. The `change` steps in `continuous_toFun` could shrink too. The simp normal form is the weight sum, which is already what the downstream proofs target.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NandakumarRamanaRao/NRR/PrimePolyhedron/FoxNeuwirth/SubdivisionPrismAffine.lean",
+          "declaration": "chart_spatial_eq_linear",
+          "excerpt": "StandardSimplex.toDelta, staircasePoint, spatialPoint, affineCompMap_coe,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NandakumarRamanaRao/NRR/PrimePolyhedron/FoxNeuwirth/SubdivisionPrismAffine.lean",
+          "declaration": "chart_time_eq_linear",
+          "excerpt": "staircaseTimeLinear, staircasePoint, intervalPoint, intervalWeight,"
+        }
+      ]
+    },
+    {
+      "declaration": "staircaseTime_lower / staircaseTime_upper / staircaseSpatial",
+      "start_line": 48,
+      "end_line": 54,
+      "excerpt": "@[simp] theorem staircaseTime_upper\n    (k : Fin p) (j : Fin (p + 1)) (h : k.1 < j.1) :\n    staircaseTime k j = 1 := by simp [staircaseTime, Nat.not_le.mpr h]",
+      "problem": "The only simp lemmas about `staircaseTime` are conditional on a side goal about `Fin` values. Simp can use them only if it can discharge `j.1 \u2264 k.1` or `k.1 < j.1` for the exact terms at hand. That works for literals but not for abstract `j`. Downstream users therefore call them by `rw` with explicit proofs, not by `simp`. The canonical form for the main use site is missing: `intervalWeight` is `\u2211 j, if staircaseTime k j = 1 then w j else 0`, and `simp` has no way to turn the condition into `k.1 < j.1`. `staircaseSpatial` has no simp lemmas at all. The two branches of its dite are `\u27e8j.1, _\u27e9` and `\u27e8j.1 - 1, _\u27e9`. The `Fin.ext_iff` unfolding and `Fin.val` arithmetic must be redone each time.",
+      "proposed_change": "Add unconditional characterisations as simp lemmas: `@[simp] theorem staircaseTime_eq_one_iff : staircaseTime k j = 1 \u2194 k.1 < j.1` and `staircaseTime_eq_zero_iff : staircaseTime k j = 0 \u2194 j.1 \u2264 k.1`. Both are provable from `unfold staircaseTime; split_ifs`. Add `staircaseSpatial_val : (staircaseSpatial p k j).1 = if j.1 \u2264 k.1 then j.1 else j.1 - 1` as a simp lemma, or separate lower and upper lemmas with the same hypothesis style as the time lemmas. Keep the conditional lemmas, but make the iff forms the main interface for decidable conditions.",
+      "benefit": "Sums such as `intervalWeight` and `spatialWeight` reduce under `simp` to explicit Fin-order conditions. This replaces per-use `rw [staircaseTime_upper k _ hlt]` and `Fin.ext_iff` unfolding. It also gives the time and spatial definitions the same interface.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NandakumarRamanaRao/NRR/PrimePolyhedron/FoxNeuwirth/RelativeCollarMiddlePrismEndpointsCore.lean",
+          "declaration": "(proof using staircaseTime_upper)",
+          "excerpt": "rw [staircaseTime_upper k _ hlt] at hlast"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NandakumarRamanaRao/NRR/PrimePolyhedron/FoxNeuwirth/SubdivisionPrismAffine.lean",
+          "declaration": "chart_spatial_eq_linear",
+          "excerpt": "staircaseSpatialLinear, Fin.ext_iff]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 14667,
+    "cache_read_input_tokens": 40334,
+    "output_tokens": 4330,
+    "output_tokens_details": {
+      "thinking_tokens": 1095
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14667,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2625,
+        "cache_read_input_tokens": 14908,
+        "cache_creation_input_tokens": 3772,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3772
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10601740000000001,
+  "duration_ms": 34485,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T22:58:13",
+  "unit": "file",
+  "source_sha256": "f14ba8de1c8728bb06f3990dd7fa0577508a745c9948fdb23cd7781057ba16d9",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

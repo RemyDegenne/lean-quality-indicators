@@ -1,0 +1,88 @@
+{
+  "id": "openai-math-file-0102",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, which has one theorem. I read its imported AnalyzingCoefficients.lean in full. I grepped for uses of finite_analyzing_pairing and analyzingCoefficient_mul_area: the only users are SourceOrdinaryAdjoint.lean, PacketDataAdjoint.lean and PacketDataCrossForm.lean, plus the self-pairing proof. The main duplication is between the target proof and analyzingCoefficient_self_pairing: the same hterm/hInt/three-step calc, differing only in finite subset S, arbitrary coefficients c, and index types. The target's harea block also re-proves analyzingCoefficient_mul_area, which is stated only under a global ha. I did not compile the proposed refactor, so the exact simp/ext steps for rewriting the self-pairing theorem (matching diagonalSynthesis with the Finset sum over univ, and the cast of the norm-squared sum) are a sketch. The refactor should be mathematically safe: S = univ and c = a recover the self-pairing statement. I did not examine the other users beyond confirming their imports and that they depend only on the statement.",
+  "findings": [
+    {
+      "declaration": "OAI.LipschitzHilbert.finite_analyzing_pairing",
+      "start_line": 16,
+      "end_line": 58,
+      "excerpt": "  have hInt (i : I) (hi : i\u2208S) (k : K) :\n      Integrable (fun x => conj (c i k)*(g x k*conj (wave i k x))) mu :=\n    (hint i hi k).const_mul _",
+      "problem": "The proof repeats, nearly line for line, the proof of `analyzingCoefficient_self_pairing` in AnalyzingCoefficients.lean (lines 40\u201375). That proof has the same three parts. (1) A per-term `hterm` unfolds `PiLp.inner_apply`/`RCLike.inner_apply`/`Finset.mul_sum` and rewrites with `area i * a i k = \u222b \u2026`. (2) A `hInt` obtained from `const_mul`, then `simp_rw [\u2190 integral_const_mul]`, `integral_finsetSum` twice with `integrable_finsetSum`, and `Finset.sum_congr`, to swap sum and integral. (3) A pointwise `integral_congr_ae` step with `Finset.sum_comm` and a final `ring`. The target is the strictly more general statement: arbitrary `c`, subset `S`, and `area i \u2260 0` only on `S`. The self-pairing result is the special case `S = univ`, `c = analyzingCoefficient \u2026`. So the sum\u2013integral interchange and the inner-product expansion are maintained in two places. The target's `harea` block also re-proves `analyzingCoefficient_mul_area`, which already exists but demands `\u2200 i, area i \u2260 0`. That is why the target could not reuse it.",
+      "proposed_change": "1. In AnalyzingCoefficients.lean, weaken `analyzingCoefficient_mul_area` to take a pointwise hypothesis `(hi : area i \u2260 0)` instead of `ha : \u2200 i, area i \u2260 0`. The proof is unchanged, with `exact_mod_cast hi`. Update the one use in `analyzingCoefficient_self_pairing` to `(ha i)`.\n2. Move the general statement `finite_analyzing_pairing` (with `I` not required to be `Fintype`; use `omit` as the file already does) into AnalyzingCoefficients.lean before `analyzingCoefficient_self_pairing`. Its `hterm` becomes `simp only [PiLp.inner_apply, RCLike.inner_apply, Finset.mul_sum]; refine Finset.sum_congr rfl fun k _ => ?_; rw [\u2190 analyzingCoefficient_mul_area \u03bc area wave g (ha i hi) i k]; ring`.\n3. Rewrite `analyzingCoefficient_self_pairing` as a corollary. Take `h := finite_analyzing_pairing \u03bc area wave g (analyzingCoefficient \u03bc area wave g) Finset.univ (fun i _ => ha i) (fun i _ k => hint i k)`. Note `diagonalSynthesis wave c z = \u2211 i \u2208 univ, toLp 2 (fun k => c i k * wave i k z)` by `ext`/`simp [diagonalSynthesis, WithLp.ofLp_sum, Finset.sum_apply]`. Convert the right side with `inner_self_eq_norm_sq_to_K` and `Complex.ofReal_sum/mul/pow` (the existing `hnorm` step). Then use `h.symm`.\n4. Keep AnalyzingBilinear.lean as a thin re-export (or delete it and fix the three importing files) so downstream names are unchanged.",
+      "benefit": "The Fubini/sum\u2013integral interchange and the inner-product expansion are proved once instead of twice, about 35 duplicated lines. Both theorems then derive from one general lemma, so any later change (e.g. to the definition of `analyzingCoefficient` or the integrability hypotheses) is made in one place. The duplicated `area * (area\u207b\u00b9 * \u00b7)` cancellation is also removed. A reader sees directly that the self-pairing is the diagonal case of the general duality.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Packets/AnalyzingCoefficients.lean",
+          "declaration": "OAI.LipschitzHilbert.analyzingCoefficient_self_pairing",
+          "excerpt": "      simp_rw [\u2190 integral_const_mul]\n      rw [integral_finsetSum Finset.univ (fun i _ =>\n        integrable_finsetSum _ (fun k _ => hInt i k))]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Packets/AnalyzingCoefficients.lean",
+          "declaration": "OAI.LipschitzHilbert.analyzingCoefficient_self_pairing",
+          "excerpt": "      rw [Finset.sum_comm]\n      apply Finset.sum_congr rfl\n      intro k _\n      apply Finset.sum_congr rfl\n      intro i _\n      ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Packets/AnalyzingCoefficients.lean",
+          "declaration": "OAI.LipschitzHilbert.analyzingCoefficient_mul_area",
+          "excerpt": "  change (area i : \u2102) * (((area i)\u207b\u00b9 : \u2102) * _) = _\n  rw [\u2190 mul_assoc, mul_inv_cancel\u2080 (show (area i : \u2102) \u2260 0 by exact_mod_cast ha i), one_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzHilbert/Packets/AnalyzingBilinear.lean",
+          "declaration": "OAI.LipschitzHilbert.finite_analyzing_pairing",
+          "excerpt": "      change (area i:\u2102)*(((area i)\u207b\u00b9:\u2102)*_)=_\n      rw [\u2190mul_assoc,mul_inv_cancel\u2080 (by exact_mod_cast ha i hi),one_mul]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 23306,
+    "cache_read_input_tokens": 54629,
+    "output_tokens": 4472,
+    "output_tokens_details": {
+      "thinking_tokens": 1123
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23306,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3220,
+        "cache_read_input_tokens": 25710,
+        "cache_creation_input_tokens": 1525,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1525
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1434229,
+  "duration_ms": 34782,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:02:34",
+  "unit": "file",
+  "source_sha256": "ba35586f648a8360231aedfaf8f905f274a3eb00e0dddd466e79c65e06592e64",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

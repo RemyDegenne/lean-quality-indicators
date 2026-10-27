@@ -1,0 +1,104 @@
+{
+  "id": "mathlib-file-0367",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the WithAbs ring file (Mathlib/Analysis/Normed/Ring/WithAbs.lean). The toAbs/ofAbs simp lemmas for add, mul, sub, neg, pow, div and inv are already present and consistent. I also checked the downstream uses in NumberTheory/NumberField/Completion/InfinitePlace.lean and Analysis/AbsoluteValue/Equivalence.lean. I did not run Lean. Whether the proposed simp lemmas would cause conflicts or loops is not verified. The first finding suggests only a modest, hedged improvement.",
+  "findings": [
+    {
+      "declaration": "AbsoluteValue.Completion.algebraMap_apply (and algebraMap_eq)",
+      "start_line": 151,
+      "end_line": 154,
+      "excerpt": "theorem algebraMap_apply (x : v.Completion) :\n    algebraMap v.Completion w.Completion x = UniformSpace.Completion.mapRingHom",
+      "problem": "The file exposes the algebra structure on completions only through `algebraMap_eq` and `algebraMap_apply`. Both are non-simp unfoldings into `mapRingHom`, and `algebraMap_apply` is just `congrFun` of `algebraMap_eq`. The normal form simp needs is the action on embedded elements: `algebraMap v.Completion w.Completion (\u2191(toAbs v k)) = \u2191(toAbs w (algebraMap K L k))`. No such general simp lemma exists here. Downstream, `NumberField.InfinitePlace.Completion` has to add its own `@[simp] algebraMap_coe`, specialised to number fields. The same normal form is missing for every other user of `algebraOfLiesOver`.",
+      "proposed_change": "Add a general `@[simp]` lemma next to `algebraMap_eq`. It would state `algebraMap v.Completion w.Completion (x : WithAbs v) = ((WithAbs.map v w (algebraMap K L) x : WithAbs w) : w.Completion)`. The proof would use `UniformSpace.Completion.mapRingHom_coe` after `rw [algebraMap_eq]`. Optionally add a `K`-level version for `\u2191k`. Keep `algebraMap_eq` non-simp, since it unfolds into a less canonical form. Then check whether the `InfinitePlace` lemma `algebraMap_coe` can be derived from it or removed.",
+      "benefit": "Simp would reduce `algebraMap` on coerced elements to the coerced image in `WithAbs w`, which `WithAbs.map_apply` then normalises. Users would no longer need to `rw [algebraMap_eq]` and unfold `mapRingHom`, and each number-field or function-field development would not need its own specialised copy.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/NumberField/Completion/InfinitePlace.lean",
+          "declaration": "NumberField.InfinitePlace.Completion.algebraMap_coe",
+          "excerpt": "theorem algebraMap_coe (x : WithAbs v.1) :\n    algebraMap v.Completion w.Completion x = algebraMap (WithAbs v.1) (WithAbs w.1) x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Field/WithAbs.lean",
+          "declaration": "AbsoluteValue.Completion.algebra_eq",
+          "excerpt": "Algebra.algebra_ext _ _ (algebraMap_apply v w)"
+        }
+      ]
+    },
+    {
+      "declaration": "WithAbs.isometry_map (use of norm_eq_apply_ofAbs); lemma defined in Ring/WithAbs.lean",
+      "start_line": 90,
+      "end_line": 94,
+      "excerpt": "simp_rw [map_apply, norm_eq_apply_ofAbs]",
+      "problem": "The norm on `WithAbs v` is defeq to `v (ofAbs x)`, but `norm_eq_apply_ofAbs` and `norm_toAbs_eq` are not simp lemmas. The proof has to name `norm_eq_apply_ofAbs` in a `simp_rw` before the final `simp`. Other places do the same: `simpa [WithAbs.norm_eq_apply_ofAbs]` in InfinitePlace.lean and in Equivalence.lean. So plain `simp` cannot reduce `\u2016x\u2016` or `\u2016toAbs v x\u2016` to the absolute value, and the interface has no canonical form for norms in `WithAbs v`.",
+      "proposed_change": "Mark `WithAbs.norm_toAbs_eq` as `@[simp]`. Its LHS has the head `toAbs`, so it is specific to `WithAbs` and does not clash with generic norm lemmas. Consider also `@[simp]` on `norm_eq_apply_ofAbs`, since its LHS is a norm on `WithAbs v` only. Then `isometry_map` would reduce to `simp [map_apply, AbsoluteValue.under_def]` with no explicit norm rewrite. Check that this does not conflict with other simp lemmas for `\u2016\u00b7\u2016` on `WithAbs` instances.",
+      "benefit": "Simp-set users get a uniform normal form (`v x`) and no longer need to remember `WithAbs.norm_eq_apply_ofAbs`. The `simp_rw`/`simpa [..]` workarounds in this file and in the other files that cite the lemma can be shortened.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Ring/WithAbs.lean",
+          "declaration": "WithAbs.norm_eq_apply_ofAbs",
+          "excerpt": "lemma norm_eq_apply_ofAbs (v : AbsoluteValue R \u211d) (x : WithAbs v) : \u2016x\u2016 = v x.ofAbs := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/NumberField/Completion/InfinitePlace.lean",
+          "declaration": "line 414 usage",
+          "excerpt": "simpa [WithAbs.norm_eq_apply_ofAbs] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/AbsoluteValue/Equivalence.lean",
+          "declaration": "line 363 usage",
+          "excerpt": "simpa [WithAbs.norm_eq_apply_ofAbs]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 19443,
+    "cache_read_input_tokens": 106983,
+    "output_tokens": 5845,
+    "output_tokens_details": {
+      "thinking_tokens": 1885
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19443,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2396,
+        "cache_read_input_tokens": 22513,
+        "cache_creation_input_tokens": 943,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 943
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1469483,
+  "duration_ms": 45502,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T02:08:01",
+  "unit": "file",
+  "source_sha256": "3b7f8f7c52089347d30a7b357cf7fec330e28636e1026efcf8c84dec3838f42b",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

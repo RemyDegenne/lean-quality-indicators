@@ -1,0 +1,83 @@
+{
+  "id": "openai-math-file-0185",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and searched the DegreeRigidity tree for other uses of stageImage, StageStep and omegaPower_members. The `hvalue` block in InternalOmegaPower.lean and RestrictedOmegaRecursion.lean repeats the proof of `omegaStageImage` almost line for line. I read both files and Mathlib's `IsOrdinal.subset_of_mem` and `IsOrdinal.mem`. The only difference is that `hg` quantifies over `y \u2208 x` instead of `y \u2208 d`, which is why `omegaStageImage` doesn't apply there directly. I did not check whether `OmegaGraph.correct`'s `he` block could reuse the same lemma. It reasons about a different object, A under StageStep, so I left it out. I have not compiled the proposed rewrite. The side conditions (`ZFSet.Subset.refl`, `hd.subset_of_mem hx`) match the Mathlib signatures I read, but I haven't tested them.",
+  "findings": [
+    {
+      "declaration": "omegaStageImage",
+      "start_line": 78,
+      "end_line": 90,
+      "excerpt": "  rw [mem_stageImage,omegaPower_members,(hd.mem hx).toZFSet_rank_eq]\n  apply or_congr_right",
+      "problem": "The proof that `stageImage 1 x f = \u03c9^(rank x)` from a graph description of `f` is written out in full here. The same block, with the same rewrites and the same two `rintro` directions, is repeated inside `internal_omegaGraph` (InternalOmegaPower.lean, `hvalue`) and inside `internal_omegaGraph_schemas` (RestrictedOmegaRecursion.lean, `hvalue`). Those two copies could not call `omegaStageImage` because it requires `x \u2208 d` with `d` an ordinal and a graph over `d`, whereas their graph `g` ranges over `y \u2208 x`. The result is about 12 lines of nontrivial set-theoretic reasoning in three places. Any change to `omegaPower_members` or `stageImage` has to be patched in each of them.",
+      "proposed_change": "Prove one lemma that needs only `x.IsOrdinal` and `x \u2286 d`, and derive both kinds of use from it.\n\n```lean\ntheorem omegaStageImage_of_subset {d f x : ZFSet.{u}} (hxo : x.IsOrdinal) (hxd : x \u2286 d)\n    (hf : \u2200 z, z \u2208 f \u2194 \u2203 y \u2208 d, z = ZFSet.pair y (omegaNext y)) :\n    stageImage (1 : Ordinal.{u}).toZFSet x f = (Ordinal.omega0 ^ x.rank).toZFSet := by\n  apply ZFSet.ext; intro z\n  rw [mem_stageImage,omegaPower_members,hxo.toZFSet_rank_eq]\n  apply or_congr_right\n  constructor\n  \u00b7 rintro \u27e8y,hy,w,hfw,hz\u27e9\n    obtain \u27e8v,_,hp\u27e9 := (hf _).mp hfw\n    obtain \u27e8rfl,rfl\u27e9 := ZFSet.pair_inj.mp hp\n    exact \u27e8y,hy,hz\u27e9\n  \u00b7 rintro \u27e8y,hy,hz\u27e9\n    exact \u27e8y,hy,_,(hf _).mpr \u27e8y,hxd hy,rfl\u27e9,hz\u27e9\n\ntheorem omegaStageImage (d f x : ZFSet.{u}) (hd : d.IsOrdinal) (hx : x \u2208 d)\n    (hf : \u2200 z, z \u2208 f \u2194 \u2203 y \u2208 d, z = ZFSet.pair y (omegaNext y)) :\n    stageImage (1 : Ordinal.{u}).toZFSet x f = (Ordinal.omega0 ^ x.rank).toZFSet :=\n  omegaStageImage_of_subset (hd.mem hx) (hd.subset_of_mem hx) hf\n```\n\nIn InternalOmegaPower.lean and RestrictedOmegaRecursion.lean, replace the whole `hvalue` block with `have hvalue := omegaStageImage_of_subset hxo (d := x) (fun _ h => h) hg`. Here `hxo` is the ordinal hypothesis already in scope and `hg` is the existing `\u2200 z, z \u2208 g \u2194 \u2203 y \u2208 x, \u2026`. Both later uses, `hvalue \u25b8 stageImage_mem \u2026`, stay unchanged. The proof sketch is the one already in the file: extensionality, `omegaPower_members`, `or_congr_right`, then the `pair_inj` argument for one direction and the graph membership of `pair y (omegaNext y)` for the other.",
+      "benefit": "The three copies of the stage-image computation collapse to one proof. `omegaStageImage` becomes a one-line corollary, and the two recursion proofs each lose about 12 lines. If `omegaNext`, `omegaPower_members` or `stageImage` change, there is one place to fix. The shared lemma's hypotheses (ordinal `x`, `x \u2286 d`) state exactly what the argument uses, which the original `x \u2208 d` form hid.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/Constructibility/InternalOmegaPower.lean",
+          "declaration": "internal_omegaGraph (hvalue)",
+          "excerpt": "rw [mem_stageImage,omegaPower_members,hxo.toZFSet_rank_eq]\n      apply or_congr_right"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/SetModels/RestrictedOmegaRecursion.lean",
+          "declaration": "internal_omegaGraph_schemas (hvalue)",
+          "excerpt": "rw [mem_stageImage,omegaPower_members,hxo.toZFSet_rank_eq]\n      apply or_congr_right"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/SetTheory/ZFC/Ordinal.lean",
+          "declaration": "ZFSet.IsOrdinal.subset_of_mem",
+          "excerpt": "theorem subset_of_mem (h : x.IsOrdinal) : y \u2208 x \u2192 y \u2286 x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 23220,
+    "cache_read_input_tokens": 97633,
+    "output_tokens": 5154,
+    "output_tokens_details": {
+      "thinking_tokens": 1747
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23220,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2389,
+        "cache_read_input_tokens": 26205,
+        "cache_creation_input_tokens": 944,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 944
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1542073,
+  "duration_ms": 42738,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:19:02",
+  "unit": "file",
+  "source_sha256": "26a10fa446f092d3dbd1a2e104699177ce442033ec7b6966f3ddbb5c0648b715",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

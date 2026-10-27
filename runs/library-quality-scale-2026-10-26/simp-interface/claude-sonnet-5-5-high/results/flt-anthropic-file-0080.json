@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0080",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the CartierDual definitions (toDual/ofDual/ext/mul_apply/one_apply simp status), hopfKerVal and its simp lemma, and Mathlib's CoalgHom simp lemmas (counit_comp_apply, map_comp_comul_apply, toLinearMap_eq_coe). I also read Definitions/Def_HopfAlgebra_CartierDualMap.lean, which already has a simp-tagged functoriality map. Nothing was compiled. I did not check whether the target's import closure reaches CartierDualMap. If it doesn't, the fix is to add that import. The leaving-`mul_apply`-non-simp choice looks intentional because it would expand products, so I did not flag it. The findings concern simp-normal-form and lemma-availability issues forcing manual rw/show steps, not loops.",
+  "findings": [
+    {
+      "declaration": "solution (local ring hom `t` and `ht`)",
+      "start_line": 58,
+      "end_line": 73,
+      "excerpt": "have ht : \u2200 \u03c6 a, t \u03c6 a = \u03c6 (\u03b9 a) := fun \u03c6 a => rfl",
+      "problem": "The proof rebuilds, as a local `let` ring hom `t`, the functorial pullback `CartierDual R H \u2192 CartierDual R (hopfKer \u03c0)` along the coalgebra map `\u03b9`. It also reproves multiplicativity and unitality via a local `hnat` and manual `rw`. The repo already has `CartierDual.mapAlgHom`/`CartierDual.map`, with simp lemmas `mapAlgHom_apply`/`map_apply` (`... \u03c6 a = \u03c6 (f a)`), plus `mapLinear_mul` and `mapLinear_one`. Because `t` is an anonymous local `let`, no simp lemma applies to it. The proof needs the one-off `ht` (used with `rw [ht]` at the surjectivity step) and spells out `CartierDual.ofDual R _ ((CartierDual.toDual R H \u03c6) \u2218\u2097 ...)`. A reader or simp call cannot reduce `t \u03c6 a` to `\u03c6 (\u03b9 a)` unless they use the ad hoc `ht`. The pullback's apply lemma is the canonical simp lemma, and it is not reused here.",
+      "proposed_change": "Use the existing `CartierDual.mapAlgHom (HopfAlgebra.hopfKerVal \u03c0)` (or the `CartierDual.map` bialgebra hom, coerced to a ring hom) in place of the local `t`. Delete `hnat`, the `map_one'`/`map_mul'` proofs and `ht`. Rewrite with `CartierDual.mapAlgHom_apply` (simp) in the surjectivity step. Apply `IsLocalRing.of_surjective'` to that map. If the Map file is not in the import closure, add `import Definitions.Def_HopfAlgebra_CartierDualMap`.",
+      "benefit": "The apply lemma becomes a global simp rule on a named map, so `t \u03c6 a = \u03c6 (\u03b9 a)` is handled by `simp`. About 25 lines of ad hoc rewriting and the private `ht`/`hnat` disappear. The proof then shares one canonical simp normal form with other uses of the Cartier dual functor.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_HopfAlgebra_CartierDualMap.lean",
+          "declaration": "CartierDual.mapAlgHom_apply",
+          "excerpt": "@[simp] theorem mapAlgHom_apply (f : A \u2192\u2090c[R] B) (\u03c6 : CartierDual R B) (a : A) :\n    mapAlgHom f \u03c6 a = \u03c6 (f a) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_HopfAlgebra_CartierDualMap.lean",
+          "declaration": "CartierDual.mapLinear_mul",
+          "excerpt": "theorem mapLinear_mul (f : A \u2192\u2090c[R] B) (\u03c6 \u03c8 : CartierDual R B) :\n    mapLinear f (\u03c6 * \u03c8) = mapLinear f \u03c6 * mapLinear f \u03c8"
+        }
+      ]
+    },
+    {
+      "declaration": "solution (use of `set \u03b9 ... with h\u03b9`, `.toLinearMap` casts and `show ... from rfl`)",
+      "start_line": 68,
+      "end_line": 69,
+      "excerpt": "rw [show (\u03b9 : \u21a5(HopfAlgebra.hopfKer \u03c0) \u2192\u2090c[R] H).toLinearMap a = \u03b9 a from rfl,\n          \u2190 CoalgHomClass.map_comp_comul_apply \u03b9 a]",
+      "problem": "The proof is written in a form that is not simp-normal, so the simp lemmas cannot do the work. `hnat` and `t` state everything with `(\u03b9 : _ \u2192\u2090c[R] H).toLinearMap`, but Mathlib's `CoalgHom.toLinearMap_eq_coe` is simp and rewrites `f.toLinearMap` to `\u2191f`. This forces the manual `show \u2026 from rfl` bridge here. `set \u03b9 := HopfAlgebra.hopfKerVal \u03c0 with h\u03b9` hides the head symbol of the simp lemma `hopfKerVal_apply`. At line 83 the proof must therefore do `rw [h\u03b9, HopfAlgebra.hopfKerVal_apply, hr c]` by hand instead of letting `simp` use it. `CoalgHomClass.map_comp_comul_apply` is already `@[simp]` in the direction `map f f (comul x) = comul (f x)`. The proof uses it reversed with `rw \u2190`, because the goal is in a different shape from the simp-normal one.",
+      "proposed_change": "State `hnat` and `t` with the coercion `\u2191\u03b9` (`LinearMap`/`CoalgHom` coe) so they are in `toLinearMap_eq_coe` normal form. Drop `set \u2026 with h\u03b9`, or use `hopfKerVal \u03c0` directly, so `HopfAlgebra.hopfKerVal_apply` fires. Then close the `map_mul'` and surjectivity steps with `simp [CartierDual.mul_apply, \u2026]` instead of `rw [show \u2026 from rfl, \u2190 \u2026]` and `rw [h\u03b9, \u2026]`.",
+      "benefit": "The proof matches the simp-normal forms of the existing `@[simp]` lemmas (`toLinearMap_eq_coe`, `hopfKerVal_apply`, `map_comp_comul_apply`). This removes the `rfl` bridging and the direction-reversing `rw \u2190`. It also makes the steps robust to changes in how the coercions unfold.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/Coalgebra/Hom.lean",
+          "declaration": "CoalgHom.toLinearMap_eq_coe",
+          "excerpt": "@[simp]\ntheorem toLinearMap_eq_coe (f : A \u2192\u2097c[R] B) : f.toLinearMap = f"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_HopfAlgebra_HopfKerHopf.lean",
+          "declaration": "HopfAlgebra.HopfKerHopf.hopfKerVal_apply",
+          "excerpt": "@[simp] theorem hopfKerVal_apply (s : \u21a5(hopfKer \u03c0)) : hopfKerVal \u03c0 s = (s : A) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/Coalgebra/Hom.lean",
+          "declaration": "CoalgHomClass.map_comp_comul_apply",
+          "excerpt": "theorem map_comp_comul_apply (f : F) (x : A) :\n    TensorProduct.map f f (\u03c3\u2081\u2082 := .id _) (comul x) = comul (R := R) (f x)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 24753,
+    "cache_read_input_tokens": 123940,
+    "output_tokens": 7672,
+    "output_tokens_details": {
+      "thinking_tokens": 2668
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24753,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4357,
+        "cache_read_input_tokens": 26903,
+        "cache_creation_input_tokens": 1863,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1863
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.188158,
+  "duration_ms": 56011,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-26T22:59:12",
+  "unit": "file",
+  "source_sha256": "3eca217adadfd5e0e60d924103ae5b64639bf48a23daeca7481ca7c490dbde9a",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

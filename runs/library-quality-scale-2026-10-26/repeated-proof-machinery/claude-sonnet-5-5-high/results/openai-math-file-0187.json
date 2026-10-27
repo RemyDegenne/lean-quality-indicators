@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0187",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I then grepped for its patterns in the SimpleAmenable tree and read the matching blocks in StarAtomLaw.lean, CoverUniformBridges.lean and ChartControlChain.lean. The two `hL`/`hV` label-window blocks are repeated verbatim in two other files, so the real duplication is four more copies. I did not check that the other files' goals match the proposed lemma, because their `k`/`s j` bounds could differ; this is the main uncertainty. The `he` induction is a borderline case: it is a short generic induction. I did not run Lean, so no proposed rewrite is compiled. I found no other repeated reasoning in `translated_rectangle_window` or `all_rectangle_control_to_chart`.",
+  "findings": [
+    {
+      "declaration": "translated_rectangle_window (hL / hV blocks)",
+      "start_line": 23,
+      "end_line": 32,
+      "excerpt": "have hL j : pointLabel z j+p j \u2264 endpointLabel (l j+pointCoordinate z j) \u2227\n      endpointLabel (l j+pointCoordinate z j) < pointLabel z j+p j+k := by\n    simp only [endpointLabel_add,pointLabel]\n    have hh := hl j\n    omega",
+      "problem": "`hL` and `hV` are the same argument applied to `l` and to `v`. Each shifts a label window `[p j, p j+k)` by `pointLabel z j` after translating by `pointCoordinate z j`. The same two blocks are copy-pasted in at least two other files: the last two bullets of `tangent_chart_rectangle_bridge_control` in StarAtomLaw.lean (lines 109-116) and of its `_cover_uniform` variant in CoverUniformBridges.lean (lines 182-189). The label-translation fact is therefore proved six times, with no named statement that says what it is.",
+      "proposed_change": "Add one lemma next to `pointLabel` in LabelShiftedCharts.lean, which the target already imports:\n\ntheorem translated_label_window {p : Fin 2 \u2192 \u2124} {k : \u2115} (z : CutRing \u00d7 CutRing) (w : Fin 2 \u2192 CutRing)\n    (hw : \u2200 j, p j \u2264 endpointLabel (w j) \u2227 endpointLabel (w j) < p j+k) (j : Fin 2) :\n    pointLabel z j+p j \u2264 endpointLabel (w j+pointCoordinate z j) \u2227\n      endpointLabel (w j+pointCoordinate z j) < pointLabel z j+p j+k := by\n  simp only [endpointLabel_add,pointLabel]\n  have hh := hw j\n  omega\n\nThen in the target, replace both `have` blocks with `translated_label_window z l hl` and `translated_label_window z v hv`. The final step becomes `(translated_label_window z l hl 0) (translated_label_window z v hv 0)` and likewise for index 1.\n\nIn StarAtomLaw.lean and CoverUniformBridges.lean, the four bullets become `exact translated_label_window z l hl` and `exact translated_label_window z v hv`, with `intro j` first if the goal is not already eta-reduced.\n\nI have not checked that the bounds in those two files use `k` rather than `s j`. If they do, the lemma needs a general length parameter.",
+      "benefit": "One named statement replaces six near-identical `simp only \u2026 omega` blocks across three files. A reader sees the label-shift fact once. A change to `pointLabel` or `endpointLabel_add` is fixed in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/CentralCovers/StarAtomLaw.lean",
+          "declaration": "tangent_chart_rectangle_bridge_control (bullets, line 109)",
+          "excerpt": "simp only [endpointLabel_add,pointLabel]\n    have hh := hl j\n    omega"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/CentralCovers/CoverUniformBridges.lean",
+          "declaration": "rectangle bridge cover_uniform variant (bullets, line 182)",
+          "excerpt": "simp only [endpointLabel_add,pointLabel]\n    have hh := hv j\n    omega"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/PolygonGeometry/LabelShiftedCharts.lean",
+          "declaration": "pointLabel",
+          "excerpt": "noncomputable def pointLabel (z : CutRing \u00d7 CutRing) (j : Fin 2) : \u2124 := endpointLabel (pointCoordinate z j)"
+        }
+      ]
+    },
+    {
+      "declaration": "tangent_chain_unbounded (hstep / he induction)",
+      "start_line": 97,
+      "end_line": 120,
+      "excerpt": "induction t with\n    | zero => rfl\n    | succ t ih => exact (ih (by omega)).trans (hstep t (by omega))",
+      "problem": "The proof rebuilds a chain-of-conjugations induction by hand. The step equality `g k (\u2026)*x*(g k (\u2026))\u207b\u00b9 = g (k+1) (\u2026)*x*(g (k+1) (\u2026))\u207b\u00b9` is written out three times at full length: in the theorem statement, in `hstep`, and in `he`. The induction has the same shape as the one in `small_control_action_chain`. Sibling theorems in StarAtomLaw.lean and CoverUniformBridges.lean avoid the explicit induction by applying that lemma to `fun i => B.tangentSign \u2026 (z i) true`. Here the conclusion is an equality for a fixed `x`, so the lemma does not apply directly. The result is that the induction is reproved in a different style.",
+      "proposed_change": "Factor the chain induction out of `small_control_action_chain`. For example, state a general lemma `chain_conj_eq (G : Type*) [Group G] (F : \u2115 \u2192 G) (T : \u2115) (hstep : \u2200 i, i < T \u2192 F i = F (i+1)) : F 0 = F T`, proved by `Nat.le_induction` or the same `induction`. Use it both in `small_control_action_chain` and here, with `F := fun i => tangentSign \u2026 (z i) true (universalMap \u2026) * x * (\u2026)\u207b\u00b9`. Bind `F` once with `set` or a local `let` so the long expression is not repeated, and replace `he` and the final `exact he T le_rfl` with `chain_conj_eq _ _ T hstep`. I have not compiled this.",
+      "benefit": "The proof shrinks to the one non-trivial step, which is `tangentSign_step_action`. The induction lives in one place instead of two, and the long conjugation expression is no longer repeated. The gain is moderate, because the induction itself is short.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Homology/ChartControlChain.lean",
+          "declaration": "small_control_action_chain",
+          "excerpt": "    induction k with\n    | zero => exact hstart\n    | succ k ih =>"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/CentralCovers/StarAtomLaw.lean",
+          "declaration": "tangent_chart_chain_control",
+          "excerpt": "apply small_control_action_chain B.c f\n    (fun i => B.tangentSign (by omega) k q u h d (z i) true) T hstart"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 24820,
+    "cache_read_input_tokens": 101694,
+    "output_tokens": 6129,
+    "output_tokens_details": {
+      "thinking_tokens": 2175
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24820,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3593,
+        "cache_read_input_tokens": 24987,
+        "cache_creation_input_tokens": 3762,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3762
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17076339999999998,
+  "duration_ms": 55697,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:19:45",
+  "unit": "file",
+  "source_sha256": "8f46891309786154a51d742d06f8aacb61d9c45b079ed61bf29dfbae140b6304",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

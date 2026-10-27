@@ -1,0 +1,89 @@
+{
+  "id": "flt-anthropic-file-0317",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, checking the two theorems and the helper namespaces. Compared the ArchFactorCore proofs with the main `solution` proof. `solution` never calls `ArchFactorCore.main` or `integrand_eq`. The main candidates are: (1) the pointwise identity for (ofReal w)\u207b\u00b9 \u00b7 G \u00b7 ofReal(w^s), proved separately in `integrand_eq` and in `hle`; (2) `hdom` and `hdomS`, which are two near-copies of one indicator bound. I also saw the real/complex branches of `continuous_ringEquiv_mixedSpace_symm` mirror each other. I did not report them: they use different types (`y.1` vs `y.2`, `isometryEquivReal\u2026` vs `\u2026Complex\u2026`), so a shared lemma would need extra abstraction. I did not check whether the proposed lemmas compile; the rewrites are sketches. Check the exact `ENNReal.ofReal_inv_of_pos` and `Set.indicator` rewrite order when implementing.",
+  "findings": [
+    {
+      "declaration": "ArchFactorCore.integrand_eq (lines 16\u201328) and the `hle` step inside `solution` (lines 313\u2013321)",
+      "start_line": 313,
+      "end_line": 321,
+      "excerpt": "rw [mul_comm, mul_assoc, \u2190 ENNReal.ofReal_inv_of_pos hpos,\n        \u2190 ENNReal.ofReal_mul (Real.rpow_nonneg (hw0 X) _), Real.rpow_sub_one h, div_eq_mul_inv]",
+      "problem": "The same argument is written twice. Split on w = 0. In the zero case, 0^s = 0 for s > 0, so both sides vanish. In the positive case, convert (ofReal w)\u207b\u00b9 to ofReal w\u207b\u00b9, merge the two ofReal factors, and apply `Real.rpow_sub_one` (w^s \u00b7 w\u207b\u00b9 = w^(s-1)). `integrand_eq` in `ArchFactorCore` does this for G : Y \u2192 \u211d, and `hle` in `solution` redoes it for G : \u2026 \u2192 \u211d\u22650\u221e. The only difference is that `hle` has an \u211d\u22650\u221e-valued G, so `integrand_eq` does not apply directly. The `ofReal_inv_of_pos` / `ofReal_mul` / `rpow_sub_one` / `by_cases w = 0` machinery is therefore maintained in two places.",
+      "proposed_change": "Add one lemma generalised to an \u211d\u22650\u221e-valued weight:\n`theorem inv_mul_mul_ofReal_rpow {Y} (w : Y \u2192 \u211d) (hw0 : \u2200 y, 0 \u2264 w y) (g : Y \u2192 \u211d\u22650\u221e) {s : \u211d} (hs : 0 < s) (y : Y) : (ENNReal.ofReal (w y))\u207b\u00b9 * (g y * ENNReal.ofReal (w y ^ s)) = {y | w y \u2260 0}.indicator (fun y => g y * ENNReal.ofReal (w y ^ (s - 1))) y`.\nProof: the existing `by_cases` argument from `integrand_eq`, with `mul_comm`/`mul_assoc` adjusted.\nUses:\n- `integrand_eq` becomes the instance g := fun y => ENNReal.ofReal (G y), followed by `mul_comm`/`mul_assoc` to match the stated form.\n- In `solution`, `hle X` becomes `(inv_mul_mul_ofReal_rpow w hw0 G (by linarith) X).le.trans (Set.indicator_le_self _ _ X)`. This is valid under the actual hypothesis hs\u2081 : 1 \u2264 s\u2081.\nBoth uses live in the same file, and the lemma needs only the existing imports.",
+      "benefit": "The identity is proved once. A change to how the weight 1/|N(det)| is absorbed into the exponent is made in one place. `hle` shrinks from a nine-line case split to one line. `integrand_eq` becomes a short corollary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_lintegral_twistedCentralizer_mul_rpow_abs_algebraNorm_det_lt_top_of_map_coe_eq_smul_withDensity_gram_of_forall_le_mul_one_add_norm_rpow_neg.lean",
+          "declaration": "ArchFactorCore.integrand_eq",
+          "excerpt": "rw [Set.indicator_of_mem this, mul_assoc, \u2190 ENNReal.ofReal_inv_of_pos hpos,\n      \u2190 ENNReal.ofReal_mul (Real.rpow_nonneg (hw0 y) _)]"
+        }
+      ]
+    },
+    {
+      "declaration": "hdom and hdomS inside ArchFactorCore.main",
+      "start_line": 71,
+      "end_line": 100,
+      "excerpt": "rw [\u2190 ENNReal.ofReal_mul (hG0 y)]\n      apply ENNReal.ofReal_le_ofReal",
+      "problem": "`hdom` (lines 71\u201386) and `hdomS` (lines 87\u2013100) are the same argument with different constants. Both case-split on y \u2208 S. On S they use `indicator_le_self`, merge via `ENNReal.ofReal_mul`, and apply `mul_le_mul (hGM y)` with `Real.rpow_le_rpow (hw0 y) (hB y hyS)`. Off S they use `indicator_of_notMem`, `indicator_le_self` and `simp [hGS y hyS]`. `hdom` first bounds w^(s\u2081-1) by B^(s\u2081-1) and then by B (using hB1 and s\u2081 \u2264 2). That first step is exactly what `hdomS` proves, so `hdom` repeats it.",
+      "proposed_change": "Keep `hdomS` as the single case-split proof. Derive `hdom` from it:\n`hdom s\u2081 h1 h2 y = (hdomS s\u2081 h1 y).trans (Set.indicator_le_indicator ...)`. The pointwise step is `ENNReal.ofReal_le_ofReal (mul_le_mul_of_nonneg_left (B^(s\u2081-1) \u2264 B) hM)`.\nHere `B^(s\u2081-1) \u2264 B` comes from `Real.rpow_le_rpow_of_exponent_le hB1 (by linarith)` followed by `Real.rpow_one`. This is already written inside the current `hdom`. M \u2265 0 follows pointwise from `(hG0 y).trans (hGM y)`, so the argument is valid for any y, and the empty-Y case is vacuous.\nAlternatively, state a local lemma `\u2200 c, 0 \u2264 c \u2192 (\u2200 y \u2208 S, G y * w y ^ (s\u2081 - 1) \u2264 c) \u2192 \u2200 y, indicator \u2026 \u2264 S.indicator (fun _ => ofReal c) y`. Both bounds are then one-line instances.",
+      "benefit": "The S / not-S case analysis, the `ofReal_mul` merging and the `mul_le_mul` side conditions appear once. The remaining difference between the two bounds is just B^(s\u2081-1) \u2264 B. A reader sees that the dominating constant M\u00b7B is a weakening of M\u00b7B^(s\u2081-1).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_lintegral_twistedCentralizer_mul_rpow_abs_algebraNorm_det_lt_top_of_map_coe_eq_smul_withDensity_gram_of_forall_le_mul_one_add_norm_rpow_neg.lean",
+          "declaration": "ArchFactorCore.main (hdomS)",
+          "excerpt": "exact mul_le_mul (hGM y) (Real.rpow_le_rpow (hw0 y) (hB y hyS) (by linarith))\n        (Real.rpow_nonneg (hw0 y) _) ((hG0 y).trans (hGM y))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 19610,
+    "cache_read_input_tokens": 44953,
+    "output_tokens": 4830,
+    "output_tokens_details": {
+      "thinking_tokens": 1150
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19610,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3700,
+        "cache_read_input_tokens": 21184,
+        "cache_creation_input_tokens": 2355,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2355
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1312473,
+  "duration_ms": 39193,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T01:34:29",
+  "unit": "file",
+  "source_sha256": "2432c3f561122c5910a334f4439cd48d09b5943195aab8b00b7ce590d538feae",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

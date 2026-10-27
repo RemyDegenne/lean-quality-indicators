@@ -1,0 +1,93 @@
+{
+  "id": "openai-math-file-0338",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it depends on: logPhase (Mellin/LogProfiles.lean), schwartz_log_inversion, schwartz_logPhase_inversion, profileMode, tripleCoefficient and Frequency. I also searched Mathlib for a Fourier transform of a pi-tensor product and for Real.fourierChar. Mathlib has no pi-tensor Fourier API, so coordinateDensity, the height functions and the pure/profile mode definitions are not competing versions of anything. The only competing concept I found is the phase character: logPhase t y is exp(\u2191(2\u03c0 t y) * I), which is Real.fourierChar (t*y). The target does not define logPhase itself. The finding is therefore about the target's phase definition and lemma, which are built on the repo's private logPhase. The main uncertainty is that the redundancy originates in another file, and that a migration would touch about 960 logPhase occurrences across 150 files. Separately, SumIntegralError.lean defines a different logPhase (exp(I t log x)) with the same name. It is a different concept, not a Mathlib duplicate, and I did not report it.",
+  "findings": [
+    {
+      "declaration": "OAI.SevenEighths.InverseMoment.coordinatePhase (and logPhase_scaled_coordinate)",
+      "start_line": 16,
+      "end_line": 16,
+      "excerpt": "def coordinatePhase (t y : \u03b9 \u2192 \u211d) : \u2102 := \u220f i, logPhase (t i) (y i)",
+      "problem": "coordinatePhase is a product of the repo-private character `logPhase t y := exp(\u2191(2\u03c0 t y) * I)`, which is Mathlib's `Real.fourierChar (t*y)` under another name. Mathlib's `Real.fourierChar_apply` states `\ud835\udc1e x = Complex.exp (\u2191(2 * \u03c0 * x) * Complex.I)`. The product is `\ud835\udc1e (\u2211 i, t i * y i)`, i.e. the Fourier character at the pairing of t and y, so it is Mathlib's character applied to `inner \u211d t y` when t, y are viewed in EuclideanSpace. Because the repo keeps its own character, it must re-derive the multiplicative API: logPhase_add, logPhase_zero, logPhase_sum, logPhase_add_frequency, logPhase_norm, and the local lemma `logPhase_scaled_coordinate` in this file. Mathlib already gives these via AddChar (`map_add_eq_mul`, `map_zero_eq_one`) and Circle. Each use of Mathlib's Fourier transform `\ud835\udcd5` must be converted back by hand. `schwartz_logPhase_inversion` is proved by `convert schwartz_log_inversion` followed by `simp only [logPhase, Real.inner_apply]` and `push_cast`. `coordinate_fourier_inversion` then consumes it. Elsewhere in the same project, GaussSum/SecondPoissonScale.lean uses `Real.fourierChar` directly, so two incompatible phase conventions coexist.",
+      "proposed_change": "Reduce `logPhase` to an abbreviation or notation for `(Real.fourierChar (t*y) : \u2102)` (or define it as `Circle.exp (2*\u03c0*(t*y))` coerced), proved equal to the current formula by `Real.fourierChar_apply`. Define `coordinatePhase t y` as `\ud835\udc1e (\u2211 i, t i * y i)` coerced to \u2102, or keep the product form with a single bridge lemma `coordinatePhase = fun \u2026 => \ud835\udc1e (\u2211 \u2026)`. Keep the names `logPhase` and `coordinatePhase` so downstream files do not change. Replace the hand-proved `logPhase_scaled_coordinate` (a*y vs a*t) with a `mul_assoc`/`mul_comm` rewrite under `fourierChar` (the `logPhase` unfolding would be done once, not per lemma). This lets `schwartz_logPhase_inversion` follow directly from `Real.fourierInv_eq'` without the `convert` + `inner_apply` step.",
+      "benefit": "The Fourier phase has a single definition that interoperates with Mathlib's `\ud835\udcd5`, `\ud835\udcd5\u207b`, `Real.fourierChar` and the AddChar API. The repeated conversion boilerplate and the hand-rolled add/zero/sum/norm lemma family are no longer needed, and files that already use `fourierChar` (SecondPoissonScale, SexticRadialPoisson) stay compatible with the Descent files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/Mellin/LogProfiles.lean",
+          "declaration": "OAI.FourierBridge.logPhase",
+          "excerpt": "Complex.exp (((2 * Real.pi * t * y : \u211d) : \u2102) * Complex.I)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Complex/Circle.lean",
+          "declaration": "Real.fourierChar_apply",
+          "excerpt": "theorem fourierChar_apply (x : \u211d) : \ud835\udc1e x = Complex.exp (\u2191(2 * \u03c0 * x) * Complex.I) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/Descent/DescentProfiles.lean",
+          "declaration": "schwartz_logPhase_inversion",
+          "excerpt": "simp only [logPhase, Real.inner_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/GaussSum/SecondPoissonScale.lean",
+          "declaration": "Fourier-transform setup using Mathlib's character",
+          "excerpt": "let G : LogPlane \u2192 \u2102 := fun z => Real.fourierChar (-\u27eaz, w\u27eb) \u2022 f z"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/DirichletL/Mellin/LogProfiles.lean",
+          "declaration": "OAI.FourierBridge.logPhase_add",
+          "excerpt": "logPhase t (u + v) = logPhase t u * logPhase t v"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 51042,
+    "cache_read_input_tokens": 280596,
+    "output_tokens": 7531,
+    "output_tokens_details": {
+      "thinking_tokens": 2551
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 51042,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2344,
+        "cache_read_input_tokens": 53412,
+        "cache_creation_input_tokens": 1711,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1711
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.30757360000000006,
+  "duration_ms": 56414,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-27T01:39:31",
+  "unit": "file",
+  "source_sha256": "615b7d415c0e5e29f3544f24a15c3a45dc65165e5103012f012438ec3bc4a9ed",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

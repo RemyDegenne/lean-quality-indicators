@@ -1,0 +1,88 @@
+{
+  "id": "tauceti-file-0240",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the files that use its declarations: Schatten.lean, HilbertSchmidt.lean, RayleighRitz.lean, YuWangSamworth.lean, Sylvester.lean and KyFan.lean (the `nuclear_apply` simp lemma). The only `@[simp]` attributes in the file are on `frobenius_norm_toMatrix` and `frobenius_apply_eq_sqrt_sum_sq_singularValues`. I judge `frobenius_norm_toMatrix` reasonable: the matrix norm becomes the basis-free `frobenius`, and `b`, `c` do not appear on the right-hand side. `frobenius_apply` and `sq_frobenius_apply` are correctly not simp, because they take an arbitrary basis `b` that simp cannot infer. The one concern is the simp status of the singular-value expansion. I could not run Lean, so I make no claim that simp fails or loops. The downstream effect is inferred from reading the lemma statements and proofs. Existing uses mostly call it with `rw`, so the practical impact is moderate.",
+  "findings": [
+    {
+      "declaration": "TauCeti.UnitarilyInvariantSeminorm.frobenius_apply_eq_sqrt_sum_sq_singularValues",
+      "start_line": 187,
+      "end_line": 195,
+      "excerpt": "@[simp]\ntheorem frobenius_apply_eq_sqrt_sum_sq_singularValues (A : E \u2192\u2097[\ud835\udd5c] F) :\n    frobenius \ud835\udd5c E F A = \u221a(A.singularValues.sum fun _ s \u21a6 s ^ 2) := by",
+      "problem": "The lemma is simp and rewrites every `frobenius \ud835\udd5c E F A` into a square root of a `Finsupp.sum` over `A.singularValues` whenever `F` is finite-dimensional. This hides the basis-level interface in this file (`frobenius_apply`, `sq_frobenius_apply`, `sq_frobenius_apply_eq_sum_norm_inner_sq`) and the `frobenius` term that downstream statements are written in (Sylvester, RayleighRitz, SinTheta, YuWangSamworth). That interface is stated with `frobenius`, and none of it is simp. After simp, `frobenius A ^ 2` becomes `\u221a(Finsupp.sum \u2026) ^ 2`, which needs the side condition `0 \u2264 Finsupp.sum \u2026` (a `Finsupp.sum_nonneg` argument, as in HilbertSchmidt.lean line 78) to simplify further. The expansion also chains with the other simp lemmas: `frobenius_norm_toMatrix` turns `\u2016A.toMatrix b.toBasis c.toBasis\u2016` into `frobenius`, and `schatten_two` turns `schatten 2` into `frobenius`. Both therefore end in singular values, which the problem statement did not ask for. This also differs from `schatten_apply_of_ne_top`, the general Schatten formula, which is not simp. The only existing uses of the lemma (HilbertSchmidt.lean line 80, Schatten.lean line 122, and line 200 of this file) call it by name with `rw`, so none relies on its simp status.",
+      "proposed_change": "Remove `@[simp]` from `frobenius_apply_eq_sqrt_sum_sq_singularValues` and keep it as an explicit `rw` lemma, as is done for `schatten_apply_of_ne_top`. Keep `frobenius` as the simp-normal form, with `frobenius_norm_toMatrix` and `schatten_two` as the simp lemmas that lead to it. If a simp form is wanted, add a separate `sq_frobenius_apply_eq_sum_sq_singularValues : frobenius \ud835\udd5c E F A ^ 2 = A.singularValues.sum fun _ s \u21a6 s ^ 2`. That statement needs no nonnegativity side condition and is the form actually consumed in HilbertSchmidt.lean. It would be safe to mark simp only if it does not clash with the bare `frobenius` normal form. The three `rw` call sites should keep working unchanged.",
+      "benefit": "Goals that mention `frobenius`, `schatten 2` or a matrix Frobenius norm stay in one readable normal form. They are no longer silently expanded into a `Finsupp.sum` of singular values that later `rw [sq_frobenius_apply b]` steps cannot match. Users who want the singular-value form ask for it explicitly, as with the Schatten formula for general `p`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/InnerProductSpace/UnitarilyInvariantSeminorm/Schatten.lean",
+          "declaration": "TauCeti.UnitarilyInvariantSeminorm.schatten_apply_of_ne_top",
+          "excerpt": "/-- For finite `p`, the Schatten `p`-seminorm is `\u2016A\u2016_p = (\u2211\u1d62 \u03c3\u1d62(A)\u1d56)^(1/p)`. -/\ntheorem schatten_apply_of_ne_top"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/InnerProductSpace/UnitarilyInvariantSeminorm/Schatten.lean",
+          "declaration": "TauCeti.UnitarilyInvariantSeminorm.schatten_two",
+          "excerpt": "@[simp]\ntheorem schatten_two : schatten \ud835\udd5c E F 2 = frobenius \ud835\udd5c E F := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/OperatorIdeal/ApproximationNumber/HilbertSchmidt.lean",
+          "declaration": "tsum_singularValue_sq_eq_hilbertSchmidtEnergy_of_finiteDimensional",
+          "excerpt": "TauCeti.UnitarilyInvariantSeminorm.frobenius_apply_eq_sqrt_sum_sq_singularValues,\n    Real.sq_sqrt hs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/InnerProductSpace/RayleighRitz.lean",
+          "declaration": "sylvester Frobenius Pythagoras",
+          "excerpt": "simp only [sq_frobenius_apply b, \u2190 Finset.sum_add_distrib]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 23427,
+    "cache_read_input_tokens": 55650,
+    "output_tokens": 5075,
+    "output_tokens_details": {
+      "thinking_tokens": 1824
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23427,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3586,
+        "cache_read_input_tokens": 23260,
+        "cache_creation_input_tokens": 4180,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4180
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.150039,
+  "duration_ms": 35758,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:38:19",
+  "unit": "file",
+  "source_sha256": "ae6494d4ae595cdc75b1759cfe8519343f7d20735b218196811fc2a395b0ae56",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

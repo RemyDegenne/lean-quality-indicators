@@ -1,0 +1,130 @@
+{
+  "id": "lean-pool-file-0231",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and searched it for repeated blocks. I also checked Mathlib's Relation.lean for an existing EqvGen map lemma. I found only `Relation.EqvGen.mono`, which does not help here because it changes the relation, not the underlying type. Candidates I rejected as too small or too thin: the half-factor cancellation in monogonMap_injective and eq_monogon_basepoint_of_monogonMap_eq_zero, the `collarScale_*` hspos preambles, the `rightCellHomeomorph_fresh/old` wrappers, and the two sign branches inside teardrop_radial_scale_le_one, which are in one proof. I have not compiled any of the proposed replacements. The `Equivalence.eqvGen_iff` namespace and the Fin-2 side lemma `side_mem_sphere` would need checking when the change is made. The normSq finding is the weakest, because each block is short.",
+  "findings": [
+    {
+      "declaration": "baseChildPairMap_respects / childPairBase_eqvGen_iff",
+      "start_line": 569,
+      "end_line": 579,
+      "excerpt": "  induction hxy with\n  | rel _ _ h => exact baseChildPairMap_eq_of_generator h\n  | refl => rfl\n  | symm _ _ _ ih => exact ih.symm\n  | trans _ _ _ _ _ ih\u2081 ih\u2082 => exact ih\u2081.trans ih\u2082",
+      "problem": "The same `Relation.EqvGen` induction (rel / refl / symm / trans) is written out three times. It appears once in baseChildPairMap_respects (lines 575\u2013579). It appears again in the forward direction of childPairBase_eqvGen_iff (lines 1832\u20131839). It appears a third time in the inline `hcomap` of the backward direction (lines 1851\u20131858). Each time the only mathematical content is that a map sending generators to generators (or to equalities) respects the generated equivalence. That fact is not stated as a lemma, so each use re-proves it, and the backward direction needs a local `have` with a long type ascription. Mathlib has `Relation.EqvGen.mono`, but that changes the relation, not the underlying type, so it does not cover this.",
+      "proposed_change": "Add one general lemma near the top of the section, for example\n`theorem eqvGen_map {\u03b1 \u03b2} {r : \u03b1 \u2192 \u03b1 \u2192 Prop} {s : \u03b2 \u2192 \u03b2 \u2192 Prop} (f : \u03b1 \u2192 \u03b2) (h : \u2200 x y, r x y \u2192 s (f x) (f y)) {x y} (hxy : Relation.EqvGen r x y) : Relation.EqvGen s (f x) (f y)`.\nProof sketch: `induction hxy` with the four standard cases, using `EqvGen.rel _ _ (h _ _ \u2039_\u203a)`, `refl`, `symm` and `trans`.\n\nRewritten uses:\n- Forward direction of childPairBase_eqvGen_iff: `intro hxy; exact eqvGen_map _ (fun _ _ h => childPairBase_generator_map r hr h) hxy`.\n- Backward direction: `intro hxy; simpa only [Homeomorph.symm_apply_apply] using eqvGen_map (childPairBaseHomeomorph r hr).symm (fun _ _ h => childPairBase_generator_comap r hr h) hxy`. This removes the `let e` and the `hcomap` block.\n- baseChildPairMap_respects: apply `eqvGen_map baseChildPairMap (fun _ _ h => baseChildPairMap_eq_of_generator h) hxy` with `s := Eq`, then collapse `EqvGen Eq` to `Eq` via `Equivalence.eqvGen_iff` (Mathlib/Logic/Relation.lean, line 1020) with `eq_equivalence`. Alternatively state the lemma once more for a target relation that is already an equivalence.\n\nThe lemma needs only `Mathlib.Logic.Relation`, which these declarations already use through `Relation.EqvGen`.",
+      "benefit": "The equivalence-closure induction is proved once. Each use becomes a one-line call, and the main equivalence theorem reads as 'generators map to generators in both directions'. A future change to the seam relation (for example a different generator for the right-degenerate case) only needs the generator lemmas updated.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "childPairBase_eqvGen_iff",
+          "excerpt": "      induction huv with\n      | rel _ _ h =>\n          exact Relation.EqvGen.rel _ _\n            (childPairBase_generator_comap r hr h)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "childPairBase_eqvGen_iff",
+          "excerpt": "    induction hxy with\n    | rel _ _ h =>\n        exact Relation.EqvGen.rel _ _\n          (childPairBase_generator_map r hr h)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Logic/Relation.lean",
+          "declaration": "Relation.EqvGen.mono",
+          "excerpt": "theorem mono {r p : \u03b1 \u2192 \u03b1 \u2192 Prop} (hrp : r \u2264 p) : EqvGen r \u2264 EqvGen p := by"
+        }
+      ]
+    },
+    {
+      "declaration": "chordHeight_side_zero_digon / chordHeight_side_one_digon",
+      "start_line": 447,
+      "end_line": 469,
+      "excerpt": "  have h\u03b80 : 0 \u2264 \u03b8 := mul_nonneg Real.pi_pos.le t.property.1\n  have h\u03b8\u03c0 : \u03b8 \u2264 Real.pi := by\n    dsimp [\u03b8]\n    nlinarith [Real.pi_pos, t.property.2]\n  have hsin : 0 \u2264 Real.sin \u03b8 :=\n    Real.sin_nonneg_of_nonneg_of_le_pi h\u03b80 h\u03b8\u03c0",
+      "problem": "chordHeight_side_zero_digon (447\u2013469) and chordHeight_side_one_digon (1414\u20131439) prove the same fact. Both show `chordHeight z = sin (\u03c0 t)` by the same steps. They derive `0 \u2264 sin \u03b8` from `\u03b8 \u2208 [0, \u03c0]` with an identical block (\u03b8 bounds plus `Real.sin_nonneg_of_nonneg_of_le_pi`). They get `chordHeight z ^ 2 = 1 - re ^ 2`. They combine it with `re\u00b2 + im\u00b2 = 1` and `im = \u00b1 sin \u03b8`, then close with an `nlinarith` that implicitly uses `chordHeight = |im|`. The only differences are the sign of `im` and how the unit-norm fact is obtained: one goes via cos/sin, the other via `side_mem_sphere`. The underlying lemma, that on the unit circle `chordHeight z = |z.val.im|`, is never stated. Neither is the lemma `0 \u2264 sin (\u03c0 * t)` for `t : unitInterval`.",
+      "proposed_change": "Add two shared lemmas.\n1. `chordHeight_eq_abs_im_of_norm_eq_one (z : PolygonCell 2) (h : \u2016z.val\u2016 = 1) : chordHeight z = |z.val.im|`.\n   Proof sketch: `re\u00b2 + im\u00b2 = 1` gives `1 - re\u00b2 = im\u00b2`, so `chordHeight z = Real.sqrt (im ^ 2) = |im|` by `Real.sqrt_sq_eq_abs`.\n2. `sin_pi_mul_nonneg (t : unitInterval) : 0 \u2264 Real.sin (Real.pi * t)`.\n   It holds the \u03b8-range argument currently duplicated.\n\nThen:\n- chordHeight_side_zero_digon: rewrite with lemma 1 (unit norm from `PolygonCell.side_mem_sphere`), `side_zero_digon_im`, and `abs_of_nonneg (sin_pi_mul_nonneg t)`.\n- chordHeight_side_one_digon: rewrite with lemma 1, `side_one_digon_im`, and `abs_neg`, `abs_of_nonneg (sin_pi_mul_nonneg t)`.\n\nBoth lemmas use only `side_mem_sphere` (already used at line 1429) and facts already available in the file.",
+      "benefit": "The two theorems shrink to a few lines each. The sin-nonnegativity argument and the chordHeight/|im| identification are written once, not twice with opaque `nlinarith` calls, and the geometric reason (the chord height is the absolute imaginary part on the circle) becomes visible.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "chordHeight_side_one_digon",
+          "excerpt": "  have h\u03b8\u03c0 : \u03b8 \u2264 Real.pi := by\n    dsimp [\u03b8]\n    nlinarith [Real.pi_pos, t.property.2]\n  have hsin : 0 \u2264 Real.sin \u03b8 :=\n    Real.sin_nonneg_of_nonneg_of_le_pi h\u03b80 h\u03b8\u03c0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "chordHeight_side_one_digon",
+          "excerpt": "  have hsSq := chordHeight_sq z\n  have hs0 := chordHeight_nonneg z\n  change chordHeight z = Real.sin \u03b8\n  rw [him] at hnormSq\n  nlinarith"
+        }
+      ]
+    },
+    {
+      "declaration": "re_sq_le_one / neg_chordHeight_le_im / im_le_chordHeight (and other uses)",
+      "start_line": 207,
+      "end_line": 240,
+      "excerpt": "  have hnormSq : Complex.normSq z.val \u2264 1 := by\n    rw [Complex.normSq_eq_norm_sq]\n    nlinarith [norm_le_one z, norm_nonneg z.val]\n  rw [Complex.normSq_apply] at hnormSq",
+      "problem": "The step 'a polygon cell satisfies `re\u00b2 + im\u00b2 \u2264 1`', obtained from `norm_le_one` via `Complex.normSq_eq_norm_sq`, is re-derived in every proof that needs it. The block appears in re_sq_le_one (209\u2013212), neg_chordHeight_le_im (225\u2013228) and im_le_chordHeight (235\u2013238). It appears again in eq_side_zero_or_side_one_of_chordHeight_eq_zero (around 743), in teardrop_radial_scale_le_one (twice, around 892 and 929), in exists_teardrop_boundary_scale (around 1250), and in a variant in eq_one_of_re_eq_one. Each time the same `rw`, `nlinarith` and `normSq_apply` sequence is repeated. A small change to `PolygonCell` or to the norm convention would need about eight edits.",
+      "proposed_change": "State once, after `norm_le_one`:\n`theorem re_sq_add_im_sq_le_one {n} (z : PolygonCell n) : z.val.re ^ 2 + z.val.im ^ 2 \u2264 1`.\nProof sketch: `have h := Complex.normSq_le_one`-style reasoning, namely `rw [\u2190 Complex.normSq_apply']`/`Complex.normSq_apply` plus `Complex.normSq_eq_norm_sq` and `nlinarith [norm_le_one z, norm_nonneg z.val]`.\n\nThen re_sq_le_one becomes `by nlinarith [re_sq_add_im_sq_le_one z, sq_nonneg z.val.im]`. neg_chordHeight_le_im and im_le_chordHeight keep only their `nlinarith [sq_nonneg (im \u00b1 chordHeight z)]` step, starting from `have hnormSq := re_sq_add_im_sq_le_one z`. The other call sites use `hnormz`/`hzNormSq` through the same lemma. Because the lemma is stated for general `n`, it also covers the `PolygonCell 1` uses.",
+      "benefit": "It removes about eight copies of the same norm-to-coordinates conversion and gives the coordinate-bound facts a single named source. Each downstream proof then states only its own inequality.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "neg_chordHeight_le_im",
+          "excerpt": "  have hnormSq : Complex.normSq z.val \u2264 1 := by\n    rw [Complex.normSq_eq_norm_sq]\n    nlinarith [norm_le_one z, norm_nonneg z.val]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "im_le_chordHeight",
+          "excerpt": "  have hnormSq : Complex.normSq z.val \u2264 1 := by\n    rw [Complex.normSq_eq_norm_sq]\n    nlinarith [norm_le_one z, norm_nonneg z.val]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "re_sq_le_one",
+          "excerpt": "  have hnormSq : Complex.normSq z.val \u2264 1 := by\n    rw [Complex.normSq_eq_norm_sq]\n    nlinarith [norm_le_one z, norm_nonneg z.val]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 49870,
+    "cache_read_input_tokens": 272838,
+    "output_tokens": 11169,
+    "output_tokens_details": {
+      "thinking_tokens": 3995
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 49870,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5072,
+        "cache_read_input_tokens": 50883,
+        "cache_creation_input_tokens": 2916,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2916
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.33848179999999994,
+  "duration_ms": 76124,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-27T00:36:17",
+  "unit": "file",
+  "source_sha256": "3bd124fc12c29b6ee245aa151246b5c6de9e1afe6596625586d301e084af7ad3",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

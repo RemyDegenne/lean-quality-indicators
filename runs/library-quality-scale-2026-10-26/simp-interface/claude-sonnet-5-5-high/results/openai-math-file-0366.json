@@ -1,0 +1,130 @@
+{
+  "id": "openai-math-file-0366",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it depends on (ClippedPolynomialFactor, value, smoothPolynomialWeight/Budget, polynomialSupportCode). I also grepped downstream uses of the pairing, conjugate and amplitude declarations across lean/OAI/NumberTheory/Ostmann. I did not run Lean, so I make no claim that any proposed lemma compiles or that any loop was observed. I did not recommend making the _weight, _budget, _pair or _amplitude equalities simp. Downstream code uses them with `rw`, and they could interact with the sum/product lemmas `Fin.prod_univ_add` and `Fin.sum_univ_add`. The existing @[simp] `conjugate_value` looks fine: it is stated by `rfl` and its left-hand side is already in normal form.",
+  "findings": [
+    {
+      "declaration": "pairedPolynomialAmplitude (local facts hleft/hright)",
+      "start_line": 63,
+      "end_line": 71,
+      "excerpt": "have hleft : (fun i : Fin t => polynomialSupportCode (Fin.append H J) x (Fin.castAdd u i)) =\n      polynomialSupportCode H x := by",
+      "problem": "No simp lemmas describe how `polynomialSupportCode` behaves on `Fin.append`. Each user has to prove the same two `funext`/`simp only [polynomialSupportCode, Fin.append_left/right]` facts locally and then feed them to `simp only`. The same pattern is re-proved in Construction/WordRangePolynomial.lean (hleft/hright) and Construction/FullHistoryGuards.lean (hl/hr). `polynomialSupportCode` itself has no unfolding lemma either, so every proof passes the def name to `simp only`.",
+      "proposed_change": "In PolynomialCellSupports.lean, or just before `pairedPolynomialAmplitude`, add @[simp] lemmas for the two restrictions. The first would say `(fun i => polynomialSupportCode (Fin.append H J) x (Fin.castAdd u i)) = polynomialSupportCode H x`. The second would say the same for `Fin.natAdd t i` and `J`. Optionally add a simp lemma `polynomialSupportCode P x i = decide (0 \u2264 (P i).eval x)`. Then `pairedPolynomialAmplitude`, `fullHistoryAmplitude_factor` and the WordRangePolynomial lemma can drop their local hypotheses and call `simp only [polynomialAmplitude, pairedPolynomialKeep, <new lemmas>, ...]`.",
+      "benefit": "The simplifier gets one canonical normal form for support codes of appended polynomial families. Three copies of the same side proof become one lemma, and later pairing or guard lemmas can use it without restating the `funext` goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/FullHistoryGuards.lean",
+          "declaration": "fullHistoryAmplitude_factor",
+          "excerpt": "have hl : (fun i : Fin (n + n) => polynomialSupportCode (fullHistoryPolynomials F H) x\n      (Fin.castAdd t i)) = polynomialSupportCode (polynomialRangeBounds F) x := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/WordRangePolynomial.lean",
+          "declaration": "(guardedHistoryAmplitude pairing lemma, ~line 79)",
+          "excerpt": "have hleft : (fun i => polynomialSupportCode (Fin.append H J) (z : \u211d) (Fin.castAdd u i)) ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Characters/PolynomialCellSupports.lean",
+          "declaration": "polynomialSupportCode",
+          "excerpt": "fun i => decide (0 \u2264 (P i).eval x)"
+        }
+      ]
+    },
+    {
+      "declaration": "ClippedPolynomialFactor.conjugate",
+      "start_line": 11,
+      "end_line": 28,
+      "excerpt": "noncomputable def ClippedPolynomialFactor.conjugate (f : ClippedPolynomialFactor) :\n    ClippedPolynomialFactor where\n  polynomial := f.polynomial",
+      "problem": "Only `conjugate_value` is registered for simp. There are no projection lemmas for the other fields (`polynomial`, `lo`, `hi`, `bound`, `lip`, `profile`). Every consumer that needs one of them, such as the `.polynomial.derivative.roots`, `bound` or `lip` of a conjugated factor, has to unfold the whole definition by passing `ClippedPolynomialFactor.conjugate` to `simp only`. This file does so in `pairedPolynomialFactors_budget` and `polynomialWeightComplexity_pair`. Downstream, MovingKernelPair.lean, BulkFourierFactors.lean and MovingRealSmooth.lean do the same. Unfolding the definition in a simp set is brittle: it exposes the structure-literal proof fields, and it differs from the `conjugate_value` rewrite style.",
+      "proposed_change": "Mark the definition with `@[simps (config := ...)]` restricted to the data fields, or add explicit @[simp] lemmas `conjugate_polynomial`, `conjugate_lo`, `conjugate_hi`, `conjugate_bound`, `conjugate_lip` and `conjugate_profile`, each proved by `rfl`. Then replace `ClippedPolynomialFactor.conjugate` in those `simp only` calls with the projection lemmas.",
+      "benefit": "Simp calls rewrite `f.conjugate.polynomial` and the other fields to the original field directly. Proofs no longer unfold the structure literal, and the interface matches the existing `conjugate_value` lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingKernelPair.lean",
+          "declaration": "pairedPolynomialFactors_roots",
+          "excerpt": "simp only [pairedPolynomialFactors, Fin.append_right, ClippedPolynomialFactor.conjugate] at hr"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Characters/PolynomialWeightPair.lean",
+          "declaration": "polynomialWeightComplexity_pair",
+          "excerpt": "Fin.append_left, Fin.append_right, ClippedPolynomialFactor.conjugate]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/BulkFourierFactors.lean",
+          "declaration": "bulkFourierFactors weight lemma",
+          "excerpt": "split_ifs <;> simp only [ClippedPolynomialFactor.conjugate, ClippedPolynomialFactor.value,"
+        }
+      ]
+    },
+    {
+      "declaration": "pairedPolynomialFactors",
+      "start_line": 30,
+      "end_line": 32,
+      "excerpt": "Fin (n + m) \u2192 ClippedPolynomialFactor := Fin.append F (fun i => (G i).conjugate)",
+      "problem": "`pairedPolynomialFactors` has no evaluation lemmas for its two halves. The file's own proofs and downstream proofs must unfold the definition name together with `Fin.append_left/right` each time they need to see the first or second block. Examples are `simp only [pairedPolynomialFactors, Fin.append_left] at hr` in MovingKernelPair.lean and the three `simp only` calls in this file. Unfolding the definition is not a stable simp interface, because it exposes `Fin.append`.",
+      "proposed_change": "Add @[simp] lemmas `pairedPolynomialFactors_castAdd : pairedPolynomialFactors F G (Fin.castAdd m i) = F i` and `pairedPolynomialFactors_natAdd : pairedPolynomialFactors F G (Fin.natAdd n i) = (G i).conjugate`. Each is a direct consequence of `Fin.append_left/right`. Callers then rewrite with these lemmas instead of unfolding the definition. Combined with the projection lemmas from the previous finding, `((pairedPolynomialFactors F G) (Fin.natAdd n j)).polynomial` would simplify to `(G j).polynomial`.",
+      "benefit": "The definition can stay opaque to simp and later proofs state their intent directly, e.g. 'first block' or 'conjugated second block'. Roots, budget and complexity lemmas for paired factors no longer depend on how the pairing is implemented.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingKernelPair.lean",
+          "declaration": "pairedPolynomialFactors_roots",
+          "excerpt": "simp only [pairedPolynomialFactors, Fin.append_left] at hr"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Characters/PolynomialWeightPair.lean",
+          "declaration": "pairedPolynomialFactors_weight",
+          "excerpt": "simp only [smoothPolynomialWeight, pairedPolynomialFactors, Fin.prod_univ_add,\n    Fin.append_left, Fin.append_right, ClippedPolynomialFactor.conjugate_value, map_prod]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 40299,
+    "cache_read_input_tokens": 161682,
+    "output_tokens": 6953,
+    "output_tokens_details": {
+      "thinking_tokens": 1734
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40299,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3582,
+        "cache_read_input_tokens": 41516,
+        "cache_creation_input_tokens": 2796,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2796
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2469182,
+  "duration_ms": 53825,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T02:07:37",
+  "unit": "file",
+  "source_sha256": "f6eb49d80e24d8ad23a72d9f0ae14aae5d15e632c85cd887057a1f44abb5aefd",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,99 @@
+{
+  "id": "flt-anthropic-file-0331",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. It contains almost no simp calls or attributes. The long `attribute [-simp]` and `[-instance]` headers only disable existing lemmas. I looked at the simp-relevant parts: the private `glueData_*`/`isGoodDiv_*` additivity lemmas, the `Pic0.mk` lemmas in Definitions/Def_AlgebraicCurve_DivisorClassGroup.lean, and `glueData_zero` in Definitions/Def_ModularCurve_GlueData.lean. I could not run Lean, so I make no claims about simp behaviour. The two findings concern missing normal-form lemmas that the file works around by hand with `rw` and `rfl`. I did not check whether `Pic0.mk_sub` or `Pic0.mk_neg` exists elsewhere. A grep of the Definitions directory for `mk_neg` and `mk_sub` found only `mk_add` and `mk_zero` for `Pic0`.",
+  "findings": [
+    {
+      "declaration": "hmk_sub (local lemma inside `solution`) and H2Recon.TG_neg, which proves Pic0.mk (-D\u2081) = -x by `rw [\u2190 hc\u2081]; rfl`",
+      "start_line": 1010,
+      "end_line": 1013,
+      "excerpt": "have hmk_sub : \u2200 (a b : \u21a5(Divisor.degZero (K := AlgebraicClosure \u211a)",
+      "problem": "`Pic0.mk` has `@[simp] mk_add` and `@[simp] mk_zero`, but no `mk_neg` or `mk_sub`. The simp interface for `Pic0.mk` is therefore incomplete. `Pic0.mk (a - b)` and `Pic0.mk (-a)` cannot be normalised to `Pic0.mk a - Pic0.mk b` and `-Pic0.mk a`. The file works around this in two places. In `solution` it proves a local `hmk_sub` (`eq_sub_iff_add_eq`, `\u2190 Pic0.mk_add`, `sub_add_cancel`) and applies it by hand. In `TG_neg` it proves `Pic0.mk (-D\u2081) = -x` with `rw [\u2190 hc\u2081]; rfl`, which depends on the quotient group's definitional unfolding.",
+      "proposed_change": "In Def_AlgebraicCurve_DivisorClassGroup.lean, next to `mk_add`, add `@[simp] theorem mk_neg (D) : mk (-D) = -mk D := rfl` and `@[simp] theorem mk_sub (D E) : mk (D - E) = mk D - mk E := rfl`. These are definitional in the same way as `mk_add`. Alternatively, bundle `Pic0.mk` as an `AddMonoidHom` so that `map_neg` and `map_sub` apply. Then delete `hmk_sub` and replace the `rfl` step in `TG_neg` with `simp`/`rw [Pic0.mk_neg]`. Both rewrites go from `mk (op ..)` to `op (mk ..)`, so they cannot loop and they match the direction of the existing `mk_add`.",
+      "benefit": "The simp set for `Pic0.mk` becomes closed under the group operations, so `mk` of a difference or negative has a canonical form. Downstream proofs no longer need ad hoc local lemmas or `rfl` on quotient unfolding. `simp` can then reduce calculations like the final `calc` in `solution`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_DivisorClassGroup.lean",
+          "declaration": "Pic0.mk_add / Pic0.mk_zero",
+          "excerpt": "theorem mk_add (D E : Divisor.degZero (K := K) (F := F)) : mk (D + E) = mk D + mk E := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "glueData_addGr / glueData_negGr / TG_zero / TG_add / TG_neg (rewriting `glueData` of 0, +, -)",
+      "start_line": 292,
+      "end_line": 298,
+      "excerpt": "P.glueData S (-D) = -(P.glueData S D)",
+      "problem": "`glueData` is a plain function, not a bundled `AddMonoidHom`. Its zero, add and neg lemmas (`glueData_zero`, `glueData_addGr`, `glueData_negGr`) carry no `@[simp]` attribute. `glueData_zero` is defined without `@[simp]` in Def_ModularCurve_GlueData.lean. Every use therefore spells out a coercion-then-glue rewrite by hand: `rw [ZeroMemClass.coe_zero, P.glueData_zero]`, `rw [AddSubgroup.coe_add, P.glueData_addGr]` and `rw [AddSubgroup.coe_neg, P.glueData_negGr]`. The same additivity lemma is also proved three times in different files, as `glueData_add`, `glueData_addGr` and `glueData_neg`. In `TG_add` and `TG_neg` the dependent subtype equations `e : \u27e8glueData \u2026, ha\u27e9 = \u27e8\u2026\u27e9 + \u27e8\u2026\u27e9` are built by hand with `Subtype.ext (show \u2026 from \u2026)`.",
+      "proposed_change": "Bundle `P.glueData S` once as an `AddMonoidHom` (another file already builds it, with `map_zero' := P.glueData_zero S` and `map_add' := glueData_add P S`). Alternatively tag `glueData_zero`, `glueData_add` and `glueData_neg` with `@[simp]`, put them in the definition file, and drop the duplicated private copies. They only push `glueData` inward over `0`, `+` and `-`, so they cannot loop. With `ZeroMemClass.coe_zero`, `AddSubgroup.coe_add` and `AddSubgroup.coe_neg`, a single `simp` call could then discharge the `ha` goals in `TG_zero`, `TG_add` and `TG_neg`.",
+      "benefit": "There is one canonical additivity interface instead of three near-identical private lemmas, and the manual `rw` chains and `Subtype.ext (show \u2026 from \u2026)` blocks shrink. The subtype-equation steps in `TG_*` should then be handled by `map_add`/`map_neg` or `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_ModularCurve_GlueData.lean",
+          "declaration": "glueData_zero",
+          "excerpt": "theorem glueData_zero"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_PlaceSpecialization_ProlongationTuple_exists_good_admissible_rep_reduce_notMem_of_isGoodClass_of_isModel.lean",
+          "declaration": "glueData_add (used to build an AddMonoidHom)",
+          "excerpt": "map_add' := glueData_add P S"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_PlaceSpecialization_exists_goodRep_toPic0Pair_eq_zero_smul_sub_self_of_isModel.lean",
+          "declaration": "H2Recon.TG_add",
+          "excerpt": "rw [AddSubgroup.coe_add, P.glueData_addGr]; exact add_mem ha\u2081 ha\u2082"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 70441,
+    "cache_read_input_tokens": 351809,
+    "output_tokens": 5182,
+    "output_tokens_details": {
+      "thinking_tokens": 1341
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 70441,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2698,
+        "cache_read_input_tokens": 72842,
+        "cache_creation_input_tokens": 1612,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1612
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3687889,
+  "duration_ms": 44093,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T01:37:56",
+  "unit": "file",
+  "source_sha256": "2e664d4f500bf1b1855f04519b4ceb807e6e64644d4b3962a8030e8937f156c6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0094",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and looked at the related definitions: the repository's `Def_CuspForm_QCoeffLinear.lean`, the `qCoeff_heckeU` and `CuspForm.qCoeff_zero` theorem files, and `coe_heckeULin_apply`. I did not check Mathlib for competing simp lemmas. Both findings are about missing simp lemmas or the wrong normal form. I saw no simp loops or competing rules in the file. The file removes several simp lemmas with `attribute [-simp]` at the top, and I did not examine why. I could not run Lean, so the proposed changes are untested.",
+  "findings": [
+    {
+      "declaration": "qCoeffLin_apply / qCoeff_U_aeval_quadratic / qCoeff_U_aeval_linear (qCoeff normal form for map_add/map_sub/map_smul)",
+      "start_line": 43,
+      "end_line": 48,
+      "excerpt": "theorem qCoeffLin_apply (M n : \u2115) [NeZero M] (G : CuspForm (CongruenceSubgroup.Gamma0 M) 2) :",
+      "problem": "`qCoeffLin_apply` is a `rfl` lemma that has no simp attribute and is only usable through `rw`. The canonical normal form is `ModularFormClass.qCoeff F n`, but the linearity lemmas `map_add`, `map_sub` and `map_smul` only fire on `qCoeffLin M n F`. So `qCoeff_U_aeval_quadratic` and `qCoeff_U_aeval_linear` have to rewrite `\u2190 qCoeffLin_apply` and then forward again (`qCoeffLin_apply, qCoeffLin_apply, qCoeffLin_apply`), and they repeat `qCoeff_heckeULin hq.ne_zero` six times. `qCoeff_zero'` uses the same round trip. The repository already has the same linear map as `CuspForm.qCoeffLinear`, again with no simp lemmas. The file therefore has no simp-usable way to push `qCoeff` through `+`, `-`, `\u2022` and `0`.",
+      "proposed_change": "Add `@[simp]` lemmas stated directly on `qCoeff`: `qCoeff_add`, `qCoeff_sub`, `qCoeff_smul` and `qCoeff_zero'` (already present, but not simp). Also make `qCoeff_heckeULin` `@[simp]` with the side condition `p \u2260 0`, or give it a `[Fact p.Prime]` form. Then `qCoeff_U_aeval_*` can be `rw [hev]; simp [qCoeff_heckeULin hq.ne_zero, L_three]; ring`, with no `\u2190`/forward rewrites and no repeated rewrites.",
+      "benefit": "The qCoeff-of-linear-combination rewrites no longer need the round trip through `qCoeffLin`. Each of the two `qCoeff_U_aeval_*` proofs becomes shorter and less sensitive to rewrite order, and later `U`-polynomial computations get the same behaviour from `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "qCoeff_U_aeval_quadratic",
+          "excerpt": "\u2190 qCoeffLin_apply, map_add, map_sub, map_smul,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "qCoeff_zero'",
+          "excerpt": "rw [\u2190 qCoeffLin_apply, map_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_CuspForm_QCoeffLinear.lean",
+          "declaration": "CuspForm.qCoeffLinear",
+          "excerpt": "toFun f := ModularFormClass.qCoeff (\u21d1f) n"
+        }
+      ]
+    },
+    {
+      "declaration": "pad_one / pad_mul / pad (towerA, towerB, towerC)",
+      "start_line": 140,
+      "end_line": 142,
+      "excerpt": "theorem pad_one (c : \u2115 \u2192 \u2102) : pad 1 c = c := by",
+      "problem": "`pad` is a plain `def` with no simp or unfolding lemma, and `pad_one` is not `@[simp]`. Its callers in `towerA`, `towerB` and `towerC` must write `pow_zero, pad_one` by hand, and other places use `unfold pad` or `rw [pad]`. The statements are also unnormalised: `towerC` is stated for `pad (q ^ 0) b` and `![(1:\u2102)]`, and `towerA` and `towerB` for `pad (q ^ i) b`. `pad_one` is proved by `simp [pad]`, so `pad` unfolds under simp. Without a stated unfold lemma, a simp call that unfolds `pad` exposes the `if d \u2223 m then \u2026 else \u2026` form instead of keeping the abstract `pad` normal form.",
+      "proposed_change": "Mark `pad_one` as `@[simp]`. Add a `pad_apply : pad d c m = if d \u2223 m then (d:\u2102) * c (m / d) else 0` equation lemma (not simp) so that `pad` is not unfolded by `unfold` in each proof. State `towerC` for `pad 1 b` or `b`, using `pow_zero` only at its call site. Together with `L_one`, `L_two` and `L_three`, which are already stated in simp-ready form, the `rw [pow_zero, pad_one, \u2026]` steps can then be `simp`.",
+      "benefit": "The identity-padding case is removed automatically, so the three tower lemmas drop the `pow_zero, pad_one` boilerplate. A single `pad_apply` removes the repeated `unfold pad` and `rw [pad]` in the proofs of `pad_mul`, `L_pad_of_coprime`, `towerA`, `towerB`. Reasoning about `pad` stays at the abstract level.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "towerC",
+          "excerpt": "rw [L_one, pow_zero, pad_one, H n, mul_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "towerB",
+          "excerpt": "\u00b7 rw [pow_zero, pad_one, H (n * q)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "pad",
+          "excerpt": "def pad (d : \u2115) (c : \u2115 \u2192 \u2102) (m : \u2115) : \u2102 := if d \u2223 m then (d : \u2102) * c (m / d) else 0"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 21905,
+    "cache_read_input_tokens": 89111,
+    "output_tokens": 5271,
+    "output_tokens_details": {
+      "thinking_tokens": 1398
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21905,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2767,
+        "cache_read_input_tokens": 23938,
+        "cache_creation_input_tokens": 1980,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1980
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14926110000000004,
+  "duration_ms": 51389,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:01:28",
+  "unit": "file",
+  "source_sha256": "2535bc227321ceab0c223026aa579cad3ee125cd3a3267285d5e3463d26aae8d",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

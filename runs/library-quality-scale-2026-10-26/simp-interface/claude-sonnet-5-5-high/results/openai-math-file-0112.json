@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0112",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions in PlanarConjugacy.lean (map, box, instruction, box_halfWidth, instruction_conjugacy). I grepped for simp attributes there and found none on map or box. I cannot run Lean, so the claims below concern the structure of the simp interface and the repeated proof patterns, not observed simp behaviour. I did not examine the other files that use these declarations in detail. I found no rewrite cycles and no competing simp rules in this file.",
+  "findings": [
+    {
+      "declaration": "PlanarConjugacy.map / Planar.coordinateMap (component evaluation interface, used in initialPoint_spec, coordinateMap_bounds, step_realized)",
+      "start_line": 139,
+      "end_line": 140,
+      "excerpt": "simp only [coordinateMap, PlanarConjugacy.map, shift, Matrix.cons_val_zero,\n    Matrix.cons_val_one, Rat.cast_sub, Rat.cast_mul, Rat.cast_div, Rat.cast_ofNat]",
+      "problem": "`PlanarConjugacy.map` is a `![_, _]` vector definition with no component simp lemmas such as `map a b \u03b5 c x 0 = a + \u03b5 * x 1` and `map a b \u03b5 c x 1 = b - c * x 0`. `Planar.coordinateMap` has none either. Every consumer therefore unfolds `map`, then `coordinateMap`, then `shift`, and then rewrites with `Matrix.cons_val_*` and a hand-picked list of `Rat.cast_*` lemmas. The same unfolding recurs at line 64 (`simp [initialPoint, PlanarConjugacy.map]`, an unrestricted simp after `fin_cases`), at lines 123\u2013124 (`instruction_halfWidths`), and at lines 139\u2013140. `point_second` instead uses `change` plus `norm_num only` at lines 190\u2013191. These ad-hoc lists differ from one proof to the next, and they expand `shift` and `compression` as well as `map`.",
+      "proposed_change": "In PlanarConjugacy.lean, add `@[simp] theorem map_apply_zero (a b \u03b5 c : \u211a) (x : Plane) : map a b \u03b5 c x 0 = (b : \u211d) - c * x 0`, with the correct components, and `map_apply_one` in the same way. Both can be proved by `rfl`, or by `simp [map]`. In this file, add `coordinateMap_apply_zero` and `coordinateMap_apply_one` as simp lemmas, stated with `shift` and `compression` kept folded. Then `point_second` and `coordinateMap_bounds` become `simp only [coordinateMap_apply_zero, coordinateMap_apply_one]` followed by arithmetic. `initialPoint_spec` no longer needs an open-ended `simp [... PlanarConjugacy.map]`.",
+      "benefit": "There is one canonical normal form for evaluating the coordinate change. Proofs stop repeating a fragile unfolding list. `shift` and `compression` stay folded, so their definitions are not expanded unnecessarily.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Flow/PlanarConjugacy.lean",
+          "declaration": "PlanarConjugacy.map",
+          "excerpt": "![(a : \u211d) + (\u03b5 : \u211d) * x 1, (b : \u211d) - (c : \u211d) * x 0]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Flow/PlanarRecorder.lean",
+          "declaration": "initialPoint_spec",
+          "excerpt": "fin_cases j <;> simp [initialPoint, PlanarConjugacy.map]"
+        }
+      ]
+    },
+    {
+      "declaration": "Planar.instruction (and PlanarConjugacy.instruction / box) unfolding interface; instruction_source_separation, instruction_target_separation, instruction_source_bounds, instruction_target_bounds",
+      "start_line": 95,
+      "end_line": 96,
+      "excerpt": "change PositivelySeparated (PlanarConjugacy.box _ _ _ _ _).carrier\n    (PlanarConjugacy.box _ _ _ _ _).carrier",
+      "problem": "`Planar.instruction` is defined as `PlanarConjugacy.instruction ...`, which in turn is a structure literal `\u27e8box .., box .., factor\u207b\u00b9\u27e9`. There are no simp or rfl-lemmas stating `(instruction M hM b).source = PlanarConjugacy.box (shift M hM) (43/128) (compression M hM) (11/32) (geometricInstruction M hM b).source`, and none for `.target`. The proofs instead use `change ... (PlanarConjugacy.box _ _ _ _ _).carrier` with five underscore arguments. This recurs at lines 95, 105, 147 and 156, and `instruction_halfWidths` at lines 123\u2013124 needs `simp only [instruction, PlanarConjugacy.instruction, ...]`. The `change` calls rely on defeq unification of the underscores, so they are fragile. A reader cannot use `simp` or `rw` to move between the instruction and its boxes.",
+      "proposed_change": "Add `theorem instruction_source (M hM b) : (instruction M hM b).source = PlanarConjugacy.box (shift M hM) (43/128) (compression M hM) (11/32) (geometricInstruction M hM b).source := rfl`, and `instruction_target` in the same way. Mark both `@[simp]` only if the boxes are the preferred normal form. Otherwise use them with `rw`, and let `instruction_halfWidths` use `simp only [instruction_source, instruction_target]`. Also add `PlanarConjugacy.instruction_source/target/factor` projection lemmas, in PlanarConjugacy.lean, for the structure literal. The four `change` lines then become `rw [instruction_source, instruction_source]` or `simp only [instruction_source]`.",
+      "benefit": "The unfolding of `instruction` goes through a documented rewrite rule, not repeated `change _ _ _ _ _` patterns. The proofs no longer depend on unification of underscores. The projections of `instruction` then reduce to `box`, which already has `box_halfWidth` and `box_center`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Flow/PlanarConjugacy.lean",
+          "declaration": "PlanarConjugacy.instruction",
+          "excerpt": "\u27e8box a b \u03b5 c r.source, box a b \u03b5 c r.target, r.factor\u207b\u00b9\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Flow/PlanarRecorder.lean",
+          "declaration": "instruction_source_bounds",
+          "excerpt": "change x \u2208 (PlanarConjugacy.box _ _ _ _ _).carrier at hx"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 22722,
+    "cache_read_input_tokens": 89913,
+    "output_tokens": 4434,
+    "output_tokens_details": {
+      "thinking_tokens": 637
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22722,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2660,
+        "cache_read_input_tokens": 25351,
+        "cache_creation_input_tokens": 1384,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1384
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14423930000000001,
+  "duration_ms": 37878,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:04:43",
+  "unit": "file",
+  "source_sha256": "9c9d7533578fc397977b76522643ff4970f2c579e0eab5b29cff1ad29878ada9",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

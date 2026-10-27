@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0039",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and checked uses of the nonboundary connectivity lemmas elsewhere in the repo. Also checked Mathlib's IsConnected.image and IsPreconnected.image. I judged the repeated `vertexSet_subset_pointSet` membership proofs and the `Set.mem_image_of_mem` simp snippets to be too short to report. I could not compile any proposed rewrite, so the rewrites are sketches that follow the existing lemma signatures.",
+  "findings": [
+    {
+      "declaration": "Graph.connected_map_iff / Graph.isTwoConnected_map_iff",
+      "start_line": 156,
+      "end_line": 176,
+      "excerpt": "have himg : InjOn (Function.invFunOn f V(G)) V(G.map f) := by\n    rw [vertexSet_map]; exact Function.invFunOn_injOn_image f V(G)",
+      "problem": "The two reverse directions repeat the same argument. Both extract a vertex from the nonempty image, build `Nonempty \u03b1`, prove injectivity of `Function.invFunOn f V(G)` on `V(G.map f)`, and then push the hypothesis through `map` and rewrite with `map_map_invFunOn`. Only the final `h.map ...` call differs. In `connected_map_iff` the `himg` fact is never used, because `Connected.map` needs no injectivity, so the copied block is already inconsistent.",
+      "proposed_change": "Add a helper after `map_map_invFunOn`: `theorem exists_map_inv (hf : InjOn f V(G)) (hne : V(G.map f).Nonempty) : \u2203 g : \u03b1' \u2192 \u03b1, InjOn g V(G.map f) \u2227 (G.map f).map g = G`. Proof sketch: take a vertex `a \u2208 V(G.map f)` and unpack `vertexSet_map` to get `z \u2208 V(G)`. Then `haveI : Nonempty \u03b1 := \u27e8z\u27e9` and `refine \u27e8Function.invFunOn f V(G), ?_, map_map_invFunOn hf\u27e9`. Injectivity follows from `rw [vertexSet_map]; exact Function.invFunOn_injOn_image f V(G)`. Then `connected_map_iff` becomes `obtain \u27e8g, -, hg\u27e9 := exists_map_inv hf h.nonempty; simpa [hg] using h.map g`. `isTwoConnected_map_iff` becomes `obtain \u27e8g, hgi, hg\u27e9 := exists_map_inv hf h.connected.nonempty; simpa [hg] using h.map hgi`. Both keep their hypotheses: `h.nonempty` and `h.connected.nonempty` are already used in the current proofs. This needs no new imports.",
+      "benefit": "The invFunOn and nonemptiness setup is written once. The dead `himg` in `connected_map_iff` disappears. A reader sees that both iff lemmas are 'map, then undo the map' with different transport lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Schoenflies/CombinatorialInvariance.lean",
+          "declaration": "Graph.map_map_invFunOn",
+          "excerpt": "(G.map f).map (Function.invFunOn f V(G)) = G"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Schoenflies/CombinatorialInvariance.lean",
+          "declaration": "Graph.isTwoConnected_map_iff",
+          "excerpt": "have := h.map himg\n  rwa [map_map_invFunOn hf] at this"
+        }
+      ]
+    },
+    {
+      "declaration": "SkeletonHomeo.isConnected_nonboundary_iff / SkeletonHomeo.isPreconnected_nonboundary_iff",
+      "start_line": 435,
+      "end_line": 453,
+      "excerpt": "  \u00b7 intro h\n    rw [\u2190 g.symm.image_nonboundary]\n    exact h.image _ (g.symm.continuousOn_toFun.mono Set.sdiff_subset)",
+      "problem": "The two theorems have identical proofs and differ only in `IsConnected` versus `IsPreconnected`. Each repeats the argument that `g` and `g.symm` both map the nonboundary onto the other one, and that `toFun` is continuous on `skeletonSet \\ outerSet`. A repo-wide grep finds no use of `isPreconnected_nonboundary_iff`. The only external callers are `FiniteTransfer.lean` and `FiniteTransferTarget.lean`, and both use `isConnected_nonboundary_iff`. So the duplicate adds maintenance cost without a consumer.",
+      "proposed_change": "Factor the common transport once. For example, add `theorem continuousOn_toFun_nonboundary : ContinuousOn g.toFun R\u2081.nonboundary := g.continuousOn_toFun.mono Set.sdiff_subset`. Then `isConnected_nonboundary_iff` is `\u27e8fun h => g.image_nonboundary \u25b8 h.image _ g.continuousOn_toFun_nonboundary, fun h => g.symm.image_nonboundary \u25b8 h.image _ g.symm.continuousOn_toFun_nonboundary\u27e9`. Delete `isPreconnected_nonboundary_iff`, or keep it as an equally short statement using the same two lemmas. The hypotheses are the existing ones, and the needed Mathlib results `IsConnected.image` and `IsPreconnected.image` are already used.",
+      "benefit": "The proof is stated once and the dead near-copy is gone. If the representation of `nonboundary` or the homeomorphism fields change, only one transport argument needs updating.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Schoenflies/CombinatorialInvariance.lean",
+          "declaration": "SkeletonHomeo.isPreconnected_nonboundary_iff",
+          "excerpt": "exact h.image _ (g.symm.continuousOn_toFun.mono Set.sdiff_subset)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Schoenflies/FiniteTransfer.lean",
+          "declaration": "consumer of isConnected_nonboundary_iff",
+          "excerpt": "isConnected_nonboundary := P.homeo.isConnected_nonboundary_iff.1 h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Topology/Connected/Basic.lean",
+          "declaration": "IsConnected.image",
+          "excerpt": "protected theorem IsConnected.image [TopologicalSpace \u03b2] {s : Set \u03b1} (H : IsConnected s) (f : \u03b1 \u2192 \u03b2)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 16729,
+    "cache_read_input_tokens": 41006,
+    "output_tokens": 4239,
+    "output_tokens_details": {
+      "thinking_tokens": 1198
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16729,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2458,
+        "cache_read_input_tokens": 19670,
+        "cache_creation_input_tokens": 988,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 988
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1134186,
+  "duration_ms": 29672,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T22:51:39",
+  "unit": "file",
+  "source_sha256": "6afd3b523f5eae4a5473da53ad82c952ff21a5831803b718b54fdbe6f6a071f5",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

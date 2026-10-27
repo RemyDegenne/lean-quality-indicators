@@ -1,0 +1,109 @@
+{
+  "id": "mathlib-file-0182",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and compared its simp attributes with the Set analogues in Mathlib/Data/Set/Basic.lean and Mathlib/Data/Finset/Lattice/Basic.lean. I also grepped the Mathlib tree for existing Finset.union_univ/univ_union and for uses of univ_eq_empty_iff and univ_neq_empty. I considered and rejected several other candidates:\n- compl_subset_compl is not simp for Set either.\n- compl_erase and compl_insert do not loop with the other simp lemmas.\n- The commented-out simp on singleton_eq_univ is correctly avoided because it would loop with univ_unique.\n- Missing sdiff_univ/univ_sdiff lemmas are a possible gap, but I found weaker evidence for them.\nI could not run Lean, so I make no claims about observed simplifier behaviour. The remaining uncertainty is whether making univ_eq_empty_iff simp changes other simp sets, such as ones that use univ_eq_empty with IsEmpty instances.",
+  "findings": [
+    {
+      "declaration": "Finset.univ_eq_empty_iff",
+      "start_line": 53,
+      "end_line": 55,
+      "excerpt": "theorem univ_eq_empty_iff : (univ : Finset \u03b1) = \u2205 \u2194 IsEmpty \u03b1 := by",
+      "problem": "The equation `univ = \u2205` is only rewritten by the simp lemma `univ_eq_empty`, which needs an `IsEmpty \u03b1` instance. For general `\u03b1`, simp cannot turn `(univ : Finset \u03b1) = \u2205` or `univ \u2260 \u2205` into the canonical statement `IsEmpty \u03b1` or `Nonempty \u03b1`. The Set analogue `Set.univ_eq_empty_iff` is `@[simp]`, but this iff has only `@[grind =]`. The workaround shows up in downstream code. `univ_neq_empty` exists as a separate `\u2260` lemma, and StdSimplex.lean needs `simpa using Finset.univ_neq_empty _` to discharge a goal that simp should be able to reduce itself.",
+      "proposed_change": "Add `@[simp]` to `univ_eq_empty_iff`, giving `@[simp, grind =]`, so that `univ = \u2205` normalises to `IsEmpty \u03b1` and `univ \u2260 \u2205` to `Nonempty \u03b1` via `not_isEmpty_iff`. `univ_eq_empty` (line 75) then becomes simp-redundant but is harmless. For symmetry, consider making `univ_nonempty_iff` simp as well, so that `univ.Nonempty` becomes `Nonempty \u03b1` without needing an instance.",
+      "benefit": "This gives simp one canonical form for emptiness of `univ`, matching `Set.univ_eq_empty_iff`. Goals about `univ = \u2205` or `univ \u2260 \u2205` over a general `Fintype` no longer need manual `rw [univ_eq_empty_iff]` (as in Fintype/Card.lean) or `simpa using univ_neq_empty _` workarounds.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Set/Basic.lean",
+          "declaration": "Set.univ_eq_empty_iff",
+          "excerpt": "@[simp]\ntheorem univ_eq_empty_iff : (univ : Set \u03b1) = \u2205 \u2194 IsEmpty \u03b1 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/AlgebraicTopology/SimplicialSet/StdSimplex.lean",
+          "declaration": "face_empty",
+          "excerpt": "simpa using Finset.univ_neq_empty _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Fintype/Card.lean",
+          "declaration": "Fintype.card_eq_zero_iff",
+          "excerpt": "rw [card, Finset.card_eq_zero, univ_eq_empty_iff]"
+        }
+      ]
+    },
+    {
+      "declaration": "Finset.univ_inter / Finset.inter_univ (missing union counterparts)",
+      "start_line": 221,
+      "end_line": 225,
+      "excerpt": "@[simp] lemma univ_inter (s : Finset \u03b1) : univ \u2229 s = s := by ext a; simp",
+      "problem": "The file makes `univ \u2229 s` and `s \u2229 univ` simp-reducible, and adds the simp iff `inter_eq_univ`. It has no `univ \u222a s = univ` or `s \u222a univ = univ`. No Finset `union_univ` or `univ_union` exists anywhere in Mathlib; I grepped for both. Because `\u222a` is not syntactically `\u2294`, `sup_top_eq` and `top_sup_eq` do not fire. The only simp coverage is `union_eq_right` and `union_eq_left` together with `subset_univ`, and those handle only a top-level equation `s \u222a univ = univ`. A subterm such as `(s \u222a univ).card` or `f (univ \u222a s)` is not simplified. The Set API has simp lemmas `Set.union_univ` and `Set.univ_union`.",
+      "proposed_change": "Next to `inter_univ`, add `@[simp] lemma union_univ (s : Finset \u03b1) : s \u222a univ = univ` and `@[simp] lemma univ_union (s : Finset \u03b1) : univ \u222a s = univ`. Each can be proved from `sup_top_eq` and `top_sup_eq` (the Finset `\u222a` is defeq to `\u2294`) or by `ext; simp`. For the same reason, consider an `sdiff_univ : s \\ univ = \u2205` lemma.",
+      "benefit": "This makes the simp normal form symmetric for `\u2229` and `\u222a` with `univ`. Terms containing `s \u222a univ` collapse to `univ` inside larger expressions such as cardinalities, `Finset.sum`, and `image` or `filter`. Users no longer have to rewrite by hand or fall back on `ext; simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Set/Basic.lean",
+          "declaration": "Set.union_univ",
+          "excerpt": "theorem union_univ (s : Set \u03b1) : s \u222a univ = univ := sup_top_eq _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Finset/Lattice/Basic.lean",
+          "declaration": "Finset.union_eq_right",
+          "excerpt": "@[simp] lemma union_eq_right : s \u222a t = t \u2194 s \u2286 t := sup_eq_right"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Finset/BooleanAlgebra.lean",
+          "declaration": "Finset.inter_univ",
+          "excerpt": "@[simp] lemma inter_univ (s : Finset \u03b1) : s \u2229 univ = s := by rw [inter_comm, univ_inter]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 25642,
+    "cache_read_input_tokens": 174859,
+    "output_tokens": 10455,
+    "output_tokens_details": {
+      "thinking_tokens": 5108
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25642,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2545,
+        "cache_read_input_tokens": 28923,
+        "cache_creation_input_tokens": 732,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 732
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22463989999999998,
+  "duration_ms": 76519,
+  "turns": 16,
+  "attempts": 1,
+  "judged": "2026-10-26T23:19:03",
+  "unit": "file",
+  "source_sha256": "8bedb91a55c158d8a06d4f91c16f8f3288fcffc165659b1a287ec040b3fdd71d",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0041",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file with the simp-interface rubric in mind. It has no @[simp] declarations of its own. The only attribute changes are the `attribute [-simp]` line at the top and `attribute [local instance]`. The simp-related problems I found are two missing normal-form lemmas. One is the coercion of `Units.map (algebraMap ..).toMonoidHom (Units.mk0 \u03be _)`, which the file re-simplifies with the same lemma list in about six places. The other is the home-made `adele_fst_mul`/`adele_snd_mul` rfl lemmas, which duplicate the existing simp lemmas `Prod.fst_mul`/`Prod.snd_mul` and are used in long `rw` chains. I did not run Lean and I claim no loops or simp failures. I did not check how the file's `simp [hx, ...]` calls interact with the extra simp lemmas Mathlib provides for ring homs. Other duplication, such as the three copies of the 'finitely many v with valuation \u2260 1' lemma, is outside this rubric.",
+  "findings": [
+    {
+      "declaration": "T1frq_mul_eq_val (and the other uses of the same simp set: T1F3_finBound, T1F3_finBound_set, T1J_continuousOn hfrq)",
+      "start_line": 1918,
+      "end_line": 1918,
+      "excerpt": "simp only [T1frq, Units.val_mul, Units.coe_map, RingHom.toMonoidHom_eq_coe, MonoidHom.coe_coe, Units.val_mk0]",
+      "problem": "The canonical-form fact `((Units.map (algebraMap F (AdeleRing (\ud835\udcde F) F)).toMonoidHom (Units.mk0 \u03be h) : (AdeleRing (\ud835\udcde F) F)\u02e3) : AdeleRing (\ud835\udcde F) F) = algebraMap F (AdeleRing (\ud835\udcde F) F) \u03be` has no dedicated lemma. Instead the same five-lemma list (`Units.coe_map, RingHom.toMonoidHom_eq_coe, MonoidHom.coe_coe, Units.val_mk0`) is repeated in at least six `simp`/`simpa` calls, at lines 1113, 1180, 1918, 2052, 2592 and 2659. Some of these are bare `simp [...]`/`simpa [...]`, which pull in the whole default simp set. The `T1frq` unfolding is also repeated by hand.",
+      "proposed_change": "Add one private lemma, for example `coe_map_toMonoidHom_mk0 (\u03be : F) (h : \u03be \u2260 0) : ((Units.map (algebraMap F (AdeleRing (\ud835\udcde F) F)).toMonoidHom (Units.mk0 \u03be h) : (AdeleRing (\ud835\udcde F) F)\u02e3) : AdeleRing (\ud835\udcde F) F) = algebraMap F (AdeleRing (\ud835\udcde F) F) \u03be`, proved once by the existing `simp only` list. Optionally add `T1frq_eq : T1frq F \u03be y = algebraMap F _ \u03be * y` as an unfolding lemma. Then replace the repeated lists with `simp only [T1frq_eq, coe_map_toMonoidHom_mk0, Units.val_mul]`. Marking it `@[simp]` is only worthwhile if the file's bare `simp`/`simpa` calls are kept; otherwise use it in `simp only`.",
+      "benefit": "This gives one canonical normal form for the global-element-to-idele coercion. The six call sites become shorter and no longer depend on the default simp set, so they are less brittle to simp-set changes and clearer to read.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_forall_exists_whittakerCoefficient_diagOne_eq_eulerProduct_mul_entire_norm_le_mul_pow_archParam_weight_dilation_of_flat.lean",
+          "declaration": "T1F3_finBound (hx')",
+          "excerpt": "simp [hx, Units.val_mul, Units.coe_map, RingHom.toMonoidHom_eq_coe, MonoidHom.coe_coe, Units.val_mk0]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_forall_exists_whittakerCoefficient_diagOne_eq_eulerProduct_mul_entire_norm_le_mul_pow_archParam_weight_dilation_of_flat.lean",
+          "declaration": "T1J_continuousOn (hfrq)",
+          "excerpt": "simp only [T1frq, hx\u2080, Units.coe_map, RingHom.toMonoidHom_eq_coe, MonoidHom.coe_coe, Units.val_mk0]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_forall_exists_whittakerCoefficient_diagOne_eq_eulerProduct_mul_entire_norm_le_mul_pow_archParam_weight_dilation_of_flat.lean",
+          "declaration": "T1F3_finBound (hfin1)",
+          "excerpt": "simpa [Units.coe_map, RingHom.toMonoidHom_eq_coe, MonoidHom.coe_coe, Units.val_mk0] using h1"
+        }
+      ]
+    },
+    {
+      "declaration": "adele_fst_mul / adele_snd_mul and their uses in snd_mul_dilation_mul, ringEquiv_mixedSpace_fst_mul_dilation_mul, ringEquiv_mixedSpace_snd_mul_dilation_mul",
+      "start_line": 409,
+      "end_line": 411,
+      "excerpt": "private theorem adele_fst_mul (a b : AdeleRing (\ud835\udcde F) F) : (a * b).1 = a.1 * b.1 := rfl",
+      "problem": "`adele_fst_mul` and `adele_snd_mul` just restate `Prod.fst_mul` and `Prod.snd_mul` for `AdeleRing`, which is a product type. They are not simp lemmas, so every use repeats them in a `rw` chain: five `adele_snd_mul` at line 418 and five `adele_fst_mul` at lines 436 and 447, each followed by five `map_mul`. The same proofs already call `simp only [Prod.fst_mul, Pi.mul_apply, hz]` at line 438. The rewrites are therefore split across a manual `rw` and a `simp only` that already contains the canonical lemma. The extra lemmas also compete with `Prod.fst_mul` for the same redex.",
+      "proposed_change": "Delete `adele_fst_mul` and `adele_snd_mul`. In the three proofs use a single `simp only [Units.val_mul, Prod.fst_mul, Prod.snd_mul, map_mul, Pi.mul_apply, hz]` (or `Prod.snd_mul` plus `hz2, one_mul` in `snd_mul_dilation_mul`) in place of the repeated `rw [... \u00d75]` chains. `snd_mul_dilation_mul` could do the same.",
+      "benefit": "This removes duplicate local lemmas that shadow the library's canonical simp lemmas. It removes the fragile counted `rw` repetition, which breaks if the term shape changes. It also uses one rewrite mechanism instead of a `rw` followed by a `simp only`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_forall_exists_whittakerCoefficient_diagOne_eq_eulerProduct_mul_entire_norm_le_mul_pow_archParam_weight_dilation_of_flat.lean",
+          "declaration": "ringEquiv_mixedSpace_fst_mul_dilation_mul",
+          "excerpt": "rw [Units.val_mul, adele_fst_mul, adele_fst_mul, adele_fst_mul, adele_fst_mul, adele_fst_mul,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_forall_exists_whittakerCoefficient_diagOne_eq_eulerProduct_mul_entire_norm_le_mul_pow_archParam_weight_dilation_of_flat.lean",
+          "declaration": "ringEquiv_mixedSpace_fst_mul_dilation_mul",
+          "excerpt": "simp only [Prod.fst_mul, Pi.mul_apply, hz]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_forall_exists_whittakerCoefficient_diagOne_eq_eulerProduct_mul_entire_norm_le_mul_pow_archParam_weight_dilation_of_flat.lean",
+          "declaration": "snd_mul_dilation_mul",
+          "excerpt": "rw [Units.val_mul, adele_snd_mul, adele_snd_mul, adele_snd_mul, adele_snd_mul, adele_snd_mul, hz2, one_mul]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 144871,
+    "cache_read_input_tokens": 441269,
+    "output_tokens": 5995,
+    "output_tokens_details": {
+      "thinking_tokens": 1587
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 144871,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3607,
+        "cache_read_input_tokens": 147294,
+        "cache_creation_input_tokens": 1590,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1590
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.6835769,
+  "duration_ms": 44902,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:28",
+  "unit": "file",
+  "source_sha256": "60579148ef4d57cbde8e55409f2bc2321794e62911adb938f0bda0aeff287fec",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

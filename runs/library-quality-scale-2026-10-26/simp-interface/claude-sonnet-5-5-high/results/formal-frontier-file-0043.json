@@ -1,0 +1,99 @@
+{
+  "id": "formal-frontier-file-0043",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the sibling Additive.lean simp interface, and compared the two. The simp lemmas on the coordinate (pow, comul, counit, antipode), the membership lemma, and the coordinate/symm_coordinate evaluation lemmas look reasonable. I saw no rewrite cycles or competing rules. The two findings are about missing lemmas that force repeated `change`/`show \u2026 from rfl` unfolding. I did not compile anything, so both findings are about maintainability and discoverability, not observed simplifier failures. Their severity is modest.",
+  "findings": [
+    {
+      "declaration": "infinitesimalAdditiveCoordinate_comul / infinitesimalAdditiveCoordinate_antipode (missing unfolding lemma for infinitesimalAdditiveCoordinate)",
+      "start_line": 87,
+      "end_line": 109,
+      "excerpt": "Ideal.Quotient.mk (infinitesimalAdditiveIdeal K p m) (additiveGroupCoordinate K) from rfl,",
+      "problem": "`infinitesimalAdditiveCoordinate` is an `@[expose] def`, so it is opaque to `simp`. Its simp-lemma family (pow, comul, counit, antipode) is the only way to normalise it. There is no lemma relating it to `Ideal.Quotient.mk \u2026 (additiveGroupCoordinate K)`, or to `mk\u2090` applied to the coordinate. Instead the same `show \u2026 = Ideal.Quotient.mk \u2026 from rfl` is repeated in the comul and antipode proofs, and again as a `change` in the `_pow` proof. Any downstream goal in which the coordinate meets `Ideal.Quotient.mk` or `mk\u2090` (for example `Bialgebra.Quotient.comul_mk`, `HopfAlgebra.Quotient.antipode_mk`, or `lift\u2090_comp` as used in the lift lemmas) cannot be bridged by `simp` and needs a manual `change`.",
+      "proposed_change": "Add one lemma, `infinitesimalAdditiveCoordinate_eq_mk : infinitesimalAdditiveCoordinate K p m = Ideal.Quotient.mk (infinitesimalAdditiveIdeal K p m) (additiveGroupCoordinate K) := rfl`. Optionally add a variant using `Ideal.Quotient.mk\u2090`. Use it with `rw` in the three proofs (comul, antipode, pow). Keep it non-simp unless a goal needs it, because it unfolds the opaque normal form, which the coordinate simp lemmas rely on. As an alternative, add `@[simp] mk\u2090_additiveGroupCoordinate : Ideal.Quotient.mk\u2090 K I (additiveGroupCoordinate K) = infinitesimalAdditiveCoordinate K p m`, which folds into the canonical form. That direction introduces no loop with the existing lemmas.",
+      "benefit": "This removes the duplicated `show \u2026 from rfl` blocks. It gives users a named bridge between the quotient coordinate and the generic Mathlib quotient API, and a canonical folding direction if the folding lemma is made simp.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/InfinitesimalAdditive.lean",
+          "declaration": "infinitesimalAdditiveCoordinate",
+          "excerpt": "(Ideal.Quotient.mk\u2090 K (infinitesimalAdditiveIdeal K p m)) (additiveGroupCoordinate K)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/InfinitesimalAdditive.lean",
+          "declaration": "infinitesimalAdditiveCoordinate_pow",
+          "excerpt": "change (Ideal.Quotient.mk (infinitesimalAdditiveIdeal K p m)"
+        }
+      ]
+    },
+    {
+      "declaration": "infinitesimalAdditiveMulEquivAlgHom (toFun) and private infinitesimalAdditiveLift_comp_mk",
+      "start_line": 243,
+      "end_line": 248,
+      "excerpt": "toFun r := WithConv.toConv (Ideal.Quotient.lift\u2090 (infinitesimalAdditiveIdeal K p m)",
+      "problem": "The public equivalence has no simp or ext lemma describing its action beyond evaluation at the coordinate. The coordinate lemma `infinitesimalAdditiveMulEquivAlgHom_coordinate` is simp. The characterising fact, `(equiv (ofAdd r)).ofConv.comp (Ideal.Quotient.mk\u2090 \u2026) = (additiveGroupMulEquivAlgHom K R (.ofAdd r.val)).ofConv`, exists only as the private `infinitesimalAdditiveLift_comp_mk`. The map is duplicated in the private `infinitesimalAdditiveLift`, whose `lift\u2090` body is copied verbatim into `toFun`. As a result, `left_inv`, `right_inv`, `map_mul'`, naturality and `infinitesimalAdditivePointsIso` all use long `change \u2026 infinitesimalAdditiveLift \u2026 ` rewrites to align the two copies. Downstream users cannot reproduce these steps with `simp` or `rw`, because the lemma is private and the public statement cannot be matched syntactically.",
+      "proposed_change": "Define `toFun r` as `WithConv.toConv (infinitesimalAdditiveLift K p m R r.toAdd)`. Make `infinitesimalAdditiveLift_comp_mk` public, restated for `infinitesimalAdditiveMulEquivAlgHom`: `((infinitesimalAdditiveMulEquivAlgHom K p m R (.ofAdd r)).ofConv).comp (Ideal.Quotient.mk\u2090 K (infinitesimalAdditiveIdeal K p m)) = (additiveGroupMulEquivAlgHom K R (.ofAdd r.val)).ofConv`. Mark it `@[simp]` (the LHS is a `comp` with `mk\u2090`, so it is an unambiguous normal-form rewrite). Then the `change` blocks in `right_inv`, `map_mul'`, `_naturality` and `infinitesimalAdditivePointsIso` become plain `rw` or `simp` steps.",
+      "benefit": "This gives one canonical public rewrite rule for the equivalence, removes the duplicated `lift\u2090` definition, and shortens the `change`-heavy proofs. It also lets downstream code compute with the equivalence through `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/InfinitesimalAdditive.lean",
+          "declaration": "infinitesimalAdditiveLift_comp_mk",
+          "excerpt": "(additiveGroupMulEquivAlgHom K R (.ofAdd r.val)).ofConv := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/InfinitesimalAdditive.lean",
+          "declaration": "infinitesimalAdditiveLift",
+          "excerpt": "Ideal.Quotient.lift\u2090 (infinitesimalAdditiveIdeal K p m)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 17916,
+    "cache_read_input_tokens": 55830,
+    "output_tokens": 5539,
+    "output_tokens_details": {
+      "thinking_tokens": 2064
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17916,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2964,
+        "cache_read_input_tokens": 19164,
+        "cache_creation_input_tokens": 2765,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2765
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.13265300000000002,
+  "duration_ms": 38757,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:47",
+  "unit": "file",
+  "source_sha256": "5a070cc99f5ed6b26279d92e7684a632ef4a50482a777bc160557e9703466c26",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

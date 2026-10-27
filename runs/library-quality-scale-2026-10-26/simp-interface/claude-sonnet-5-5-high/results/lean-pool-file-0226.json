@@ -1,0 +1,135 @@
+{
+  "id": "lean-pool-file-0226",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "partial",
+  "review_notes": "The file has two parts. Lines 1\u20132934 are huge generated TAlpha certificates with no simp content. Lines 2935 onward are 28 `nb091_focused_notmem_*` theorems, a `TEnvFresh` assembly, and 8 `nb091_compact_fv_empty_*` lemmas. I read the notmem proofs at lines 3301\u20133368 closely and skimmed the rest. The first two findings rest on the Explicit-versus-simp fv lemma comparison. I did not read the whole certificate section line by line. I also did not check the other Part files for uses of the empty-set lemmas. I cannot run Lean, so the proposed `simp only` replacements are untested. Whether the Explicit lemmas are deliberately non-simp is also an assumption I could not confirm.",
+  "findings": [
+    {
+      "declaration": "nb091_focused_notmem_0046 (pattern repeated across nb091_focused_notmem_0028 \u2013 0055)",
+      "start_line": 3322,
+      "end_line": 3368,
+      "excerpt": "rw [fv_syn_cin R\n          (synCxp (synCin D (synCima (synCcnv (synCdif R (synCid)))",
+      "problem": "The free-variable lemmas used here are the `NFChoice.Compiler.CompactSyntaxFVExplicit` versions (`fv_syn_cin`, `fv_syn_cxp`, `fv_syn_wrex`, `fv_syn_wa`, `fv_syn_cnin`, `fv_syn_ccompl`, `fv_syn_chwniso`, `fv_syn_chnwcutcode`). They carry no `@[simp]` attribute. The simp-tagged duplicates live in the separate `CompactSyntaxFV` namespace, which this file does not open. As a result every `\u2209 D.fv` goal is proved by a hand-driven chain of `rw [Finset.mem_union]`, `left`/`right` and `rw [fv_\u2026 <fully spelled arguments>]`. The spelled arguments restate the entire syntax term, which is why proofs run to dozens of lines. The chains are tied to the exact shape of the union, so they break whenever the syntax term or its `fv` unfolding changes. The same statements already exist in `CompactSyntaxFV` with `@[simp]`. That leaves two parallel lemma families, one simp and one not, and the file has no canonical simp set for its own namespace. `fv_syn_chwniso` and `fv_syn_chnwcutcode` have no simp variant anywhere I found.",
+      "proposed_change": "Tag the Explicit `fv_syn_*` lemmas used here with `@[simp]`, or add a dedicated simp set. This must include `fv_syn_chwniso` and `fv_syn_chnwcutcode`, which have no simp variant at all. They are plain structural identities with a smaller-term right-hand side, so they cannot loop. Then each notmem goal should reduce to roughly `intro x hx; simp only [fv_syn_cin, fv_syn_cxp, fv_syn_wrex, fv_class_cab, Finset.mem_union, Finset.mem_erase] at *`. The shared fresh-variable facts can be passed in as a hypothesis. This replaces the hand-written rewrite chains and the ~40-line `change` blocks. If the Explicit lemmas are deliberately non-simp, collect them in a named `simp only` set instead.",
+      "benefit": "The 28 near-identical proofs shrink and become robust to changes in the syntax terms. There is one canonical fv simp set, not two parallel lemma families that differ only in the simp attribute.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/CompactSyntaxFVExplicit.lean",
+          "declaration": "fv_syn_cin",
+          "excerpt": "theorem fv_syn_cin (A : Class) (B : Class) : (synCin A B).fv = (A.fv) \u222a (B.fv) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/CompactSyntaxFV.lean",
+          "declaration": "fv_syn_cin",
+          "excerpt": "@[simp]\ntheorem fv_syn_cin (A : Class) (B : Class) : (synCin A B).fv = (A.fv) \u222a (B.fv) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/CoreFVSimp.lean",
+          "declaration": "fv_class_cab",
+          "excerpt": "@[simp]\ntheorem fv_class_cab (x : Var) (p : Wff) : (Class.cab x p).fv = p.fv.erase x := by rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/WPPCompactSyntaxFVExplicitPart005.lean",
+          "declaration": "fv_syn_chwniso",
+          "excerpt": "theorem fv_syn_chwniso (A : Class) : (synChwniso A).fv = A.fv :="
+        }
+      ]
+    },
+    {
+      "declaration": "nb091_focused_notmem_0036",
+      "start_line": 2951,
+      "end_line": 2977,
+      "excerpt": "rw [fv_syn_wa\n      (Wff.classMem (Class.cv (nb091AlphaDummy059 D R)) (synCin D",
+      "problem": "This proof peels `synWa` and `Wff.classMem` with explicit `rw [fv_syn_wa \u2026]` and `rw [fv_wff_classMem \u2026]`, restating the whole `Wff.classMem \u2026` argument each time. `fv_wff_classMem` is already `@[simp]` in `CoreFVSimp`, and the `CompactSyntaxFV` version of `fv_syn_wa` is `@[simp]`. The `CompactSyntaxFVExplicit` `fv_syn_wa` that this file actually uses is not tagged, so the available simp coverage for `synWa` is unused and each rewrite has to be done by hand. The same problem recurs in `nb091_focused_notmem_0037`.",
+      "proposed_change": "Make the Explicit `fv_syn_wa` simp, or call `simp only [fv_syn_wa, fv_wff_classMem, fv_syn_cin, Finset.mem_union]` on `hu`'s goal. Then conclude with `Or.inl`/`tauto`-style reasoning instead of the left/right bookkeeping.",
+      "benefit": "The reader sees the actual argument: `D.fv` appears only under the `synCin D \u2026` subterm. They do not have to follow `left`/`right` bookkeeping over hundreds of tokens of repeated syntax.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/CoreFVSimp.lean",
+          "declaration": "fv_wff_classMem",
+          "excerpt": "@[simp]\ntheorem fv_wff_classMem (A B : Class) : (Wff.classMem A B).fv = A.fv \u222a B.fv := by rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/CompactSyntaxFVExplicit.lean",
+          "declaration": "fv_syn_wa",
+          "excerpt": "theorem fv_syn_wa (ph : Wff) (ps : Wff) : (synWa ph ps).fv = (ph.fv) \u222a (ps.fv) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/CompactSyntaxFV.lean",
+          "declaration": "fv_syn_wa",
+          "excerpt": "@[simp]\ntheorem fv_syn_wa (ph : Wff) (ps : Wff) : (synWa ph ps).fv = (ph.fv) \u222a (ps.fv) :="
+        }
+      ]
+    },
+    {
+      "declaration": "nb091_compact_fv_empty_0102 (and 0103\u20130109)",
+      "start_line": 3784,
+      "end_line": 3788,
+      "excerpt": "(nb091AlphaDummy106 D R) \u2209 (\u2205 : Finset Var) :=\n  by\n  intro hmem\n  cases hmem",
+      "problem": "Eight separate theorems each state `x \u2209 (\u2205 : Finset Var)` for a different dummy variable. Each is proved by `intro hmem; cases hmem`. Each is just `Finset.notMem_empty x`, which is already a simp lemma, so `simp` closes any such goal. The dummy-variable names add nothing to the statement. Other files in this development already use `Finset.notMem_empty` directly (for example `LoweringTotality.lean` and `WellOrderPullback6.lean` via local `have \u2026 \u2209 (\u2205 : Finset Var)`). The wrappers therefore add eight declarations to the simp-visible namespace without adding any rewrite rule.",
+      "proposed_change": "Delete the eight wrappers. Where they are used, replace `nb091_compact_fv_empty_01xx \u2026` with `Finset.notMem_empty _`, or let `simp` discharge the side goal. If a named hook is wanted, keep a single generic lemma `\u2200 x : Var, x \u2209 (\u2205 : Finset Var)` instead of one per dummy variable.",
+      "benefit": "This removes redundant declarations and makes clear that no dummy-specific fact is being used. It also relies on existing simp coverage (`Finset.notMem_empty`) instead of restating it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/SemanticCore/LoweringTotality.lean",
+          "declaration": "(proof using Finset.notMem_empty)",
+          "excerpt": "simp only [hp, Finset.notMem_empty] at hx)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/ReplaySupport/WellOrderPullback6.lean",
+          "declaration": "local compact_fv_not_mem_empty",
+          "excerpt": "have compact_fv_not_mem_empty : a \u2209 (\u2205 : Finset Var) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 94588,
+    "cache_read_input_tokens": 464719,
+    "output_tokens": 6820,
+    "output_tokens_details": {
+      "thinking_tokens": 1293
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 94588,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3729,
+        "cache_read_input_tokens": 95922,
+        "cache_creation_input_tokens": 2679,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2679
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4930479,
+  "duration_ms": 49856,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T00:34:16",
+  "unit": "file",
+  "source_sha256": "197b04df267adb3c884e9e0186b22f0a1e1acd9e2be088209ad5e9f926630e45",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

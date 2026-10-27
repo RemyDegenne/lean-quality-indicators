@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0243",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of Main.lean and the definitions it uses: placedAxis, oppositeStep, axisDirection and axisDirection_opposite. I also grepped the DirectionalWalk directory for how these are simplified elsewhere. Main.lean declares no simp lemmas of its own, so both findings concern missing simp lemmas for the unfolding it does. I did not run Lean. I did not check whether the proposed rewrites would interact badly with other simp sets, though I expect they would not: the left-hand sides are specific constructor-applied forms and the right-hand sides are strictly simpler.",
+  "findings": [
+    {
+      "declaration": "directional_zero_one",
+      "start_line": 135,
+      "end_line": 141,
+      "excerpt": "simpa only [placedAxis, Bool.false_eq_true,\u2193reduceIte,axisDirection] using",
+      "problem": "`placedAxis` is a Bool-conditional definition (`if b then oppositeStep e else e`). Each time it meets a concrete `b`, callers unfold it and then clear the `if` with `Bool.false_eq_true` and `\u2193reduceIte`. The same ad hoc recipe appears at LateContacts.lean:190 (`simpa only [placedAxis,\u2193reduceIte,axisDirection_opposite]`) and ContactGeometry.lean:108-113 (`simp only [placedAxis,Bool.false_eq_true,\u2193reduceIte] at hc ha`). The `true` case in Main.lean (line 139) instead uses a `change` plus `rw`. No canonical simp lemma exists for `placedAxis e false` or `placedAxis e true`. As a result the normal form of `axisDirection (placedAxis e true)` is reached only by a hand-picked, brittle simp set, and each use has to re-derive it.",
+      "proposed_change": "Next to the definition of `placedAxis` in ContactGeometry.lean, add `@[simp] lemma placedAxis_false (e : Step d) : placedAxis e false = e := rfl` and `@[simp] lemma placedAxis_true (e : Step d) : placedAxis e true = oppositeStep e := rfl`. Together with `axisDirection_opposite` (also tagged `@[simp]`, or listed explicitly), the two `cases b` branches in `directional_zero_one` could then close with `simpa using positive_nonBacktracking \u2026`. The `change` in the `true` branch would no longer be needed. The simp-only recipes at LateContacts.lean:190 and ContactGeometry.lean:108-113 could be shortened in the same way.",
+      "benefit": "This gives one canonical rewrite for `placedAxis` at literal Bool arguments. The unfold-then-`reduceIte` boilerplate is removed from three files. Later proofs also no longer break when the `if` definition of `placedAxis` is refactored.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ContactGeometry.lean",
+          "declaration": "placedAxis",
+          "excerpt": "def placedAxis {d : \u2115} (e : Step d) (b : Bool) : Step d := if b then oppositeStep e else e"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/LateContacts.lean",
+          "declaration": "integrable_placed_slabRadius",
+          "excerpt": "simpa only [placedAxis,\u2193reduceIte,axisDirection_opposite] using hh.2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ContactGeometry.lean",
+          "declaration": "placed width lemma",
+          "excerpt": "simp only [placedAxis,Bool.false_eq_true,\u2193reduceIte] at hc ha"
+        }
+      ]
+    },
+    {
+      "declaration": "directional_zero_one",
+      "start_line": 139,
+      "end_line": 141,
+      "excerpt": "rw [axisDirection_opposite]",
+      "problem": "`axisDirection` is a definition via `Pi.single e.1 (if e.2 then 1 else -1)`. For a concrete step such as `(i,true)` there is no simp lemma giving `Pi.single i 1`. `axisDirection_opposite` is a plain lemma, not `@[simp]`. The last branch therefore needs a manual `change` to expose `oppositeStep (i,true)`, an explicit `rw [axisDirection_opposite]`, and then `simpa only [axisDirection,\u2193reduceIte]` to unfold the definition and reduce the `if`. Unfolding `axisDirection` in a goal exposes `Pi.single _ (if \u2026)`, which is a worse normal form than the one the caller wants. Axis.lean already needs `simp [axisDirection, Pi.single_apply]` in several places.",
+      "proposed_change": "Add `@[simp] lemma axisDirection_true (i : Fin d) : axisDirection (i,true) = Pi.single i 1` and `@[simp] lemma axisDirection_false (i : Fin d) : axisDirection (i,false) = Pi.single i (-1)`. Also tag `axisDirection_opposite` with `@[simp]`, since its right-hand side `-axisDirection e` is structurally smaller. Add an `oppositeStep` simp lemma such as `oppositeStep (i,b) = (i,!b)` if one is needed. Then the last bullet could reduce to `simpa using positive_nonBacktracking \u03bc (-Pi.single i 1) hi'` and the `Pi.single i 1` bullet to `simpa using \u2026`, with no `change` or `rw`.",
+      "benefit": "`axisDirection` of concrete steps gets a stable normal form (`Pi.single i 1` / `-Pi.single i 1`). The call sites no longer unfold the definition by hand. The step-level API is also better aligned with `positive_nonBacktracking`, which takes raw vectors.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/Axis.lean",
+          "declaration": "axisDirection",
+          "excerpt": "Pi.single e.1 (if e.2 then 1 else -1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/ContactGeometry.lean",
+          "declaration": "axisDirection_opposite",
+          "excerpt": "axisDirection (oppositeStep e) = -axisDirection e := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/DirectionalWalk/LateContacts.lean",
+          "declaration": "integrable_placed_slabRadius",
+          "excerpt": "rw [\u2190 axisDirection_opposite]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 22047,
+    "cache_read_input_tokens": 60131,
+    "output_tokens": 3764,
+    "output_tokens_details": {
+      "thinking_tokens": 473
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22047,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2675,
+        "cache_read_input_tokens": 23542,
+        "cache_creation_input_tokens": 2518,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2518
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1318571,
+  "duration_ms": 26997,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:39:04",
+  "unit": "file",
+  "source_sha256": "3379b9aa2f110188d70d7196cbbca3f879fc118fd98479fafc3a11d4b0a54062",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

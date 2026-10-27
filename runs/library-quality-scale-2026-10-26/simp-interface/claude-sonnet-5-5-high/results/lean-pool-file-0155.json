@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0155",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related definitions: heatKernel in SobolevHeatKernel.lean, the heat lemmas in SobolevHeat.lean, laplacianEvaluation, and the uses of truncate_heatOperator and value_truncateOperator across the Euler directory. I found no loop or orientation problem. I couldn't run Lean, so I didn't test any proposed lemma or attribute. Both findings concern missing simp-friendly interface lemmas.",
+  "findings": [
+    {
+      "declaration": "EulerMildEquationBridge.truncate_heatKernel",
+      "start_line": 154,
+      "end_line": 154,
+      "excerpt": "rw [heatKernel, dite_eq_left hr]",
+      "problem": "`heatKernel` is defined as `if ht : 0 < t then heatGain \u2026 else 0`, but there are no equation lemmas for the two cases. Every client unfolds the definition by hand and then rewrites the `dite` with `dite_eq_left`. The same pattern appears in `heatKernel_bound` (SobolevHeatKernel.lean:131), in SobolevHeatVolterra.lean:57, and twice in DivergenceFreeHeat.lean (101 and 103), which handles the nonpositive case with `simp only [heatKernel, hr, dite_false, zero_apply, map_zero]`. This unfolding exposes the internal `dite` and a `\u27e82*\u03bd*t, _\u27e9` NNReal subtype, so the clients depend on that representation. `simp` has no stable normal form for `heatKernel period q \u03bd h\u03bd r` once `0 < r` or `r \u2264 0` is known.",
+      "proposed_change": "In SobolevHeatKernel.lean, next to the definition, add two equation lemmas. The first is `heatKernel_of_pos (ht : 0 < t) : heatKernel period q \u03bd h\u03bd t = heatGain period q \u27e82*\u03bd*t, _\u27e9 _`, stated with the same NNReal subtype and proof argument as the definition so that `dif_pos ht` proves it. The second is `@[simp] heatKernel_of_nonpos (ht : t \u2264 0) : heatKernel period q \u03bd h\u03bd t = 0`. Optionally state the positive case as `heatKernel \u2026 t u = heatOperator \u2026 (2*\u03bd*t).toNNReal u`-style, or via `value`, so that `simp [heatKernel_of_pos ht]` rewrites it. Then replace the manual `rw [heatKernel, dite_eq_left hr]` in the four places with `rw [heatKernel_of_pos \u2026]`, and replace the nonpositive branch in DivergenceFreeHeat with `simp [heatKernel_of_nonpos \u2026]`.",
+      "benefit": "Clients use one stable, hypothesis-guarded rewrite instead of unfolding the `dite`. The zero case becomes a simp lemma that discharges its side condition from the context. Later proofs no longer depend on how `heatKernel` is built internally.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatKernel.lean",
+          "declaration": "EulerSobolevHeatKernel.heatKernel_bound",
+          "excerpt": "rw [heatKernel, dite_eq_left ht]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/DivergenceFreeHeat.lean",
+          "declaration": "heatKernel_preserves_gradient_zero",
+          "excerpt": "simp only [heatKernel, hr, dite_false, zero_apply, map_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatVolterra.lean",
+          "declaration": "heatKernel continuity proof",
+          "excerpt": "rw [heatKernel, dite_eq_left ht]"
+        }
+      ]
+    },
+    {
+      "declaration": "EulerMildEquationBridge.truncate_heatOperator / laplacian_truncate",
+      "start_line": 134,
+      "end_line": 146,
+      "excerpt": "theorem truncate_heatOperator {q : \u2115} (v : \u211d\u22650) (u : SobolevSpace period (q + 1)) :",
+      "problem": "`truncate_heatOperator` and `laplacian_truncate` are the canonical commutation rules of `truncateOperator` with `heatOperator` and `laplacianEvaluation`. Both have a clear orientation, with the truncation pushed inside, and both are terminating. Neither is tagged `@[simp]`, and the companion `truncate_heatGain` (SobolevHeat.lean:279) is not tagged either, although `value_truncateOperator` and the `*_value` lemmas are. As a result, the file chains these lemmas by hand. Line 254 is `simpa only [value_truncateOperator, laplacian_truncate]`, and it has to be preceded by an explicit `change` (lines 250\u2013253) because simp does not normalise `truncateOperator (heatOperator \u2026)`. Line 249 has the term chain `(congrArg\u2082 (\u00b7 + \u00b7) (truncate_heatOperator period _ u\u2080) hc)` with `map_add`. The same `truncate_heatOperator`/`map_add` chains are repeated in GainedMildFormula.lean:64, MildWordEquation.lean:67 and MildTopWord.lean:98.",
+      "proposed_change": "Mark `truncate_heatOperator` as `@[simp]`, and also `truncate_heatGain` in SobolevHeat.lean. Both left-hand sides are headed by `truncateOperator` applied to a heat operator, and both rewrite to a strictly smaller expression. Move `laplacian_truncate` to SobolevHeatGenerator.lean next to `laplacianEvaluation_apply` and mark it `@[simp]`. It is safe because `hq` is a proof argument that simp can fill by unification. The `Nat.le_trans hq (Nat.le_succ q)` proof on the right-hand side is irrelevant by proof irrelevance. Then `ordinary_mild_hasDerivAt`'s output and `viscous_mild_hasDerivAt` can use `simpa using hd`, and the `hv` step can use `simp [hsol, map_add, \u2026]` instead of the explicit `trans`/`congrArg\u2082` term.",
+      "benefit": "Truncation moves through heat flows and Laplacians as a single simp normal form. The hand-built `congrArg\u2082`/`trans` chains and the repeated `change` statements, which duplicate large expressions, can be shortened or removed in this file and in at least three sibling files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeat.lean",
+          "declaration": "truncate_heatGain",
+          "excerpt": "truncateOperator period q (heatGain period q v hv u) = heatOperator period q v u"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MildWordEquation.lean",
+          "declaration": "mild equation truncation step",
+          "excerpt": "exact congrArg\u2082 (\u00b7 + \u00b7) (truncate_heatOperator period _ u\u2080) hc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/CylinderSobolevDerivatives.lean",
+          "declaration": "value_truncateOperator",
+          "excerpt": "theorem value_truncateOperator {q : \u2115} (u : SobolevSpace period (q + 1)) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 33414,
+    "cache_read_input_tokens": 195156,
+    "output_tokens": 5927,
+    "output_tokens_details": {
+      "thinking_tokens": 1199
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33414,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2782,
+        "cache_read_input_tokens": 36527,
+        "cache_creation_input_tokens": 900,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 900
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.21247359999999998,
+  "duration_ms": 47372,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-26T23:13:14",
+  "unit": "file",
+  "source_sha256": "1a09624d60cdcd6851e3073620159c9ed7c5277ab303b3887895e324d6617f9e",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

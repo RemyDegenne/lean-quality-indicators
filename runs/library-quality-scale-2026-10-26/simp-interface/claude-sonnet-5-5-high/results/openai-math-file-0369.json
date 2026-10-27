@@ -1,0 +1,94 @@
+{
+  "id": "openai-math-file-0369",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped for uses of empiricalSin and empiricalCov across the project. I read the consumers in DirectionFamily.lean and RoundedCharts.lean. The file has no @[simp] attributes. All proofs here use explicit `rw [empiricalSin]` or `rw [empiricalCov]`, which is fine. The only evidence of friction is in downstream files, where the unfolding is done ad hoc with commutativity lemmas. I found no loops or competing simp rules. I did not run Lean, and I did not check the unfolded forms beyond reading the sources. The finding is therefore modest: it asks for a normal-form lemma, not a simp attribute.",
+  "findings": [
+    {
+      "declaration": "empiricalCov",
+      "start_line": 18,
+      "end_line": 19,
+      "excerpt": "(\u2211 i, (inner \u211d v (g i))^2)/(N : \u211d)",
+      "problem": "`empiricalCov` is a bare def with no companion unfolding or normal-form lemma. The only consumer outside the file that unfolds it has to use `simpa only [DirectionInterpolation.empiricalCov, real_inner_comm, div_eq_mul_inv, mul_comm]`. That set contains the permutation lemmas `real_inner_comm` and `mul_comm`, and it also rewrites the division. `empiricalCov` and its `inner \u211d v (g i)` argument order are not canonical. A user matching against `\u2211 i, (inner \u211d (g i) v)^2 * N\u207b\u00b9` has to normalize by hand, and that normalization depends on simp's ordered-rewriting behaviour for commutativity lemmas.",
+      "proposed_change": "Add a non-simp unfolding lemma next to the def, e.g. `lemma empiricalCov_def (g : Fin N \u2192 E) (v : E) : empiricalCov g v = (N : \u211d)\u207b\u00b9 * \u2211 i, (inner \u211d (g i) v)^2` (or whichever of the two forms FrameCharts.normalized_bounds expects). Its proof would be `simp [empiricalCov, real_inner_comm, div_eq_inv_mul]`. Alternatively, put the `(inner \u211d (g i) v)` order and the `N\u207b\u00b9 *` form into the definition itself. Then `RoundedCharts.energy` can use `simpa only [empiricalCov_def] using hc v hv` without `real_inner_comm` or `mul_comm`. Only make it `@[simp]` if `empiricalCov` is unfolded in most uses, which does not currently look to be the case.",
+      "benefit": "Callers get one canonical, terminating rewrite for the covariance instead of ad hoc permutation-lemma sets. This makes the downstream unfolding robust to the orientation of `inner` and to the multiplication order.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/SparsestCut/RoundedCharts.lean",
+          "declaration": "energy",
+          "excerpt": "simpa only [DirectionInterpolation.empiricalCov,real_inner_comm,div_eq_mul_inv,mul_comm] using hc v hv"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/SparsestCut/DirectionFamily.lean",
+          "declaration": "net_covariance_scalar",
+          "excerpt": "|empiricalCov g v - 1| \u2264 1/8 + 16*Real.exp (-(m : \u211d)/12)"
+        }
+      ]
+    },
+    {
+      "declaration": "empiricalSin",
+      "start_line": 16,
+      "end_line": 17,
+      "excerpt": "(N : \u211d)\u207b\u00b9 \u2022 \u2211 i, Real.sin (inner \u211d (g i) w) \u2022 g i",
+      "problem": "The def has no unfolding or inner-product lemma beside it. The scalar-coordinate form of `inner \u211d (empiricalSin g w - exp(-\u2016w\u2016\u00b2/2) \u2022 w) v` is proved as `inner_empiricalSin` in DirectionFamily.lean, and only there. It rests on a `simp only [empiricalSin, inner_sub_left, inner_smul_left, conj_trivial, sum_inner, div_eq_mul_inv]` followed by a manual `Finset.mul_sum`/`Finset.sum_mul` `sum_congr` and `ring`. This file's own statements (`empiricalSin_lipschitz`, `fourier_net_bound`) use `empiricalSin` only through `rw [empiricalSin]` and the hypothesis `hdev` (the inner-product form), so that bridging lemma is a missing piece of this simp interface. It also sits apart from the definition.",
+      "proposed_change": "Move `inner_empiricalSin` (or a simpler `inner_empiricalSin_apply : inner \u211d (empiricalSin g w) v = (N:\u211d)\u207b\u00b9 * \u2211 i, Real.sin (inner \u211d (g i) w) * inner \u211d (g i) v`) next to the definition in this file. Optionally mark the simpler form `@[simp]`; it is terminating and it eliminates the nonstandard sum-of-smul. Keep the exp term subtraction as a separate step, so that simp does not unfold `empiricalSin` generally.",
+      "benefit": "The inner-product expansion is reusable by `fourier_net_bound` consumers without re-proving it. It also gives a canonical normal form for the coordinates of `empiricalSin`, instead of one that is only reachable through a bespoke rewrite in a different file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/SparsestCut/DirectionFamily.lean",
+          "declaration": "inner_empiricalSin",
+          "excerpt": "simp only [empiricalSin, inner_sub_left, inner_smul_left, conj_trivial,\n    sum_inner, div_eq_mul_inv]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 15611,
+    "cache_read_input_tokens": 34975,
+    "output_tokens": 3313,
+    "output_tokens_details": {
+      "thinking_tokens": 691
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15611,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2760,
+        "cache_read_input_tokens": 16726,
+        "cache_creation_input_tokens": 2898,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2898
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.09908349999999999,
+  "duration_ms": 27988,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T02:09:20",
+  "unit": "file",
+  "source_sha256": "44fbb5bb533800eee6a470bf3a407fbe6925562b5a5bcd5572d54ccf043ca679",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

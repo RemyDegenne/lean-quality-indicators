@@ -1,0 +1,114 @@
+{
+  "id": "openai-math-file-0251",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the SL2 group-element definitions and lemmas (unipotent, lowerUnipotent, dualMatrix, diagonalTorus) in the RestrictedTilting directory. I checked how the other files that use standardBasis and the unipotent lemmas treat their simp attributes. I checked the imports of WeightBounds and CharacterExpansions to see where unipotent_zero is defined. I could not confirm whether XChartLineEval and StandardLifts are ever imported together, so the duplicate-lemma point is stated conditionally. I did not run Lean, so nothing here claims an observed simp failure or loop. Both findings are about missing or inconsistent simp-set coverage. I found no rewrite cycles or wrong-direction simp lemmas in the file's two @[simp] additions or elsewhere.",
+  "findings": [
+    {
+      "declaration": "unipotent_inv",
+      "start_line": 61,
+      "end_line": 64,
+      "excerpt": "@[simp] lemma unipotent_inv (t : k) : (unipotent k t)\u207b\u00b9 = unipotent k (-t) := by",
+      "problem": "The simp interface for the two root-group families is asymmetric. For lowerUnipotent, both `lowerUnipotent_zero` and `lowerUnipotent_inv` are @[simp]. For unipotent, `unipotent_zero` is not @[simp], and `unipotent_inv` is only made simp here, in a late file, instead of next to its siblings. So the normal form `unipotent k 0 = 1` is not reached by simp, even though the simp lemma `unipotent_inv` can produce `unipotent k (-0)`. Proving `unipotent_inv` itself has to name `unipotent_zero` by hand (`simp only [add_neg_cancel, unipotent_zero]`). Other proofs pass it explicitly too, e.g. `simpa [unipotent_zero] using hc' 0` in WeightBounds. A non-simp duplicate `unipotent_inverse` with the same statement exists in XChartLineEval, so the same rewrite is split across two names, only one of them simp.",
+      "proposed_change": "Mark `unipotent_zero` as @[simp] where it is defined in SL2Definitions.lean, to match `lowerUnipotent_zero`. Move `unipotent_inv` (keeping @[simp]) next to `unipotent_add`, in the same style as `lowerUnipotent_inv` in WeightBounds. If XChartLineEval is or can be imported after that point, replace `unipotent_inverse` by it. The orientation is fine: it pushes inversion into the parameter and always terminates.",
+      "benefit": "The upper and lower unipotent families get the same simp behaviour. Goals containing `(unipotent k t)\u207b\u00b9` or `unipotent k 0` normalise without hand-supplied lemmas. The duplicated statement (`unipotent_inverse`, `unipotent_inv`) is removed, so later files do not have to choose between a simp and a non-simp version.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/RestrictedTilting/WeightBounds.lean",
+          "declaration": "lowerUnipotent_zero",
+          "excerpt": "@[simp] lemma lowerUnipotent_zero : lowerUnipotent k 0 = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/RestrictedTilting/WeightBounds.lean",
+          "declaration": "lowerUnipotent_inv",
+          "excerpt": "@[simp] lemma lowerUnipotent_inv (t : k) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/RestrictedTilting/SL2Definitions.lean",
+          "declaration": "unipotent_zero",
+          "excerpt": "lemma unipotent_zero : unipotent k 0 = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/RestrictedTilting/XChartLineEval.lean",
+          "declaration": "unipotent_inverse",
+          "excerpt": "lemma unipotent_inverse (t : k) : (unipotent k t)\u207b\u00b9 = unipotent k (-t) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "highestCoefficientMap (and standardBasis)",
+      "start_line": 240,
+      "end_line": 252,
+      "excerpt": "(standardBasis k n).constr k (fun i => c i)",
+      "problem": "`standardBasis` and `highestCoefficientMap` are plain defs with no evaluation lemmas. `standardBasis` is defined as `(binaryBasis k n).dualBasis`, and `highestCoefficientMap` as a `Basis.constr`. The only way to compute with them is to unfold the definitions inside simp sets. `highestCoefficientMap_lower_orbit` ends with `simp [highestCoefficientMap]`. `standardHighest_lower_orbit` and `standardBasis_weight` unfold `standardBasis` to reach `Module.Basis.dualBasis_apply_self`, as in `simp only [..., standardBasis, LinearMap.sum_apply, ...]`. SteinbergDuality and SimpleModules do `change ... standardBasis k n ...` in several places. This exposes the representation of the definitions, which unfold to `dualBasis` and `constr`, and ties every caller to it. The canonical normal forms, `highestCoefficientMap k n c (standardBasis k n i) = c i` and `standardBasis k n i (binaryBasis k n j) = if j = i then 1 else 0`, are not available to `simp`.",
+      "proposed_change": "Add `@[simp] lemma highestCoefficientMap_standardBasis ... : highestCoefficientMap k n c (standardBasis k n i) = c i`, proved from `Module.Basis.constr_basis`. Add `@[simp] lemma standardBasis_apply_binaryBasis (i j : Fin (n+1)) : standardBasis k n i (binaryBasis k n j) = if j = i then 1 else 0`, proved from `Module.Basis.dualBasis_apply_self`. Then `highestCoefficientMap_lower_orbit` can use `simp` after `map_sum`/`map_smul`. The `standardBasis` unfolding in `standardHighest_lower_orbit` and `standardBasis_weight` can also be dropped, and downstream `change` steps replaced by rewrites.",
+      "benefit": "Callers no longer unfold `standardBasis` and `highestCoefficientMap` to their `dualBasis`/`constr` definitions. Simp reaches the intended normal form (`c i`, an indicator) directly. Later files such as SteinbergDuality and SimpleModules also get these lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/RestrictedTilting/StandardLifts.lean",
+          "declaration": "highestCoefficientMap_lower_orbit",
+          "excerpt": "simp [highestCoefficientMap]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/RestrictedTilting/StandardLifts.lean",
+          "declaration": "standardHighest_lower_orbit",
+          "excerpt": "Module.Basis.dualBasis_apply_self, smul_eq_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/RestrictedTilting/SteinbergDuality.lean",
+          "declaration": "exists_standard_costandard_map",
+          "excerpt": "change f (\u2211 j : Fin (n+1), t ^ (j : \u2115) \u2022 standardBasis k n j) ="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 36864,
+    "cache_read_input_tokens": 174785,
+    "output_tokens": 6886,
+    "output_tokens_details": {
+      "thinking_tokens": 2208
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36864,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3210,
+        "cache_read_input_tokens": 39807,
+        "cache_creation_input_tokens": 1070,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1070
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.23382250000000002,
+  "duration_ms": 52081,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T00:41:50",
+  "unit": "file",
+  "source_sha256": "2b20fe81c3cc9aac594718b15dc39b506970a6c3f7f57b6bdfb21cb8b6a3d4d5",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

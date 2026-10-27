@@ -1,0 +1,99 @@
+{
+  "id": "mathlib-file-0148",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the Path.Homotopic.Quotient simp lemmas in Mathlib/Topology/Homotopy/Path.lean and the downstream uses in FundamentalGroupoid/InducedMaps.lean, FundamentalGroup.lean and Topology/Homotopy/Lifting.lean. The Quotient lemmas `refl_trans`, `trans_refl`, `trans_symm`, `symm_trans` and `trans_assoc` carry sensible simp and grind attributes, with no loop and no conflicting orientation. `map_id`, `map_comp` and the `equiv` lemmas also look fine. The two findings are interface gaps, not defects in existing rules, and I have not run Lean. Whether `map_eq` is a safe simp lemma depends on how simp unifies `TopCat.ofHom f` with `\u03c0\u2098` applications in practice. I have not tested that. Whether to bridge `\u226b` to `Quotient.trans` is a design choice. Making `comp_eq` simp as written would be risky, so I only suggest a narrower bridge.",
+  "findings": [
+    {
+      "declaration": "FundamentalGroupoid.map_eq",
+      "start_line": 328,
+      "end_line": 329,
+      "excerpt": "theorem map_eq {X Y : TopCat.{u}} {x\u2080 x\u2081 : X} (f : C(X, Y)) (p : Path.Homotopic.Quotient x\u2080 x\u2081) :\n    (\u03c0\u2098 (TopCat.ofHom f)).map p = p.map f := rfl",
+      "problem": "`fundamentalGroupoidFunctor` has no `@[simps]` and its `obj` and `map` fields have no simp lemmas. `FundamentalGroupoid.map` does have them, via `@[simps]`. So `(\u03c0\u2098 (TopCat.ofHom f)).map p` has no simp path down to `Path.Homotopic.Quotient.map`. The bridge `map_eq` is a plain `rfl` theorem. The only downstream use is a manual `simp only [map_eq]` in InducedMaps.evalAt_eq.",
+      "proposed_change": "Mark `map_eq` as `@[simp]`, since its RHS `p.map f` is the normal form that the `@[simps]`-generated `FundamentalGroupoid.map_map` also produces. Alternatively, put `@[simps]` on `fundamentalGroupoidFunctor` and add a companion lemma for `.obj`. Then the `TopCat`-level functor and the `C(X,Y)`-level `map` share one canonical form, `Quotient.map p f`.",
+      "benefit": "Users working with `\u03c0\u2098` get the same normal form as with `FundamentalGroupoid.map`. Files like InducedMaps no longer need to name `map_eq` in `simp only`, and `map_eq` can no longer be forgotten.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/AlgebraicTopology/FundamentalGroupoid/InducedMaps.lean",
+          "declaration": "FundamentalGroupoidFunctor.evalAt_eq (HomotopicMaps)",
+          "excerpt": "simp only [map_eq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/AlgebraicTopology/FundamentalGroupoid/Basic.lean",
+          "declaration": "FundamentalGroupoid.map",
+          "excerpt": "@[simps] def map (f : C(X, Y)) : FundamentalGroupoid X \u2964 FundamentalGroupoid Y where"
+        }
+      ]
+    },
+    {
+      "declaration": "FundamentalGroupoid.comp_eq / id_eq_path_refl",
+      "start_line": 293,
+      "end_line": 295,
+      "excerpt": "theorem comp_eq (x y z : FundamentalGroupoid X) (p : x \u27f6 y) (q : y \u27f6 z) : p \u226b q = p.trans q := rfl",
+      "problem": "The simp and grind lemmas `Quotient.refl_trans`, `trans_refl`, `trans_symm`, `symm_trans`, `trans_assoc` and `Quotient.mk_trans` are all stated in terms of `Quotient.trans` and `Quotient.refl`. Terms in the groupoid are written with `\u226b` and `\ud835\udfd9`. Nothing in the simp set connects `fromPath (Quotient.trans a b)` to `fromPath a \u226b fromPath b`, or `fromPath (refl x)` to `\ud835\udfd9 _`. `comp_eq` and `id_eq_path_refl` are not simp lemmas, and they rewrite in the direction away from the categorical normal form. They are used only through explicit `simp only [..., comp_eq, ...]` in InducedMaps. After `simp` rewrites with `mk_trans`, a goal that mixes `\u226b` with `Quotient.trans` can get stuck.",
+      "proposed_change": "Do not make `comp_eq` or `id_eq_path_refl` simp as stated, because that would turn `\u226b` into `Quotient.trans` and fight `Category.id_comp` and `Category.assoc`. Instead add simp lemmas in the other direction for the bridge, for example `fromPath (Path.Homotopic.Quotient.trans p q) = fromPath p \u226b fromPath q` and `fromPath (Path.Homotopic.Quotient.refl x) = \ud835\udfd9 (FundamentalGroupoid.mk x)`. Both would be `rfl` proofs. Then `\u226b` is the groupoid-level normal form, and the existing categorical simp lemmas apply after `mk_trans`.",
+      "benefit": "Simp reaches a canonical categorical form for paths viewed as groupoid morphisms, without manual `comp_eq`-style rewrites. It also avoids the two competing vocabularies, `Quotient.trans` and `\u226b`, in one goal.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/AlgebraicTopology/FundamentalGroupoid/InducedMaps.lean",
+          "declaration": "FundamentalGroupoidFunctor.homotopicMapsNatIso",
+          "excerpt": "simp only [map_map, Path.Homotopic.Quotient.mk''_eq_mk, comp_eq,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Homotopy/Path.lean",
+          "declaration": "Path.Homotopic.Quotient.mk_trans",
+          "excerpt": "mk (P\u2080.trans P\u2081) = Quotient.trans (mk P\u2080) (mk P\u2081) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 26478,
+    "cache_read_input_tokens": 151977,
+    "output_tokens": 8157,
+    "output_tokens_details": {
+      "thinking_tokens": 3822
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26478,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2400,
+        "cache_read_input_tokens": 29772,
+        "cache_creation_input_tokens": 719,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 719
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.20271170000000002,
+  "duration_ms": 58676,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-26T23:12:04",
+  "unit": "file",
+  "source_sha256": "2d4cc49584b4c46bd895e3bd690871dd1a107065896583d7cc3562ec989c3b49",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

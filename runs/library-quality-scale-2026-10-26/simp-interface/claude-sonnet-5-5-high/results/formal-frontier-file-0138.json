@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0138",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the relevant Mathlib SymmetricAlgebra API (`lift`, `lift_\u03b9_apply`, `algHom_ext`) and the downstream uses of `map`, `congr` and `gradedMap` in `projective-space/SymmetricAlgebraProj.lean`. The simp lemmas `map_\u03b9_apply`, `map_id`, `map_comp`, `gradedMap_apply` and `equivMvPolynomial*GradedHom_apply` look reasonable in direction, and I found no credible loops. The main concern is that `congr_apply` and `congr_symm_apply` rewrite an AlgEquiv expression into `map` with no simp lemma to recombine the result. I could not run Lean, so I do not claim to have observed any simp failure. The downstream `change`/`exact` pattern is circumstantial evidence only. The second finding is weaker and concerns the missing canonical membership lemmas for degree 0 and degree 1.",
+  "findings": [
+    {
+      "declaration": "SymmetricAlgebra.congr_apply / SymmetricAlgebra.congr_symm_apply",
+      "start_line": 156,
+      "end_line": 164,
+      "excerpt": "theorem congr_symm_apply (e : M \u2243\u2097[R] N) (x : SymmetricAlgebra R N) :\n    (congr e).symm x = map e.symm x :=",
+      "problem": "Both simp lemmas rewrite every application of `congr e` or `(congr e).symm` to the bare `map`, so the AlgEquiv structure is lost. Simp simplifies subterms first, so `congr e ((congr e).symm x)` should become `map e (map e.symm x)`. There is then no simp lemma to recombine the two `map`s. `map_comp` only fires on `map (g.comp f)`, which is a map of a composite and not a composite of maps. Simp therefore cannot use `AlgEquiv.apply_symm_apply` or `symm_apply_apply`. This is circumstantial evidence only, since I could not run Lean. Downstream, `symmetricAlgebraGradedMap_comp_symm` has to `change` the goal to `map e (map e.symm x) = x` and then call `(SymmetricAlgebra.congr e).apply_symm_apply x` by hand. There is also no `congr_symm : (congr e).symm = congr e.symm`, and no applied composition lemma `map g (map f x) = map (g \u2218\u2097 f) x`.",
+      "proposed_change": "Add `@[simp] theorem map_map (g : N \u2192\u2097[R] P) (f : M \u2192\u2097[R] N) (x : SymmetricAlgebra R M) : map g (map f x) = map (g \u2218\u2097 f) x := rfl`, which follows from `map_comp` and `AlgHom.comp_apply`. Add `map_refl`/`congr_refl` rules, and `@[simp] congr_symm : (congr e).symm = congr e.symm`, so that `map e (map e.symm x)` reduces to `x` through `LinearEquiv.self_trans_symm` and `map_id`. Alternatively drop `@[simp]` from `congr_apply` and `congr_symm_apply`, keeping them as `rw` lemmas, so that `AlgEquiv.apply_symm_apply` and `symm_apply_apply` can fire. Then add a simp lemma `congr_\u03b9_apply : congr e (\u03b9 R M m) = \u03b9 R N (e m)`, so the `\u03b9` case does not depend on unfolding to `map`.",
+      "benefit": "`congr e ((congr e).symm x) = x` and the `map e (map e.symm x) = x` forms would close by `simp`. The two `change \u2026 exact` blocks in `SymmetricAlgebraProj.lean` would become plain `simp`. Users also get a single canonical normal form for equivalence-induced maps.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-space/ProjectiveSpace/SymmetricAlgebraProj.lean",
+          "declaration": "symmetricAlgebraGradedMap_comp_symm",
+          "excerpt": "change SymmetricAlgebra.map e.toLinearMap\n    (SymmetricAlgebra.map e.symm.toLinearMap x) = x\n  exact (SymmetricAlgebra.congr e).apply_symm_apply x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-space/ProjectiveSpace/SymmetricAlgebraProj.lean",
+          "declaration": "symmetricAlgebraGradedMap_symm_comp",
+          "excerpt": "exact (SymmetricAlgebra.congr e).symm_apply_apply x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/SymmetricAlgebra.lean",
+          "declaration": "SymmetricAlgebra.map_comp",
+          "excerpt": "map (g.comp f) = (map g).comp (map f)"
+        }
+      ]
+    },
+    {
+      "declaration": "SymmetricAlgebra.homogeneousSubmodule (abbrev) and GradedAlgebra.\u03b9 / GradedAlgebra.\u03b9_apply",
+      "start_line": 31,
+      "end_line": 54,
+      "excerpt": "simpa only [homogeneousSubmodule, pow_one] using\n        LinearMap.mem_range_self (SymmetricAlgebra.\u03b9 R M) m",
+      "problem": "`homogeneousSubmodule n` is an `abbrev` for `range \u03b9 ^ n`, but the file has no canonical simp-facing lemmas for the low degrees. There is no lemma saying `\u03b9 R M m \u2208 homogeneousSubmodule 1`, and none saying `algebraMap r \u2208 homogeneousSubmodule 0`. Instead, the same unfold-and-`pow_one` `simpa only` is copied twice, in the definition of `GradedAlgebra.\u03b9` and in the statement of `GradedAlgebra.\u03b9_apply`. Because the definition is reducible, generic `Submodule` pow simp lemmas can also act on graded-component membership. Users then see `\u2208 range \u03b9 ^ n` rather than `\u2208 homogeneousSubmodule n`, and they have no named rule to land on. The `\u03b9_apply` statement also embeds the membership proof term and is not simp. Nothing normalises `GradedAlgebra.\u03b9 R M m` into a usable form.",
+      "proposed_change": "Add named lemmas such as `\u03b9_mem_homogeneousSubmodule_one (m : M) : \u03b9 R M m \u2208 homogeneousSubmodule (R := R) (M := M) 1` and `algebraMap_mem_homogeneousSubmodule_zero`. Use the first in both places that currently repeat the `simpa only [homogeneousSubmodule, pow_one]` proof. Consider `@[simp]` on the `\u03b9` membership lemma. Alternatively make `homogeneousSubmodule` a `def` with explicit `homogeneousSubmodule_zero` and `homogeneousSubmodule_one`/`mem_\u2026` lemmas, if unwanted simp expansion becomes a problem. Consider adding a simp lemma for `DirectSum.coeAlgHom _ (GradedAlgebra.\u03b9 R M m) = \u03b9 R M m`.",
+      "benefit": "Degree-one and degree-zero membership goals can be discharged by one named, simp-usable lemma. The duplicated unfolding proof goes away. `homogeneousSubmodule 1` stops depending on the simp-normal form of a submodule power.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/SymmetricAlgebra.lean",
+          "declaration": "SymmetricAlgebra.homogeneousSubmodule",
+          "excerpt": "abbrev homogeneousSubmodule (n : \u2115) : Submodule R (SymmetricAlgebra R M) :=\n  LinearMap.range (SymmetricAlgebra.\u03b9 R M) ^ n"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/SymmetricAlgebra.lean",
+          "declaration": "SymmetricAlgebra.GradedAlgebra.\u03b9_apply",
+          "excerpt": "theorem GradedAlgebra.\u03b9_apply (m : M) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 20435,
+    "cache_read_input_tokens": 73372,
+    "output_tokens": 8508,
+    "output_tokens_details": {
+      "thinking_tokens": 4241
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20435,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3226,
+        "cache_read_input_tokens": 22651,
+        "cache_creation_input_tokens": 1797,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1797
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1741772,
+  "duration_ms": 63384,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:10:15",
+  "unit": "file",
+  "source_sha256": "04f31a5ef5061ca825775e9adbfa933dc73a5015ed34fa7785a10c9451b5119c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

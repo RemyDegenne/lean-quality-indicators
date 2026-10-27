@@ -1,0 +1,125 @@
+{
+  "id": "formal-frontier-file-0364",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked how the graded-hom and Veronese definitions are used. I also read Mathlib's GradedRingHom simp interface and the downstream clients (test/CoherentTailVeronese.lean, projective-space CoherentTailProj.lean). The existing simp lemmas (`selectedRingHom_of`, `selectedRingHomSymm_of`, `selectedRingEquiv_of`, `selectedRingEquiv_symm_of`) have distinct heads and non-looping orientation, so I found no competing rules or cycles. The findings are about missing canonical simp lemmas. They rest on the file's own workarounds: `change`, manual `congrArg`, and `rw` with the `_of` lemmas. I have not run Lean, so the proposed lemmas are untested. I expect them to hold by `rfl`, since the existing proofs already use defeq `change`.",
+  "findings": [
+    {
+      "declaration": "selectedGradedHom / selectedGradedHomSymm (and selectedGradedHomSymm_comp, selectedGradedHom_comp_symm, selected_zero)",
+      "start_line": 243,
+      "end_line": 273,
+      "excerpt": "def selectedGradedHom : component \ud835\udc9c n \u2192+*\u1d4d component \u212c n where\n  __ := E.selectedRingHom n hNn",
+      "problem": "The bundled graded homs `selectedGradedHom` and `selectedGradedHomSymm` have no simp lemma that reduces their application to `selectedRingHom` / `selectedRingHomSymm`. They also have no `_of` lemma on `DirectSum.of`. The only simp lemmas are stated for the ring maps and the ring equiv. So `simp` cannot rewrite `E.selectedGradedHom n hNn x`, even though it is defeq to `E.selectedRingHom n hNn x`. The file shows the gap in three places. The two `*_comp` theorems end in a hand-written `congrArg (fun f : VeroneseRing \ud835\udc9c n \u2192+* VeroneseRing \ud835\udc9c n => f x) h`. `selected_zero` uses `change inclusion \u212c n (E.selectedRingHom n hNn x) = ...` to see through the graded hom. The `map_mem` fields use `rw [E.selectedRingHom_of]` on a goal that is only defeq to the lemma's LHS. Downstream, CoherentTailProj.lean and the test file use `selectedGradedHom` only as an opaque term. Nobody can `simp` through it.",
+      "proposed_change": "Add `@[simp] theorem selectedGradedHom_apply (x : VeroneseRing \ud835\udc9c n) : E.selectedGradedHom n hNn x = E.selectedRingHom n hNn x := rfl` and the matching `selectedGradedHomSymm_apply` for `selectedRingHomSymm`. Add `selectedGradedHom_of` and `selectedGradedHomSymm_of` on `DirectSum.of`. Alternatively, use `@[simps!]`, since `GradedRingHom` has `initialize_simps_projections (toFun \u2192 apply)`. Then the two `*_comp` theorems can use `apply GradedRingHom.ext; intro x; simp`, and `selected_zero` no longer needs the `change`.",
+      "benefit": "The graded-hom interface gets a canonical normal form that agrees with the ring-hom and ring-equiv lemmas already marked simp. Proofs and clients can use `simp` instead of `change`/`congrArg` workarounds. Any `selectedGradedHom` expression reduces to the same `DirectSum.of` form as the ring-hom versions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/CoherentTailVeronese.lean",
+          "declaration": "selected_zero",
+          "excerpt": "change inclusion \u212c n (E.selectedRingHom n hNn x) ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/CoherentTailVeronese.lean",
+          "declaration": "selectedGradedHomSymm_comp",
+          "excerpt": "exact congrArg (fun f : VeroneseRing \ud835\udc9c n \u2192+* VeroneseRing \ud835\udc9c n => f x) h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/GradedAlgebra/RingHom.lean",
+          "declaration": "GradedRingHom",
+          "excerpt": "initialize_simps_projections GradedRingHom (toFun \u2192 apply)"
+        }
+      ]
+    },
+    {
+      "declaration": "selectedRingEquiv (with selectedRingEquiv_of / selectedRingEquiv_symm_of)",
+      "start_line": 222,
+      "end_line": 241,
+      "excerpt": "@[simp] theorem selectedRingEquiv_of (j : \u2115) (x : \ud835\udc9c (n * j)) :",
+      "problem": "The simp interface for `selectedRingEquiv` only covers arguments of the form `DirectSum.of _ j x`. There is no lemma saying that `E.selectedRingEquiv n hNn` applied to a general element, or its `.symm`, equals `selectedRingHom` / `selectedRingHomSymm`. There is also no lemma for `toRingHom` or `symm`. The equiv is built with `__ := E.selectedRingHom n hNn` and `invFun := E.selectedRingHomSymm n hNn`, but nothing connects the equiv and the bundled maps. So a goal such as `E.selectedRingEquiv n hNn x = E.selectedRingHom n hNn x`, or one mixing the equiv with `selectedRingHom_comp_symm`, cannot be normalised by `simp`. The `_of` lemmas are also stated twice, once for the hom and once for the equiv. The equiv versions are proved only by delegating to the hom versions. This makes two parallel normal forms for the same expression.",
+      "proposed_change": "Add `@[simp] theorem selectedRingEquiv_apply (x) : E.selectedRingEquiv n hNn x = E.selectedRingHom n hNn x := rfl`, `@[simp] theorem selectedRingEquiv_symm_apply (x) : (E.selectedRingEquiv n hNn).symm x = E.selectedRingHomSymm n hNn x := rfl`, and optionally the `toRingHom` version. With these, `selectedRingEquiv_of` and `selectedRingEquiv_symm_of` can be derived by simp from the hom `_of` lemmas. They could then be dropped from the simp set, or kept only as non-simp convenience lemmas. This leaves one canonical normal form, the `selectedRingHom` one.",
+      "benefit": "Users who pick the equiv form (`missingLinearSelected` in the test file) get the same simp normal form as users of the hom. Competing parallel simp lemmas are avoided. Rewriting no longer depends on the argument being syntactically `DirectSum.of`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/CoherentTailVeronese.lean",
+          "declaration": "selectedRingEquiv_of",
+          "excerpt": "E.selectedRingHom_of n hNn j x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/test/CoherentTailVeronese.lean",
+          "declaration": "missingLinearSelected",
+          "excerpt": "missingLinearTail.selectedRingEquiv 2 (by decide)"
+        }
+      ]
+    },
+    {
+      "declaration": "pieceEquiv / pieceHom / pieceHomSymm",
+      "start_line": 55,
+      "end_line": 61,
+      "excerpt": "def pieceHom (j : \u2115) : \ud835\udc9c (n * j) \u2192+ VeroneseRing \u212c n :=\n  (DirectSum.of (fun k : \u2115 => \u212c (n * k)) j).comp (E.pieceEquiv n hNn j).toAddMonoidHom",
+      "problem": "`pieceHom` and `pieceHomSymm` have no apply lemma, and `pieceEquiv` has no named simp lemma for its two cases. The file shows the gap by repeatedly using `change` to unfold them by hand. `piece_one` and `piece_one_symm` start with `change DirectSum.of ... 0 (E.pieceEquiv n hNn 0 (GradedMonoid.GOne.one ...)) = 1`. The `toSemiring` obligations in `selectedRingHom` and `selectedRingHomSymm` each begin with a large `change`. `piece_mul` also needs `change ((E.zero (xzero * yzero) : \u212c 0) : S) = ...` to reach `E.zero`. The statements of `pieceEquiv 0` and `pieceEquiv (j+1)` are stated only through defeq. The `n * 0` and `n * (j+1)` indices must match `0` and `n*j + n`, so `simp` cannot reduce them.",
+      "proposed_change": "Add `theorem pieceHom_apply (j) (x : \ud835\udc9c (n * j)) : E.pieceHom n hNn j x = DirectSum.of (fun k : \u2115 => \u212c (n * k)) j (E.pieceEquiv n hNn j x) := rfl` and the `Symm` version, marked `@[simp]`. Add `pieceEquiv_zero (x) : E.pieceEquiv n hNn 0 x = E.zero.toAddEquiv x`. Do not mark `pieceEquiv_zero` simp unless the `n * 0` index is handled. Then `piece_one`, `piece_one_symm` and the two `toSemiring` side goals can use `simp`/`rw` instead of the long `change` blocks.",
+      "benefit": "The helper definitions get a documented unfolding interface. This shortens the `change`-heavy proofs and makes them less fragile if the representation of `pieceHom` changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/CoherentTailVeronese.lean",
+          "declaration": "piece_one",
+          "excerpt": "change DirectSum.of (fun k : \u2115 => \u212c (n * k)) 0\n    (E.pieceEquiv n hNn 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/CoherentTailVeronese.lean",
+          "declaration": "selectedRingHom",
+          "excerpt": "DirectSum.toSemiring (pieceHom E n hNn) (piece_one E n hNn)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 18945,
+    "cache_read_input_tokens": 76432,
+    "output_tokens": 7446,
+    "output_tokens_details": {
+      "thinking_tokens": 2390
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18945,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3868,
+        "cache_read_input_tokens": 20015,
+        "cache_creation_input_tokens": 2943,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2943
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1579072,
+  "duration_ms": 51979,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T02:05:47",
+  "unit": "file",
+  "source_sha256": "c488e49b9e555bd1a9bac82242e028ac33c58ffd695156c9d8791d80e805477a",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

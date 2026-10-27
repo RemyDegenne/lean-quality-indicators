@@ -1,0 +1,94 @@
+{
+  "id": "formal-frontier-file-0134",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Pairing and TopologicalPairing simp lemmas it depends on. I also read Mathlib's RestrictedProduct `mulSingle` API, including `coe_mulSingle_apply`, `mulSingle_eq_same` and `mulSingle_eq_of_ne`. I did not run Lean, so the findings are about how the simp lemmas are stated and how they are used. The other simp lemmas looked fine: `rightCharacter_apply`, `mem_rightAnnihilator`, `structureMapMonoidHom_apply`, `mem_productTail` and the two `*_apply` equiv lemmas are rfl-style or iff lemmas with no clear loop or competing rule. There is no `simp` lemma for `characterTestSet` or `restrictedProductTail` membership, but I report only the first as a weak pattern. Uncertainty: I found no downstream uses outside this file, so the instance-mismatch concern is potential rather than shown by an existing client.",
+  "findings": [
+    {
+      "declaration": "structureMapMonoidHom_pi_mulSingle, coordinateCharacter_apply, reconstructedCoordinate_spec, finset_prod_mulSingle_apply",
+      "start_line": 88,
+      "end_line": 91,
+      "excerpt": "open scoped Classical in\n@[simp]\ntheorem structureMapMonoidHom_pi_mulSingle (i : \u03b9) (u : U i) :",
+      "problem": "These `@[simp]` lemmas mention `mulSingle` or `Pi.mulSingle`, which take a `[DecidableEq \u03b9]` argument. Because of `open scoped Classical in`, the statements fix `Classical.propDecidable` as the instance instead of quantifying over it. A simp lemma stated this way only fires when the goal uses that same instance. It will not fire for an `\u03b9` with its own instance (`\u2115`, `Fin n`, `ZMod n`) or for a `[DecidableEq \u03b9]` section variable. Mathlib's `mulSingle`, `mulSingle_eq_of_ne` and `Pi.mulSingle` lemmas are all generic in the instance. The same fixed instance shows up in the in-file call sites, where the simp lemmas are passed by name even though they are already `@[simp]`: `simpa [structureMapMonoidHom_pi_mulSingle]` and `simp [z, u, hi, finset_prod_mulSingle_apply]`.",
+      "proposed_change": "State `structureMapMonoidHom_pi_mulSingle` and `finset_prod_mulSingle_apply` with a `variable [DecidableEq \u03b9]` instead of `open scoped Classical in`. The proofs should not need the classical instance, since they only use `by_cases`, `Pi.mulSingle` and `Finset.prod_eq_single_of_mem`. Make `coordinateCharacter` take `[DecidableEq \u03b9]` and use `mulSingleMonoidHom U i` directly, so that `coordinateCharacter_apply` and `reconstructedCoordinate_spec` become instance-generic. Keep `classical` only inside the main proofs. Then drop the redundant explicit simp arguments at lines 259, 279 and 280.",
+      "benefit": "The normal form `\u03c7 (mulSingle U i x)` would be reachable by plain `simp` for any decidable index type. Callers would not need to supply the classical instance or restate the lemmas by name. This also matches the generic style of Mathlib's `mulSingle` API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-e37d88a26f37/Mathlib/Topology/Algebra/RestrictedProduct/Basic.lean",
+          "declaration": "RestrictedProduct.mulSingle",
+          "excerpt": "variable {S : \u03b9 \u2192 Type*} {G : \u03b9 \u2192 Type*} [\u03a0 i, SetLike (S i) (G i)] (A : (i : \u03b9) \u2192 (S i))\n  [DecidableEq \u03b9]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/restricted-product-duality/RestrictedProductDuality/Pairing.lean",
+          "declaration": "pairing_mulSingle_left",
+          "excerpt": "open scoped Classical in\n@[simp]\ntheorem pairing_mulSingle_left"
+        }
+      ]
+    },
+    {
+      "declaration": "characterTestSet (used in continuous_toPontryaginDualMulEquiv_symm)",
+      "start_line": 158,
+      "end_line": 162,
+      "excerpt": "def characterTestSet (s : Finset \u03b9) : Set (\u03a0\u02b3 i, [X i, U i]) :=\n  by\n    classical\n    exact Set.range (structureMapMonoidHom U) \u222a\n      \u22c3 i \u2208 s, Set.range (mulSingle U i)",
+      "problem": "`characterTestSet` has no membership lemma, and it is defined by a tactic block that fixes a classical `mulSingle`. Proofs that use it therefore unfold it by hand. At lines 378 and 386 they build membership with `Or.inl \u27e8u, rfl\u27e9` and `Or.inr (Set.mem_iUnion_of_mem i <| Set.mem_iUnion_of_mem hi \u27e8x, rfl\u27e9)`. This reveals the internal union/range shape and breaks if the definition changes. There are no canonical rewrite rules, so `simp` cannot reduce `z \u2208 characterTestSet U s`.",
+      "proposed_change": "Add lemmas such as `range_structureMap_subset_characterTestSet` and `range_mulSingle_subset_characterTestSet`, or a membership iff `z \u2208 characterTestSet U s \u2194 z \u2208 Set.range (structureMapMonoidHom U) \u2228 \u2203 i \u2208 s, z \u2208 Set.range (mulSingle U i)`. Mark the iff `@[simp]`, or at least `mem_characterTestSet`, and use it at lines 378 and 386 in place of the raw `Or.inl` / `Or.inr` terms.",
+      "benefit": "The proof of `continuous_toPontryaginDualMulEquiv_symm` would no longer depend on the internal shape of the definition. Future uses would have a canonical way to enter and leave `characterTestSet`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/restricted-product-duality/RestrictedProductDuality/CharacterReconstruction.lean",
+          "declaration": "continuous_toPontryaginDualMulEquiv_symm",
+          "excerpt": "exact Or.inr (Set.mem_iUnion_of_mem i <|"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 30947,
+    "cache_read_input_tokens": 144838,
+    "output_tokens": 7334,
+    "output_tokens_details": {
+      "thinking_tokens": 3178
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30947,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2381,
+        "cache_read_input_tokens": 34121,
+        "cache_creation_input_tokens": 839,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 839
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2116398,
+  "duration_ms": 52523,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T23:09:11",
+  "unit": "file",
+  "source_sha256": "8e7cb41804271de8b1b75a1a964a98fa9433ae952ea8b5a18a06f4b0f59bf95c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

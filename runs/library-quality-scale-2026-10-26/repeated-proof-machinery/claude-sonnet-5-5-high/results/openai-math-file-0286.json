@@ -1,0 +1,88 @@
+{
+  "id": "openai-math-file-0286",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the sibling encoding files Serialization.lean, GameEncoding.lean and PCP/VerifierToCNF.lean. I found one repeated-proof pattern: the list-induction bound over flatMap of encoded blocks. It appears here and in Serialization.lean (clausesBits_length_le). The length-count version appears here, in Serialization.lean and in GameEncoding.lean. I did not look for repetition in the parser and decoder proofs, because the parse lemmas are specific to this format. I could not compile anything, so the proposed lemma and the rewritten uses are untested. The statement and hypotheses were checked by hand against the existing goals and the `encodeWords_append` and `encodeWords_length` lemmas in Serialization.lean. A possible pitfall: after `simp only` the `omega` step may need the `Nat.add_mul` and `Nat.one_mul` rewrites, which the proposed lemma's proof keeps. The shared lemma's best home is Serialization.lean, which this file already imports. That would also let Serialization.lean use it for `clausesBits_length_le`.",
+  "findings": [
+    {
+      "declaration": "equationsBits_length_le (and equationsWords_length)",
+      "start_line": 158,
+      "end_line": 167,
+      "excerpt": "  induction equations with\n  | nil => simp [encodeWords]\n  | cons e equations ih =>\n      have he := equationBits_length_le e",
+      "problem": "`equationsBits_length_le` proves a generic fact by hand: if each block's encoding has length at most B, then the encoding of the flatMap has length at most `xs.length * B`. It does this with a list induction, `simp only [List.flatMap_cons, encodeWords_append, List.length_append, List.length_cons, Nat.add_mul, Nat.one_mul]` and `omega`. `clausesBits_length_le` in Serialization.lean repeats the same induction and simp set, differing only in the block function. The unconditional length counts `equationsWords_length` (here), `clausesWords_length` (Serialization.lean) and `constraintsWords_length` (GameEncoding.lean) repeat the same induction, differing in their constants (4, 6, `q + 2`). A related general lemma, `length_flatMap_constant`, already exists in PCP/VerifierToCNF.lean, but the encoding files cannot reuse it because they do not import that file. Each new serialized table therefore copies the induction again.",
+      "proposed_change": "In Serialization.lean (already imported here), add:\n\ntheorem encodeWords_flatMap_length_le {\u03b1 : Type*} (xs : List \u03b1) (f : \u03b1 \u2192 List Nat) (bound : Nat)\n    (bounded : \u2200 x \u2208 xs, (encodeWords (f x)).length \u2264 bound) :\n    (encodeWords (xs.flatMap f)).length \u2264 xs.length * bound\n\nProof sketch: induction on `xs`. The `nil` case is `simp [encodeWords]`. In the `cons` case, use `bounded x (by simp)` and `ih (fun y hy => bounded y (by simp [hy]))`. Then run `simp only [List.flatMap_cons, encodeWords_append, List.length_append, List.length_cons, Nat.add_mul, Nat.one_mul]` followed by `omega`, as the current proofs do.\n\nAlso add (or move from VerifierToCNF to a shared place) the constant-length lemma `length_flatMap_constant (xs) (f) (k) (lengths : \u2200 x \u2208 xs, (f x).length = k) : (xs.flatMap f).length = xs.length * k`.\n\nThen rewrite the uses:\n- `equationsBits_length_le e\u2026` becomes `encodeWords_flatMap_length_le equations equationWords (3 * n + 2) (fun e _ => equationBits_length_le e)`. The goal `equations.length * (3 * n + 2)` matches the lemma's conclusion.\n- `clausesBits_length_le` in Serialization.lean becomes `encodeWords_flatMap_length_le clauses clauseWords (3 * (n + 2)) (fun c _ => clauseBits_length_le c)`.\n- `equationsWords_length` becomes `by rw [length_flatMap_constant _ _ 4 (fun e _ => equationWords_length e)]; ring`. The `ring` step is needed because the stated form is `4 * equations.length`. `clausesWords_length` and `constraintsWords_length` follow the same way with 6 and `q + 2`.",
+      "benefit": "Four to five 6\u201310 line inductions, with the same fragile `simp only \u2026 omega` step, become one reusable lemma plus one-line applications. Readers see the real content: a per-block bound is summed over the list. A future change to the word encoding, such as a different `encodeWord`, then needs one proof updated instead of every table's copy. New tables, such as the graph tables, can reuse the lemma instead of copying the induction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/VertexCover/Encoding/Serialization.lean",
+          "declaration": "clausesBits_length_le",
+          "excerpt": "simp only [List.flatMap_cons, encodeWords_append, List.length_append,\n        List.length_cons, Nat.add_mul, Nat.one_mul]\n      omega"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/VertexCover/Encoding/Serialization.lean",
+          "declaration": "clausesWords_length",
+          "excerpt": "simp only [List.flatMap_cons, List.length_append, clauseWords_length,\n        List.length_cons, ih, Nat.mul_add, Nat.mul_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/VertexCover/Encoding/GameEncoding.lean",
+          "declaration": "constraintsWords_length",
+          "excerpt": "simp only [List.flatMap_cons, List.length_append, constraintWords_length,\n        List.length_cons, Nat.add_mul, Nat.one_mul, ih]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/VertexCover/PCP/VerifierToCNF.lean",
+          "declaration": "length_flatMap_constant",
+          "excerpt": "(lengths : \u2200 x \u2208 xs, (f x).length = k) : (xs.flatMap f).length = xs.length * k"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 17199,
+    "cache_read_input_tokens": 86681,
+    "output_tokens": 5133,
+    "output_tokens_details": {
+      "thinking_tokens": 1434
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17199,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2789,
+        "cache_read_input_tokens": 20650,
+        "cache_creation_input_tokens": 478,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 478
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1288181,
+  "duration_ms": 38456,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T01:05:26",
+  "unit": "file",
+  "source_sha256": "bdca10116e729eb88b26ce63a77a099905cc8cc9be2b06ef4a706ca47b8ac845",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

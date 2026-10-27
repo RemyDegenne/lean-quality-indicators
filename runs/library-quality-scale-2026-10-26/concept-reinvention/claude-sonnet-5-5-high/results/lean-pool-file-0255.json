@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0255",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of Grover.lean and the AmplitudeAmplification.lean primitives it imports (lines 100\u2013284). I also searched LeanQuantumAlg for diagonal-matrix uses and for the `HilbertOperator` definition, which is an abbrev for `Matrix`. I searched Mathlib only for the `Matrix.diagonal` concept, and found nothing else in Mathlib, Batteries or core that overlaps the Grover-specific content. The first finding is a duplication inside the lean-pool library, not in Mathlib proper, but the rubric also covers duplication within the same library. The second finding is a weaker judgement call, because the hand-written phase oracle may be deliberate. I did not check downstream users of `Grover.timedIterate` or `GroverModel` outside this file, so removing them could break other files.",
+  "findings": [
+    {
+      "declaration": "GroverModel (and Grover.timedIterate with its simp lemmas)",
+      "start_line": 82,
+      "end_line": 93,
+      "excerpt": "structure GroverModel where",
+      "problem": "`GroverModel` is a field-for-field copy of the existing `AmplitudeAmplificationModel`. The fields are `\u03b8`, `phaseOracle` (the same as `goodReflection`), `diffusion` (the same as `startReflection`) and `iterate_eq`. It has the same types and the same hypothesis `startReflection * goodReflection = amplitudeAmplificationStep \u03b8`. The file then has to convert between the two with `toAmplitudeAmplificationModel`, and `main_amplitude_amplification` is proved by `rfl`. `Grover.timedIterate`, `timedIterate_ret`, `timedIterate_time`, `timedIterate_correct` and `timedIterate_success_probability` repeat the `AmplitudeAmplification.timedIterate` API. The file itself proves `timedIterate_ret_eq_amplitudeAmplification` by `rfl`. `GroverSearch.main` and `GroverSearch.main_success_probability` also restate `AmplitudeAmplification.main` and `AmplitudeAmplification.main_success_probability` with renamed fields. Two parallel structures and two timed-iterate APIs mean any change to the model has to be made twice, and results about one do not apply to the other without a conversion.",
+      "proposed_change": "Drop the separate structure. Either use `AmplitudeAmplificationModel` directly, or define `abbrev GroverModel := AmplitudeAmplificationModel`, or have `GroverModel` `extend` it with `phaseOracle`/`diffusion` as notation-style aliases. Define `Grover.timedIterate M k := AmplitudeAmplification.timedIterate M k` or just reuse it. Keep the Grover-named theorems as one-line corollaries of the amplitude-amplification ones, and keep `resourceProfile` and `success_probability_with_resources`, which are the genuinely Grover-specific part.",
+      "benefit": "Removes duplicated structure and timed-iterate API. Grover models would then work with every amplitude-amplification lemma without a coercion, and the `rfl` bridge lemmas (`main_amplitude_amplification`, `timedIterate_ret_eq_amplitudeAmplification`) become unnecessary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/AmplitudeAmplification.lean",
+          "declaration": "AmplitudeAmplificationModel",
+          "excerpt": "iterate_eq : startReflection * goodReflection = amplitudeAmplificationStep \u03b8"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/AmplitudeAmplification.lean",
+          "declaration": "AmplitudeAmplification.timedIterate",
+          "excerpt": "def timedIterate (M : AmplitudeAmplificationModel) (k : \u2115) : Timed (PureState 1) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/AmplitudeAmplification.lean",
+          "declaration": "AmplitudeAmplification.main_success_probability",
+          "excerpt": "theorem AmplitudeAmplification.main_success_probability"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Algorithms/Grover.lean",
+          "declaration": "Grover.timedIterate_ret_eq_amplitudeAmplification",
+          "excerpt": "(AmplitudeAmplification.timedIterate\n        M.toAmplitudeAmplificationModel k).ret := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "phaseOracle",
+      "start_line": 46,
+      "end_line": 47,
+      "excerpt": "fun i j => if i = j then (if marked j then -1 else 1 : \u2102) else 0",
+      "problem": "`phaseOracle` is a diagonal matrix written out entrywise, but `HilbertOperator n` is an abbrev for `Matrix (Fin (2^n)) (Fin (2^n)) \u2102`. Mathlib's `Matrix.diagonal` is the standard definition of this object, and the library already uses it elsewhere, for example in `Fourier.lean` and `LieAlgebraicBP.lean`. Because of the custom form, `phaseOracle_apply_ket` needs a long hand proof: a case split on `marked j`, extensionality via `WithLp.ofLp_injective`, and a further case split on `i = j`. The `Matrix.diagonal` API (`diagonal_apply_eq`, `diagonal_apply_ne`, `diagonal_mul_diagonal`, `mulVec_single`) cannot be used, and the file does not show the oracle to be diagonal or involutive.",
+      "proposed_change": "Define `phaseOracle marked := Matrix.diagonal (fun j => if marked j then (-1 : \u2102) else 1)`. Keep `phaseOracle_apply_ket` as the named API, and prove it from the diagonal lemmas rather than the two nearly identical case-split proofs. Optionally add `phaseOracle_mul_self` via `Matrix.diagonal_mul_diagonal`.",
+      "benefit": "Ties the oracle to the standard Mathlib diagonal-matrix concept, so the existing lemmas on diagonal matrices (multiplication, transpose, conjTranspose) apply. It also lets the library use one representation of diagonal operators.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Core/Gate.lean",
+          "declaration": "HilbertOperator",
+          "excerpt": "abbrev HilbertOperator (n : \u2115) : Type := Matrix (Fin (2 ^ n)) (Fin (2 ^ n)) \u2102"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/QKernel/Fourier.lean",
+          "declaration": "diagonal use in QKernel Fourier",
+          "excerpt": "Matrix.diagonal (fun \u03bc => Complex.exp (-Complex.I * ((xk * lam \u03bc : \u211d) : \u2102)))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 12745,
+    "cache_read_input_tokens": 41335,
+    "output_tokens": 3931,
+    "output_tokens_details": {
+      "thinking_tokens": 687
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12745,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2948,
+        "cache_read_input_tokens": 15836,
+        "cache_creation_input_tokens": 990,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 990
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0944395,
+  "duration_ms": 28271,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T00:42:25",
+  "unit": "file",
+  "source_sha256": "4d9f3faa279287f72037b10628d8b466d9a072fde695bbe1e43e3e720c90cb39",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

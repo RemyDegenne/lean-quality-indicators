@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0248",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the candidate duplications by re-reading the relevant line ranges. The two findings are the Leibniz-product envelope lemmas and the repeated chart-covariance polynomial block. I rejected several other repetitions as too short or too routine to count: the factorial/pow arithmetic closers in comp and precomp_linear, the zero-constant jet norm computations, and the in/out-of-slot branch splits in canonicalPrimaryPulse_radialProfile and canonicalPrimaryPulse_tangentProfile. I did not compile the proposed refactors. The simp-based reductions of weights `w*1` and `1*w` to `w` are the main uncertainty. A short `EnvelopeJets.mono_weight` or `congr`-style step would work instead.",
+  "findings": [
+    {
+      "declaration": "NavierStokes.PrimaryPulseBounds.EnvelopeJets.smul_polynomial / EnvelopeJets.polynomial_smul",
+      "start_line": 1139,
+      "end_line": 1156,
+      "excerpt": "refine \u27e8(2 : \u211d) ^ N * A * B, ?_, m + k, ?_\u27e9\n  \u00b7 exact one_le_mul_of_one_le_of_one_le\n      (one_le_mul_of_one_le_of_one_le (one_le_pow\u2080 (by norm_num)) hA) hB",
+      "problem": "EnvelopeJets.smul_polynomial (1139\u20131156) and EnvelopeJets.polynomial_smul (1329\u20131347) have essentially the same proof. Both obtain the two bound triples. Both use the constant `2^N * A * B` with exponent `m + k` and discharge the `1 \u2264 _` goal with the same `one_le_mul_of_one_le_of_one_le` chain. Both call `smul_jet_bound` and close with `rw [pow_add]; ring`. The only difference is which factor carries the weight `w`. The Leibniz and constant bookkeeping is therefore maintained twice, in two different sections. A change to the constant or the exponent would have to be made in both places.",
+      "proposed_change": "Prove one general product lemma in EnvelopeAlgebra:\n`theorem EnvelopeJets.smul {w v : \u03b9 \u2192 E \u2192 \u211d} {a : \u03b9 \u2192 E \u2192 \u211d} {f : \u03b9 \u2192 E \u2192 F} (ha : EnvelopeJets D w a) (hf : EnvelopeJets D v f) : EnvelopeJets D (fun i x => w i x * v i x) (fun i x => a i x \u2022 f i x)`.\nProof sketch: nonneg is `mul_nonneg`, smoothness is `.smul`. For the bound, take `(2^N*A*B, m+k)` and apply `smul_jet_bound` with `C := A*s^m*w`, `D := B*s^k*v`. Finish with `rw [pow_add]; ring`.\nThe two existing lemmas follow by instantiating one side with `of_polynomial`, which gives weight `fun _ _ => 1`. Then rewrite `w*1` or `1*w` back to `w`, for example by `simpa only [mul_one]` or `[one_mul]` at the function level. Alternatively use a pointwise `mono_weight`-style step. `smul_polynomial` becomes `by simpa only [mul_one] using ha.smul (EnvelopeJets.of_polynomial hf)`. `polynomial_smul` becomes the symmetric version with `one_mul`. The hypotheses are unchanged (the same `D`, `w`, `a`, `f`, and polynomial jets for the polynomial factor).",
+      "benefit": "The Leibniz-with-envelope argument and its constants sit in one place. The two public lemmas become one-line corollaries. The symmetric roles of the weight are explicit, and the two near-identical 20-line proofs no longer need to be kept in sync.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryPulseBounds.lean",
+          "declaration": "EnvelopeJets.polynomial_smul",
+          "excerpt": "refine \u27e8(2 : \u211d) ^ N * A * B, ?_, m + k, ?_\u27e9\n  \u00b7 exact one_le_mul_of_one_le_of_one_le\n      (one_le_mul_of_one_le_of_one_le (one_le_pow\u2080 (by norm_num)) hA) hB"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryPulseBounds.lean",
+          "declaration": "EnvelopeJets.of_polynomial",
+          "excerpt": "EnvelopeJets D (fun _ _ => 1) f"
+        }
+      ]
+    },
+    {
+      "declaration": "NavierStokes.PrimaryPulseBounds.primaryWave_waveClass / uncutPrimaryWave_waveClass",
+      "start_line": 1590,
+      "end_line": 1596,
+      "excerpt": "have hH (i j : Fin 2) : PhaseJetBounds.PolynomialJets (phaseDomain s)\n      (fun n x => chartCovariance pref d lam u L \u03c7 n x i j) := by\n    apply ((EnvelopeJets.of_polynomial",
+      "problem": "The matrix-entry derivation `hH` is copied verbatim into both theorems (1590\u20131596 and 2129\u20132135). It composes the entry-polynomial lemma with the chart through `of_polynomial`, `comp` and `to_polynomial`, then closes with `intro n x hx; rfl`. The only difference is the `hmap` argument. The first proof passes `hmap`, and the second passes `fun n x hx => (hmap n x hx).1`. The last three lines of each proof, `memClass` followed by `primaryCoefficient_waveClass`, are also identical in shape. This is a chain of three envelope-calculus steps and a definitional unfolding. It has to be changed in two places if `chartCovariance` or the envelope API changes.",
+      "proposed_change": "Add a lemma before `primaryWave_waveClass`:\n`theorem chartCovariance_entry_polynomial (s : StripData E) (D : PhaseJetBounds.Domain \u2115 Q) (pref d lam u L \u03c7) (hscale : \u2200 n, D.scale n = s.slow n) (h\u03c7 : PolynomialJets (phaseDomain s) \u03c7) (hmap : \u2200 n x, x \u2208 s.domain \u2192 (\u03c7 n x).1 \u2208 D.carrier n) (hpref) (hpulse) (hlam hu hL) (i j : Fin 2) : PolynomialJets (phaseDomain s) (fun n x => chartCovariance pref d lam u L \u03c7 n x i j)`.\nIts proof is the current `hH` body. Then `primaryWave_waveClass` uses `hH := chartCovariance_entry_polynomial s D pref d lam u L \u03c7 hscale h\u03c7 hmap hpref hpulse hlam hu hL`. `uncutPrimaryWave_waveClass` uses the same call with `(fun n x hx => (hmap n x hx).1)`. The hypotheses are exactly those already present in both theorems.",
+      "benefit": "Each assembly theorem shrinks to its distinctive part: the cutoff pulse in the first, and the uncut pulse in the second. The covariance-entry argument has a named statement that can be reused. Future edits to the entry bound need only one change.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryPulseBounds.lean",
+          "declaration": "uncutPrimaryWave_waveClass",
+          "excerpt": "(h\u03c7.clm (ContinuousLinearMap.fst \u211d Q \u211d)) hscale (fun n x hx => (hmap n x hx).1)).to_polynomial"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/PrimaryPulseBounds.lean",
+          "declaration": "primaryCovariance_entry_polynomial",
+          "excerpt": "PhaseJetBounds.PolynomialJets D (fun n p => primaryCovariance pref d lam u L n p r c)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 68343,
+    "cache_read_input_tokens": 140387,
+    "output_tokens": 5168,
+    "output_tokens_details": {
+      "thinking_tokens": 1291
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 68343,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3205,
+        "cache_read_input_tokens": 69038,
+        "cache_creation_input_tokens": 3234,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3234
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3391027,
+  "duration_ms": 35200,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:40:24",
+  "unit": "file",
+  "source_sha256": "9d54332810345935d6a92707816c00d6975401c3919fcfb14e8d9d4fd02f72d0",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

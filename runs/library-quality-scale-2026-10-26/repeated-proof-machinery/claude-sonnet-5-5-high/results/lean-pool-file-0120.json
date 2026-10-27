@@ -1,0 +1,141 @@
+{
+  "id": "lean-pool-file-0120",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file: delta_astar, the 72 dstar lemmas, nine_le_card_image, nnDist_eq_inf, card_ge_nine, delta_sub_le, aprt, norm_aprt and norm_aprt', transport, Hpair, H1\u2013H8_aprt and nine_attained. I also read inf_lt_inf and five_le_card_image_of_strictAnti_chain in EuclideanFiveDistanceSharpArith.lean, and checked Mathlib for norm_sub_rev, StrictAnti.injective and strictAnti_nat_of_succ_lt. I could not compile anything, so the proposed lemma statements are sketches that have not been typechecked. The `norm_sub_rev` name rests on the `norm_div_rev` declaration at Normed/Group/Basic.lean:68 and was not checked for a `to_additive` attribute. The `Fin.strictAnti_iff_succ_lt` name was not checked in Mathlib, so I hedge it in the finding. The dstar1\u2026dstar72 lemmas (lines 130\u2013~400) are a data table: each is a one-line call to delta_astar, so I did not report them as repeated reasoning. The H1\u2013H8 finding is the main one.",
+  "findings": [
+    {
+      "declaration": "H1_aprt \u2026 H8_aprt (and Hpair)",
+      "start_line": 659,
+      "end_line": 1162,
+      "excerpt": "  \u00b7 exact Hpair s hs0 hsmall 50 1 10750 11872 dstar50 dstar1 (by norm_num) (by norm_num)",
+      "problem": "Eight theorems (~50\u201371 cases each, about 450 case lines in total) run the same argument. Each does `intro n hn; obtain \u27e8hn1,hn2\u27e9 := Finset.mem_Icc.mp hn; interval_cases n`. Each case then calls Hpair with the same pivot m and its own M-value, and discharges |m|+|n| \u2264 144 and Mm+1 \u2264 Mn by `norm_num`. The M-values for n = 1..72 are re-typed in every theorem, so the same table appears eight times. A typo in any one copy is silently a different proof obligation. Only the pivot m, the bound K and the table lookups differ between the theorems.",
+      "proposed_change": "Introduce a single table `Mtab : \u2115 \u2192 \u2124` (or a `![\u2026]`/list lookup) holding 11872, 23744, 14384, \u2026 7000. Prove once `dstar_all : \u2200 n, 1 \u2264 n \u2192 n \u2264 72 \u2192 delta astar (n:\u2124) = (Mtab n : \u211d)/50000`, by `interval_cases n` with the existing dstarN lemmas and `simp [Mtab]`. Then prove one shared lemma:\n`theorem H_aprt (m K : \u2115) (hm1 : 1 \u2264 m) (hm : m \u2264 72) (hK : K \u2264 72) (htab : \u2200 n \u2208 Finset.Icc 1 K, Mtab m + 1 \u2264 Mtab n) (s : \u211d) (hs0 : 0 \u2264 s) (hsmall : 7200000 * s < 1) : \u2200 n \u2208 Finset.Icc (1:\u2115) K, delta (aprt s) m < delta (aprt s) (n:\u2124)`.\nProof sketch: for n \u2208 Icc 1 K, apply Hpair with Mm := Mtab m and Mn := Mtab n, taking hm and hn from dstar_all. The bound |m|+|n| \u2264 144 follows from m, n \u2264 72 by `push_cast; norm_cast; omega`, and htab gives the integer gap. Then `H1_aprt s hs0 hsmall := H_aprt 50 49 (by norm_num) (by norm_num) (by norm_num) (by decide) s hs0 hsmall`, and likewise for H2\u2026H8 with (m,K) = (51,50), (54,51), (55,54), (67,55), (68,67), (71,68), (72,71). The htab side goals become `decide`-style checks over a numeric table, and the per-n `Hpair \u2026 (by norm_num) (by norm_num)` lines disappear.",
+      "benefit": "This removes roughly 450 repeated case lines. The data table exists once, so it can be audited against the paper. A new record window needs one `H_aprt` call instead of a new 60-case theorem. Maintenance edits touch one proof, not eight, and the mathematical content (a gap of at least 1 in M beats a perturbation of size \u2264 144\u00b7s) is stated once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ThreeGap/LinftyThreeTorusNine.lean",
+          "declaration": "Hpair",
+          "excerpt": "(hc : |(m : \u211d)| + |(n : \u211d)| \u2264 144) (hgapZ : Mm + 1 \u2264 Mn)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ThreeGap/LinftyThreeTorusNine.lean",
+          "declaration": "H8_aprt",
+          "excerpt": "  \u00b7 exact Hpair s hs0 hsmall 72 71 7000 7088 dstar72 dstar71 (by norm_num) (by norm_num)"
+        }
+      ]
+    },
+    {
+      "declaration": "norm_aprt / norm_aprt'",
+      "start_line": 595,
+      "end_line": 631,
+      "excerpt": "theorem norm_aprt' (s : \u211d) (hs : 0 \u2264 s) : \u2016astar - aprt s\u2016 = s := by",
+      "problem": "norm_aprt and norm_aprt' are copies of the same ~18-line argument. Each computes the three coordinates, bounds each norm by s, applies `pi_norm_le_iff_of_nonneg` with `fin_cases`, and gets the reverse inequality from `norm_le_pi_norm \u2026 0`. The second differs only by an extra `abs_neg` for the sign flip. The two statements are related by `norm_sub_rev`, so the second argument is redundant.",
+      "proposed_change": "Keep norm_aprt. Replace the whole body of norm_aprt' with `by rw [norm_sub_rev]; exact norm_aprt s hs`. This uses `norm_sub_rev (a b : E) : \u2016a - b\u2016 = \u2016b - a\u2016`, the additive form of `norm_div_rev`. Alternatively drop norm_aprt' and make `transport` rewrite with `norm_sub_rev` where needed.",
+      "benefit": "This deletes about 18 duplicated lines with `fin_cases` and coordinate bookkeeping. It also makes the symmetry of the sup-norm distance explicit instead of re-proved.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ThreeGap/LinftyThreeTorusNine.lean",
+          "declaration": "norm_aprt",
+          "excerpt": "  \u00b7 rw [pi_norm_le_iff_of_nonneg hs]; intro i; fin_cases i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Normed/Group/Basic.lean",
+          "declaration": "norm_div_rev",
+          "excerpt": "theorem norm_div_rev (a b : E) : \u2016a / b\u2016 = \u2016b / a\u2016"
+        }
+      ]
+    },
+    {
+      "declaration": "delta_astar",
+      "start_line": 70,
+      "end_line": 127,
+      "excerpt": "    intro p; simp only [rem, astar, Pi.sub_apply, Pi.smul_apply, smul_eq_mul, Matrix.cons_val_zero]",
+      "problem": "The proof does the same coordinate argument three times, with only the constants (\u2212785, \u221211872, \u22122875) and the index (0, 1, 2) changing. The repeated parts are:\n(1) the formula c0/c1/c2, `rem astar d p i = ((a_i*d \u2212 50000*p i : \u2124):\u211d)/50000`;\n(2) the upper bound b0/b1/b2, which rewrites the residue to r_i via `hz` and uses `normcoord` and `hM_i`;\n(3) the three-way `rcases hMa` branches, which apply `abs_residue_le 50000 r_i (a_i*d) \u2026` after `norm_le_pi_norm \u2026 i`.\nEach copy has the same shape but is edited by hand per coordinate, which invites copy errors.",
+      "proposed_change": "Prove two coordinate lemmas once, for any integer a and any i with `astar i = (a:\u211d)/50000`:\n(a) `\u2200 p, \u2016(rem astar d p) i\u2016 = (|a*d \u2212 50000*p i| : \u2124)/50000`. This is the `c_i` + `normcoord` content, via `rem`, `Pi.sub_apply` and `push_cast`.\n(b) `a*d = r + 50000*n \u2192 2*|r| \u2264 50000 \u2192 \u2200 p, (|r|:\u211d)/50000 \u2264 \u2016(rem astar d p) i\u2016`. This is `abs_residue_le` plus (a).\nThen the upper bound is `pi_norm_le_iff_of_nonneg` with `fin_cases i` followed by `exact` of the equality case of (a) at p = ![n\u2080,n\u2081,n\u2082], and the lower bound is a three-way `rcases` that calls (b) with i = 0, 1, 2. The three `c_i` computations and the three `b_i`/`hnum` blocks collapse into the two lemmas.",
+      "benefit": "This shortens the proof by about 40 lines. The index-specific `Matrix.cons_val_*`/`head_cons`/`tail_cons` simp sets appear once rather than three times. The generalisation also makes the residue-defect principle (defect = max of balanced residues) visible, not buried in hand-expanded constants.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ThreeGap/LinftyThreeTorusNine.lean",
+          "declaration": "delta_astar",
+          "excerpt": "        exact_mod_cast abs_residue_le 50000 r\u2081 (-11872 * d) (by norm_num) hb1 \u27e8n\u2081, by linarith"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ThreeGap/LinftyThreeTorusNine.lean",
+          "declaration": "delta_astar",
+          "excerpt": "      rw [hz, normcoord r\u2082]"
+        }
+      ]
+    },
+    {
+      "declaration": "nine_le_card_image",
+      "start_line": 420,
+      "end_line": 496,
+      "excerpt": "  have a0_2 : f q\u2082 < f q\u2080 := lt_trans h12 h01",
+      "problem": "This proves \u2018a strictly decreasing chain of k sample values forces k distinct image values\u2019 by hand for k = 9. It builds 28 transitivity facts and nine `\u2209` facts, then a `card_insert_of_notMem` chain. The sibling file does the same for k = 5 in `five_le_card_image_of_strictAnti_chain`, whose proof starts with the same `a02 : f q\u2082 < f q\u2080 := lt_trans h12 h01` step. The chain-to-card argument is therefore repeated across files and grows quadratically in k.",
+      "proposed_change": "Prove one general lemma, for example `card_image_ge_of_strictAnti {N k : \u2115} (f : \u2115 \u2192 \u211d) (q : Fin k \u2192 \u2115) (hq : \u2200 i, q i \u2208 Finset.range (N+1)) (h : StrictAnti (fun i => f (q i))) : k \u2264 ((Finset.range (N+1)).image f).card`. Proof sketch: `StrictAnti.injective h` gives `(Finset.univ.image (f \u2218 q)).card = k` via `Finset.card_image_of_injective`, and that image is a subset of the target image. Strict antitonicity of `f \u2218 q` would come from the successive-step hypotheses, using `Fin.strictAnti_iff_succ_lt` if it exists with that name, or else `strictAnti_nat_of_succ_lt` after extending to \u2115. Then `nine_le_card_image` and `five_le_card_image_of_strictAnti_chain` become one-line instances with `q := ![24,23,22,19,18,6,5,2,1]`. The call site in `card_ge_nine` supplies the eight `f q_{i+1} < f q_i` facts as it does now.",
+      "benefit": "This removes about 75 lines of quadratic transitivity bookkeeping here and the corresponding code in the 5-distance file. The pigeonhole fact is stated once, for all k, so a future record count needs no new bespoke lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ThreeGap/EuclideanFiveDistanceSharpArith.lean",
+          "declaration": "five_le_card_image_of_strictAnti_chain",
+          "excerpt": "  have a02 : f q\u2082 < f q\u2080 := lt_trans h12 h01"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Order/Monotone/Basic.lean",
+          "declaration": "StrictAnti.injective",
+          "excerpt": "theorem StrictAnti.injective (hf : StrictAnti f) : Injective f"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 69385,
+    "cache_read_input_tokens": 325010,
+    "output_tokens": 9389,
+    "output_tokens_details": {
+      "thinking_tokens": 3203
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 69385,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5454,
+        "cache_read_input_tokens": 72779,
+        "cache_creation_input_tokens": 535,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 535
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.40395499999999995,
+  "duration_ms": 73470,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:06:45",
+  "unit": "file",
+  "source_sha256": "4d2736eb35625c77ea147de96527fc508d834c27d863adb29054493f8926528b",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

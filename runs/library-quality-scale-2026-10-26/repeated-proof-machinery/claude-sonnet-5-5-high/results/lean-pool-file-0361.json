@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0361",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "The file has one huge declaration, `nb095SplitAlpha0000`, whose body is a single `TAlphaWff.imp` term. I read the statement, both halves of the term (lines 71\u2013724 and 725\u20131390) and the `TAlphaWff` constructors in NominalAlphaTransport.lean. I also read `mem_lt_freshVar` and `freshVar_injective` in ReplaySupport/Basic.lean, and the `nb095AlphaDummy020`\u2013`026` definitions in Part001. I did not compare the two copies character by character, but their start, end and middle sections match in everything I read. The statement itself has the shape `imp (classMem X) (neg (classMem X))` on both the left and the right side. I could not run Lean, so the proposed rewrite is untested. The `let` form should elaborate if the `Wff` indices unify, which they should because the statement repeats the same `classMem` on each side. The `show \u2026 \u2260 \u2026 from` proofs are another repetition (about 100 occurrences). I only mention them in the second finding, because a clean helper depends on the `nb095AlphaDummyNNN` definitions all unfolding to `freshVar support k`.",
+  "findings": [
+    {
+      "declaration": "nb095SplitAlpha0000",
+      "start_line": 71,
+      "end_line": 1390,
+      "excerpt": "(TAlphaWff.imp (TAlphaWff.classMem (TAlphaClass.cv (TAlphaVar.here _ _ _)) (TAlphaClass.cab",
+      "problem": "The statement has the form `imp (classMem M) (neg (classMem M))`, with the same `M` on both the left and the right side. The proof term writes the derivation `TAlphaWff.classMem (cv here) (cab (ex (conj \u2026 reflOfClosed \u2026 synC1c \u2026 synC0 \u2026 synCnnc)))` out in full twice, once at lines 71\u2013724 and again inside `TAlphaWff.neg` at lines 725\u20131390. The two copies have the same shape and the same sub-blocks, including the `show \u2026 \u2260 \u2026 from` proofs, the `freshVar_injective` ladders and the 18-entry `reflOfClosed` environments. Each copy is about 650 lines. Any fix to one copy must be made by hand in the other.",
+      "proposed_change": "Build the shared derivation once and use it twice:\n\n```lean\nnoncomputable def nb095SplitAlpha0000 \u2026 : TAlphaWff [...] (Wff.imp \u2026) (Wff.imp \u2026) :=\n  let core := (TAlphaWff.classMem (TAlphaClass.cv (TAlphaVar.here _ _ _)) (TAlphaClass.cab \u2026))\n  TAlphaWff.imp core (TAlphaWff.neg core)\n```\n\nThe `core` term is the current lines 71\u2013724 minus the outer `imp`. Because `TAlphaWff` is a `Type`, the same `core` can be passed to both `imp` and `neg`. If the elaborator needs help, make `core` a separate `noncomputable def nb095SplitAlpha0000Core` with the explicit type `TAlphaWff env (Wff.classMem \u2026) (Wff.classMem \u2026)`, and apply `imp`/`neg` in the main def. The shared lemma statement is that definition's type. Its proof is the existing term. Both uses are then `core` under `imp` and `neg`, with the same `D R S_cls E f u x` hypotheses and the same imports.",
+      "benefit": "The file shrinks from about 1300 lines of term to about 650, roughly half. The structure `A \u2192 \u00acA` becomes visible instead of buried in parentheses. A future fix to the proof of `M` is made once, and the two halves cannot silently diverge.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/NAR4H5C095M3Part008.lean",
+          "declaration": "nb095SplitAlpha0000",
+          "excerpt": "(Wff.imp (Wff.classMem (Class.cv (nb095AlphaDummy025 D R S_cls E))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/NAR4H5C095M3Part008.lean",
+          "declaration": "nb095SplitAlpha0000",
+          "excerpt": "(TAlphaWff.neg (TAlphaWff.classMem (TAlphaClass.cv (TAlphaVar.here _ _ _)) (TAlphaClass.cab"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/NominalAlphaTransport.lean",
+          "declaration": "TAlphaWff.imp",
+          "excerpt": "imp {env : TBinderEnv} {p p' q q' : Wff} (hp : TAlphaWff env p p')"
+        }
+      ]
+    },
+    {
+      "declaration": "nb095SplitAlpha0000 (repeated `show \u2026 \u2260 \u2026 from` binder-distinctness proofs)",
+      "start_line": 72,
+      "end_line": 100,
+      "excerpt": "unfold nb095AlphaDummy020;",
+      "problem": "Dozens of binder-distinctness proofs use the same reasoning: `unfold nb095AlphaDummyNNN; with_reducible exact Nat.ne_of_lt (mem_lt_freshVar (nb095_support_mem_XXXX \u2026) k)`. Each is the fact that a variable in a support set differs from `freshVar support k`. The same two-line script is pasted next to a mirrored copy for the `f` side. The same pattern appears in ReplaySupport/SwapAlpha.lean as `exact (Nat.ne_of_lt (mem_lt_freshVar \u2026 0))`, so it recurs across files.",
+      "proposed_change": "Add a helper next to `mem_lt_freshVar` in ReplaySupport/Basic.lean, for example `theorem ne_freshVar_of_mem {support : Finset Var} {x : Var} (hx : x \u2208 support) (k : Nat := 0) : x \u2260 freshVar support k := Nat.ne_of_lt (mem_lt_freshVar hx k)`. Each site then becomes `show a \u2260 b from by unfold nb095AlphaDummyNNN; exact ne_freshVar_of_mem (nb095_support_mem_XXXX \u2026) k`. A further step is to state, for each `nb095AlphaDummyNNN`, a lemma `ne` that has already done the unfolding, so the sites become one-line references. This is a smaller tidy-up than the first finding. It is only worthwhile if the generator can emit these lemmas.",
+      "benefit": "Each distinctness proof shrinks from about 7 lines to 1\u20132. The reasoning (membership implies a strict lower bound, which implies `\u2260`) is stated once and the generated certificate is easier to read.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/ReplaySupport/Basic.lean",
+          "declaration": "mem_lt_freshVar",
+          "excerpt": "theorem mem_lt_freshVar {support : Finset Var} {x : Var} (hx : x \u2208 support)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NFWeakPartition/ReplaySupport/SwapAlpha.lean",
+          "declaration": "swap alpha proof (line 687)",
+          "excerpt": "\u00b7 exact (Nat.ne_of_lt (mem_lt_freshVar support_mem_0004 0))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 39975,
+    "cache_read_input_tokens": 192594,
+    "output_tokens": 5969,
+    "output_tokens_details": {
+      "thinking_tokens": 1594
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 39975,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2893,
+        "cache_read_input_tokens": 41273,
+        "cache_creation_input_tokens": 2631,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2631
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.23887339999999999,
+  "duration_ms": 47364,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T02:03:31",
+  "unit": "file",
+  "source_sha256": "251e23286d089b7e015d8154c6c3a28fbb57b9a508bde4bf19925b2ca53913d8",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

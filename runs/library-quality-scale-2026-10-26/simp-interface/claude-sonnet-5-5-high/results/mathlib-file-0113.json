@@ -1,0 +1,114 @@
+{
+  "id": "mathlib-file-0113",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked each @[simp] lemma for competing rules and loops: flip_isRefl_iff, the flip_separating*/flip_nondegenerate lemmas, the *_congr_iff lemmas, mem_*Submodule and LinearEquiv.isAdjointPair_symm_iff. I found no loop or conflict among them. I also compared with BilinearForm/Properties.lean and with other uses of IsSymm.eq. The two findings are about missing or inconsistent simp coverage. They are modest, and I did not run Lean, so I make no claim about observed simplifier behaviour. The same `\u2190 hB.eq, RingHom.id_apply` pattern recurs in RootSystem/OfBilinear.lean, RootPositive.lean and QuadraticForm/Basic.lean. Properties.lean cannot supply a fix for this file because it is downstream of it.",
+  "findings": [
+    {
+      "declaration": "LinearMap.IsSymm (field `eq`) and its users apply_sq_le_of_symm / apply_sq_lt_iff_linearIndependent_of_symm",
+      "start_line": 149,
+      "end_line": 150,
+      "excerpt": "protected eq : \u2200 x y, I (B x y) = B y x",
+      "problem": "The only symmetry rewrite is `eq`, which is stated with `I (B x y)`. For bilinear forms (`I = RingHom.id`) every use leaves a `RingHom.id (B x y)` residue that must be cleaned up by hand with `RingHom.id_apply`. This file does it in two proofs, `rw [sq, \u2190 hB.eq, RingHom.id_apply]`. Another proof uses a `show B y x = B x y from hB.eq y x` workaround, and other files repeat the pattern. There is no companion lemma for the `RingHom.id` case, and the `I` form cannot be used with `simp [hB.eq]` without the id-application cleanup.",
+      "proposed_change": "Add an `IsSymm` lemma for the identity ring hom, with a name such as `IsSymm.eq_id`. Its statement would be `{B : M \u2192\u209b\u2097[RingHom.id R] M \u2192\u2097[R] R} (H : B.IsSymm) (x y) : B x y = B y x`, or the same lemma stated for `BilinForm R M`. Use it in `apply_sq_le_of_symm`, `apply_sq_lt_iff_linearIndependent_of_symm` and `isOrthogonal_of_forall_apply_same`. Then the `show (B x y)^2 = B x y * B y x` steps become `by rw [sq, hB.eq_id y x]` and need no `RingHom.id_apply`.",
+      "benefit": "Callers get an RingHom.id-free symmetry rewrite. Proofs avoid manual `RingHom.id_apply` rewrites and `show` casts. The lemma is also usable by `simp`/`rw` in the downstream root-system and quadratic-form files that repeat the same pattern.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/SesquilinearForm/Basic.lean",
+          "declaration": "LinearMap.BilinForm.apply_sq_le_of_symm",
+          "excerpt": "rw [show (B x y) ^ 2 = (B x y) * (B y x) by rw [sq, \u2190 hB.eq, RingHom.id_apply]]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/SesquilinearForm/Basic.lean",
+          "declaration": "LinearMap.BilinForm.apply_sq_lt_iff_linearIndependent_of_symm",
+          "excerpt": "rw [show B x y ^ 2 = B x y * B y x by rw [sq, \u2190 hB.eq, RingHom.id_apply]]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/SesquilinearForm/Basic.lean",
+          "declaration": "LinearMap.isOrthogonal_of_forall_apply_same",
+          "excerpt": "show B y x = B x y from hB.eq y x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/RootSystem/OfBilinear.lean",
+          "declaration": "RootPairing (OfBilinear)",
+          "excerpt": "\u2190 hSB.eq x y, RingHom.id_apply, \u2190 hSB.eq x z, RingHom.id_apply"
+        }
+      ]
+    },
+    {
+      "declaration": "LinearMap.isSymm_zero (and the unmatched IsRefl / IsAlt)",
+      "start_line": 170,
+      "end_line": 171,
+      "excerpt": "theorem isSymm_zero : (0 : M \u2192\u209b\u2097[I] M \u2192\u2097[R] R).IsSymm := \u27e8fun _ _ => map_zero _\u27e9",
+      "problem": "The file makes `isSymm_zero`, `isNonneg_zero` and `isPosSemidef_zero` simp lemmas. The sibling predicates `IsRefl` and `IsAlt` are plain `def`s, so `simp` cannot see through them, and the sesquilinear file has no corresponding `isRefl_zero` or `isAlt_zero`. The only such lemmas (`isRefl_zero`, `isAlt_zero`) are `BilinForm`-specific, in a downstream file, and `isRefl_zero` is the only one marked simp. So `simp` proves `IsSymm 0` for sesquilinear forms but not `IsRefl 0` or `IsAlt 0` for general `M\u2081 \u2192\u209b\u2097[I\u2081] M\u2081 \u2192\u209b\u2097[I\u2082] M`, and the simp coverage of this predicate family is uneven.",
+      "proposed_change": "Add `@[simp] theorem isRefl_zero : (0 : M\u2081 \u2192\u209b\u2097[I\u2081] M\u2081 \u2192\u209b\u2097[I\u2082] M).IsRefl := fun _ _ _ => rfl` and `@[simp] theorem isAlt_zero : (0 : M\u2081 \u2192\u209b\u2097[I\u2081] M\u2081 \u2192\u209b\u2097[I\u2082] M).IsAlt := fun _ => rfl`, placed beside their definitions. The BilinForm-specific versions in `BilinearForm/Properties.lean` could then be derived from or replaced by these.",
+      "benefit": "Users and downstream proofs get uniform `simp` behaviour for zero forms across the predicate family. The BilinForm versions would no longer be isolated special cases.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/BilinearForm/Properties.lean",
+          "declaration": "LinearMap.BilinForm.isAlt_zero",
+          "excerpt": "theorem isAlt_zero : (0 : BilinForm R M).IsAlt := fun _ => rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/BilinearForm/Properties.lean",
+          "declaration": "LinearMap.BilinForm.isRefl_zero",
+          "excerpt": "theorem isRefl_zero : (0 : BilinForm R M).IsRefl := fun _ _ _ => rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/LinearAlgebra/SesquilinearForm/Basic.lean",
+          "declaration": "LinearMap.isPosSemidef_zero",
+          "excerpt": "lemma isPosSemidef_zero [Preorder R] : IsPosSemidef (0 : M \u2192\u209b\u2097[I\u2081] M \u2192\u2097[R] R) where"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 34707,
+    "cache_read_input_tokens": 129632,
+    "output_tokens": 9374,
+    "output_tokens_details": {
+      "thinking_tokens": 5303
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 34707,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2799,
+        "cache_read_input_tokens": 36643,
+        "cache_creation_input_tokens": 2077,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2077
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.24555120000000003,
+  "duration_ms": 72993,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:05:25",
+  "unit": "file",
+  "source_sha256": "5fda459af542599b1b6f333835fc23f1b1166c9d7c95deb60c67aa40873482cf",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

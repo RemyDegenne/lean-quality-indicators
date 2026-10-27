@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0038",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the lemmas it rewrites with: timeDerivative_mderivClosure_wienerIntegral (DualDerivative.lean), deterministicTimeEmbedding_eq_tensor and predictableProjection_deterministic (ClarkOconeExamples.lean), centeredPartL2_coe and centeredWienerIntegral_coe (NaturalItoRange.lean), and wienerIntegral_wienerIntegralEquiv_symm_apply (TimeDerivative.lean). I grepped the Malliavin directory for uses. The existing simp set here is small and looks consistent (expectationL2_wienerIntegral, centeredPartL2_coe, centeredWienerIntegral_coe, mderivD12_apply). I found no sign of a rewrite loop or competing rules. The findings are about missing canonical rules, not wrong ones. I could not run Lean, so I have not tested that any proposed simp lemma fires or terminates. The main uncertainty is whether the `tensor`-form output of timeDerivative_mderivClosure_wienerIntegral is used elsewhere (outside the directories I searched) in a way that makes changing its statement costly. Adding a new lemma avoids that risk.",
+  "findings": [
+    {
+      "declaration": "bestNaturalItoIntegrand_centeredWienerIntegral_eq_predictableProjection (and naturalClarkOcone_wienerIntegral, naturalItoDuality_wienerIntegral)",
+      "start_line": 72,
+      "end_line": 74,
+      "excerpt": "timeDerivative_mderivClosure_wienerIntegral,\n    \u2190 deterministicTimeEmbedding_eq_tensor, predictableProjection_deterministic]",
+      "problem": "timeDerivative_mderivClosure_wienerIntegral gives `tensor g (Lp.const 2 P 1)`. No rule turns that into the normal form that predictableProjection_deterministic consumes. Every use therefore rewrites against the grain with `\u2190 deterministicTimeEmbedding_eq_tensor` and then applies `predictableProjection_deterministic`. This three-lemma chain appears at lines 72-74, 91-93 and 169-171 of this file. It appears twice more in ClarkOconeExamples.lean (lines 101-103 and 121-123). A `\u2190` rewrite of a definitional-tensor identity is fragile, and it cannot be used as a simp rule. Neither the derivative lemma nor the surrounding API gives the expression `predictableProjection \ud835\udcc5 (timeDerivative \u2026 (mderivClosure P (wienerIntegral hB g)))` a canonical form. The `centeredPartL2` and `expectationL2` parts already simplify, but this part does not.",
+      "proposed_change": "Add a lemma such as `predictableProjection_timeDerivative_mderivClosure_wienerIntegral : predictableProjection \ud835\udcc5 (timeDerivative hB L hL hgen (mderivClosure P (wienerIntegral hB g))) = deterministicPredictableEmbedding \ud835\udcc5 g`, proved by the existing three-step rewrite, and mark it `@[simp]`. Its left side is the expression that appears in all the first-chaos statements, and its right side is the canonical deterministic embedding, so it terminates. Optionally also add a simp-form variant of timeDerivative_mderivClosure_wienerIntegral that states its right side as `deterministicTimeEmbedding g`, so that tensor does not leak into goals. The five chains can then become `simp` or a single `rw`.",
+      "benefit": "One canonical simp lemma replaces five copies of an orientation-reversing rewrite chain. Users can reduce a first-chaos Clark\u2013Ocone or duality goal with `simp`. The proofs no longer depend on the order of three rewrites, one of them reversed, so they are less likely to break if `tensor` or `deterministicTimeEmbedding` change.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/DualDerivative.lean",
+          "declaration": "timeDerivative_mderivClosure_wienerIntegral",
+          "excerpt": "tensor g (Lp.const 2 P (1 : \u211d))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/ClarkOconeExamples.lean",
+          "declaration": "deterministicTimeEmbedding_eq_tensor",
+          "excerpt": "deterministicTimeEmbedding (P := P) g = tensor g (Lp.const 2 P (1 : \u211d))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/ClarkOconeExamples.lean",
+          "declaration": "predictableDerivative_wienerIntegralD12",
+          "excerpt": "C.generated, \u2190 deterministicTimeEmbedding_eq_tensor, predictableProjection_deterministic]"
+        }
+      ]
+    },
+    {
+      "declaration": "bestNaturalItoIntegrand_firstChaos_eq_predictableProjection (local hcentered)",
+      "start_line": 132,
+      "end_line": 135,
+      "excerpt": "have hcentered : centeredPartL2 (wienerIntegral hB g) = centeredWienerIntegral hB g := by\n    apply Subtype.ext\n    simp only [centeredPartL2_coe, expectationL2_wienerIntegral, sub_zero,",
+      "problem": "The identity `centeredPartL2 (wienerIntegral hB g) = centeredWienerIntegral hB g` is proved inline as a local `have`. It is the only bridge between the two centered-part APIs, and only `centeredPartL2_coe` and `centeredWienerIntegral_coe` are simp lemmas. The bridge uses the simp lemma expectationL2_wienerIntegral, which is declared in this file, so it cannot live in NaturalItoRange.lean unless that lemma moves too. Nothing exposes it to simp. A goal containing `bestNaturalItoIntegrand \u2026 (centeredPartL2 (wienerIntegral hB g))` cannot be rewritten into the form that bestNaturalItoIntegrand_centeredWienerIntegral expects.",
+      "proposed_change": "Promote it to a top-level lemma `centeredPartL2_wienerIntegral : centeredPartL2 (wienerIntegral hB g) = centeredWienerIntegral hB g` (the proof is the existing `Subtype.ext` and `simp only` block) and mark it `@[simp]`. Place it next to `expectationL2_wienerIntegral`. The local `hcentered` then becomes `rw [centeredPartL2_wienerIntegral]` or is absorbed by simp. The orientation is safe: the right side is a strictly more specific constructor and nothing rewrites it back.",
+      "benefit": "Downstream Clark\u2013Ocone statements can mix `centeredPartL2` and `centeredWienerIntegral` and simplify them to one form. The first-chaos lemma becomes shorter and no longer hides a reusable fact inside a proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/NaturalItoRange.lean",
+          "declaration": "centeredPartL2_coe",
+          "excerpt": "(centeredPartL2 G : RandomL2 P) = G - expectationL2 G"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/NaturalItoRange.lean",
+          "declaration": "centeredWienerIntegral_coe",
+          "excerpt": "(centeredWienerIntegral hB g : RandomL2 P) = wienerIntegral hB g"
+        }
+      ]
+    },
+    {
+      "declaration": "naturalClarkOcone_firstChaos / bestNaturalItoIntegrand_firstChaos_eq_predictableProjection / naturalItoDuality_firstChaos",
+      "start_line": 109,
+      "end_line": 112,
+      "excerpt": "let g := (wienerIntegralEquiv hB).symm Z\n  have hZ : (Z : RandomL2 P) = wienerIntegral hB g :=\n    (wienerIntegral_wienerIntegralEquiv_symm_apply hB Z).symm\n  rw [hZ]",
+      "problem": "Three theorems (lines 109-112, 128-131 and 195-198) repeat the same four-line step of rewriting `(Z : RandomL2 P)` into `wienerIntegral hB g` with `g := (wienerIntegralEquiv hB).symm Z`. The source lemma wienerIntegral_wienerIntegralEquiv_symm_apply is not a simp lemma, and it runs in the reverse direction (it simplifies `wienerIntegral (symm Z)` to `Z`). So `rw [hZ]` has to be done by hand. After it, `Z` appears on the right under `g`, so the step cannot be a plain simp rewrite. The file has no `\u2200 Z, \u2203 g, (Z : RandomL2 P) = wienerIntegral hB g` lemma or an induction-style principle.",
+      "proposed_change": "Add a reusable lemma `firstChaos_exists_wienerIntegral (Z : firstChaos hB) : \u2203 g, (Z : RandomL2 P) = wienerIntegral hB g`, or tag wienerIntegral_wienerIntegralEquiv_symm_apply with `@[simp]` (its left side is already in simp-normal form: `wienerIntegral` applied to the `symm` of an equiv). Then use `obtain \u27e8g, rfl\u27e9`-style reduction, or state the `_firstChaos` theorems by `simp`/`rcases` on the new lemma.",
+      "benefit": "This removes three copies of the same reduction and puts the first-chaos-to-Wiener-integral reduction in one place. Marking the reverse-direction lemma simp would also let simp normalise `wienerIntegral hB ((wienerIntegralEquiv hB).symm Z)` to `Z` in goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/TimeDerivative.lean",
+          "declaration": "wienerIntegral_wienerIntegralEquiv_symm_apply",
+          "excerpt": "wienerIntegral hB ((wienerIntegralEquiv hB).symm Z) = (Z : RandomL2 P)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 29733,
+    "cache_read_input_tokens": 111042,
+    "output_tokens": 6667,
+    "output_tokens_details": {
+      "thinking_tokens": 1263
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29733,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3816,
+        "cache_read_input_tokens": 30303,
+        "cache_creation_input_tokens": 3443,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3443
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1967302,
+  "duration_ms": 60566,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:00",
+  "unit": "file",
+  "source_sha256": "6da8e4ff1d5ee13a4af4eb63325398c14ac4b79bad1ff441bc0f40a505661907",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

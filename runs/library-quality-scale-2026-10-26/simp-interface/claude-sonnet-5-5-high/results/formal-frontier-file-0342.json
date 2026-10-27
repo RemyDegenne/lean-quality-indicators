@@ -1,0 +1,115 @@
+{
+  "id": "formal-frontier-file-0342",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped for uses of its declarations in the formal-frontier repo. The only downstream non-test use is `piQuotientContinuousAddEquiv` in PrimewisePadicQuotients.lean, where it is composed with `.trans`. I did not run Lean. The claims about which simp lemma fires first rest on simp's usual behaviour of rewriting subterms before the enclosing term, so they are unverified. The orientation of the proposed `symm` lemma is a design suggestion.",
+  "findings": [
+    {
+      "declaration": "Ideal.piQuotientRingEquiv_mk_apply / Ideal.piQuotientRingEquiv_mk",
+      "start_line": 83,
+      "end_line": 100,
+      "excerpt": "      fun i \u21a6 Ideal.Quotient.mk (I i) (x i) := by",
+      "problem": "Two simp lemmas overlap. `piQuotientRingEquiv_mk` rewrites `piQuotientRingEquiv I (mk x)` to a lambda. `piQuotientRingEquiv_mk_apply` rewrites the same term applied to `i`. Simp visits subterms first, so in `e (mk x) i` the inner application should match the function-level lemma and beta-reduce. That would make the `_apply` simp attribute redundant. The function-level lemma also produces an anonymous lambda rather than the named `piQuotientMap I x`. That is the actual factorisation and already has `piQuotientMap_apply` as a simp lemma. The normal form is therefore a bare lambda that does not fold back into the file's own API.",
+      "proposed_change": "State the function-level lemma as `piQuotientRingEquiv I (Ideal.Quotient.mk (Ideal.pi I) x) = piQuotientMap I x`, with `rfl` or the existing proof. Keep it `@[simp]`, since `piQuotientMap_apply` then handles the pointwise case. Remove `@[simp]` from `piQuotientRingEquiv_mk_apply`, or keep it only as a non-simp convenience lemma. This leaves one canonical normal form (`piQuotientMap I x`, then pointwise `mk (x i)`).",
+      "benefit": "Simp has a single route and no redundant rules. The result stays in the `piQuotientMap` vocabulary, so it is easier to compose with `piQuotientMap_surjective` and `ker_piQuotientMap`. The manual `exact piQuotientRingEquiv_mk I x` steps in the continuity proofs would also need less unfolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/PiIdealQuotient.lean",
+          "declaration": "Ideal.piQuotientMap_apply",
+          "excerpt": "piQuotientMap I x i = Ideal.Quotient.mk (I i) (x i) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/PiIdealQuotient.lean",
+          "declaration": "Ideal.continuous_piQuotientRingEquiv",
+          "excerpt": "        piQuotientMap I := by"
+        }
+      ]
+    },
+    {
+      "declaration": "Ideal.piQuotientContinuousAddEquiv_mk_apply",
+      "start_line": 176,
+      "end_line": 186,
+      "excerpt": "theorem piQuotientContinuousAddEquiv_mk_apply",
+      "problem": "The `@[simp]` attribute is probably dead. `piQuotientContinuousAddEquiv_apply` is also simp and rewrites `piQuotientContinuousAddEquiv I y` to `piQuotientRingEquiv I y`. In `piQuotientContinuousAddEquiv I (mk x) i`, the inner application `piQuotientContinuousAddEquiv I (mk x)` is a subterm. Simp reaches it first and rewrites it to the ring-equivalence form, after which `piQuotientRingEquiv_mk_apply` (or `_mk`) closes the goal. The `_mk_apply` lemma for the continuous equivalence will therefore rarely or never be the rule that fires. It just duplicates the other two rules.",
+      "proposed_change": "Drop `@[simp]` from `piQuotientContinuousAddEquiv_mk_apply`. Keep it as a plain convenience lemma or delete it. Alternatively, make `piQuotientContinuousAddEquiv_apply` the single bridge and rely on the ring-equivalence simp lemmas.",
+      "benefit": "The simp set is smaller. There is one chain (continuous add equiv, then ring equiv, then `piQuotientMap`, then pointwise) instead of overlapping rules that look like they are used but are not.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/PiIdealQuotient.lean",
+          "declaration": "Ideal.piQuotientContinuousAddEquiv_apply",
+          "excerpt": "piQuotientContinuousAddEquiv I x = piQuotientRingEquiv I x :="
+        }
+      ]
+    },
+    {
+      "declaration": "Ideal.continuous_piQuotientRingEquiv_symm (missing simp lemma for the inverse)",
+      "start_line": 139,
+      "end_line": 147,
+      "excerpt": "      _ = (piQuotientRingEquiv I).symm\n          (piQuotientRingEquiv I (Ideal.Quotient.mk (Ideal.pi I) x)) :=",
+      "problem": "The file gives simp lemmas for the forward equivalence only. There is no lemma for the inverse, such as `(piQuotientRingEquiv I).symm (piQuotientMap I x) = Ideal.Quotient.mk (Ideal.pi I) x`. There is also no `coe` lemma for `piQuotientMap`, so `isOpenQuotientMap_piQuotientMap` has to use `change \u2026 Pi.map \u2026`. The inverse's behaviour on representatives is proved inline with a `change` and a `calc`. Downstream users of `.symm` (for example via `.trans` in PrimewisePadicQuotients) get no simp support. A representative-level reduction of `.symm` applied to `piQuotientMap I x` cannot be done with simp, because the forward `_mk` lemma only matches `e (mk x)`.",
+      "proposed_change": "Add `@[simp] theorem piQuotientRingEquiv_symm_piQuotientMap (I) (x) : (piQuotientRingEquiv I).symm (piQuotientMap I x) = Ideal.Quotient.mk (Ideal.pi I) x`. Prove it by `(piQuotientRingEquiv I).symm_apply_eq.mpr (piQuotientRingEquiv_mk I x).symm` or similar, then use it to shorten the `calc` in `continuous_piQuotientRingEquiv_symm`. Optionally add a simp `piQuotientMap` coercion lemma `\u21d1(piQuotientMap I) = Pi.map fun i \u21a6 Ideal.Quotient.mk (I i)` to replace the `change` at line 107. Check this does not conflict with `piQuotientMap_apply`.",
+      "benefit": "The simp interface covers both directions of the equivalence. The inverse proof shrinks to a rewrite. Users working with `.symm` or the `.trans` compositions get automatic reduction on representatives.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/PiIdealQuotient.lean",
+          "declaration": "Ideal.continuous_piQuotientRingEquiv_symm",
+          "excerpt": "    change (piQuotientRingEquiv I).symm (piQuotientMap I x) ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/PrimewisePadicQuotients.lean",
+          "declaration": "primewisePadicQuotientContinuousAddEquivModel",
+          "excerpt": "(Ideal.piQuotientContinuousAddEquiv"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 13411,
+    "cache_read_input_tokens": 40406,
+    "output_tokens": 4974,
+    "output_tokens_details": {
+      "thinking_tokens": 1513
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13411,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2910,
+        "cache_read_input_tokens": 13917,
+        "cache_creation_input_tokens": 3507,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3507
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1074406,
+  "duration_ms": 35303,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T01:45:11",
+  "unit": "file",
+  "source_sha256": "a8ebea86465aac90093525a6fd2e8cd3119074d3e48d0c3c9a6e76bf33b3fa34",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

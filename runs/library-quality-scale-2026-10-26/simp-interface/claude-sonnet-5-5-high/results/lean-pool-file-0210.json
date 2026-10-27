@@ -1,0 +1,94 @@
+{
+  "id": "lean-pool-file-0210",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the one downstream use I found (Randomization.lean line 158, `rw [eq_quantile_volume, ...]`). I also checked Mathlib's `ProbabilityTheory.cdf_eq_real` and `measureReal_def`. I did not find any simp loops or competing rules. `eq_quantile_volume` rewrites `volume.map (quantile \u03bc)` to `\u03bc`, which is a sensible direction. The two findings below are modest interface issues. I did not run Lean, so how private `@[simp]` lemmas behave across the module boundary is uncertain.",
+  "findings": [
+    {
+      "declaration": "cdf_apply_val (and cdf_top)",
+      "start_line": 55,
+      "end_line": 57,
+      "excerpt": "@[simp]\nprivate lemma cdf_apply_val (\u03bc : Measure I) [IsProbabilityMeasure \u03bc] (i : I)",
+      "problem": "The public def `cdf` has its only simp lemmas, `cdf_apply_val` and `cdf_top`, declared `private`. Importing files cannot name these lemmas, and I would not expect them to be available in the simp set that downstream code uses. Anyone who uses the public `cdf` or `quantile` therefore gets no simp interface for `(cdf \u03bc i).val` or `cdf \u03bc \u22a4`. They would have to unfold `cdf` and go through `ProbabilityTheory.cdf` on `\u03bc.map Subtype.val`.",
+      "proposed_change": "Make `cdf_apply_val` and `cdf_top` non-private, since `cdf` is public. Keep `@[simp]` on both. Leave the purely proof-internal lemmas (`monotone_cdf`, `cdf_continuous`) private, or also expose `monotone_cdf` as a public lemma.",
+      "benefit": "Users of `cdf` can reduce `(cdf \u03bc i).val` and `cdf \u03bc \u22a4` by `simp`. The simp lemmas then match the public API instead of being usable only inside this file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/QuasiBorelSpaces/MeasureTheory/Quantile.lean",
+          "declaration": "cdf",
+          "excerpt": "noncomputable def cdf (\u03bc : Measure I) (i : I) : I where"
+        }
+      ]
+    },
+    {
+      "declaration": "cdf_apply_val",
+      "start_line": 56,
+      "end_line": 57,
+      "excerpt": "(cdf \u03bc i).val = (\u03bc (Set.Iic i)).toReal",
+      "problem": "The simp RHS is written with `(\u03bc s).toReal`. Mathlib's canonical form is `\u03bc.real s`, and `ProbabilityTheory.cdf_eq_real` is stated with `.real`. `Measure.real` is a def and `measureReal_def` is not a simp lemma, so the `toReal` form is not the library's normal form. The proof first unfolds `Measure.real` to reach the `toReal` form, and `measurable_cdf` has to unfold it again with `Measure.real_def`. This extra unfolding suggests the statement has the wrong shape. Once the statement is exposed, a user's `\u03bc.real (Iic i)` terms will not interact with it by `simp`. `cdf_top` is also proved through this `toReal` form.",
+      "proposed_change": "State the lemma as `(cdf \u03bc i).val = \u03bc.real (Set.Iic i)`. Prove it with `ProbabilityTheory.cdf_eq_real` and `map_measureReal_apply`, as Mathlib does for `unitInterval.cdf_eq_real`. Use `measureReal_univ_eq_one` or the corresponding simp lemmas for `cdf_top`.",
+      "benefit": "The simp normal form is the same `Measure.real` form used across Mathlib. Expressions from the library then combine with `cdf` without a manual `Measure.real` unfolding step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Probability/CDF.lean",
+          "declaration": "ProbabilityTheory.cdf_eq_real",
+          "excerpt": "lemma cdf_eq_real [IsProbabilityMeasure \u03bc] (x : \u211d) : cdf \u03bc x = \u03bc.real (Iic x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Probability/CDF.lean",
+          "declaration": "ProbabilityTheory.unitInterval.cdf_eq_real",
+          "excerpt": "cdf (\u03bc.map Subtype.val) x.1 = \u03bc.real (Icc 0 x)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 10421,
+    "cache_read_input_tokens": 37073,
+    "output_tokens": 3723,
+    "output_tokens_details": {
+      "thinking_tokens": 1214
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10421,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 1809,
+        "cache_read_input_tokens": 12751,
+        "cache_creation_input_tokens": 1683,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1683
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0826373,
+  "duration_ms": 27669,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:03",
+  "unit": "file",
+  "source_sha256": "de3d951c3db5897d0c429ed68ae21f5fb80687a6b3facd582943ea36482fbfc1",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

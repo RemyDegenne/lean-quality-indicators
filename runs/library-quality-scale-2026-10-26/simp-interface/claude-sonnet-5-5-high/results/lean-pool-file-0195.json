@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0195",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it depends on: instConst, constTerm, genEx, realize_genEx, wc_funMap_inr, and Fin.snoc_elim0_eq in Util.lean. I also grepped the InfinitaryLogic tree for other uses of the same `Fin.snoc Fin.elim0 x = fun _ => x` pattern, and checked Mathlib's Fin.snoc_zero. The file has no simp attributes of its own and I found no loop or competing rules. The two findings are about missing canonical simp lemmas. I did not run Lean, so I can't say whether a simp-set replacement would close these goals as written. Both findings are modest. Adding the attributes could also affect other files that call `simp` on these shapes, which I did not check.",
+  "findings": [
+    {
+      "declaration": "realize_genEx_instConst (local `hsnoc`; canonical lemma Fin.snoc_elim0_eq is not simp)",
+      "start_line": 61,
+      "end_line": 62,
+      "excerpt": "have hsnoc : (Fin.snoc Fin.elim0 x : Fin 1 \u2192 M) = (fun _ => x) := by\n    funext i; simp [Fin.snoc, Fin.eq_zero i]",
+      "problem": "The normal form for `Fin.snoc Fin.elim0 x : Fin 1 \u2192 M` is `fun _ => x`. The library already has the lemma `Fin.snoc_elim0_eq` in Util.lean, but it is not tagged `@[simp]`. Each consumer therefore re-proves the identity locally with an unfolding `simp [Fin.snoc, Fin.eq_zero i]`, and then `rw`s with it by hand. The same `have` is repeated in ConstantElimination.lean (`hval`), ConstantGeneralization.lean (`hval`), InseparablePairFamily.lean (`hsnoc`) and ClosureFields.lean (`snoc_elim0_eq_const`). Because the rewrite is not in the simp set, `simp` cannot normalise these Realize assignments on its own, and proofs have to unfold `Fin.snoc` instead.",
+      "proposed_change": "Mark `Fin.snoc_elim0_eq` in LeanPool/InfinitaryLogic/Util.lean as `@[simp]`. The direction is already right: the LHS is a snoc application with an empty tuple, and the RHS is a constant function, so it terminates. Then delete the local `hsnoc`/`hval` copies, in this file at least by replacing `hsnoc` with `Fin.snoc_elim0_eq x`. A call such as `rw [..., Fin.snoc_elim0_eq]` or `simp only [Fin.snoc_elim0_eq]` then replaces the `funext i; simp [Fin.snoc, Fin.eq_zero i]` proof. Mathlib's `Fin.snoc_zero` (which is not `@[simp]`) has the same content for `Fin 0` input and is an alternative.",
+      "benefit": "The Realize-at-`Fin 1` assignments become one canonical form across the Interpolation, WellOrdering and Scott files. Several duplicated `have` blocks go away, and the proofs no longer depend on unfolding `Fin.snoc`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InfinitaryLogic/Util.lean",
+          "declaration": "Fin.snoc_elim0_eq",
+          "excerpt": "theorem Fin.snoc_elim0_eq {\u03b1 : Type u} (x : \u03b1) :\n    (Fin.snoc (\u03b1 := fun _ => \u03b1) Fin.elim0 x : Fin 1 \u2192 \u03b1) = fun _ => x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InfinitaryLogic/Methods/Interpolation/ConstantElimination.lean",
+          "declaration": "realize_genEx",
+          "excerpt": "have hval : \u2200 x : M, (Fin.snoc Fin.elim0 x : Fin 1 \u2192 M) = (fun _ => x) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InfinitaryLogic/Methods/WellOrdering/ClosureFields.lean",
+          "declaration": "snoc_elim0_eq_const",
+          "excerpt": "(Fin.snoc Fin.elim0 v : Fin 1 \u2192 M) = fun _ => v := by"
+        }
+      ]
+    },
+    {
+      "declaration": "realize_constTerm / realize_instConst",
+      "start_line": 33,
+      "end_line": 48,
+      "excerpt": "private theorem realize_constTerm (base : L.Structure M) (h : \u2115 \u2192 M) (c : \u2115) (v : Empty \u2192 M) :\n    @Term.realize L[[\u2115]] M (wc base h) Empty v (constTerm c) = h c := by",
+      "problem": "`realize_constTerm` is the canonical simp fact for realizing a constant term in a `wc` structure, but it is `private` and has no `@[simp]`. The one downstream lemma that needs it, `realize_instConst`, has to spell it out with a `rw [show (fun a : Fin 1 => ...) = (fun _ => h c) from funext fun _ => realize_constTerm ...]` step. The underlying `wc_funMap_inr` is `@[simp]`, but `constTerm` is a plain `def`. So `simp` cannot reach `Term.realize ... (constTerm c)` unless a caller unfolds `constTerm` first. Elsewhere in the library, ModelExtraction.lean proves a separate `realize_constTermS_eq_constTerm` and does manual `rw`s for the same reason.",
+      "proposed_change": "Move `realize_constTerm` to ConstantAbstraction.lean (or ConstantSupport.lean) next to `wc_funMap_inr`, make it public, and tag it `@[simp]`. Its LHS has `constTerm c` as the head argument and its RHS is just `h c`, so it is a plain simplification that cannot loop. Then the `rw [show ... from funext ...]` line in `realize_instConst` can become `simp only [realize_constTerm]`. Other files can use the lemma directly instead of re-deriving it.",
+      "benefit": "A constant's interpretation in a `wc` structure then simplifies to `h c` automatically, which is what the Henkin truth-lemma consumers need. The `show \u2026 from funext \u2026` boilerplate disappears, and the lemma can be shared instead of being private to this file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InfinitaryLogic/Methods/ConstantAbstraction.lean",
+          "declaration": "wc_funMap_inr",
+          "excerpt": "@[simp] theorem wc_funMap_inr (base : L.Structure M) (h : \u2115 \u2192 M) (k : \u2115) (x : Fin 0 \u2192 M) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InfinitaryLogic/Methods/ConstantSupport.lean",
+          "declaration": "constTerm",
+          "excerpt": "def constTerm (j : J) : L'[[J]].Term Empty :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InfinitaryLogic/Methods/WellOrdering/ModelExtraction.lean",
+          "declaration": "realize_constTermS_eq_constTerm",
+          "excerpt": "private theorem realize_constTermS_eq_constTerm {M : Type} [L[[\u2115]].Structure M] (c : \u2115)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 20276,
+    "cache_read_input_tokens": 86696,
+    "output_tokens": 5229,
+    "output_tokens_details": {
+      "thinking_tokens": 964
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20276,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3427,
+        "cache_read_input_tokens": 23356,
+        "cache_creation_input_tokens": 933,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 933
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1420876,
+  "duration_ms": 54914,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T23:21:20",
+  "unit": "file",
+  "source_sha256": "ae15eb41bd52d0b93696e24cddd098dd34b8aeafd368a7d97d234baaddda6fe6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

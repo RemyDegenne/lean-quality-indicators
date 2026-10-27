@@ -1,0 +1,83 @@
+{
+  "id": "mathlib-file-0320",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and compared the candidate repeated blocks. The one-line `have : Fact (IsCusp ..)` pattern and the wrapper lemmas for add, sub, smul and neg are routine, thin wrappers, so I did not report them. The repeated \"eventually differentiable / bounded along `comap im atTop`\" snippet in `differentiableAt_cuspFunction` (lines 101-103) and `exp_decay_sub_atImInfty` (lines 358-362) is too short to count. I also confirmed that Mathlib's OfScalars.lean has no existing lemma that gives a lower bound on the radius from summability. It only has tendsto-ratio criteria and norm lemmas such as `ofScalars_norm`. The one real duplication I found is the radius-\u2265-1 argument. The proposed lemma and rewrites have not been compiled. Two details are uncertain: the exact `ofScalars_norm` and `NormOneClass \u2102` instance usage, and whether `qExpansionFormalMultilinearSeries_apply_norm` becomes unused.",
+  "findings": [
+    {
+      "declaration": "UpperHalfPlane.qExpansionFormalMultilinearSeries_radius and (private) UpperHalfPlane.hasFPowerSeriesOnBall_update (radius bullet)",
+      "start_line": 223,
+      "end_line": 233,
+      "excerpt": "refine le_of_forall_lt_imp_le_of_dense fun r hr \u21a6 ?_\n  lift r to NNReal using hr.ne_top\n  apply FormalMultilinearSeries.le_radius_of_summable",
+      "problem": "Two proofs repeat the same argument that `1 \u2264 (ofScalars \u2102 c).radius` follows from summability of `c m \u2022 q ^ m` for every `\u2016q\u2016 < 1`. Each one runs `le_of_forall_lt_imp_le_of_dense`, lifts `r` to `NNReal`, applies `le_radius_of_summable`, rewrites `\u2016ofScalars _ m\u2016` to `\u2016c m\u2016`, and turns `\u2016c m\u2016 * r ^ m` into the norm of the summand so it can use `(HasSum \u2026).summable.norm`. The first copy (lines 226-233) does the norm conversion with `qExpansionFormalMultilinearSeries_apply_norm`, `\u2190 r.abs_eq`, `Real.norm_eq_abs`, `norm_real`, `norm_pow` and `norm_mul`. The second copy (lines 249-257) does it with a `simpa` over `norm_mul`, `mul_comm` and similar, plus a local `FiniteDimensional \u211d \u2102` instance workaround, and it splits off the `r = 0` case. The two copies differ in style, so a change to the argument has to be made twice.",
+      "proposed_change": "Add a private lemma just before `qExpansionFormalMultilinearSeries_radius`:\n\n`private lemma one_le_radius_ofScalars_of_summable {c : \u2115 \u2192 \u2102} (hc : \u2200 q : \u2102, \u2016q\u2016 < 1 \u2192 q \u2260 0 \u2192 Summable fun m \u21a6 c m \u2022 q ^ m) : 1 \u2264 (FormalMultilinearSeries.ofScalars \u2102 c).radius`.\n\nProof sketch:\n1. Use `le_of_forall_lt_imp_le_of_dense`.\n2. If `r = 0`, close the goal by `simp`.\n3. Otherwise lift `r` to `NNReal` and apply `FormalMultilinearSeries.le_radius_of_summable`.\n4. Rewrite `\u2016ofScalars \u2102 c m\u2016` to `\u2016c m\u2016` with `ofScalars_norm`, using `NormOneClass \u2102`.\n5. Finish with `(hc r _ _).norm`, after `norm_smul` or `norm_pow` and `Complex.norm_real` bookkeeping.\n\nThen rewrite both uses:\n- `qExpansionFormalMultilinearSeries_radius`: `one_le_radius_ofScalars_of_summable fun q hq _ \u21a6 (hasSum_qExpansion_of_norm_lt hh hfper hfhol hfbdd hq).summable`. This is valid because `qExpansionFormalMultilinearSeries h f` is definitionally `.ofScalars \u2102 fun m \u21a6 (qExpansion h f).coeff m`.\n- The first bullet of `hasFPowerSeriesOnBall_update`: `one_le_radius_ofScalars_of_summable fun q hq hq0 \u21a6 (hasSum_cuspFunction_of_hasSum_punctured hh hf hq hq0).summable`.\n\nThe hypothesis `q \u2260 0` is included so that the second use needs no extra argument at `q = 0`.",
+      "benefit": "The radius-from-summability argument and its norm conversions would live in one place. The `FiniteDimensional \u211d \u2102` workaround and the `r = 0` case split would go away from `hasFPowerSeriesOnBall_update`. Both users would shrink to one-line applications, so it would be clearer what each one contributes: the source of the summability.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/ModularForms/QExpansion.lean",
+          "declaration": "UpperHalfPlane.hasFPowerSeriesOnBall_update",
+          "excerpt": "let : FiniteDimensional \u211d \u2102 := basisOneI.finiteDimensional_of_finite\n      apply FormalMultilinearSeries.le_radius_of_summable"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/ModularForms/QExpansion.lean",
+          "declaration": "UpperHalfPlane.qExpansionFormalMultilinearSeries_radius",
+          "excerpt": "exact (UpperHalfPlane.hasSum_qExpansion_of_norm_lt hh hfper hfhol hfbdd\n    (by simpa using hr)).summable.norm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Analytic/OfScalars.lean",
+          "declaration": "FormalMultilinearSeries.ofScalars_norm",
+          "excerpt": "theorem ofScalars_norm [NormOneClass E] : \u2016ofScalars E c n\u2016 = \u2016c n\u2016"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 31786,
+    "cache_read_input_tokens": 96950,
+    "output_tokens": 5627,
+    "output_tokens_details": {
+      "thinking_tokens": 2579
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31786,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2861,
+        "cache_read_input_tokens": 34028,
+        "cache_creation_input_tokens": 1687,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1687
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.193125,
+  "duration_ms": 45140,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:35:23",
+  "unit": "file",
+  "source_sha256": "22ccdea40dd4b4e014c7f35a658600819763d4f7ae82dfab1575d1ef3a87c7d6",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

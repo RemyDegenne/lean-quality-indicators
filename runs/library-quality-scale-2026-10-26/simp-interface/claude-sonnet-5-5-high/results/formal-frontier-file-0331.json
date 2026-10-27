@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0331",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file plus the definitions of upperUnit, lowerUnit, blockDiagonalUnit (Whitehead.lean), the upperUnit_/lowerUnit_ lemmas (ElementaryWhitehead.lean), RelativeElementary.lean, and Mathlib's Matrix.map_single. The simp interface of the block units has no @[simp] lemmas for the coercions or for the inverse and zero rules. Only mapRingHom_upperUnit and mapRingHom_lowerUnit are simp. I could not run Lean, so I make no claims about loops or simp failures. The proposed lemmas are untested and may need small adjustments. Whether upperUnit_add should be simp is a judgment call, and I recommend against it.",
+  "findings": [
+    {
+      "declaration": "Matrix.GeneralLinearGroup.blockDiagonalUnit_eq_five",
+      "start_line": 119,
+      "end_line": 123,
+      "excerpt": "simp only [blockDiagonalUnit, upperUnit, lowerUnit, neg_sub, neg_neg, Matrix.mul_sub,",
+      "problem": "upperUnit, lowerUnit and blockDiagonalUnit are structures with no simp lemmas for their coercion to a matrix. Every proof that needs the underlying matrix has to unfold the definitions by name. Here a long simp only list includes the three definitions plus fromBlocks_multiply. The same pattern appears at line 174 (`simp [upperUnit]`) and in ElementaryWhitehead.lean (`simp [upperUnit]`, `simp [lowerUnit]`) and Whitehead.lean (`simp [blockDiagonalUnit, upperUnit, lowerUnit, swapUnit, ...]`). Unfolding the definitions exposes the Units.mk fields rather than a canonical form.",
+      "proposed_change": "In Whitehead.lean, next to the definitions, add @[simp] lemmas `Matrix.fromBlocks 1 a 0 1` for `((upperUnit a : (BlockMatrix ..)\u02e3) : Matrix ..)`, `fromBlocks 1 0 (-a) 1` for lowerUnit, and `fromBlocks g 0 0 \u2191g\u207b\u00b9` for blockDiagonalUnit (coe_upperUnit, coe_lowerUnit, coe_blockDiagonalUnit; each should hold by rfl). Add the matching inverse coercion lemmas such as `\u2191(upperUnit a)\u207b\u00b9 = fromBlocks 1 (-a) 0 1`. Then `simp only [coe_upperUnit, coe_lowerUnit, coe_blockDiagonalUnit, Units.val_mul, Matrix.fromBlocks_multiply, ...]` replaces the unfolding at lines 119\u2013123 and 174, and the definitions stay irreducible-looking to downstream simp calls.",
+      "benefit": "Downstream block-matrix computations get a stable normal form, namely `fromBlocks` on the underlying matrix, without unfolding the structure definitions. Proofs such as blockDiagonalUnit_eq_five become shorter and less fragile if the field layout of the definitions changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/Whitehead.lean",
+          "declaration": "Matrix.GeneralLinearGroup.upperUnit",
+          "excerpt": "val := Matrix.fromBlocks 1 a 0 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/ElementaryWhitehead.lean",
+          "declaration": "Matrix.GeneralLinearGroup.upperUnit_zero",
+          "excerpt": "simp [upperUnit]"
+        }
+      ]
+    },
+    {
+      "declaration": "Matrix.GeneralLinearGroup.blockDiagonalUnit_mem_relativeElementarySubgroup (hUpperInv); also upperUnit_mem_relativeElementarySubgroup h_zero",
+      "start_line": 170,
+      "end_line": 174,
+      "excerpt": "change upperUnit (-1 : Matrix \u03b9 \u03b9 R) = (upperUnit (1 : Matrix \u03b9 \u03b9 R))\u207b\u00b9",
+      "problem": "The group-law facts about upperUnit and lowerUnit are not simp-usable. upperUnit_zero and lowerUnit_zero (`upperUnit 0 = 1`) are not tagged @[simp], although they are terminating, canonical and assumption-free. There is no lemma `upperUnit (-a) = (upperUnit a)\u207b\u00b9`, and none for lowerUnit. So hUpperInv is re-proved by hand with Subtype.ext, change, Units.ext and `simp [upperUnit]`. The zero case at line 45 also goes through convert, Subtype.ext and an explicit `exact upperUnit_zero`.",
+      "proposed_change": "In ElementaryWhitehead.lean, mark upperUnit_zero and lowerUnit_zero @[simp]. Add `upperUnit_neg (a) : upperUnit (-a) = (upperUnit a)\u207b\u00b9` and `lowerUnit_neg`. Both hold by Units.ext on the definitions, since the stored inverse is `fromBlocks 1 (-a) 0 1`. They should probably be @[simp] too: the right-hand side's argument gets smaller, so there is no cycle, and `inv` of a unit atom is a normal form. Keep upperUnit_add and lowerUnit_add as plain rewriting lemmas, because splitting sums into products would not be a normal form. Then hUpperInv reduces to `upperUnit_neg`, and the main theorem needs no `change`.",
+      "benefit": "The unit-valued block API becomes a proper additive-to-multiplicative homomorphism interface. Zero and negation simplify automatically, which removes the ad hoc unfolding proof at lines 170\u2013174 and gives a reusable inverse rule for the lower block as well.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/ElementaryWhitehead.lean",
+          "declaration": "Matrix.GeneralLinearGroup.upperUnit_zero",
+          "excerpt": "upperUnit (0 : Matrix \u03b9 \u03b9 R) = 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/Whitehead.lean",
+          "declaration": "Matrix.GeneralLinearGroup.upperUnit",
+          "excerpt": "inv := Matrix.fromBlocks 1 (-a) 0 1"
+        }
+      ]
+    },
+    {
+      "declaration": "Matrix.GeneralLinearGroup.upperUnit_mem_relativeElementarySubgroup / lowerUnit_mem_relativeElementarySubgroup (h_std_basis cases)",
+      "start_line": 58,
+      "end_line": 62,
+      "excerpt": "have heq : (fun row col => ((Matrix.single i j c row col : I) : R)) =",
+      "problem": "Entrywise coercion of `Matrix.single i j (c : I)` into R is proved by an identical local `heq` (ext, `simp only [Matrix.single_apply]`, `split_ifs <;> rfl`) in both theorems (lines 58\u201362 and 97\u2013101). The shape `fun row col => ((single i j c row col : I) : R)` is a Matrix.map with a coercion, which is not stated in a form existing simp lemmas fire on. The unmapped `Matrix.map_single` is @[simp], and RelativeElementary.lean already uses it for ring homs.",
+      "proposed_change": "State the coefficient matrix as `b.map (Subtype.val)` or `b.map I.subtype`, and use the existing @[simp] `Matrix.map_single` (which needs only ZeroHomClass for the coercion). Or add one shared lemma for the coercion of `single i j c`, instead of two private copies of `heq`. Then `simpa using upperUnit_single i j (c : R)` handles the basis case and `Matrix.map_add`/`Matrix.map_zero` handle the other two induction cases.",
+      "benefit": "Removes duplicated ad hoc normalization in both theorems and routes coercion of single-entry matrices through the library's canonical simp lemma. The heq in the h_add case also becomes a simp consequence rather than a rewritten fun-equality.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Data/Matrix/Basis.lean",
+          "declaration": "Matrix.map_single",
+          "excerpt": "(single i j a).map f = single i j (f a)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/RelativeElementary.lean",
+          "declaration": "Matrix.GeneralLinearGroup.mapRingHom_elementaryUnit",
+          "excerpt": "exact congrArg (fun m : Matrix \u03b9 \u03b9 S => 1 + m) (Matrix.map_single i j a f)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 29839,
+    "cache_read_input_tokens": 136197,
+    "output_tokens": 6511,
+    "output_tokens_details": {
+      "thinking_tokens": 1696
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29839,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3294,
+        "cache_read_input_tokens": 32783,
+        "cache_creation_input_tokens": 1069,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1069
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1981137,
+  "duration_ms": 57964,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:38:09",
+  "unit": "file",
+  "source_sha256": "f63c20d2e44f16dea31733960033c4014f86c889b336842349f2f04c39401c41",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

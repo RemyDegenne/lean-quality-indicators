@@ -1,0 +1,99 @@
+{
+  "id": "flt-anthropic-file-0071",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked its simp-related declarations: the `attribute [-simp]` line, the `@[scoped simp]` lemmas, the rfl and Iff.rfl API lemmas, and the explicit `rw`/`simp only` chains. I also read the upstream definitions of `LocalGL2.swapUnit_val`, `scalarGL_coe`, `diagSnd_coe` and `unitOfNeZero_coe`, and Mathlib's `mem_adicCompletionIntegers`. I did not run Lean. I did not report `coe_piK`/`coe_piO` (scoped simp, rfl, harmless) or the unused rfl lemmas `coe_\u03c8` and `coe_units_map_ev`, because Mathlib's `Units.coe_map` already covers the unit-coercion cases. Both findings are modest. The first depends on why `swapUnit_val` was disabled, which the file does not say. The second is a convenience improvement, not a correctness problem.",
+  "findings": [
+    {
+      "declaration": "attribute [-simp] LocalGL2.swapUnit_val (file-level simp-set adjustment)",
+      "start_line": 12,
+      "end_line": 12,
+      "excerpt": "attribute [-simp] LocalGL2.swapUnit_val",
+      "problem": "This file never mentions `swapUnit`, yet it has to switch off an upstream `@[simp]` lemma to keep its own simp calls working. The same `LocalGL2.swapUnit_val` removal is copied into many other files (e.g. the Pic0 theorem files). That pattern suggests the lemma is a globally unwanted simp rule: it expands `\u2191swapUnit` into an explicit matrix literal whenever GL(2) matrices are simplified. Each downstream file must discover and patch this separately, which hides the real simp-interface issue.",
+      "proposed_change": "Fix the simp interface at the source. In `Definitions/Def_LocalLanglands_CartanDecomposition.lean` (line 111), drop `@[simp]` from `swapUnit_val`, or make it `@[scoped simp]`, or restrict it to the files that need the explicit-matrix form. Then delete this `attribute [-simp]` workaround line from this file and its copies. If a downstream simp call really needs the unfolding, state it with `simp [LocalGL2.swapUnit_val]` at that call.",
+      "benefit": "Downstream files, including this one, get a clean default simp set without a per-file opt-out. It also avoids accidental expansion of `swapUnit` coercions into matrix literals in unrelated GL(2) proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_LocalLanglands_CartanDecomposition.lean",
+          "declaration": "LocalGL2.swapUnit_val",
+          "excerpt": "@[simp] theorem swapUnit_val :\n    (swapUnit (R := R)).val = !![0, 1; 1, 0] :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Theorems/Thm_AlgebraicCurve_Pic0_exists_periodDatum_Q_mul_period_eq_one_of_mumfordQuotient.lean",
+          "declaration": "attribute [-simp] (same workaround in another file)",
+          "excerpt": "CerednikDrinfeld.Mumford.walkOverlap_nil_left LT.LatticeTree.IntegralHom.mk.sizeOf_spec LT.LatticeTree.Vertex.baseChange_mk LT.LatticeTree.vecMap_apply LT.LatticeTree.vecMap_refl LT.LatticeTree.IntegralHom.mk.injEq LocalGL2.swapUnit_val"
+        }
+      ]
+    },
+    {
+      "declaration": "mem_intMat_iff / mem_K0_iff / \u03c8_mem_K0_iff",
+      "start_line": 599,
+      "end_line": 604,
+      "excerpt": "rw [mem_K0_iff, mem_intMat_iff, mem_intMat_iff, Submodule.mem_localBoxUnits_iff, SetLike.mem_coe,\n    SetLike.mem_coe, h\u03c6R, h\u03c6R]\n  rfl",
+      "problem": "`mem_intMat_iff` and `mem_K0_iff` are `Iff.rfl` unfolding lemmas for the bundled `intMat` and `K0`, but they are not simp lemmas. Every use is therefore a hand-ordered `rw` chain. `\u03c8_mem_K0_iff` repeats `mem_intMat_iff`, `SetLike.mem_coe` and `h\u03c6R` twice, because `rw` rewrites only one instance per occurrence, and it then needs a closing `rfl` to match `\u03c8 g\u207b\u00b9`. This is brittle: the chain depends on the order in which the membership goals appear, and it breaks if either side is restated. Any other membership goal for `intMat` or `K0` cannot be handled by `simp`.",
+      "proposed_change": "Mark `mem_intMat_iff` and `mem_K0_iff` as `@[simp]`. The `intMat` carrier is a custom set, and the rewrite is non-looping, since the RHS contains only the `\ud835\udcdev` membership of entries. Then prove `\u03c8_mem_K0_iff` with `simp only [mem_K0_iff, mem_intMat_iff, Submodule.mem_localBoxUnits_iff, SetLike.mem_coe, h\u03c6R]`, or `simp [...]`. Keep the final `rfl` or `Units.val` bridge only if it is still needed.",
+      "benefit": "The membership unfolding is applied in all positions at once, so the double `rw` and its ordering dependence go away. Future lemmas about `K0` and `intMat` (e.g. `of_mem_intMat`-style goals) can use `simp` instead of a handcrafted rewrite chain.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CerednikDrinfeld_CosetGraph_exists_iso_tree_apply_coe_eq_smul_stdVertex.lean",
+          "declaration": "mem_intMat_iff",
+          "excerpt": "theorem mem_intMat_iff (M : M\u2082) : M \u2208 intMat v \u2194 \u2200 i j, M i j \u2208 \ud835\udcdev := Iff.rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CerednikDrinfeld_CosetGraph_exists_iso_tree_apply_coe_eq_smul_stdVertex.lean",
+          "declaration": "mem_K0_iff",
+          "excerpt": "g \u2208 K0 v \u2194 (g : M\u2082) \u2208 intMat v \u2227 ((g\u207b\u00b9 : (M\u2082)\u02e3) : M\u2082) \u2208 intMat v := Iff.rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 47214,
+    "cache_read_input_tokens": 170768,
+    "output_tokens": 8692,
+    "output_tokens_details": {
+      "thinking_tokens": 4617
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 47214,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2492,
+        "cache_read_input_tokens": 49081,
+        "cache_creation_input_tokens": 2146,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2146
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2928728,
+  "duration_ms": 63209,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T22:57:53",
+  "unit": "file",
+  "source_sha256": "f4ee9516666d316fe74a252804169ac154b852820ea7a9f61c7121cdcf5a598a",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

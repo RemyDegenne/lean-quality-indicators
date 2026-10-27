@@ -1,0 +1,131 @@
+{
+  "id": "formal-frontier-file-0212",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the parallel `FiniteRegularityFunctions/LocalBall.lean`, which has the same pattern. I grepped the repo for uses of `center_mem_ball`, `mem_ball` and `center`. Downstream, `center_mem_ball` is only used as an explicit term, and `mem_ball` only in `rw`. I did not run Lean. Whether `center_mem_ball` is shadowed depends on simp's rewrite order, so I reasoned from the lemma statements and did not observe a failure. I found no rewrite cycles. The `coord_apply` and `coord_symm_apply` simp lemmas look fine.",
+  "findings": [
+    {
+      "declaration": "ChartedSpace.ChartLocalBall.center_mem_ball",
+      "start_line": 79,
+      "end_line": 80,
+      "excerpt": "@[simp] theorem center_mem_ball : (chartAt E x) x \u2208 b.ball := by",
+      "problem": "The simp lemma's left-hand side, `(chartAt E x) x \u2208 b.ball`, can itself be rewritten by the simp lemmas `mem_ball` and `mem_chartBall` (`b.ball` is an `abbrev`). It becomes `dist _ _ < b.radius`, then `0 < b.radius` via `dist_self`. The lemma is therefore not in simp-normal form and competes with `mem_ball`. When `mem_ball` fires first, simp is left with `0 < b.radius`. `radius_pos` is a plain structure field with no `@[simp]`, so simp cannot close that goal. The file's own proof has to use `simpa using b.radius_pos` for this reason.",
+      "proposed_change": "Add `attribute [simp] ChartLocalBall.radius_pos` next to the existing `attribute [simp]` line, so goals reduced by `mem_ball` close automatically. Remove `@[simp]` from `center_mem_ball` and keep it as an explicit term. The tests only use it as a term, e.g. `chartData.center_mem_ball`. Alternatively, keep it simp but give it a higher priority than `mem_ball`.",
+      "benefit": "Simp has one canonical route: ball membership unfolds to a `dist` inequality, and the center case closes through `radius_pos`. This removes a lemma that rarely or unpredictably fires and the manual `simpa using b.radius_pos` workaround.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/ChartedSpace/LocalBall.lean",
+          "declaration": "ChartedSpace.ChartLocalBall.mem_ball",
+          "excerpt": "point \u2208 b.ball \u2194 dist point ((chartAt E x) x) < b.radius"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpacesTests/ChartedSpaceSmoothLocalBall.lean",
+          "declaration": "chartData usage",
+          "excerpt": "\u27e8chartData.mem_neighborhood, chartData.radius_pos, chartData.center_mem_ball\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "ChartedSpace.ChartLocalBall.mem_ball",
+      "start_line": 75,
+      "end_line": 77,
+      "excerpt": "@[simp] theorem mem_ball (point : E) :",
+      "problem": "`ball` is an `abbrev` for `chartBall x b.radius`. The simp lemma `mem_chartBall` therefore already rewrites `point \u2208 b.ball` to the same `dist` inequality. `mem_ball` is a one-line restatement of `mem_chartBall` and is a redundant duplicate simp rule. The simp set has two lemmas for one normal form, which adds clutter and makes it unclear which lemma fires.",
+      "proposed_change": "Remove `@[simp]` from `mem_ball`. Keep it as an ordinary lemma for `rw`, which the tests use via `rw [chartData.mem_ball]`. Or delete it and rely on `mem_chartBall`.",
+      "benefit": "One canonical simp rule per rewrite, and a smaller simp set.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/ChartedSpace/LocalBall.lean",
+          "declaration": "ChartedSpace.mem_chartBall",
+          "excerpt": "@[simp] theorem mem_chartBall (x : M) (radius : \u211d) (point : E) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpacesTests/ChartedSpaceSmoothLocalBall.lean",
+          "declaration": "test using mem_ball with rw",
+          "excerpt": "rw [chartData.mem_ball, Real.dist_eq]"
+        }
+      ]
+    },
+    {
+      "declaration": "ChartedSpace.ChartLocalBall.center / coord_at_center",
+      "start_line": 82,
+      "end_line": 88,
+      "excerpt": "def center : b.ball := \u27e8(chartAt E x) x, b.center_mem_ball\u27e9",
+      "problem": "`center` is a plain `def`, and `coord_at_center` is a simp lemma whose right-hand side is `b.center`. Simp-normal forms that contain `b.center` are opaque to simp. The coercion `(b.center : E)` has no simp lemma to `chartAt E x x`, so the `coord_apply` route and the `center` route cannot be connected by simp. `coord_at_center` is proved by `Subtype.ext` plus `coord_apply`, which shows the missing projection lemma.",
+      "proposed_change": "Add `@[simp] theorem coe_center : (b.center : E) = (chartAt E x) x := rfl`. Optionally also add a simp lemma for `((b.coord \u27e8x, _\u27e9 : b.ball) : E)`. After `coord_apply` fires, this is already `chartAt E x x`, so the new lemma lets `Subtype.ext_iff` goals close.",
+      "benefit": "Simp can unfold the coordinate of the center to `chartAt E x x` and compare it with `b.center` without manual `Subtype.ext`. Users also get a canonical coordinate form for the center.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/ChartedSpace/LocalBall.lean",
+          "declaration": "ChartedSpace.ChartLocalBall.coord_at_center",
+          "excerpt": "apply Subtype.ext\n  exact b.coord_apply _"
+        }
+      ]
+    },
+    {
+      "declaration": "ChartedSpace.chartBall",
+      "start_line": 44,
+      "end_line": 51,
+      "excerpt": "def chartBall (x : M) (radius : \u211d) : Opens E :=",
+      "problem": "`chartBall` is an irreducible-by-simp `def` with only a membership simp lemma. There is no simp lemma for its coercion to a set, so `(chartBall x r : Set E)` stays opaque to `simp`. The construction proof shows this gap. It states `have hball_subset : (ball : Set E) \u2286 chart.target := hball`, relying on definitional unfolding. It also reuses `Metric.ball` and `chart \u207b\u00b9' (ball : Set E)` by defeq.",
+      "proposed_change": "Add `@[simp] theorem coe_chartBall (x : M) (radius : \u211d) : (chartBall (E := E) x radius : Set E) = Metric.ball ((chartAt E x) x) radius := rfl`. Then `simp` can move between set-coerced and `Metric.ball` forms in preimage, image and subset goals.",
+      "benefit": "Set-level reasoning about chart balls, such as images and preimages under the chart, can use `simp` and the existing `Metric.ball` lemmas. It no longer depends on unfolding the `def` through defeq in each proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/ChartedSpace/LocalBall.lean",
+          "declaration": "ChartedSpace.chartLocalBall",
+          "excerpt": "have hball_subset : (ball : Set E) \u2286 chart.target := hball"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 14440,
+    "cache_read_input_tokens": 44385,
+    "output_tokens": 6074,
+    "output_tokens_details": {
+      "thinking_tokens": 2407
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14440,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2959,
+        "cache_read_input_tokens": 17030,
+        "cache_creation_input_tokens": 1423,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1423
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1229545,
+  "duration_ms": 41944,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:56",
+  "unit": "file",
+  "source_sha256": "a4861ad94296d8d561607ccb0c92afb25809f589f787a4bdacf070969e35834c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

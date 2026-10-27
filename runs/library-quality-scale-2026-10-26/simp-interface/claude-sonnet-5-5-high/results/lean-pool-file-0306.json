@@ -1,0 +1,135 @@
+{
+  "id": "lean-pool-file-0306",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the matching definitions in Classical/Commutator.lean. I grepped downstream uses in Section4/*.lean and Classical/*.lean. The file has no simp attributes, and I found no competing or looping rewrites. The findings are about missing canonical unfolding lemmas for the wrapper defs. I did not run Lean, so I have not checked that the proposed lemmas close by `rfl`, and I have not checked how they interact with other simp sets. I deliberately did not suggest @[simp] on the hypothesis-bearing identities (_neg, _commute_gradient, _left_derivative). Their smoothness side conditions and function-level statements make them poor simp candidates without evidence of use.",
+  "findings": [
+    {
+      "declaration": "classicalWordDerivative",
+      "start_line": 56,
+      "end_line": 58,
+      "excerpt": "def classicalWordDerivative : List (Fin 2) \u2192 (Vec 2 \u2192 \u211d) \u2192 Vec 2 \u2192 \u211d :=\n  Classical.classicalWordDerivative",
+      "problem": "This wrapper is a non-recursive alias, so it has no [] / (i :: w) equation lemmas of its own. The nil and cons cases exist only as the inner definition's equations. Every caller therefore either unfolds both layers by hand with `simp [classicalWordDerivative, Classical.classicalWordDerivative, ...]` or uses `change`/`rfl`. This happens in the target file (line 79, and the `rfl` step at lines 109-110 and the `change` at 150 and 189), and again in ThetaAnalyticData and ThetaProfileDischarge. Manual unfolding of the inner definition is the sign that no canonical simp form is exposed.",
+      "proposed_change": "Directly after the def, add the two defining equations as simp lemmas. `@[simp] theorem classicalWordDerivative_nil (f) : classicalWordDerivative [] f = f := rfl`. And `@[simp] theorem classicalWordDerivative_cons (i w f) : classicalWordDerivative (i :: w) f = fun x => AVenhance.spaceGrad (classicalWordDerivative w f) x i := rfl`. The cons lemma is not a loop, because the word on the right is strictly shorter. Call sites can then use `simp` or `simp [ih]`, and the `Classical.classicalWordDerivative` unfolding disappears from them. Alternatively, mark the wrapper `abbrev` or `@[reducible]`.",
+      "benefit": "Callers get one normal form for word derivatives and no longer need to unfold `Classical.classicalWordDerivative` in simp sets. This also shortens the `change` boilerplate in `classicalWordDerivative_neg` and `classicalWordDerivative_eq_of_perm`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/ThetaProfileDischarge.lean",
+          "declaration": "ThetaProfileDischarge.iterateSpatialWord_eq_classicalWordDerivative",
+          "excerpt": "| cons i w ih => simp [iterateSpatialWord, classicalWordDerivative,\n    Classical.classicalWordDerivative, ih]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/ThetaAnalyticData.lean",
+          "declaration": "theorem on word-derivative L2 bound (n = 0 case)",
+          "excerpt": "simp [classicalWordDerivative, Classical.classicalWordDerivative, AVenhance.l2NormSq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Classical/Commutator.lean",
+          "declaration": "Classical.classicalWordDerivative",
+          "excerpt": "| i :: w, f => fun x => AVenhance.spaceGrad (classicalWordDerivative w f) x i"
+        }
+      ]
+    },
+    {
+      "declaration": "classicalTransport",
+      "start_line": 22,
+      "end_line": 24,
+      "excerpt": "def classicalTransport (b : Vec 2 \u2192 Vec 2) (u : Vec 2 \u2192 \u211d) (x : Vec 2) : \u211d :=\n  Classical.classicalTransport b u x",
+      "problem": "The wrapper provides no unfolding lemma to its meaning, `vecDot (b x) (spaceGrad u x)`. The only exposed rewrite is `classicalTransport_eq_finSum`, a function-level equality that expands into a sum over `Fin 2`. Callers that need the dot-product form unfold the inner definition by hand, as in `simpa [u, b, classicalTransport, Classical.classicalTransport]`. Others re-prove the equality by `rfl` each time.",
+      "proposed_change": "Add a pointwise unfolding lemma next to the def: `theorem classicalTransport_apply (b u x) : classicalTransport b u x = Homogenization.vecDot (b x) (AVenhance.spaceGrad u x) := rfl`. Optionally make it `@[simp]` if the surrounding development already normalises to `vecDot`. Otherwise use it in `rw`/`simp only` so the finSum expansion in `classicalTransport_eq_finSum` is not the only available rewrite. Make sure only one of the two forms is simp-normal.",
+      "benefit": "Call sites state which normal form they want. They no longer unfold `Classical.classicalTransport` by name, and they no longer re-prove the same `rfl` as ad hoc `have`s.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/ThetaDifferentiatedEnergy.lean",
+          "declaration": "transport-commutator energy step",
+          "excerpt": "simpa [u, b, classicalTransport, Classical.classicalTransport] using hdiff"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/ThetaDifferentiated.lean",
+          "declaration": "hprincipal (inside the word-differentiated transport lemma)",
+          "excerpt": "have hprincipal : classicalTransport (b t) (classicalWordDerivative w (\u03b8 t)) x =\n      vecDot (b t x) (AVenhance.spaceGrad (classicalWordDerivative w (\u03b8 t)) x) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Classical/Commutator.lean",
+          "declaration": "Classical.classicalTransport",
+          "excerpt": "Homogenization.vecDot (b x) (AVenhance.spaceGrad u x)"
+        }
+      ]
+    },
+    {
+      "declaration": "classicalWordSplits / classicalWordCommutatorSplits / classicalWordProductTerm",
+      "start_line": 232,
+      "end_line": 248,
+      "excerpt": "def classicalWordSplits : List (Fin 2) \u2192 List (List (Fin 2) \u00d7 List (Fin 2)) :=\n  Classical.classicalWordSplits",
+      "problem": "The same wrapper pattern affects `classicalWordSplits`, `classicalWordCommutatorSplits` and `classicalWordProductTerm`, and also `classicalWordProductExpansion` and `classicalWordCommutatorExpansion`, which wrap list sums over the splits. None of them exposes nil/cons or pointwise equation lemmas. Proofs in this same file must therefore run `simp only [classicalWordSplits, Classical.classicalWordSplits, List.mem_append]` and `simp [classicalWordCommutatorSplits, Classical.classicalWordCommutatorSplits]`, listing both the wrapper and its inner constant. `classicalWordProductTerm` has no `classicalWordProductTerm p f g x = classicalWordDerivative p.1 f x * classicalWordDerivative p.2 g x` lemma. Callers such as GalerkinSmoothWordEquation unfold it with `simp [classicalWordProductTerm, ...]` instead.",
+      "proposed_change": "Add equation lemmas, proved by `rfl` or by unfolding both layers. For splits: `classicalWordSplits_nil : classicalWordSplits [] = [([], [])]`, and `classicalWordSplits_cons : classicalWordSplits (i :: w) = (classicalWordSplits w).map (fun p => (i :: p.1, p.2)) ++ (classicalWordSplits w).map (fun p => (p.1, i :: p.2))`. The same two shapes work for `classicalWordCommutatorSplits`, where the nil case is `[]` and the cons case uses `classicalWordCommutatorSplits` in its second summand. For the term: `classicalWordProductTerm_apply`. Mark the nil/cons/apply lemmas @[simp], since they only reduce along a list structure or unfold a product to `classicalWordDerivative` factors. Then rewrite lines 264-287 as `simp only [classicalWordSplits_cons, ...]`.",
+      "benefit": "Membership and permutation proofs about split lists use named, stable lemmas rather than dual-name unfolding. This is robust to re-factoring the Classical namespace. It also gives users one canonical form for product terms.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/ThetaCommutator.lean",
+          "declaration": "classicalWordCommutatorSplits_perm_append",
+          "excerpt": "simp only [classicalWordCommutatorSplits, Classical.classicalWordCommutatorSplits,\n        List.mem_append] at hp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Classical/GalerkinSmoothWordEquation.lean",
+          "declaration": "word product expansion Fourier computation",
+          "excerpt": "simp [classicalWordProductTerm, hsplit, Complex.ofReal_add,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Classical/Commutator.lean",
+          "declaration": "Classical.classicalWordProductTerm",
+          "excerpt": "fun x => classicalWordDerivative p.1 f x * classicalWordDerivative p.2 g x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 39194,
+    "cache_read_input_tokens": 160393,
+    "output_tokens": 7906,
+    "output_tokens_details": {
+      "thinking_tokens": 2076
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 39194,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4639,
+        "cache_read_input_tokens": 42312,
+        "cache_creation_input_tokens": 895,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 895
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2518993,
+  "duration_ms": 53399,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T01:30:24",
+  "unit": "file",
+  "source_sha256": "f97df1f20ec1cc60e3f6d2252775892b9d957755d0f7fd537ee4efc25c26304b",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

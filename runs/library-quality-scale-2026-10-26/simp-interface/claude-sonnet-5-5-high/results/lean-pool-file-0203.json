@@ -1,0 +1,171 @@
+{
+  "id": "lean-pool-file-0203",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of Defs.lean. It has no @[simp] lemmas, and its definitions are used by `simp [def]` throughout the TriangleInflation files. I grepped the sibling files (Finner, FinnerMeasure, Fan, Exponent, Defect, DefectLaw, Graph/*) for simp calls and for lemmas about bern, respMass, onLine, Rlaw and Q. I found no loops or competing rules, because no simp set is defined. All findings are about missing canonical simp lemmas that the downstream code re-derives or duplicates. I did not check that the proposed lemmas close the existing goals, since I can't run Lean. The `onLine` iff lemmas and the `Rlaw` marginal lemmas are the least likely to run into unforeseen simp-normal-form issues. The `bern` and `respMass` value lemmas hold by `rfl`.",
+  "findings": [
+    {
+      "declaration": "respMass",
+      "start_line": 335,
+      "end_line": 335,
+      "excerpt": "def respMass (q : \u211d) : Bool \u2192 \u211d := fun b => if b then 1 - q else q",
+      "problem": "`respMass` has no simp lemmas for its two values. Every downstream use unfolds the whole definition with `simp [respMass]` and so exposes the `if b then \u2026`. Finner.lean and FinnerMeasure.lean each define a private copy of `respMass q false = q` and `respMass q true = 1 - q`. Both are proved by `rfl`, so they are canonical rewrite rules. They are private and not simp, so other files cannot reuse them. Deterministic responses also have two separate copies of the same statement: `respMass_ite` (DoubleStar) and a private `respMass_det` (Rate).",
+      "proposed_change": "In Defs.lean, right after `respMass`, add `@[simp] theorem respMass_false (q : \u211d) : respMass q false = q := rfl` and `@[simp] theorem respMass_true (q : \u211d) : respMass q true = 1 - q := rfl`. Optionally add `respMass_sum : \u2211 b, respMass q b = 1` as a simp lemma too. Delete the private copies `respMass_false`/`respMass_true` (Finner) and `respMassM_false`/`respMassM_true` (FinnerMeasure). Replace the `simp [respMass]` calls with plain `simp`, or `simp [respMass_false, respMass_true]`. Keep `respMass` itself irreducible to simp. Also move one of `respMass_ite` and `respMass_det` into Defs.lean and delete the other.",
+      "benefit": "Goals normalise to the numeric values `q` and `1 - q` instead of an `if` on a variable boolean. The duplicated helpers become one public lemma, and the many `simp [respMass]` unfoldings in Graph/Transport, FivePath, Soundness, Cycles and DoubleStar become robust rewrites that no longer depend on the definition's body.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/Finner.lean",
+          "declaration": "respMass_false",
+          "excerpt": "private lemma respMass_false (q : \u211d) : respMass q false = q := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/FinnerMeasure.lean",
+          "declaration": "respMassM_false",
+          "excerpt": "private lemma respMassM_false (q : \u211d) : respMass q false = q := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/Graph/DoubleStar.lean",
+          "declaration": "respMass_ite",
+          "excerpt": "cases d <;> cases b <;> simp [respMass]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/Rate.lean",
+          "declaration": "respMass_det",
+          "excerpt": "respMass (if c then 0 else 1) b = if b = c then (1:\u211d) else 0"
+        }
+      ]
+    },
+    {
+      "declaration": "bern",
+      "start_line": 276,
+      "end_line": 276,
+      "excerpt": "def bern (r : \u211d) : Bool \u2192 \u211d := fun b => if b then r else 1 - r",
+      "problem": "`bern` has no simp lemmas for `true` and `false`, even though the module docstring states `Bern(r)(true) = r`. Callers unfold it with `simp [bern]` or `simp only [Q, bern, \u2026]`, as in Finner, Exponent, Defect and DefectLaw, so the generic `if b` appears and has to be case-split or re-simplified. `rootWeight` (lines 391\u2013393) has the same issue: DefectLaw reaches `bern \u03b5`/`bern s` only through `simp [rootWeight, bern]`, and there are no `rootWeight` lemmas for the `inl`/`inr` cases.",
+      "proposed_change": "Add `@[simp] theorem bern_true (r : \u211d) : bern r true = r := rfl` and `@[simp] theorem bern_false (r : \u211d) : bern r false = 1 - r := rfl`. Add `@[simp] theorem rootWeight_inl (t \u03b5 s) (c : Cell t) : rootWeight t \u03b5 s (Sum.inl c) = bern \u03b5 := rfl` and an `inr` analogue. Then use `simp [Q, bern_true, bern_false]` and plain `simp` in the callers, and drop `bern` from the unfold lists.",
+      "benefit": "The simp normal form of a Bernoulli weight at a concrete bit is the parameter itself or `1 - r`. Proofs that case-split on a bit no longer need `cases b <;> simp [bern] <;> linarith`. The unfold lists in `Q`/`Peps` computations shrink, and those computations stop depending on how `bern` is written.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/DefectLaw.lean",
+          "declaration": "prod_roots",
+          "excerpt": "simp [rootWeight, bern, Finset.prod_const]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/DefectLaw.lean",
+          "declaration": "prod_rootsD",
+          "excerpt": "simp [rootsD, rootWeight, bern]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/Finner.lean",
+          "declaration": "bern_nonneg",
+          "excerpt": "intro b; cases b <;> simp [bern] <;> linarith"
+        }
+      ]
+    },
+    {
+      "declaration": "onLine",
+      "start_line": 245,
+      "end_line": 248,
+      "excerpt": "| .A i j, c => (c.1 == i) && (c.2.1 == j)",
+      "problem": "`onLine` is `Bool`-valued, built from `&&` and `==`. Every user converts it to a statement about coordinates by repeating `simp only [onLine, Bool.and_eq_true, beq_iff_eq] at \u2026`. Defect.lean `line_inter_ancestors` does this about a dozen times, and DefectLaw's `outputs_A`/`outputs_B`/`outputs_C` and `inDiagRegion` proofs do it too. There is no canonical Prop-level simp rule, so simp has to unfold the definition and rebuild the characterisation each time.",
+      "proposed_change": "After `onLine`, add `@[simp] theorem onLine_A_eq_true {t} (i j : Fin t) (c : Cell t) : onLine (.A i j) c = true \u2194 c.1 = i \u2227 c.2.1 = j`, with analogues for `B` (`c.1 = i \u2227 c.2.2 = k`) and `C` (`c.2.1 = j \u2227 c.2.2 = k`). Each should be provable by `simp [onLine]`. Callers then write `simp at hu`, or `rw [onLine_A_eq_true]`, without unfolding `onLine`. A `Prop`-valued `onLine` would also work.",
+      "benefit": "Hypotheses `onLine v c = true` normalise directly to coordinate equalities. The repeated three-lemma `simp only` incantations disappear, and the `onLine` unfold is no longer needed in `inDiagRegion`/`outputs` proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/Defect.lean",
+          "declaration": "line_inter_ancestors",
+          "excerpt": "simp only [onLine, Bool.and_eq_true, beq_iff_eq] at hu"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/DefectLaw.lean",
+          "declaration": "outputs_A",
+          "excerpt": "simp only [onLine, Bool.and_eq_true, beq_iff_eq] at hc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/DefectLaw.lean",
+          "declaration": "inDiagRegion proof",
+          "excerpt": "simp only [inDiagRegion, onLine, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq] at h1 h2"
+        }
+      ]
+    },
+    {
+      "declaration": "Rlaw",
+      "start_line": 297,
+      "end_line": 299,
+      "excerpt": "def Rlaw (p : \u211d) : ThreeBit \u2192 \u211d := fun w =>",
+      "problem": "The four evaluations `atom000 (Rlaw p) = p`, `margA (Rlaw p) = p`, `margB (Rlaw p) = p` and `margC (Rlaw p) = p` are used in several files. Each file re-proves them privately as `simp [atom000, Rlaw]`. Finner.lean has `R_atom`/`R_margA`/`R_margB`/`R_margC`, Fan.lean has `Rlaw_atom000`/`Rlaw_margA`/\u2026, and FinnerMeasure.lean re-derives them locally as `have ha`/`hA`/`hB`/`hC`. None are public or simp, so the three call sites cannot share them.",
+      "proposed_change": "Define the four lemmas once in Defs.lean right after `Rlaw`, as `@[simp] theorem atom000_Rlaw (p : \u211d) : atom000 (Rlaw p) = p` and `margA_Rlaw`, `margB_Rlaw`, `margC_Rlaw` with the same right-hand side. Each is proved by `simp [atom000, Rlaw]` (or `margA` etc.). Delete the private copies in Finner, Fan and FinnerMeasure. Do the same for `Q`, stating `atom000 (Q \u03b5 r) = \u03b5 + (1 - \u03b5) * (1 - r) ^ 3` and `margA (Q \u03b5 r) = \u03b5 + (1 - \u03b5) * (1 - r)` as public lemmas. These currently exist as private `Q_atom`/`Q_margA`/\u2026 in Finner.lean, while Exponent.lean re-simps through `Peps, Q, bern`. These should be simp because the right-hand sides are in closed form with no unfolding of `atom000` or `margA`.",
+      "benefit": "`atom000`, `margA`, `margB`, `margC` stop being unfolded in each proof. They rewrite to their closed forms at `Rlaw p` and `Q \u03b5 r` in every file, and the duplicated lemmas are removed. This also makes it clear which side of the identity is the normal form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/Finner.lean",
+          "declaration": "R_margA",
+          "excerpt": "private lemma R_margA (p : \u211d) : margA (Rlaw p) = p := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/Fan.lean",
+          "declaration": "Rlaw_margA",
+          "excerpt": "private lemma Rlaw_margA (p : \u211d) : margA (Rlaw p) = p := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/FinnerMeasure.lean",
+          "declaration": "Rlaw measure proof",
+          "excerpt": "have hA : margA (Rlaw p) = p := by simp [margA, Rlaw]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/InflationTermination/TriangleInflation/Finner.lean",
+          "declaration": "Q_margA",
+          "excerpt": "private lemma Q_margA (\u03b5 r : \u211d) : margA (Q \u03b5 r) = \u03b5 + (1 - \u03b5) * (1 - r) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 36781,
+    "cache_read_input_tokens": 167498,
+    "output_tokens": 8138,
+    "output_tokens_details": {
+      "thinking_tokens": 1398
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36781,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4803,
+        "cache_read_input_tokens": 39369,
+        "cache_creation_input_tokens": 1425,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1425
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.24528180000000002,
+  "duration_ms": 68954,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T00:23:31",
+  "unit": "file",
+  "source_sha256": "f3777f1929b88f256a419f5115f88b45cc1de1f7a712923869727f2fc86d3242",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

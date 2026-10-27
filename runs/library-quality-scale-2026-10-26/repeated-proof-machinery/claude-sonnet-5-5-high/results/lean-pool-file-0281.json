@@ -1,0 +1,114 @@
+{
+  "id": "lean-pool-file-0281",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the defining file TransverseHistoryBounds.lean for slopeCost, slopeDifferenceCost, historyDifferenceCost and the related costs. The file already factors the elementary bound_add/bound_mul/bound_pow helpers, so I did not report the small arithmetic. The remaining duplication is at the level of whole expression shapes. The cost-versus-envelope proofs in historyDifferenceCost_le_envelope reproduce the envelope-versus-envelope proofs. I could not compile anything, so the proposed lemma statements are untested sketches. I expect them to unify because `2*Ti*d` parses as `(2*Ti)*d` and `x*(2*(\u2026))*S` has the same association as the cost side. The generic-factor lemmas may need explicit argument hints.",
+  "findings": [
+    {
+      "declaration": "slopeEnvelope_bound / slopeDifferenceEnvelope_bound, duplicated by hSlope and hSd in historyDifferenceCost_le_envelope",
+      "start_line": 166,
+      "end_line": 185,
+      "excerpt": "    exact bound_mul (bound_mul hr' (bound_add (bound_refl zero_le_one)\n      (bound_mul (bound_mul (bound_pow hd' 2) (bound_mul two (bound_pow hr' 2))) ha')))\n      (bound_mul hAff hd')",
+      "problem": "`slopeCost T d a r` is `r*(1+d^2*(2*r^2)*a)*(affineCost T*d)`. `slopeEnvelope Ti d a r` is the same expression with `affineCost T` replaced by `2*Ti`. `slopeEnvelope_bound` (lines 68-71) and the `hSlope` block (lines 167-170) therefore re-derive the same monotonicity argument for this shape. The only difference is the affine factor, which is `bound_mul two hTi` in one and `hAff` in the other. `slopeDifferenceEnvelope_bound` (lines 96-100) and `hSd` (lines 181-185) repeat the same `r*(A*endpointDifferenceCost d (2*r^2) a x y + x*S)` bound tree. They differ only in `A` (`2*Ti` vs `affineCost T`) and in the slope term (`slopeEnvelope` vs `slopeCost`). Any change to the cost formulas must be edited in both places.",
+      "proposed_change": "Add generic lemmas stated for an arbitrary affine factor.\n1. `slopeForm_bound {A d a r A' d' a' r'} (hA : 0 \u2264 A \u2227 A \u2264 A') (hd) (ha) (hr) : 0 \u2264 r*(1+d^2*(2*r^2)*a)*(A*d) \u2227 r*(1+d^2*(2*r^2)*a)*(A*d) \u2264 r'*(1+d'^2*(2*r'^2)*a')*(A'*d')`. The proof is the existing 3-line `bound_mul (bound_mul hr (bound_add \u2026)) (bound_mul hA hd)`.\n2. `slopeDiffForm_bound {A S x y \u2026}` with hypotheses `hA`, `hd`, `ha`, `hr`, `hx`, `hy` and `hS : 0 \u2264 S \u2227 S \u2264 S'`. It bounds `r*(A*endpointDifferenceCost d (2*r^2) a x y + x*S)` by the primed version, using `endpointDifferenceCost_bound`.\nThen `slopeEnvelope_bound` becomes `by unfold slopeEnvelope; exact slopeForm_bound (bound_mul two hTi) hd ha hr`. `hSlope` becomes `by unfold slopeCost slopeEnvelope; exact slopeForm_bound hAff hd' ha' hr'`. `slopeDifferenceEnvelope_bound` and `hSd` become one-line applications of `slopeDiffForm_bound`, with `hS` taken from `slopeEnvelope_bound` and `hSlope` respectively.",
+      "benefit": "The shape of the slope and slope-difference bounds is proved once. The cost-to-envelope proof is then visibly the same argument with the affine factor swapped. The long `historyDifferenceCost_le_envelope` proof gets shorter, and a change to either formula needs one repair instead of four.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/TransverseHistoryBounds.lean",
+          "declaration": "slopeCost",
+          "excerpt": "def slopeCost (T d a r : \u211d) : \u211d := r * (1+d^2*(2*r^2)*a) * (affineCost T*d)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/TransverseHistoryBounds.lean",
+          "declaration": "slopeDifferenceCost",
+          "excerpt": "r * (affineCost T * endpointDifferenceCost d (2*r^2) a \u03b4d \u03b4a + \u03b4d * slopeCost T d a r)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/TransverseHistoryPolynomialCost.lean",
+          "declaration": "slopeEnvelope_bound",
+          "excerpt": "    (bound_mul (bound_mul two hTi) hd)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/TransverseHistoryPolynomialCost.lean",
+          "declaration": "slopeDifferenceEnvelope_bound",
+          "excerpt": "    (bound_mul (bound_mul two hTi)\n      (endpointDifferenceCost_bound hd (bound_mul two (bound_pow hr 2)) ha hx hy))"
+        }
+      ]
+    },
+    {
+      "declaration": "differenceEnvelope_bound and historyDifferenceCost_le_envelope (final step)",
+      "start_line": 188,
+      "end_line": 193,
+      "excerpt": "      (bound_add (bound_mul (bound_mul hx' hTrace) hSlope) (bound_mul hq' (bound_add\n        (bound_mul (bound_mul (bound_mul two hT2) hGen) hSlope) (bound_mul hTrace hSd)))).2",
+      "problem": "`historyDifferenceCost` and `differenceEnvelope` share the shape `\u03b4q*A*S + q*(B*G*S + A*D)`. In the cost it has `A = traceCost`, `B = 2*(1+T)`, `G = generatorDifferenceCost`, `S = slopeCost`, `D = slopeDifferenceCost`. In the envelope it has `A = 2*(Ti+4*ci*q*q1)`, `B = 4`, and the corresponding envelope terms. The final combination tree is written out twice. It appears at lines 129-132 for envelope against envelope, and at lines 191-192 for cost against envelope. The second use then needs an extra `calc` and `ring` step only to reconcile `2*(1+1)` with `4`.",
+      "proposed_change": "Add a lemma for the shared shape, with the three-level association matching both definitions:\n`shape_bound {x A S q B G D x' A' S' q' B' G' D'} (hx) (hA) (hS) (hq) (hB) (hG) (hD) : 0 \u2264 x*A*S + q*(B*G*S + A*D) \u2227 x*A*S + q*(B*G*S + A*D) \u2264 x'*A'*S' + q'*(B'*G'*S' + A'*D')`. Prove it by `bound_add (bound_mul (bound_mul hx hA) hS) (bound_mul hq (bound_add (bound_mul (bound_mul hB hG) hS) (bound_mul hA hD)))`. Then `differenceEnvelope_bound` becomes `unfold differenceEnvelope; exact shape_bound hx hA hS hq four (\u2026 hG) (\u2026 hD)`. The `calc` in `historyDifferenceCost_le_envelope` uses `shape_bound` with `B = 2*(1+T)`, and `B' = 2*(1+1)` is closed by the existing `ring`.",
+      "benefit": "The structure of the history cost is stated once, in a lemma whose statement is the formula. Both proofs reduce to supplying the component bounds. A change to the structure of `historyDifferenceCost` no longer has to be matched in two nested `bound_*` trees.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/TransverseHistoryBounds.lean",
+          "declaration": "historyDifferenceCost",
+          "excerpt": "  \u03b4q * traceCost T (2*c\u207b\u00b9*q*q\u2081) * slopeCost T d a r +\n    q * (2*(1+T)*generatorDifferenceCost c q q\u2081 \u03b4q \u03b4q\u2081*slopeCost T d a r +"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/TransverseHistoryPolynomialCost.lean",
+          "declaration": "differenceEnvelope_bound",
+          "excerpt": "  exact bound_add (bound_mul (bound_mul hx hA) hS)\n    (bound_mul hq (bound_add"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/TransverseHistoryPolynomialCost.lean",
+          "declaration": "differenceEnvelope",
+          "excerpt": "  x*(2*(Ti+4*ci*q*q1))*slopeEnvelope Ti d a r +\n    q*(4*generatorDifferenceEnvelope ci q q1 x y*slopeEnvelope Ti d a r +"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 21427,
+    "cache_read_input_tokens": 51994,
+    "output_tokens": 6895,
+    "output_tokens_details": {
+      "thinking_tokens": 2557
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21427,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4273,
+        "cache_read_input_tokens": 19422,
+        "cache_creation_input_tokens": 5934,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5934
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1598734,
+  "duration_ms": 50013,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:56:52",
+  "unit": "file",
+  "source_sha256": "3493875cb4dbef8124857e72c01b76816c2cbda11496196942d23b5e47497873",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

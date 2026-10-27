@@ -1,0 +1,88 @@
+{
+  "id": "mathlib-file-0301",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and compared the four delaborators line by line. They are identical apart from the quantifier symbol, the constant's arity (`withOverApp 4` and 4 args for iSup/iInf, 3 args for iUnion/iInter) and the declaration name. I also checked Mathlib/Util/Delaborators.lean, where `exists_delab` has the same binder-analysis prefix and a TODO about duplication. The other declarations are one-line `rfl` or `Iff.rfl` lemmas, simple instances, or `to_dual`-generated pairs, with no repeated proof reasoning. I did not compile anything. The helper below is a sketch, and its exact typeclass and monad signatures (`DelabM`, `Term`, `TSyntax`) are untested. Quotations such as `` `(\u2a06 $x:ident, $body) `` are token-specific, so the helper has to take small per-operator syntax builders, and the cute-binder `match` cannot be fully shared. The saving is therefore the ~12 lines of analysis in each delaborator, not all of it.",
+  "findings": [
+    {
+      "declaration": "iSup_delab / iInf_delab / iUnion_delab / sInter_delab (the iInter delaborator)",
+      "start_line": 60,
+      "end_line": 218,
+      "excerpt": "  let prop \u2190 Meta.isProp \u03b9\n  let dep := f.bindingBody!.hasLooseBVar 0\n  let ppTypes \u2190 getPPOption getPPFunBinderTypes",
+      "problem": "Four delaborators repeat the same binder-analysis logic. Each one: (1) extracts `\u03b9` and the lambda `f` from the application arguments and fails unless `f.isLambda`; (2) computes `prop`, `dep` and `ppTypes`; (3) delaborates the domain and body under `withBindingBodyUnusedName`; (4) chooses between the `(_ : dom)`, `(x : dom)` and plain `x` binder forms; (5) collapses `\u2a06 x, \u2a06 (_ : x \u2208 s), b` into `\u2a06 x \u2208 s, b`. Only the quantifier token differs. A fix to the logic, such as the `prop && !dep` case or the binder-predicate handling, must be copied four times. Evidence of drift: `iSup_delab` and `iInf_delab` use `withOverApp 4` while the Set versions do not. The iInter delaborator is named `sInter_delab`, although it handles `Set.iInter`, which looks like a copy-paste slip. `exists_delab` in Mathlib/Util/Delaborators.lean carries the same prefix and a TODO to reduce the duplication.",
+      "proposed_change": "Add one meta helper that does steps 1\u20134 and takes per-operator syntax builders. Sketch, untested:\n\n```lean\nmeta def delabIndexedBinder\n    (anon : Term \u2192 DelabM Term)                      -- `(_ : dom), body`\n    (typed : TSyntax `ident \u2192 Term \u2192 Term \u2192 DelabM Term)  -- `(x : dom), body`\n    (plain : TSyntax `ident \u2192 Term \u2192 DelabM Term)         -- `x, body`\n    (cute : Term \u2192 DelabM Term) : Delab := do\n  let args := (\u2190 SubExpr.getExpr).getAppArgs\n  let some f := args.back? | failure\n  let some \u03b9 := args[args.size - 2]? | failure\n  unless f.isLambda do failure\n  let prop \u2190 Meta.isProp \u03b9\n  let dep := f.bindingBody!.hasLooseBVar 0\n  let ppTypes \u2190 getPPOption getPPFunBinderTypes\n  let stx \u2190 SubExpr.withAppArg do\n    let dom \u2190 SubExpr.withBindingDomain delab\n    withBindingBodyUnusedName fun x => do\n      let x : TSyntax `ident := .mk x\n      let body \u2190 delab\n      if prop && !dep then anon' dom body   -- via `anon`, taking dom and body\n      else if prop || ppTypes then typed x dom body\n      else plain x body\n  cute stx\n```\n(`anon` would also take `dom` and `body`.) Each use then shrinks to the arity wrapper plus the token-specific quotations:\n\n```lean\n@[app_delab iSup]\nmeta def iSup_delab : Delab := whenPPOption Lean.getPPNotation <| withOverApp 4 <|\n  delabIndexedBinder\n    (fun dom body => `(\u2a06 (_ : $dom), $body))\n    (fun x dom body => `(\u2a06 ($x:ident : $dom), $body))\n    (fun x body => `(\u2a06 $x:ident, $body))\n    (fun stx => match stx with\n      | `(\u2a06 $x:ident, \u2a06 (_ : $y:ident \u2208 $s), $body)\n      | `(\u2a06 ($x:ident : $_), \u2a06 (_ : $y:ident \u2208 $s), $body) =>\n        if x == y then `(\u2a06 $x:ident \u2208 $s, $body) else pure stx\n      | _ => pure stx)\n```\n`iInf_delab`, `iUnion_delab` and `iInter_delab` (without `withOverApp`) are analogous. Taking the last two arguments of the application makes the helper independent of the 4-versus-3 arity. The `Set.iInter` delaborator can also be renamed `iInter_delab`.",
+      "benefit": "The shared binder-analysis logic is written once, so changes to the `prop`/`dep`/`ppTypes` cases, or any future change to how the lambda is delaborated, are made in one place instead of four. Each delaborator then states only what is specific to it: its token, its arity and its syntax shapes. Differences such as `withOverApp` or the misleading name `sInter_delab` become visible instead of hidden in 28-line near-copies. The same helper could later serve `exists_delab` and resolve its duplication TODO.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Order/SetNotation.lean",
+          "declaration": "iInf_delab",
+          "excerpt": "meta def iInf_delab : Delab := whenPPOption Lean.getPPNotation <| withOverApp 4 do"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Order/SetNotation.lean",
+          "declaration": "iUnion_delab",
+          "excerpt": "meta def iUnion_delab : Delab := whenPPOption Lean.getPPNotation do"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Order/SetNotation.lean",
+          "declaration": "sInter_delab",
+          "excerpt": "meta def sInter_delab : Delab := whenPPOption Lean.getPPNotation do"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Util/Delaborators.lean",
+          "declaration": "exists_delab",
+          "excerpt": "-- TODO: reduce the duplication in this code"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 12007,
+    "cache_read_input_tokens": 35460,
+    "output_tokens": 4177,
+    "output_tokens_details": {
+      "thinking_tokens": 1166
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12007,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3060,
+        "cache_read_input_tokens": 12236,
+        "cache_creation_input_tokens": 3700,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3700
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.09336,
+  "duration_ms": 34751,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T01:24:11",
+  "unit": "file",
+  "source_sha256": "13e55f676630d79506a35497139647893b726638c9595831c39ed7837d973fcc",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

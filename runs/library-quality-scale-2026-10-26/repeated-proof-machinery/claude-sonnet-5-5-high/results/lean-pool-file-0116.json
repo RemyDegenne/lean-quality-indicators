@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0116",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definitions of spatialPartial, timePartial and spatialSecondPartial, and the scaling definitions and measurability and continuity lemmas in ScalingInvarianceBasic.lean. I could not compile anything, so every proposed rewrite is a sketch and untested. The first three findings are the substantial repetition. The measurability block is smaller. The time pullback also repeats the chain-rule skeleton, but with different slice maps. Merging it with the spatial case would need a more abstract lemma, and I did not claim that.",
+  "findings": [
+    {
+      "declaration": "spatialPartial_pullback (and testSpatialDerivative, spatialSecondPartial_pullback)",
+      "start_line": 97,
+      "end_line": 116,
+      "excerpt": "  rw [fderiv_comp]\n  \u00b7 rw [testSpatialInverse_deriv \u03bc h\u03bc]\n    have hpoint : \u03bc\u207b\u00b9 \u2022 (scalingSpace \u03bc z\u2080.1 z.1 - z\u2080.1) = z.1 := by",
+      "problem": "The same spatial chain-rule computation appears three times. testSpatialDerivative (lines 53-69) proves it for an arbitrary smooth \u03c6: rewrite with `fderiv_comp`, use `testSpatialInverse_deriv`, show `hpoint`, then `simp only [comp_apply, smul_apply, id_apply]` and `map_smul`. spatialPartial_pullback (lines 103-116) repeats this block verbatim for the slice `fun y => \u03c8 (y, z.2)` and ignores testSpatialDerivative. spatialSecondPartial_pullback does use testSpatialDerivative, but then needs the `rw [testSpatialInverse_eq]` and `simpa [Function.comp_def]` step (hderiv'/hderiv, lines 206-213) to turn the homeomorphism form back into the lambda form. So the derivative-of-a-spatially-pulled-back-slice fact is proved in two incompatible forms.",
+      "proposed_change": "Restate testSpatialDerivative in lambda form, without the homeomorphism, and drop testSpatialHomeomorph if nothing else uses it. For example: `private theorem fderiv_spatialPullback_apply (\u03bc) (h\u03bc : 0 < \u03bc) (x\u2080) {\u03c6 : Vec3 \u2192 \u211d} (h\u03c6 : ContDiff \u211d (\u22a4 : \u2115\u221e) \u03c6) (j) (x) : fderiv \u211d (fun y => \u03c6 (\u03bc\u207b\u00b9 \u2022 (y - x\u2080))) (scalingSpace \u03bc x\u2080 x) (basisVec j) = \u03bc\u207b\u00b9 * fderiv \u211d \u03c6 x (basisVec j)`. The proof is the current testSpatialDerivative body with the `hinv` rewrite removed. Then spatialPartial_pullback ends, after `rw [hfun, hspace]`, with `exact fderiv_spatialPullback_apply \u03bc h\u03bc z\u2080.1 hslice j z.1`. The goal's RHS `\u03bc\u207b\u00b9 * spatialPartial \u03c8 j z` unfolds definitionally to the lemma's RHS. In spatialSecondPartial_pullback, hderiv' becomes `fderiv_spatialPullback_apply \u03bc h\u03bc z\u2080.1 hslice j z.1` directly. That removes the 14-line `fderiv_comp` block from spatialPartial_pullback and the `testSpatialInverse_eq` rewrite and `simpa` from spatialSecondPartial_pullback.",
+      "benefit": "The scaling-derivative argument is stated and proved once. Both pullback theorems become short reductions to it. Any change to the derivative argument is then made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceTests.lean",
+          "declaration": "testSpatialDerivative",
+          "excerpt": "    have hpoint : \u03bc\u207b\u00b9 \u2022 (scalingSpace \u03bc x\u2080 x - x\u2080) = x := by\n      simp [scalingSpace, smul_smul, h\u03bc.ne']"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceTests.lean",
+          "declaration": "spatialSecondPartial_pullback",
+          "excerpt": "  have hderiv := testSpatialDerivative \u03bc h\u03bc z\u2080.1 hslice j z.1\n  rw [testSpatialInverse_eq \u03bc h\u03bc z\u2080.1] at hderiv"
+        }
+      ]
+    },
+    {
+      "declaration": "spatialPartial_zero_of_not_mem_tsupport, timePartial_zero_of_not_mem_tsupport, spatialSecondPartial_zero_of_not_mem_tsupport",
+      "start_line": 294,
+      "end_line": 345,
+      "excerpt": "  have hopen : (tsupport \u03c8)\u1d9c \u2208 \ud835\udcdd z :=\n    (isClosed_tsupport \u03c8).isOpen_compl.mem_nhds hz",
+      "problem": "The three lemmas have the same proof. Each proves `(tsupport \u03c8)\u1d9c \u2208 \ud835\udcdd z` (hopen) and pulls it back along a slice map such as `x \u21a6 (x, z.2)` using `hmap.continuousAt.preimage_mem_nhds`. It then gets an eventual equality to 0 on the slice, rewrites with `hev.fderiv_eq, fderiv_const_apply`, and finishes with `simp`. The first two repeat the `by_contra`/`subset_tsupport` argument, once per slice. The second-derivative lemma repeats the whole pipeline a second time, with `hzero` in place of the support argument. The real content is simple: if f is eventually 0 near z, then each partial derivative of f at z is 0. This is written out three times, and the result is re-exposed through three `_public` wrappers.",
+      "proposed_change": "Prove two lemmas on the open-neighbourhood form: `spatialPartial_eq_zero_of_eventuallyEq {f : Vec3 \u00d7 \u211d \u2192 \u211d} {z} (h : f =\u1da0[\ud835\udcdd z] fun _ => 0) (i) : spatialPartial f i z = 0` and `timePartial_eq_zero_of_eventuallyEq ... : timePartial f z = 0`. Each does the slice pullback with `hmap.continuousAt.preimage_mem_nhds h`, then `hev.fderiv_eq, fderiv_const_apply, simp`. Then:\n- spatialPartial: pass `h := filter_upwards [hopen] with w hw; exact not_mem_tsupport... (Function.notMem_support / `image_eq_zero_of_notMem_tsupport` style)`. One shared `hzero : \u03c8 =\u1da0[\ud835\udcdd z] 0` built once from `(isClosed_tsupport \u03c8).isOpen_compl.mem_nhds hz` would serve all three lemmas.\n- timePartial: the same `hzero`.\n- spatialSecondPartial: `spatialPartial_eq_zero_of_eventuallyEq (f := fun w => spatialPartial \u03c8 i w)`, with the hypothesis from `hzero` and the first-derivative lemma at nearby points.\nThe unused `ContDiff` argument can go as well, together with the `_public` aliases if the private versions are made public.",
+      "benefit": "The neighbourhood-and-slice argument is written once, with a more general hypothesis. The three tsupport lemmas and the second-derivative case then become a few lines each. The 50-line duplicated block and the private/`_public` pairs shrink.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceTests.lean",
+          "declaration": "timePartial_zero_of_not_mem_tsupport",
+          "excerpt": "    filter_upwards [hmap.continuousAt.preimage_mem_nhds hopen] with s hs\n    by_contra hne\n    exact hs (subset_tsupport (f := \u03c8) (Function.mem_support.mpr hne))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceTests.lean",
+          "declaration": "spatialSecondPartial_zero_of_not_mem_tsupport",
+          "excerpt": "        (fun _ => (0 : \u211d)) := hmap.continuousAt.preimage_mem_nhds hzero\n  rw [hev.fderiv_eq, fderiv_const_apply]\n  simp"
+        }
+      ]
+    },
+    {
+      "declaration": "integral_comp_scaling_test / integrable_comp_scaling_test",
+      "start_line": 257,
+      "end_line": 292,
+      "excerpt": "    have hs : Measurable (scalingSpace \u03bc z\u2080.1) := by\n      exact (measurable_const_add z\u2080.1).comp (measurable_const_smul \u03bc)",
+      "problem": "Both theorems contain the same inline proof that `scalingParabolic \u03bc z\u2080` is measurable. Each has an identical `hs : Measurable (scalingSpace \u2026)` and `ht : Measurable (scalingTime \u2026)`, followed by `(hs.comp measurable_fst).prodMk (ht.comp measurable_snd)`. The integral version adds `.aemeasurable`. ScalingInvarianceBasic.lean already has a private `scalingParabolic_continuous` that proves a continuity version of the same fact with a separate chain of `.comp`/`prodMk` terms. So three places repeat the componentwise decomposition.",
+      "proposed_change": "Add one lemma next to scalingParabolic_eq, for example `theorem scalingParabolic_measurable (\u03bc : \u211d) (z\u2080 : ParabolicPoint) : Measurable (scalingParabolic \u03bc z\u2080)`. Prove it by `rw [scalingParabolic_eq]` followed by the existing hs/ht/prodMk term, or via `(scalingParabolic_continuous \u03bc z\u2080).measurable` if that lemma is made non-private. In integral_comp_scaling_test, use `(scalingParabolic_measurable \u03bc z\u2080).aemeasurable` for hmeas. In integrable_comp_scaling_test, use `hs.comp_measurable (scalingParabolic_measurable \u03bc z\u2080)`.",
+      "benefit": "The measurability argument is stated once, and the two integral-transformation theorems read as their measure-theoretic content only. Later uses of the scaling map get a reusable lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceTests.lean",
+          "declaration": "integrable_comp_scaling_test",
+          "excerpt": "    exact (hs.comp measurable_fst).prodMk (ht.comp measurable_snd)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Setting/ScalingInvarianceBasic.lean",
+          "declaration": "scalingParabolic_continuous",
+          "excerpt": "private theorem scalingParabolic_continuous (\u03bc : \u211d) (z\u2080 : ParabolicPoint) :\n    Continuous (scalingParabolic \u03bc z\u2080) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 29559,
+    "cache_read_input_tokens": 126437,
+    "output_tokens": 6971,
+    "output_tokens_details": {
+      "thinking_tokens": 1938
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29559,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4123,
+        "cache_read_input_tokens": 33251,
+        "cache_creation_input_tokens": 237,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 237
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2006137,
+  "duration_ms": 60721,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:05:46",
+  "unit": "file",
+  "source_sha256": "17b7381b4a145b97c7c9f239989348ee6f7e7a3a93487bf4cf44e429f1965f57",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

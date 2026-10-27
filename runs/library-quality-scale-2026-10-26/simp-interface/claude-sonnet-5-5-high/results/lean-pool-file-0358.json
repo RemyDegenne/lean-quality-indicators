@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0358",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the uses of mem_unitCube_iff, mem_orderedCubeSimplex_iff and orderedCubeSimplex_nil in the Singleton, Equiv, MeasurePartition and Finite files of the same library. The file has no @[simp] attributes at all. Its two definitions, unitCube and orderedCubeSimplex, are plain defs that simp cannot see through, so every membership goal about them is discharged by manual rw, unfolding or change. I did not run Lean, so I did not check whether the proposed simp attributes cause conflicts. I did not look for a downstream simp set that already covers these goals. The remaining theorems in the file are goal-specific bridge lemmas, and I made no simp recommendations for them.",
+  "findings": [
+    {
+      "declaration": "BKAR.Forest.mem_orderedCubeSimplex_iff",
+      "start_line": 57,
+      "end_line": 62,
+      "excerpt": "u \u2208 F.orderedCubeSimplex order \u2194\n      u \u2208 F.unitCube \u2227\n        OrderedSimplexParams 1 (order.map (F.paramValue u)) :=\n  Iff.rfl",
+      "problem": "orderedCubeSimplex is a plain def, so simp cannot see through membership in it. This lemma is the canonical unfolding rule for membership, and it is a definitional unfolding with a strictly simpler right-hand side (a conjunction). It is not marked @[simp]. Downstream code works around this by calling `rw [mem_orderedCubeSimplex_iff]` before `simp`. Singleton.lean does `rw [mem_orderedCubeSimplex_iff]` then `simp [hunit, hparam, ...]`. Equiv.lean does `rw [mem_orderedCubeSimplex_iff]` followed by a `change`. In this file, `orderedCubeSimplex_nil` needs `simp [orderedCubeSimplex]`, which unfolds the whole definition rather than using the membership lemma.",
+      "proposed_change": "Mark `mem_orderedCubeSimplex_iff` `@[simp]`, and also `mem_unitCube_iff` (see the separate finding). Then `orderedCubeSimplex_nil` can be proved by `ext u; simp`, and the `rw [mem_orderedCubeSimplex_iff]; simp [...]` pattern in Singleton.lean reduces to a single `simp [...]`. Alternatively, keep the lemma non-simp and have callers use `simp [mem_orderedCubeSimplex_iff]`, but a membership lemma for a bespoke set is the standard simp candidate. I did not test the attribute against the downstream simp calls.",
+      "benefit": "Membership goals about orderedCubeSimplex normalise to the cube condition plus the OrderedSimplexParams condition without manual rewriting or unfolding the definition. This makes downstream simp calls shorter and more uniform.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BKARForestFormula/BKAR/CubePartition/SimplexSector/Singleton.lean",
+          "declaration": "orderedCubeSimplex singleton lemma (inside proof)",
+          "excerpt": "rw [mem_orderedCubeSimplex_iff]\n  simp [hunit, hparam, OrderedSimplexParams, hdefault]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BKARForestFormula/BKAR/CubePartition/SimplexSector/Equiv.lean",
+          "declaration": "BKAR.Forest.orderedCubeSimplex_eq_orderMeasurableEquiv_preimage_orderedFinSimplex",
+          "excerpt": "rw [mem_orderedCubeSimplex_iff]\n  change"
+        }
+      ]
+    },
+    {
+      "declaration": "BKAR.Forest.mem_unitCube_iff / BKAR.Forest.orderedCubeSimplex_nil",
+      "start_line": 42,
+      "end_line": 73,
+      "excerpt": "theorem mem_unitCube_iff (F : Forest V) (u : F.EdgeParam \u2192 \u211d) :\n    u \u2208 F.unitCube \u2194 \u2200 e : F.EdgeParam, 0 \u2264 u e \u2227 u e \u2264 1 := by",
+      "problem": "unitCube is an opaque def (`Set.univ.pi fun _ => Set.Icc 0 1`). simp cannot rewrite `u \u2208 F.unitCube`, because the Mathlib rules Set.mem_pi and Set.mem_Icc need the definition unfolded first. `mem_unitCube_iff` is the canonical characterisation, but it is not a simp lemma and is only used by explicit rw or `.mp`. Callers such as `rw [F.mem_unitCube_iff]` in Singleton.lean and Equiv.lean, and `(mem_unitCube_iff F u).mp hu` in this file, bypass simp. The related rule `orderedCubeSimplex_nil`, stated as `F.orderedCubeSimplex [] = F.unitCube`, is also not simp. It is a natural normal-form rule, since the left side is a more complex expression than the right side, and its own proof has to use `simp [orderedCubeSimplex]`, which unfolds the definition.",
+      "proposed_change": "Add `@[simp]` to `mem_unitCube_iff` and to `orderedCubeSimplex_nil`. Neither introduces a loop. The right-hand sides contain neither `unitCube` membership nor `orderedCubeSimplex []`. The membership lemma has the hypothesis-free shape `u \u2208 F.unitCube \u2194 \u2200 e, 0 \u2264 u e \u2227 u e \u2264 1`. If a bare \u2200 right-hand side is considered unwanted in simp sets, keep it as a named lemma and add the `@[simp]` only to `orderedCubeSimplex_nil`. I did not run Lean to test this.",
+      "benefit": "Goals mentioning `F.orderedCubeSimplex []` normalise to `F.unitCube` automatically. Cube-membership hypotheses can be fed to simp without first unfolding `unitCube`. Proofs like the one in Singleton.lean (`hunit`) and the sector proofs in Equiv.lean could use `simp` or `simpa` instead of manual rw/constructor scaffolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BKARForestFormula/BKAR/CubePartition/SimplexSector/Singleton.lean",
+          "declaration": "hunit (inside the singleton sector lemma)",
+          "excerpt": "rw [F.mem_unitCube_iff]\n    constructor"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BKARForestFormula/BKAR/CubePartition/CubeIntegral.lean",
+          "declaration": "BKAR.Forest.orderedCubeSimplex_nil",
+          "excerpt": "ext u\n  simp [orderedCubeSimplex]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 13936,
+    "cache_read_input_tokens": 30105,
+    "output_tokens": 4007,
+    "output_tokens_details": {
+      "thinking_tokens": 707
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13936,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2973,
+        "cache_read_input_tokens": 15563,
+        "cache_creation_input_tokens": 2386,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2386
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0988365,
+  "duration_ms": 30638,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T02:00:55",
+  "unit": "file",
+  "source_sha256": "f9afbe117d690d0b60a8e52c2eb3b5bfa308a8e34c9b3e83b235fab1882fe440",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

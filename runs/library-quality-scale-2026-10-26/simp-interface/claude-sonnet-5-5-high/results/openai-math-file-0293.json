@@ -1,0 +1,135 @@
+{
+  "id": "openai-math-file-0293",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definitions of Positive.starMul (Model.lean), Positive.cut and its lemmas (Weights.lean), and squareCutMultiplier in CuntzIdentities.lean. I grepped the Analysis tree for existing projection simp lemmas on starMul, cut and abs, and found none in the JiangSu/TraceCone area. I also counted the call sites that unfold these definitions by hand. I did not run Lean, so I make no claim about observed simplifier behaviour. I did not recommend making `abs_val` simp, because a rule rewriting `(abs x).1` could pre-empt the existing @[simp] `abs_sq`. I did not recommend simp attributes on `squareCutMultiplier_zero` or `truncationMultiplier_zero`, because the identities are not clearly canonical simp normal forms. The bound-lemma proofs (`squareCutMultiplier_bound`, `starMul_add_le`) use `simpa only` or explicit simp sets, which is fine.",
+  "findings": [
+    {
+      "declaration": "squareCut_factorization (unfolding Positive.cut by `change`)",
+      "start_line": 47,
+      "end_line": 51,
+      "excerpt": "change cfc\u2099 (fun t => f t * f t) a.1 \u2264\n      ((\u03b4 : \u211d)\u207b\u00b9 ^ 2) \u2022 cfc\u2099 (fun t : \u211d => max (t - \u03b4) 0) a.1",
+      "problem": "`Positive.cut` is a plain def with no simp or rw projection lemma for `(cut \u03b5 a).1`. Proofs therefore use `change` to restate the cfc\u2099 body by hand. The same hand-unfolding appears in many other files: Weights.lean (cut_le, norm_sub_cut_le), Cuntz.lean, RankCyclic.lean, FiniteCutComparison.lean, FiniteSpectralIntegral*Bounds.lean, CuntzRescaling.lean. These proofs depend on the exact form of the cut body, and the `change` statements are brittle when the definition changes.",
+      "proposed_change": "In Weights.lean, next to `Positive.cut`, add `@[simp] lemma cut_val (\u03b5 : \u211d\u22650) (a : Positive A) : (cut \u03b5 a).1 = cfc\u2099 (fun t : \u211d => max (t - \u03b5) 0) a.1 := rfl`. It has the shape of a `Subtype.val` of a constructor and cannot loop. Then `squareCut_factorization` can write `rw [Positive.cut_val, \u2190 cfc\u2099_mul f f a.1]` or use `simp only [Positive.cut_val]` instead of `change`. Other call sites can drop their `change` lines the same way.",
+      "benefit": "One canonical, discoverable unfolding rule replaces dozens of copied `change cfc\u2099 (fun t : \u211d => max (t-\u03b5) 0) \u2026` statements. `simp` can then normalise `(cut \u03b5 a).1` consistently when mixed with cfc\u2099 lemmas, and proofs no longer depend on how the cut body is spelled.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/TraceCone/Weights.lean",
+          "declaration": "Positive.cut",
+          "excerpt": "def cut (\u03b5 : \u211d\u22650) (a : Positive A) : Positive A :=\n  \u27e8cfc\u2099 (fun t : \u211d => max (t - \u03b5) 0) a.1,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/TraceCone/Weights.lean",
+          "declaration": "Positive.cut_le",
+          "excerpt": "change cfc\u2099 (fun t : \u211d => max (t - \u03b5) 0) a.1 \u2264 a.1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/CuntzSemigroup/CuntzRescaling.lean",
+          "declaration": "cut value lemma",
+          "excerpt": "change cfc\u2099 (fun t : \u211d => max (t-\u03b5) 0) p.1 = _"
+        }
+      ]
+    },
+    {
+      "declaration": "Positive.starMul (no `.1` simp lemma; used via `simpa [Positive.starMul, \u2026]` and `change` in abs_cuntzBelow_starMul, starMul_cuntzBelow_abs, abs_cut_cuntzBelow_of_norm_sub_lt)",
+      "start_line": 58,
+      "end_line": 58,
+      "excerpt": "exact \u27e8g, by simpa [Positive.starMul, hgs, hg] using h\u03b7\u27e9",
+      "problem": "`Positive.starMul` has no projection lemma `(starMul x).1 = star x * x`. Callers unfold the whole definition with `simp [Positive.starMul, \u2026]`, `dsimp [Positive.starMul]`, or `change \u2016star g*(star y*y)*g - star (y*g)*(y*g)\u2016 < \u03b7` (line 140). The pattern recurs in this file (lines 58, 72, 140) and in about 20 other files. Unfolding the definition is not a stable simp interface. It exposes the Subtype structure, and `simp` may do more than the intended rewrite.",
+      "proposed_change": "In Model.lean, after `def starMul`, add `@[simp] lemma starMul_val (x : A) : (starMul x).1 = star x * x := rfl`. Likewise `mulStar_val : (mulStar x).1 = x * star x`. The right-hand side is strictly simpler, so there is no cycle. Then line 58 becomes `simpa [hgs, hg] using h\u03b7`, and the `change` at line 140 becomes `simp only [Positive.starMul_val]` or `show` is replaced by `rw [Positive.starMul_val]`. The `simp [Positive.starMul, \u2026]` calls elsewhere can be replaced the same way.",
+      "benefit": "Callers get a canonical, targeted rewrite for `.1` of a starMul. They no longer unfold the definition, and the intent of each step is clearer. Proofs also keep working if `starMul`'s internal representation changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/Model.lean",
+          "declaration": "Positive.starMul",
+          "excerpt": "def starMul (x : A) : Positive A := \u27e8star x * x, star_mul_self_nonneg x\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/TraceCone/RankCyclic.lean",
+          "declaration": "cfc_intertwine use",
+          "excerpt": "by dsimp [a, b, Positive.starMul, Positive.mulStar]; exact (mul_assoc _ _ _).symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/TraceCone/MatrixSums.lean",
+          "declaration": "matrix sums use",
+          "excerpt": "simpa only [Positive.starMul, Positive.add, smul_add, star_add] using h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/TraceCone/AbsoluteComparison.lean",
+          "declaration": "abs_cut_cuntzBelow_of_norm_sub_lt",
+          "excerpt": "change \u2016star g*(star y*y)*g - star (y*g)*(y*g)\u2016 < \u03b7"
+        }
+      ]
+    },
+    {
+      "declaration": "Positive.abs and abs_sq (simp interface for `Positive.abs`)",
+      "start_line": 15,
+      "end_line": 17,
+      "excerpt": "@[simp] lemma abs_sq (x : A) : (abs x).1 * (abs x).1 = star x * x :=",
+      "problem": "The only simp lemma for `Positive.abs` is `abs_sq`. It fires only on the product `(abs x).1 * (abs x).1`, and the file itself uses it through `rw` (lines 57, 69), not `simp`. There is no lemma for `(abs x).1` alone, and none for self-adjointness `star (abs x).1 = (abs x).1`. Proofs therefore restate the sqrt form by hand: `have hs := (CFC.sqrt_nonneg a.1).star_eq` at line 62, `change CFC.sqrt (star (x*q)*(x*q)) = c.1` at line 205, and `change \u2026 CFC.sqrt a.1 \u2026` at line 72. Making `(abs x).1` simp-reducible to `CFC.sqrt \u2026` would be risky, because it would pre-empt `abs_sq` and force sqrt rewriting everywhere. The interface is incomplete without such a lemma, but unconditionally unfolding is not the right fix.",
+      "proposed_change": "Add a non-simp unfolding lemma `abs_val (x : A) : (abs x).1 = CFC.sqrt (star x * x) := rfl`, to be used with `rw` or `simp only` where needed. Add `@[simp] lemma abs_star_eq (x : A) : star (abs x).1 = (abs x).1 := (CFC.sqrt_nonneg _).star_eq` (using `IsSelfAdjoint.star_eq`), so self-adjointness side goals close by `simp`. Then `change CFC.sqrt (\u2026) = c.1` at line 205 becomes `rw [Positive.abs_val \u2026]`, and `hs` at line 62 comes from the simp lemma.",
+      "benefit": "The three recurring facts about `abs` (unfolding, self-adjointness, square) become named lemmas. Downstream proofs, including the many other uses of `Positive.abs`, then use them directly and not through `change` on `CFC.sqrt`. Keeping the unfolding lemma non-simp avoids competing with `abs_sq`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/TraceCone/AbsoluteComparison.lean",
+          "declaration": "starMul_cuntzBelow_abs",
+          "excerpt": "have hs := (CFC.sqrt_nonneg a.1).star_eq"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/JiangSu/TraceCone/AbsoluteComparison.lean",
+          "declaration": "exists_cut_truncation",
+          "excerpt": "change CFC.sqrt (star (x*q)*(x*q)) = c.1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 36840,
+    "cache_read_input_tokens": 246889,
+    "output_tokens": 7736,
+    "output_tokens_details": {
+      "thinking_tokens": 1635
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36840,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3786,
+        "cache_read_input_tokens": 40259,
+        "cache_creation_input_tokens": 594,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 594
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.24944890000000003,
+  "duration_ms": 76693,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-27T01:15:50",
+  "unit": "file",
+  "source_sha256": "b9c45bbe460b9dca13b2b14b136e08cadf4d61bc18e7a55c51996d44b86ae06b",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

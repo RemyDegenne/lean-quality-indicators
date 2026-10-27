@@ -1,0 +1,83 @@
+{
+  "id": "tauceti-file-0213",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "The target file has one theorem, so I compared it with other proofs in the library. The Sylow-index branch (lines 60\u201367) repeats, nearly line for line, the proofs of `IsProP.of_surjective` (ProP/Basic.lean 146\u2013156) and `IsProC.of_surjective` (ProC.lean 122\u2013130). I read the three proofs and `OpenNormalSubgroup.comap` and its API in OpenNormalSubgroup.lean. `OpenNormalSubgroup.continuous_mk_comap` in the same file builds the same `QuotientGroup.map` by hand, which is a further hint that a named map is missing. Profinite/Order.lean (profiniteOrder_le_of_surjective) and Sylow/Basic.lean (map_continuousMulEquiv) use only part of the machinery (the comap and the surjectivity of `mk' \u2218 f`), so I did not count them. I did not check whether `OpenNormalSubgroup.lean` is imported by ProP/Basic and ProC; it is the natural home but import order is not verified. I did not check whether `V.isNormal'` is already an instance in scope, so the `let _ : ... Normal` lines may or may not be removable. I could not compile any of the rewrites.",
+  "findings": [
+    {
+      "declaration": "TauCeti.IsProPSylow.map_of_surjective (index branch)",
+      "start_line": 60,
+      "end_line": 67,
+      "excerpt": "let q : G \u29f8 V.toSubgroup \u2192* H \u29f8 U.toSubgroup :=\n      QuotientGroup.map V.toSubgroup U.toSubgroup f hVU",
+      "problem": "This block repeats the same surjectivity argument as `IsProP.of_surjective` and `IsProC.of_surjective`. Given a continuous surjection `f : G \u2192* H` and `U : OpenNormalSubgroup H`, each proof does the following. It sets `V := OpenNormalSubgroup.comap U f hf`. It installs the normality instance by hand. It proves `hVU : V \u2264 U.comap f` by `simp [V]`. It builds `QuotientGroup.map V U f hVU`. It proves this map surjective with `map_surjective_of_surjective ... ((mk'_surjective U).comp hsurj) hVU`. The `hVU`/`q`/`hqsurj` scaffolding therefore exists in three places, and the Sylow version needs the same `hVU` again for `map_quotientGroupMap_map_mk'`. Any change to the API (for example making `isNormal'` an instance, or changing how `comap` unfolds) has to be made three times.",
+      "proposed_change": "In `TauCeti/Topology/Algebra/Group/OpenNormalSubgroup.lean`, after `toSubgroup_comap`, add a named induced map and its surjectivity:\n```\ndef quotientMapComap (U : OpenNormalSubgroup H) (f : G \u2192* H) (hf : Continuous f) :\n    G \u29f8 (U.comap f hf).toSubgroup \u2192* H \u29f8 U.toSubgroup :=\n  QuotientGroup.map _ _ f (toSubgroup_comap U f hf).le\n\ntheorem quotientMapComap_surjective (U : OpenNormalSubgroup H) (f : G \u2192* H) (hf : Continuous f)\n    (hsurj : Function.Surjective f) : Function.Surjective (quotientMapComap U f hf) :=\n  QuotientGroup.map_surjective_of_surjective _ _ f\n    ((QuotientGroup.mk'_surjective U.toSubgroup).comp hsurj) _\n```\nThe proof is the existing `map_surjective_of_surjective` call. The `Normal` instances come from `isNormal'`.\n\nThen rewrite the three uses:\n- `IsProP.of_surjective`: `intro U; exact (hG (U.comap f hf)).of_surjective _ (OpenNormalSubgroup.quotientMapComap_surjective U f hf hsurj)`.\n- `IsProC.of_surjective`: the same one-liner with `(hG _).of_surjective`.\n- Sylow, third bullet: `rw [\u2190 Subgroup.map_quotientGroupMap_map_mk' P f (OpenNormalSubgroup.toSubgroup_comap U f hf).le] at hpU`, then `exact hP.not_dvd_index (U.comap f hf) (hpU.trans ((P.map (QuotientGroup.mk' _)).index_map_dvd (OpenNormalSubgroup.quotientMapComap_surjective U f hf hsurj)))`.\n\nThe hypotheses are unchanged: the lemma needs only groups with topologies, continuity of `f` and surjectivity of `f`. Compactness and T2 are used only for closedness, which stays in the Sylow proof.",
+      "benefit": "The pro-`p`, pro-`C` and Sylow surjectivity proofs each shrink to a short use of one lemma about the quotient map induced on level quotients. Future functoriality results (pro-`C` Sylow, completed group algebras, `continuous_mk_comap`) can reuse the named map instead of rebuilding `QuotientGroup.map` with `hVU` and the `mk'_surjective` composition each time. The nontrivial step is stated and checked once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Topology/Algebra/Group/Profinite/ProP/Basic.lean",
+          "declaration": "TauCeti.IsProP.of_surjective",
+          "excerpt": "have hVU : V.toSubgroup \u2264 U.toSubgroup.comap f := by simp [V]\n  let q : G \u29f8 V.toSubgroup \u2192* H \u29f8 U.toSubgroup :=\n    QuotientGroup.map V.toSubgroup U.toSubgroup f hVU"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Topology/Algebra/Group/Profinite/ProC.lean",
+          "declaration": "TauCeti.IsProC.of_surjective",
+          "excerpt": "have hVU : V.toSubgroup \u2264 U.toSubgroup.comap f := by simp [V]\n  refine (hG V).of_surjective (QuotientGroup.map V.toSubgroup U.toSubgroup f hVU) ?_"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Topology/Algebra/Group/OpenNormalSubgroup.lean",
+          "declaration": "OpenNormalSubgroup.continuous_mk_comap",
+          "excerpt": "let \u03c6 := QuotientGroup.map (U.comap f hf).toSubgroup U.toSubgroup f\n    (toSubgroup_comap U f hf).le"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 23035,
+    "cache_read_input_tokens": 86242,
+    "output_tokens": 4557,
+    "output_tokens_details": {
+      "thinking_tokens": 983
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23035,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3115,
+        "cache_read_input_tokens": 23823,
+        "cache_creation_input_tokens": 3141,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3141
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1463582,
+  "duration_ms": 33411,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:30:09",
+  "unit": "file",
+  "source_sha256": "b89c648507834a63e7531efdf065a40904f424ba718444e6f65aeb1e680697f3",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

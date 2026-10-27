@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0341",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and grepped uses of the membership lemmas across the Moise directory. The file has no @[simp] attributes and no competing or looping rules. The findings are about missing canonical simp lemmas for the `incidentTriangles`, `edges` and `boundaryEdges` interface. I could not run Lean, so I did not test whether the proposed @[simp] lemmas fire or improve proofs. The 190 occurrences counted for `incidentTriangles`/`boundaryEdges`/`mem_*_iff` come from a loose grep and were not classified one by one.",
+  "findings": [
+    {
+      "declaration": "TriangleMesh.mem_incidentTriangles_iff",
+      "start_line": 86,
+      "end_line": 88,
+      "excerpt": "theorem mem_incidentTriangles_iff {e t : Finset M.Vertex} :\n    t \u2208 M.incidentTriangles e \u2194 t \u2208 M.triangles \u2227 e \u2286 t := by\n  simp [incidentTriangles]",
+      "problem": "`incidentTriangles` is a plain `Finset.filter`, and this membership characterisation is its canonical unfolding. It is not tagged `@[simp]`. The same lemma is applied by hand through `.mp` and `.mpr` at many call sites, and the file's own proofs unfold the definition with `simp [incidentTriangles]`. Membership in `incidentTriangles e` therefore has no normal form under `simp`. Goals such as `t \u2208 M.incidentTriangles e` need a manual `have := M.mem_incidentTriangles_iff.mp ...`.",
+      "proposed_change": "Mark `mem_incidentTriangles_iff` as `@[simp]`. The right-hand side only mentions `M.triangles` membership and `\u2286`, so it terminates and does not reintroduce `incidentTriangles`. Call sites like `have htinc : t \u2208 M.incidentTriangles e := M.mem_incidentTriangles_iff.mpr \u27e8ht, het\u27e9` can then become `by simp [ht, het]`.",
+      "benefit": "Readers and downstream files (PolygonalSchoenflies, FreeTriangleMove, PLMoves) get one canonical form for incidence membership and can stop writing `.mp`/`.mpr` plumbing. The definition no longer has to be unfolded ad hoc.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.card_incidentTriangles_eq_two_of_not_boundary",
+          "excerpt": "M.mem_incidentTriangles_iff.mpr \u27e8ht, het\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.incidentTriangle_eq_of_ne",
+          "excerpt": "have htData := M.mem_incidentTriangles_iff.mp ht"
+        }
+      ]
+    },
+    {
+      "declaration": "TriangleMesh.edges / TriangleMesh.card_of_mem_edges",
+      "start_line": 36,
+      "end_line": 38,
+      "excerpt": "def edges : Finset (Finset M.Vertex) :=\n  M.triangles.biUnion fun t => t.powersetCard 2",
+      "problem": "`edges` has no membership lemma, so no simp-normal form. Every proof that needs `e \u2208 M.edges` or wants to prove it manually unfolds it with `Finset.mem_biUnion.mp`/`.mpr` and then `Finset.mem_powersetCard.mp`/`.mpr`. This is repeated in `card_of_mem_edges`, `edge_eq_of_nonvertex_mem_edgeCarriers`, `edgeCarrier_inter_edgeCarrier`, `vertex_mem_edge_of_position_mem_edgeCarrier`, `mem_frontier_of_mem_boundaryEdge`, `exists_boundaryEdge_through_frontier_point` and others. `card_of_mem_edges` is likewise a non-simp, hand-applied fact.",
+      "proposed_change": "Add `@[simp] theorem mem_edges_iff {e : Finset M.Vertex} : e \u2208 M.edges \u2194 \u2203 t \u2208 M.triangles, e \u2286 t \u2227 e.card = 2`, proved by `simp [edges, Finset.mem_powersetCard]`. Mark `card_of_mem_edges` as a usable lemma, for example as a `.card_eq_two` field-style projection. Then replace the repeated `obtain \u27e8t, ht, het\u27e9 := Finset.mem_biUnion.mp he; Finset.mem_powersetCard.mp het` blocks with `obtain \u27e8t, ht, het, hcard\u27e9 := M.mem_edges_iff.mp he`, or with `simp` at the goal.",
+      "benefit": "This replaces about nine copies of a two-step `biUnion`/`powersetCard` unfolding with one simp-normal characterisation. Proofs about edges become shorter, and a change to the definition of `edges` stays local.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.card_of_mem_edges",
+          "excerpt": "obtain \u27e8t, _, het\u27e9 := Finset.mem_biUnion.mp he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.card_incidentTriangles_eq_two_of_not_boundary",
+          "excerpt": "apply Finset.mem_biUnion.mpr\n    exact \u27e8t, ht, Finset.mem_powersetCard.mpr \u27e8het, hecard\u27e9\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "TriangleMesh.mem_boundaryEdges_iff / mem_allBoundaryEdges_iff",
+      "start_line": 1227,
+      "end_line": 1231,
+      "excerpt": "theorem mem_boundaryEdges_iff {e t : Finset M.Vertex} :\n    e \u2208 M.boundaryEdges t \u2194 e \u2286 t \u2227 e.card = 2 \u2227 M.IsBoundaryEdge e := by\n  classical\n  simp [boundaryEdges, triangleEdges, Finset.mem_powersetCard]\n  tauto",
+      "problem": "`boundaryEdges` and `allBoundaryEdges` are built with `by classical exact ... .filter M.IsBoundaryEdge`, so `simp` cannot see through them without unfolding the defs. Their membership iffs, `mem_boundaryEdges_iff` and `mem_allBoundaryEdges_iff`, are the intended interface but are not simp lemmas. `mem_boundaryEdges_iff` is proved by `simp [...]` followed by a bare `tauto`, so its proof depends on the exact simp-normal form. `boundaryEdges_subset_triangleEdges` reproves the filter membership by hand with `simpa [boundaryEdges] using he` after a `show`. Downstream, `M.mem_boundaryEdges_iff.mp` is applied manually.",
+      "proposed_change": "Mark `mem_allBoundaryEdges_iff` and `mem_boundaryEdges_iff` as `@[simp]`. The right-hand sides contain no `boundaryEdges`, so they cannot loop. Prove `boundaryEdges_subset_triangleEdges` as `fun e he => (M.mem_boundaryEdges_iff.mp he).1`-style, or via `Finset.filter_subset`. Give `triangleEdges` a `mem_triangleEdges_iff`, which could be a `@[simp]` alias of `Finset.mem_powersetCard`, so the `tauto` step is not needed.",
+      "benefit": "Boundary-edge membership gets one stable normal form that `simp` rewrites to, and the classical-instance filter does not need unfolding. Existing manual `.mp`/`.mpr` uses, for example in `card_boundaryEdges_le_two_of_neighbor` and `frontier_inter_triangleCarrier_diff_vertices`, become `simp` calls, and the fragile `simp; tauto` proof is stabilised.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.boundaryEdges_subset_triangleEdges",
+          "excerpt": "simpa [boundaryEdges] using he)).1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.boundaryEdgeCarrier_subset_frontier / boundaryCarrier_subset_frontier",
+          "excerpt": "(M.mem_allBoundaryEdges_iff.mp he) hpe"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 47612,
+    "cache_read_input_tokens": 151896,
+    "output_tokens": 5093,
+    "output_tokens_details": {
+      "thinking_tokens": 757
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 47612,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3351,
+        "cache_read_input_tokens": 50304,
+        "cache_creation_input_tokens": 1321,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1321
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.25658359999999997,
+  "duration_ms": 32942,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:39:45",
+  "unit": "file",
+  "source_sha256": "fa9b828d612e5c979f01aa4bd6ee059c7cd0f9f84714957a7e74a135ffdfe1ee",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

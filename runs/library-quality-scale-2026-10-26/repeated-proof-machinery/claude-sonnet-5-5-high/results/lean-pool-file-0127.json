@@ -1,0 +1,89 @@
+{
+  "id": "lean-pool-file-0127",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I focused on the proof blocks that repeat: the two a.e.-representation proofs for `fourierMultiplyScalarL2`, and the two symbol-bound proofs. I also checked that the nonnegativity of the weight in `regularizedPotentialEntry_norm_le` is a separate, smaller use. I did not compile any of the proposed lemmas, so the sketches are untested. I looked for other repeated reasoning, such as the temperate-growth proofs and the memLp wrappers. Those are short or thin wrappers, so I did not report them.",
+  "findings": [
+    {
+      "declaration": "fourierMultiplyScalarL2_norm_le_ae and fourierMultiplierSequence_tendsto_ae (hrep)",
+      "start_line": 332,
+      "end_line": 337,
+      "excerpt": "filter_upwards [MeasureTheory.Lp.coeFn_lpSMul (r := 2) (hg.toLp g) f,\n    hg.coeFn_toLp] with \u03be hprod hmult\n  change \u2016(hg.toLp g \u2022 f) \u03be\u2016 \u2264 \u2016f \u03be\u2016\n  rw [hprod]\n  change \u2016(hg.toLp g \u03be) \u2022 f \u03be\u2016 \u2264 \u2016f \u03be\u2016\n  rw [hmult, smul_eq_mul, norm_mul]",
+      "problem": "Two proofs re-derive from scratch the fact that `fourierMultiplyScalarL2 g hg f` equals `g * f` almost everywhere. Each applies `Lp.coeFn_lpSMul` and `coeFn_toLp` inside `filter_upwards`, uses two `change` steps to unfold the `Lp` smul, and finishes with `smul_eq_mul`. The 349\u2013356 block (`hrep`) proves this statement outright. The 332\u2013338 block (`fourierMultiplyScalarL2_norm_le_ae`) re-runs the same unfolding and then applies `norm_mul` to the product. The fragile `change` steps on the `Lp` coercion are duplicated, and any change to the definition of `fourierMultiplyScalarL2` must be fixed in both places.",
+      "proposed_change": "Add a lemma placed right after `fourierMultiplyScalarL2`:\n\ntheorem fourierMultiplyScalarL2_ae_eq_mul {g : L2Vec3 \u2192 \u2102} (hg : MemLp g \u22a4 volume) (f : Lp (\u03b1 := L2Vec3) \u2102 2) :\n    \u2200\u1d50 \u03be \u2202(volume : Measure L2Vec3), fourierMultiplyScalarL2 g hg f \u03be = g \u03be * f \u03be\n\nProof: the body of `hrep` (lines 351\u2013356) with `n` removed. Then rewrite the two uses.\n- `fourierMultiplyScalarL2_norm_le_ae`: `filter_upwards [fourierMultiplyScalarL2_ae_eq_mul hg f] with \u03be h; rw [h, norm_mul]; exact mul_le_of_le_one_left (norm_nonneg _) (hbound \u03be)`.\n- `hrep` in `fourierMultiplierSequence_tendsto_ae`: replace it by `fun n => fourierMultiplyScalarL2_ae_eq_mul (hg n) f`, so the next line becomes `ae_all_iff.2 (fun n => fourierMultiplyScalarL2_ae_eq_mul (hg n) f)`.\nThe hypotheses are unchanged: `hg`, `f` and the same imports. The lemma could be public, since it is a natural API fact, or `private`.",
+      "benefit": "The Lp-unfolding is proved once and each consumer becomes a short calculation. The lemma also gives the file a reusable statement, `fourierMultiplyScalarL2 g hg f =\u1d50 g * f`, which readers can cite. This removes the repeated `change`-based proof that depends on the internal definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/VectorPotential.lean",
+          "declaration": "fourierMultiplierSequence_tendsto_ae",
+          "excerpt": "filter_upwards [MeasureTheory.Lp.coeFn_lpSMul (r := 2) ((hg n).toLp (g n)) f,\n      (hg n).coeFn_toLp] with \u03be hprod hmult\n    change (((hg n).toLp (g n) \u2022 f) \u03be) = _\n    rw [hprod]\n    change (((hg n).toLp (g n) \u03be) \u2022 f \u03be) = _\n    rw [hmult, smul_eq_mul]"
+        }
+      ]
+    },
+    {
+      "declaration": "regularizedFrequencyCoord_mul_weight_abs_le_one and regularizedFrequencyCoordProduct_mul_weight_abs_le_one",
+      "start_line": 177,
+      "end_line": 186,
+      "excerpt": "have hweight : regularizedFrequencyWeight \u03b4 \u03be = 1 / (1 + \u2016\u03b7\u2016 ^ 2) := by\n    rw [regularizedFrequencyWeight, Real.rpow_neg (by positivity : 0 \u2264 1 + \u2016\u03b7\u2016 ^ 2)]\n    simp [\u03b7, Real.rpow_one]\n  rw [regularizedFrequencyCoord_eq_scaled, hweight, abs_mul, abs_div, abs_one,\n    abs_of_pos (by positivity : 0 < 1 + \u2016\u03b7\u2016 ^ 2)]\n  have hineq : \u2016\u03b7\u2016 \u2264 1 + \u2016\u03b7\u2016 ^ 2 := by\n    nlinarith only [sq_nonneg (\u2016\u03b7\u2016 - (1 / 2 : \u211d))]",
+      "problem": "The two bound lemmas follow the same template:\n1. Set `\u03b7 := \u03b4\u207b\u00b9 \u2022 \u03be`.\n2. Prove `weight = 1 / (1 + \u2016\u03b7\u2016^2)` through `rpow_neg` and `rpow_one`.\n3. Rewrite with `abs_mul`, `abs_div`, `abs_one`, `abs_of_pos` and `regularizedFrequencyCoord_eq_scaled`.\n4. Close with `div_le_one` and the same `nlinarith` fact `x \u2264 1 + x^2`.\n\nThe product lemma repeats lines 180\u2013182, 183\u2013184 and the `nlinarith` step at 218\u2013220 almost verbatim. The `1 / (1 + \u2016\u03b7\u2016^2)` form of the weight is also needed in `regularizedPotentialEntry_norm_le`, which re-derives only its nonnegativity (`Real.rpow_nonneg`) instead of using a closed form.",
+      "proposed_change": "Add two small lemmas after `regularizedFrequencyCoord_eq_scaled`:\n\n1. `regularizedFrequencyWeight_eq (\u03b4 \u03be) : regularizedFrequencyWeight \u03b4 \u03be = 1 / (1 + \u2016(\u03b4\u207b\u00b9:\u211d) \u2022 \u03be\u2016 ^ 2)`. Its proof is lines 181\u2013182, with `\u03b7` unfolded.\n2. A general lemma, `abs_mul_weight_le_one`, stating `\u2200 (a x : \u211d), |a| \u2264 x \u2192 a \u2264 ...`. A cleaner form is: for `0 \u2264 t` and `|a| \u2264 t^2` or `|a| \u2264 t`, we have `|a| / (1 + t^2) \u2264 1`. State it as two facts: `t \u2264 1 + t^2` and `t^2 \u2264 1 + t^2`, from `nlinarith`.\n\nThen the first lemma reduces to `rw [regularizedFrequencyCoord_eq_scaled, regularizedFrequencyWeight_eq, \u2190 div_eq_mul_one_div, abs_div, ...]` plus `hcoord.trans (t_le_one_add_sq _)`. The second lemma uses the same rewrite and `|a|*|b| \u2264 \u2016\u03b7\u2016^2`. The hypotheses are unchanged, and the only imports needed are those already present.",
+      "benefit": "The unfolding of the regularized weight and the elementary inequality are stated once. Each bound lemma then states only the real content: coordinates are at most the norm, and a product of two coordinates is at most the squared norm. `regularizedPotentialEntry_norm_le` can also reuse the closed form and drop its separate `Real.rpow_nonneg` argument. This makes the two proofs shorter and easier to maintain if the weight definition changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/VectorPotential.lean",
+          "declaration": "regularizedFrequencyCoordProduct_mul_weight_abs_le_one",
+          "excerpt": "have hweight : regularizedFrequencyWeight \u03b4 \u03be = 1 / (1 + \u2016\u03b7\u2016 ^ 2) := by\n    rw [regularizedFrequencyWeight, Real.rpow_neg (by positivity : 0 \u2264 1 + \u2016\u03b7\u2016 ^ 2)]\n    simp [\u03b7, Real.rpow_one]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 22495,
+    "cache_read_input_tokens": 49781,
+    "output_tokens": 4512,
+    "output_tokens_details": {
+      "thinking_tokens": 737
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22495,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3308,
+        "cache_read_input_tokens": 25589,
+        "cache_creation_input_tokens": 835,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 835
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1400901,
+  "duration_ms": 30170,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T23:07:24",
+  "unit": "file",
+  "source_sha256": "344fc37f14ebf98e40a3fade601cf70266f1e9d993c1b4ee0bb5e7026d68668a",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

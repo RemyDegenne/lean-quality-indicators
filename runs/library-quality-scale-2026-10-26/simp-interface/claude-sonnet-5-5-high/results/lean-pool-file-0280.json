@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0280",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and grepped downstream uses of iterateAmplitude/iterateAmplitudeSq. The file has no simp lemmas or attributes. Both definitions are nested `if`s, and the library repeatedly unfolds them by hand. I did not check whether `Real.rpow_natCast` or other existing simp rules would conflict with the proposed lemmas. I did not run Lean. I made no claim of loops or simp failures.",
+  "findings": [
+    {
+      "declaration": "iterateAmplitude",
+      "start_line": 22,
+      "end_line": 24,
+      "excerpt": "if i = 0 then 1 else if i \u2264 2 then \u03b7 else \u03b7 ^ ((i : \u211d) / 2)",
+      "problem": "The piecewise definition has no equation lemmas for its cases. These are `iterateAmplitude \u03b7 0 = 1`, `iterateAmplitude \u03b7 1 = \u03b7`, `iterateAmplitude \u03b7 2 = \u03b7`, and `iterateAmplitude \u03b7 i = \u03b7 ^ ((i:\u211d)/2)` for `3 \u2264 i`. Downstream files fall back on `simp [iterateAmplitude]`, which unfolds the definition, or on `simp only [iterateAmplitude, ite_eq_right (by omega : ...), ...]` chains. They also prove the same `= \u03b7` facts again as local `have`s. The `i \u2265 3` case needs a hypothesis, so it works as a conditional rewrite lemma but not as a plain simp lemma.",
+      "proposed_change": "Add lemmas and tag the closed-numeral ones `@[simp]`: `iterateAmplitude_zero : iterateAmplitude \u03b7 0 = 1`, `iterateAmplitude_one : iterateAmplitude \u03b7 1 = \u03b7`, `iterateAmplitude_two : iterateAmplitude \u03b7 2 = \u03b7`. Add a conditional lemma `iterateAmplitude_of_three_le (h : 3 \u2264 i) : iterateAmplitude \u03b7 i = \u03b7 ^ ((i:\u211d)/2)`, also marked `@[simp]`, since the side condition can be discharged by `omega`/`decide`. The users could then write `simp [iterateAmplitude_of_three_le h]`.",
+      "benefit": "Callers get a stable normal form for small indices instead of unfolding the `if` tree. This removes the repeated `ite_eq_right (by omega ...)` chains and local `h\u2081`/`h\u2082` re-proofs, and it keeps the `Finset.sum_range_succ` expansions in the downstream files readable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/TLemmasAmplitude.lean",
+          "declaration": "iterateAmplitude_positive_sum_le_three",
+          "excerpt": "have h\u2081 : iterateAmplitude \u03b7 1 = \u03b7 := by simp [iterateAmplitude]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/TLemmasAmplitude.lean",
+          "declaration": "iterateAmplitude_two_shift_le_geometric",
+          "excerpt": "simp only [iterateAmplitude, ite_eq_right (by omega : k + 2 \u2260 0),"
+        }
+      ]
+    },
+    {
+      "declaration": "iterateAmplitudeSq",
+      "start_line": 26,
+      "end_line": 28,
+      "excerpt": "if i = 0 then 1 else if i \u2264 2 then \u03b7 ^ 2 else \u03b7 ^ i",
+      "problem": "`iterateAmplitudeSq` also has no simp or equation lemmas for its cases. These are `Sq \u03b7 0 = 1`, `Sq \u03b7 1 = \u03b7^2`, `Sq \u03b7 2 = \u03b7^2`, and `Sq \u03b7 i = \u03b7^i` for `3 \u2264 i`. Both this file and later files redo the case analysis by hand. In this file, `iterateAmplitudeSq_previous` and `iterateAmplitudeSq_two_previous` use `norm_num [iterateAmplitudeSq]` and `simp only [iterateAmplitudeSq, ite_eq_right (by omega ...) \u00d74]`. `IteratesFiniteAnalyticSum` and `TLemmasAmplitude` use `simp [iterateAmplitudeSq, show \u00ac k + 2 \u2264 2 by omega]`. Each call re-expands the definition and proves the same `if` conditions again.",
+      "proposed_change": "Add `@[simp] iterateAmplitudeSq_zero`, `iterateAmplitudeSq_one` and `iterateAmplitudeSq_two`, giving `1`, `\u03b7 ^ 2` and `\u03b7 ^ 2`. Add the conditional `iterateAmplitudeSq_of_three_le (h : 3 \u2264 i) : iterateAmplitudeSq \u03b7 i = \u03b7 ^ i`. Then rewrite the four-`ite_eq_right` blocks as `rw [iterateAmplitudeSq_of_three_le (by omega), iterateAmplitudeSq_of_three_le (by omega)]`. Do not simp-tag the unfolded definition itself.",
+      "benefit": "Case-split proofs about the `i-1`/`i-2` recursions become short rewrites with an explicit normal form. Downstream `simp [iterateAmplitudeSq, ...]` calls stop depending on the exact shape of the nested `if`s.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/TLemmasAmplitude.lean",
+          "declaration": "iterateAmplitude_two_shift_le_geometric",
+          "excerpt": "simp [iterateAmplitudeSq, show \u00ac k + 2 \u2264 2 by omega]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/IteratesFiniteAnalyticSum.lean",
+          "declaration": "(case split on i)",
+          "excerpt": "simp [iterateAmplitudeSq, show i \u2260 0 by omega, hi2]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/IteratesAmplitude.lean",
+          "declaration": "iterateAmplitudeSq_two_previous",
+          "excerpt": "simp only [iterateAmplitudeSq, ite_eq_right (by omega : i - 2 \u2260 0),"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 16206,
+    "cache_read_input_tokens": 46325,
+    "output_tokens": 3721,
+    "output_tokens_details": {
+      "thinking_tokens": 603
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16206,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2413,
+        "cache_read_input_tokens": 19365,
+        "cache_creation_input_tokens": 854,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 854
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1066825,
+  "duration_ms": 25234,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:55:55",
+  "unit": "file",
+  "source_sha256": "89c434402645f0e8f85df2a8e2f7ce27710b3cf33eff8873b0c9a707ade66e5e",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

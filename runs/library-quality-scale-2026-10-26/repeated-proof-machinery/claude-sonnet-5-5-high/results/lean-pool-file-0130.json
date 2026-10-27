@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0130",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the kernel-regularity setup, the kernel/covariance identification, and the final norm estimates. I also read the signature of `schwartz_bilinear_translation_decay_polynomial_proof` and grepped the OSforGFF sources for the kernel lemmas. I did not compile anything, so the proposed lemmas are untested sketches. The two findings are modest. I judged the repeated `Z f * Z g * (exp(\u00b7) - 1)` norm calculations in `GFF_OS4_from_small_decay_real` and in the polynomial clustering proof to be mostly short routine algebra, so I did not report them.",
+  "findings": [
+    {
+      "declaration": "schwartz_cross_covariance_decay_real / gaussianFreeField_satisfies_OS4_PolynomialClustering (kernel regularity hypotheses)",
+      "start_line": 312,
+      "end_line": 323,
+      "excerpt": "have hK_cont : ContinuousOn (freeCovarianceKernel m) (Metric.closedBall (0 : SpaceTime) 1)\u1d9c := by\n    apply (freeCovarianceKernel_continuousOn m hm).mono",
+      "problem": "Both decay theorems rebuild the same three hypotheses on `freeCovarianceKernel m` before calling the two Schwartz-decay lemmas.\n- `hK_meas` is built from `measurable_of_continuousOn_compl_singleton 0 (freeCovarianceKernel_continuousOn m hm)`, at lines 312\u2013313 and again at 592\u2013593. The two blocks are identical.\n- `hK_loc` is `(freeCovarianceKernel_integrable m hm).locallyIntegrable`, at lines 315\u2013316 and again at 594\u2013595. These are also identical.\n- `hK_cont` is proved at lines 318\u2013323 for radius 1 and at lines 602\u2013605 for radius 1/m. Both proofs run the same simp on `Metric.mem_closedBall` and then `norm_ne_zero_iff.mp`, so the argument is the same up to the radius.\nThe same `measurable_of_continuousOn_compl_singleton` call in the same context does not appear anywhere else in `OSforGFF`, so these two sites hold all of the duplication.",
+      "proposed_change": "Add two lemmas next to the kernel facts (before `schwartz_cross_covariance_decay_real`):\n\n`lemma freeCovarianceKernel_measurable (m : \u211d) (hm : 0 < m) : Measurable (freeCovarianceKernel m)` (proof: `measurable_of_continuousOn_compl_singleton 0 (freeCovarianceKernel_continuousOn m hm)`).\n\n`lemma freeCovarianceKernel_continuousOn_closedBall_compl (m : \u211d) (hm : 0 < m) {r : \u211d} (hr : 0 < r) : ContinuousOn (freeCovarianceKernel m) (Metric.closedBall (0 : SpaceTime) r)\u1d9c`.\nProof sketch: apply `.mono` to `freeCovarianceKernel_continuousOn m hm`; for `z` outside the ball, `r < \u2016z\u2016`, so `0 < \u2016z\u2016` and `z \u2260 0`.\n\nIf you want one lemma for the whole package, bundle the three facts as a conjunction or structure and `obtain` it.\n\nThe first use then becomes `freeCovarianceKernel_continuousOn_closedBall_compl m hm one_pos`, passed to `schwartz_bilinear_translation_decay_proof`. The second becomes `freeCovarianceKernel_continuousOn_closedBall_compl m hm (by positivity : (0:\u211d) < 1/m)`, passed to `schwartz_bilinear_translation_decay_polynomial_proof`. Both lemmas have the hypotheses `0 < m` and `0 < r`, and the file already supplies `hm`.",
+      "benefit": "The two long theorems lose about 25 lines of hypothesis set-up and keep only their different decay estimates. Any later change to the kernel's regularity facts is made once. The shared lemmas can also be reused by `OS4Ergodicity` and `OS1Regularity`, which use the same kernel lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Clustering.lean",
+          "declaration": "gaussianFreeField_satisfies_OS4_PolynomialClustering",
+          "excerpt": "have hK_cont : ContinuousOn (freeCovarianceKernel m) (Metric.closedBall (0 : SpaceTime) (1/m))\u1d9c :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/General/QuantitativeDecay.lean",
+          "declaration": "schwartz_bilinear_translation_decay_polynomial_proof",
+          "excerpt": "(_hK_cont : ContinuousOn K (closedBall (0 : E) R\u2080)\u1d9c)"
+        }
+      ]
+    },
+    {
+      "declaration": "schwartz_cross_covariance_decay_real (inline h_transl_inv) vs freeCovariance_eq_kernel",
+      "start_line": 392,
+      "end_line": 395,
+      "excerpt": "have h_transl_inv : \u2200 x y, freeCovariance m x y = freeCovarianceKernel m (x - y) := by\n          intro x y\n          unfold freeCovarianceKernel freeCovariance freeCovarianceBessel\n          simp only [zero_sub, norm_neg]",
+      "problem": "The kernel/covariance identification `freeCovariance m x y = freeCovarianceKernel m (x - y)` is proved twice in this file. It is proved inline as `h_transl_inv` in `schwartz_cross_covariance_decay_real`, and again as the named lemma `freeCovariance_eq_kernel` at line 548. The named lemma has the same statement and the same unfold-then-`zero_sub, norm_neg` proof, but it sits later in the file, so the earlier proof could not use it. The same inline proof also appears in `OS4Ergodicity.lean` (line 468) and in `Covariance/Momentum.lean` (line 1870). This is the only such identification used by the file's two paths from S\u2082 to the kernel integral. Lines 392\u2013395 and `freeCovariance_eq_kernel` follow the same argument.",
+      "proposed_change": "Move `freeCovariance_eq_kernel` (lines 548\u2013557) above `schwartz_cross_covariance_decay_real`, or better into `Covariance/Momentum.lean` beside `freeCovarianceKernel`. Delete the local `h_transl_inv` and use `simp_rw [SchwartzMap.translate_apply, freeCovariance_eq_kernel, toComplex_apply]`. Do the same in `OS4Ergodicity.lean` and `Momentum.lean` (a different pre-existing lemma at line 1870 is untested; check it before reusing). It has no extra hypotheses, since the statement holds for all `m`.",
+      "benefit": "The identification has one statement and one proof. Readers do not have to confirm that the inline copy equals the later named lemma. The long Step 6 block becomes shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Clustering.lean",
+          "declaration": "freeCovariance_eq_kernel",
+          "excerpt": "freeCovariance m x y = freeCovarianceKernel m (x - y) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Ergodicity.lean",
+          "declaration": "(inline have in OS4Ergodicity)",
+          "excerpt": "have h_transl : \u2200 x y, freeCovariance m x y = freeCovarianceKernel m (x - y) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 29299,
+    "cache_read_input_tokens": 114376,
+    "output_tokens": 5553,
+    "output_tokens_details": {
+      "thinking_tokens": 1537
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29299,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2865,
+        "cache_read_input_tokens": 30256,
+        "cache_creation_input_tokens": 2972,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2972
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1841836,
+  "duration_ms": 43461,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:08:12",
+  "unit": "file",
+  "source_sha256": "04b68cdc8e17afebca4731ef8abde5202bab5ddd87c883dd8932ae9c85f7f1c9",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

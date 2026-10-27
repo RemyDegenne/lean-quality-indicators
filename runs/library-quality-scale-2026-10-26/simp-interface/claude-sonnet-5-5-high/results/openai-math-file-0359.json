@@ -1,0 +1,114 @@
+{
+  "id": "openai-math-file-0359",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it depends on: profile, profileWeight, defectWeight, inverseProfile and diffuseDefect. I also grepped the AllenCahn directory for existing simp lemmas about them and found none. The file has no @[simp] attributes, and no loop or orientation problems arise from that. The findings are about missing canonical simp lemmas, with proofs falling back on unfolding definitions. I did not run Lean, so I don't claim the suggested lemmas compile or that simp closes the goals. A caveat on the second finding: profile is redefined in several sibling files (Basic, Eikonal, RegularityModel and others), so the exact home for the new lemmas depends on which of those is the canonical one.",
+  "findings": [
+    {
+      "declaration": "diffuseNormal_component / diffuseNormal_unit / diffuseMeanCurvature_zero (diffuseDefect unfolding)",
+      "start_line": 148,
+      "end_line": 159,
+      "excerpt": "simp only [diffuseNormal,real_inner_smul_left,inner_gradient_left,diffuseDefect,\n    sub_sub_cancel,Real.sqrt_sq (norm_nonneg _)]",
+      "problem": "diffuseDefect v x is defined as 1 - \u2016gradient (inverseProfile v) x\u2016 ^ 2. The file has no canonical lemma for the combination 1 - diffuseDefect v x, or for its square root. Three separate proofs unfold diffuseDefect and then redo the same cancellation: diffuseNormal_component (sub_sub_cancel plus Real.sqrt_sq), the hn step in diffuseMeanCurvature_zero (`rw [sub_sub_cancel,Real.sqrt_sq (norm_nonneg _)]`), and diffuseNormal_unit (`simp [diffuseDefect,hh] at h`). The mean_limit proof also computes the same normalisation by hand. Each caller must unfold the definition and rediscover the same simp set, and the unfolded form leaks into goals.",
+      "proposed_change": "Add lemmas next to diffuseDefect. First, `one_sub_diffuseDefect : 1 - diffuseDefect v x = \u2016gradient (inverseProfile v) x\u2016 ^ 2`, tagged @[simp], which is a sub_sub_cancel over the definition. Second, `sqrt_one_sub_diffuseDefect : Real.sqrt (1 - diffuseDefect v x) = \u2016gradient (inverseProfile v) x\u2016`, which follows from the first plus Real.sqrt_sq (norm_nonneg _). Optionally add `diffuseDefect_lt_one_iff` or `gradient_ne_zero_of_diffuseDefect_lt_one` for the diffuseNormal_unit hypothesis. The three proofs then use `simp only [one_sub_diffuseDefect]` or the sqrt lemma instead of unfolding diffuseDefect. The orientation is terminating, because the right-hand side contains no diffuseDefect.",
+      "benefit": "This gives one canonical normal form for the normalisation factor. The three proofs drop their repeated unfold-and-cancel steps, and any later lemma about the unit normal can use the same rewrites instead of unfolding diffuseDefect.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/AllenCahn/Modica.lean",
+          "declaration": "diffuseDefect",
+          "excerpt": "1 - \u2016gradient (inverseProfile v) x\u2016 ^ 2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/AllenCahn/PositiveWindows.lean",
+          "declaration": "diffuseMeanCurvature_zero",
+          "excerpt": "rw [sub_sub_cancel,Real.sqrt_sq (norm_nonneg _)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/AllenCahn/PositiveWindows.lean",
+          "declaration": "diffuseNormal_unit",
+          "excerpt": "simp [diffuseDefect,hh] at h"
+        }
+      ]
+    },
+    {
+      "declaration": "conjugated_derivative_zero (and profileWeight/defectWeight users)",
+      "start_line": 246,
+      "end_line": 253,
+      "excerpt": "  rw [fderiv_fun_mul hG.differentiableAt (hd 0),hG.fderiv]\n  simp [profileWeight,profile]",
+      "problem": "profile, profileWeight and defectWeight have no simp lemmas for their basic values or relations. Proofs unfold them to Real.tanh with a division by \u221a2, which exposes the implementation. For example, conjugated_derivative_zero needs `inner \u211d \u03bd 0 = 0`, `profile 0 = 0` and `profileWeight 0 = 1`, but gets them only through `simp [profileWeight,profile]`. Other proofs unfold the same way: `dsimp only [H,conePotential,profileWeight,profile] at *` (line 122), `simp [defectWeight,profileWeight,pow_two]` (line 319) and `dsimp only [profileWeight,profile]` (line 357). The unfold is also fragile, because profile is redefined identically in many sibling files. The relation defectWeight v x = 1 - v x ^ 2 versus profileWeight s = 1 - profile s ^ 2 is likewise only available by unfolding.",
+      "proposed_change": "Add small, terminating simp lemmas near the definition of profileWeight: `profile_zero : profile 0 = 0` (by simp [profile]) and `profileWeight_zero : profileWeight 0 = 1`. Add `defectWeight_apply`/`profileWeight_eq : profileWeight s = 1 - profile s ^ 2` as non-looping unfolding lemmas, so the later proofs can name the exact rewrite. conjugated_derivative_zero then needs only `simp [profile_zero, profileWeight_zero]` after the inner-product-at-zero step, and the line-319 proof of hq can use a defectWeight/profileWeight bridge lemma instead of the expanded simp set. I recommend @[simp] only for the zero-value lemmas.",
+      "benefit": "Proofs no longer depend on the tanh implementation of profile, and the unfolding simp calls become short, named rewrites. Because profile is redefined in several files, putting the lemmas in one place avoids repeating the same unfolding in each.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/AllenCahn/DefectLimits.lean",
+          "declaration": "profileWeight",
+          "excerpt": "def profileWeight (s : \u211d) : \u211d := 1-profile s^2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/AllenCahn/Modica.lean",
+          "declaration": "defectWeight",
+          "excerpt": "def defectWeight {n : \u2115} (v : Space n \u2192 \u211d) (x : Space n) : \u211d := 1 - v x ^ 2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/AllenCahn/Basic.lean",
+          "declaration": "profile",
+          "excerpt": "def profile (s : \u211d) : \u211d := Real.tanh (s / Real.sqrt 2)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/AllenCahn/PositiveWindows.lean",
+          "declaration": "SmallDefectConverges.normalized_mass_locallyUniform",
+          "excerpt": "simp [defectWeight,profileWeight,pow_two]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 30466,
+    "cache_read_input_tokens": 142524,
+    "output_tokens": 5784,
+    "output_tokens_details": {
+      "thinking_tokens": 1685
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30466,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3017,
+        "cache_read_input_tokens": 33867,
+        "cache_creation_input_tokens": 612,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 612
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1939804,
+  "duration_ms": 50502,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T02:02:05",
+  "unit": "file",
+  "source_sha256": "36b62d15b588db9182471161ea75c908a14d924a842a432636605772c8ebf17a",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

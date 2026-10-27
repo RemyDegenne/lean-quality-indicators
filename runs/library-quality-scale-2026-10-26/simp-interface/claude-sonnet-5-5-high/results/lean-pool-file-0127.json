@@ -1,0 +1,114 @@
+{
+  "id": "lean-pool-file-0127",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped downstream Leray files (JSpaceFourierPotential, JSpaceFourierPotentialBase, JSpaceFourierConverse) for uses of frequencyL2Coord and regularizedFrequencyWeight. The file declares no simp lemmas for its definitions. Callers therefore unfold them by hand, and the same rpow rewrite is reproved several times. I could not run Lean, so I did not check whether the proposed lemmas would fire or compile. I did not recommend simp lemmas for the Lp multiplier definitions, because there is no clear canonical form there.",
+  "findings": [
+    {
+      "declaration": "regularizedFrequencyWeight (and its uses in regularizedFrequencyCoord_mul_weight_abs_le_one / regularizedFrequencyCoordProduct_mul_weight_abs_le_one)",
+      "start_line": 91,
+      "end_line": 93,
+      "excerpt": "(1 + \u2016(\u03b4\u207b\u00b9 : \u211d) \u2022 \u03be\u2016 ^ 2) ^ (-1 : \u211d)",
+      "problem": "The weight is defined with a real power `(-1 : \u211d)`, and no canonical rewriting lemma to `(1 + \u2016\u03b4\u207b\u00b9 \u2022 \u03be\u2016^2)\u207b\u00b9` is provided or tagged simp. Both bound lemmas in this file (lines 180 and 201) reprove the same local fact `regularizedFrequencyWeight \u03b4 \u03be = 1 / (1 + \u2016\u03b7\u2016 ^ 2)` by `rw [regularizedFrequencyWeight, Real.rpow_neg ..]; simp [..]`. The same fact is reproved in the downstream files JSpaceFourierConverse.lean (around lines 471 and 523) and JSpaceFourierPotential.lean (around line 242). `simp` has no rule to reach this form, so every client unfolds the definition and reproves it.",
+      "proposed_change": "Add a named lemma such as `regularizedFrequencyWeight_eq_inv (\u03b4) (\u03be) : regularizedFrequencyWeight \u03b4 \u03be = (1 + \u2016(\u03b4\u207b\u00b9 : \u211d) \u2022 \u03be\u2016 ^ 2)\u207b\u00b9`, proved once via `Real.rpow_neg_one` (itself a simp lemma). Mark it `@[simp]` only if the project wants the definition unfolded everywhere; otherwise use it with `simp [regularizedFrequencyWeight_eq_inv]` or `rw`. Either way, replace the four local `hweight` proofs with it.",
+      "benefit": "The rpow-to-inverse normal form is stated once, so downstream positivity, bound and limit proofs stop repeating the `rw [Real.rpow_neg ...]` boilerplate. The `\u207b\u00b9` form is also the one `simp`, `positivity` and `field_simp` handle well.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/VectorPotential.lean",
+          "declaration": "regularizedFrequencyCoord_mul_weight_abs_le_one",
+          "excerpt": "have hweight : regularizedFrequencyWeight \u03b4 \u03be = 1 / (1 + \u2016\u03b7\u2016 ^ 2) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/JSpaceFourierConverse.lean",
+          "declaration": "regularizedFrequencyWeight_bounds",
+          "excerpt": "have hweight : regularizedFrequencyWeight \u03b4 \u03be = 1 / (1 + \u2016\u03b7\u2016 ^ 2) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/JSpaceFourierConverse.lean",
+          "declaration": "regularizedFrequencyWeight (use in a limit proof, around line 521)",
+          "excerpt": "rw [regularizedFrequencyWeight, Real.rpow_neg (by positivity)]"
+        }
+      ]
+    },
+    {
+      "declaration": "frequencyL2Coord",
+      "start_line": 78,
+      "end_line": 80,
+      "excerpt": "PiLp.proj 2 (\ud835\udd5c := \u211d) (\u03b2 := fun _ : Fin 3 => \u211d) i",
+      "problem": "`frequencyL2Coord i` is a continuous linear map defined through `PiLp.proj`. No simp or apply lemma `frequencyL2Coord i \u03be = \u03be.ofLp i` is provided. Consumers must unfold the definition and add `PiLp.proj_apply` to every `simp` call. This happens in this file at lines 170 and 296, where `change |\u03be.ofLp i| \u2264 \u2016\u03be\u2016` is also used in `frequencyL2Coord_abs_le`. It happens again in JSpaceFourierPotentialBase.lean (lines 98, 184, 521) and JSpaceFourierPotential.lean (line 239). Unfolding the definition also exposes the `PiLp.proj` representation instead of a stable coordinate form.",
+      "proposed_change": "Right after the definition, add `@[simp] theorem frequencyL2Coord_apply (i : Fin 3) (\u03be : CKN.Foundation.Parabolic.L2Vec3) : frequencyL2Coord i \u03be = \u03be.ofLp i := rfl`, or prove it with `simp [frequencyL2Coord]`. Orientation: the left side is the project-specific wrapper and the right side is the primitive Mathlib coordinate, so the rewrite terminates. Then replace `simp [frequencyL2Coord, PiLp.proj_apply]` with plain `simp`, and drop the `change` in `frequencyL2Coord_abs_le`. The `simp` lemma would also let `regularizedFrequencyCoord_eq_scaled` (line 170) be closed without naming the unfolding lemmas.",
+      "benefit": "The definition no longer has to be unfolded by name in about ten call sites across four files. The simp normal form is the plain coordinate `\u03be.ofLp i`, which interacts directly with the existing `PiLp.smul_apply`, `PiLp.norm_eq_sum` and `PiLp.inner_apply` simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/VectorPotential.lean",
+          "declaration": "regularizedFrequencyCoord_eq_scaled",
+          "excerpt": "simp [regularizedFrequencyCoord, frequencyL2Coord, PiLp.proj_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/VectorPotential.lean",
+          "declaration": "regularizedDerivativeEntry_eq_frequency_mul_potential",
+          "excerpt": "simp only [regularizedFrequencyCoord, frequencyL2Coord, PiLp.proj_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/JSpaceFourierPotentialBase.lean",
+          "declaration": "inner \u211d \u03be (l2BasisVec3 i) = frequencyL2Coord i \u03be (around line 184)",
+          "excerpt": "simp [l2BasisVec3, frequencyL2Coord, PiLp.proj_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/JSpaceFourierPotential.lean",
+          "declaration": "regularizedFrequencyWeight_mul_one_add_sum_sq (around line 239)",
+          "excerpt": "simp [frequencyL2Coord, PiLp.proj_apply, Real.norm_eq_abs, sq_abs]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 26097,
+    "cache_read_input_tokens": 123593,
+    "output_tokens": 4786,
+    "output_tokens_details": {
+      "thinking_tokens": 783
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26097,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2995,
+        "cache_read_input_tokens": 29255,
+        "cache_creation_input_tokens": 855,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 855
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.16463129999999998,
+  "duration_ms": 35860,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:07:34",
+  "unit": "file",
+  "source_sha256": "344fc37f14ebf98e40a3fade601cf70266f1e9d993c1b4ee0bb5e7026d68668a",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

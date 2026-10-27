@@ -1,0 +1,125 @@
+{
+  "id": "flt-anthropic-file-0113",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file with a focus on simp attributes, rewrite orientation and ad hoc simp/rw chains. The file has only two simp attributes, both `@[scoped simp]` rfl lemmas (`coe_comapIncl`, `coe_comapEquiv`), and I found nothing wrong with them. The long `attribute [-simp]` and `[-instance]` preamble was not analysed. I read `Def_DrinfeldCurve_CoordRing.lean`: it has no simp lemmas for `mk`, `x` or `y`, and it has no `mk_C` lemma. I did not check the sibling files that reuse these lemmas, so the downstream effects are an estimate. I could not run Lean, so the claim that `simp` would close these goals is a prediction, not an observation. For the `bc` family I judge loops unlikely, because every rule moves toward `mk \u2026 (map e f)` or `algebraMap \u2026 (e c)`. A conditional rule such as `map_substPoly` (hypothesis `he`) is not a good simp candidate, and I did not suggest tagging it.",
+  "findings": [
+    {
+      "declaration": "C3GlueKit.BC.algebraMap_eq_mk_C (and its inverse use in C3Kit3.hAction_x_ne)",
+      "start_line": 83,
+      "end_line": 87,
+      "excerpt": "theorem algebraMap_eq_mk_C (k : Type) [Field k] (c : k) : algebraMap k (CoordRing q k) c = mk q k (C c) := by",
+      "problem": "The file has no canonical normal form for the constant `mk q k (C c)` versus `algebraMap k (CoordRing q k) c`, and no simp lemma for either. `algebraMap_eq_mk_C` rewrites algebraMap into `mk (C c)`, and it is not tagged simp. `bc_algebraMap` (line 87) rewrites it forward, uses `bc_mk` and `map_C`, then rewrites it backwards with `\u2190 algebraMap_eq_mk_C`. `hAction_x_ne` (line 268) rewrites the other way, with the inline `show mk q k (C s) = algebraMap k (CoordRing q k) s from (mk q k).commutes s`. So the same fact is used in both orientations, and one direction is re-proved inline each time. A reader cannot tell which form `simp` should produce, and the lemma as stated (algebraMap to `mk (C c)`) is the unusual direction, because it expands a structure map into a quotient-mk expression.",
+      "proposed_change": "Choose `algebraMap` as the normal form. Replace the lemma with `mk_C (c : k) : mk q k (C c) = algebraMap k (CoordRing q k) c`, proved by `(mk q k).commutes c` or `AlgHom.commutes`, and tag it `@[simp]`. Use it at line 268 instead of the inline `show`. Rewrite `bc_algebraMap` as `bc q e (algebraMap \u03ba\u2080 _ c) = algebraMap \u03ba _ (e c)`. With `bc_mk` and `mk_C` simp, the proof of `bc_algebraMap` and the `hAction_x_ne` step then close by `simp`, without a forward and backward rw pair.",
+      "benefit": "There would be one canonical form for constants in `CoordRing`. `simp` could then normalise expressions such as `bc q e (algebraMap \u03ba\u2080 _ c)` without the manual forward-then-backward rewriting, and the inline `show \u2026 from (mk q k).commutes s` would disappear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_Diamond_AuxLevel_exists_quotField_ringHom_invariants_of_rigidChart_linkedScalars_of_eq_three_of_dvd.lean",
+          "declaration": "C3GlueKit.BC.bc_algebraMap",
+          "excerpt": "rw [algebraMap_eq_mk_C, bc_mk, MvPolynomial.map_C, \u2190 algebraMap_eq_mk_C]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_Diamond_AuxLevel_exists_quotField_ringHom_invariants_of_rigidChart_linkedScalars_of_eq_three_of_dvd.lean",
+          "declaration": "C3Kit3.hAction_x_ne",
+          "excerpt": "rw [show mk q k (C s) = algebraMap k (CoordRing q k) s from (mk q k).commutes s, Algebra.smul_def]"
+        }
+      ]
+    },
+    {
+      "declaration": "C3GlueKit.BC.bc_mk / bc_x / bc_y / bc_comp / bc_id / bcEquiv_apply",
+      "start_line": 81,
+      "end_line": 149,
+      "excerpt": "theorem bc_mk (e : \u03ba\u2080 \u2192+* \u03ba) (f : MvPolynomial (Fin 2) \u03ba\u2080) : bc q e (mk q \u03ba\u2080 f) = mk q \u03ba (MvPolynomial.map e f) := rfl",
+      "problem": "The base-change map `bc` is defined through `Ideal.Quotient.lift`, and its basic evaluation lemmas are plain theorems, so `simp` cannot compute with `bc`. The proofs and downstream uses show the cost. `bc_comp` rewrites `bc_mk` three times in a row (line 138). `bc_hAction` rewrites `bc_mk, bc_mk` between two `hAction_mk` steps (line 133). `bc_x` and `bc_y` each need a `show \u2026 ; rw [bc_mk, map_X]` (lines 90, 93). `bcEquiv`'s proofs mix `rw`, `convert bc_id q a` and a nested `simp`. `bc_mk` and `bc_id` are exactly the evaluation and identity rules that `simp` would use, and `bc_mk` is rfl-provable.",
+      "proposed_change": "Tag `bc_mk` with `@[simp]`, since it moves from `bc` of `mk` to `mk` of `MvPolynomial.map` and so reduces toward Mathlib's normal forms (`MvPolynomial.map_X`, `map_C` and `map_map` are simp). Also tag the evaluation lemmas that follow it: `bc_x`, `bc_y`, `bc_algebraMap` (after the reorientation in the previous finding) and `bcEquiv_apply`. Then `bc_comp` and `bc_id` become `simp` or `simp [bc_mk]`, and `bc_x` and `bc_y` need no `show`. Do not tag `map_substPoly`, which has the hypothesis `he` that simp cannot discharge automatically. Keep `bc_comp` as a non-simp rewrite lemma, or add `bc_id`, since the composition form is orientation-sensitive.",
+      "benefit": "The several-step `rw [bc_mk, bc_mk, bc_mk, \u2026]` and `show` boilerplate would be replaced by a short `simp`. Reusers of `BC` (`bc` is also used in about 15 sibling files) get a working simp interface for the base-change map. Every rule moves toward `mk \u2026 (map e f)` or `algebraMap \u2026 (e c)`, so a loop is unlikely, though I did not run it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_Diamond_AuxLevel_exists_quotField_ringHom_invariants_of_rigidChart_linkedScalars_of_eq_three_of_dvd.lean",
+          "declaration": "C3GlueKit.BC.bc_comp",
+          "excerpt": "rw [bc_mk, bc_mk, bc_mk, MvPolynomial.map_map]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_Diamond_AuxLevel_exists_quotField_ringHom_invariants_of_rigidChart_linkedScalars_of_eq_three_of_dvd.lean",
+          "declaration": "C3GlueKit.BC.bc_x",
+          "excerpt": "show bc q e (mk q \u03ba\u2080 (X 0)) = mk q \u03ba (X 0); rw [bc_mk, MvPolynomial.map_X]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_Diamond_AuxLevel_exists_quotField_ringHom_invariants_of_rigidChart_linkedScalars_of_eq_three_of_dvd.lean",
+          "declaration": "C3GlueKit.BC.bc_hAction",
+          "excerpt": "rw [hAction_mk, bc_mk, bc_mk, hAction_mk, map_scalePoly, map_substPoly q e he, e_scalarOf q e he]"
+        }
+      ]
+    },
+    {
+      "declaration": "C3GlueKit.Scal.sc_one / sc_mul / scHom_apply",
+      "start_line": 288,
+      "end_line": 298,
+      "excerpt": "theorem sc_one : sc q 1 = 1 := Subtype.ext rfl",
+      "problem": "The `sc` embedding of the roots-of-unity group into `hSubgroup` has the lemmas `sc_one`, `sc_mul` and `scHom_apply`, none tagged simp. `sc_one` is then passed to `simp` by hand (`| zero => simp [sc_one]`, line 369). Elsewhere it is used through long rw lists, such as `rw [iterate_law \u2026, h1, sc_one, map_one, AlgEquiv.one_apply, sub_self]` in `Conj.orderOf_eq_orderOf`. `scHom_apply` is `rfl`, but `sc q c` and `scHom q c` are two spellings of the same term and there is no rule that picks one of them.",
+      "proposed_change": "Tag `sc_one` as `@[simp]`, since it is a safe unconditional rewrite whose right side is smaller. Tag `scHom_apply` as `@[simp]` so that `scHom q c` normalises to `sc q c`. Keep `sc_mul` and `sc_pow` as plain rewrite lemmas, because they are used inside `rw` with `map_mul` and `\u2190 AlgEquiv.mul_apply` rewrites that depend on a specific shape. Drop the explicit `[sc_one]` argument at line 369.",
+      "benefit": "The `Ord` and `Conj` proofs, and the main theorem's `rw [... sc_one ...]` bookkeeping around powers, would simplify automatically, and `sc` and `scHom` would no longer need to be unfolded by hand. This is a small gain, and the finding depends on `sc_one` being used often enough to justify a global simp rule.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_Diamond_AuxLevel_exists_quotField_ringHom_invariants_of_rigidChart_linkedScalars_of_eq_three_of_dvd.lean",
+          "declaration": "C3GlueKit.Ord.iterate_law",
+          "excerpt": "| zero => simp [sc_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_Diamond_AuxLevel_exists_quotField_ringHom_invariants_of_rigidChart_linkedScalars_of_eq_three_of_dvd.lean",
+          "declaration": "C3GlueKit.Scal.scHom_apply",
+          "excerpt": "theorem scHom_apply (c : \u21a5(rootsOfUnity (q + 1) (GaloisField q 2))) : scHom q c = sc q c := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 103324,
+    "cache_read_input_tokens": 312564,
+    "output_tokens": 8766,
+    "output_tokens_details": {
+      "thinking_tokens": 3522
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 103324,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4989,
+        "cache_read_input_tokens": 104948,
+        "cache_creation_input_tokens": 2389,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2389
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5322284,
+  "duration_ms": 68416,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:05:23",
+  "unit": "file",
+  "source_sha256": "896526b861ded9dc25c9a34c2cdbbeda04e4dc840049c6d8eb9233d334c2ed9a",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

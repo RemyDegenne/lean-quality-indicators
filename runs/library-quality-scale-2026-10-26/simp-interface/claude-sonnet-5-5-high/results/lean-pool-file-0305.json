@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0305",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I checked how varianceHermite, derivative_varianceHermite, varianceHermite_succ and polynomialFamilyLinearMap are used in GaussianHermite.lean, BrownianPurePowerRecurrence.lean and BrownianPurePowerDuality.lean. I did not run Lean, so every claim about simp behaviour is inferred from the rule shapes, not observed. I deliberately did not flag varianceHermite_succ or derivative_varianceHermite as simp candidates. Their right-hand sides contain n - 1 and an extra recurrence term, and the downstream uses are explicit rw calls. hermiteReal has no uses outside this file, so I did not flag its missing unfolding lemmas.",
+  "findings": [
+    {
+      "declaration": "polynomialFamilyLinearMap_X_pow",
+      "start_line": 154,
+      "end_line": 161,
+      "excerpt": "polynomialFamilyLinearMap xpow (Polynomial.X ^ n) = xpow n",
+      "problem": "The only simp lemma for polynomialFamilyLinearMap is stated for `X ^ n`. Simp first normalizes `X ^ 1` to `X` and `X ^ 0` to `1` (pow_one, pow_zero), and it normalizes `C a * X ^ n` or `monomial n a` away from the bare power. So this lemma will not fire on `polynomialFamilyLinearMap xpow X` or `polynomialFamilyLinearMap xpow 1`. There is also no rule for `monomial n a` or `C a * X ^ n`. The map is a linear map, so simp reaches `a \u2022 T (X ^ n)` only after rewriting `C a * _` to a smul, which no simp lemma does. Downstream code therefore has to do the monomial decomposition by hand: the `hmonomial` rewrite at lines 242-245 of this file, and `\u2190 Polynomial.smul_eq_C_mul, map_smul` followed by an explicit `polynomialFamilyLinearMap_X_pow` use at BrownianPurePowerRecurrence.lean lines 70 and 79-80.",
+      "proposed_change": "Add the missing canonical simp lemmas next to this one, each proved from `polynomialFamilyLinearMap_X_pow` with `map_smul`. First, `@[simp] polynomialFamilyLinearMap_monomial : polynomialFamilyLinearMap xpow (Polynomial.monomial n a) = a \u2022 xpow n`. Second, `@[simp] polynomialFamilyLinearMap_C_mul_X_pow : polynomialFamilyLinearMap xpow (C a * X ^ n) = a \u2022 xpow n`. Third, `@[simp] polynomialFamilyLinearMap_X : polynomialFamilyLinearMap xpow X = xpow 1`. Fourth, `@[simp] polynomialFamilyLinearMap_one : polynomialFamilyLinearMap xpow 1 = xpow 0`. The last two cover the simp-normal forms of `X ^ 1` and `X ^ 0`. If the simp-normal form of `C a * p` is not wanted in the final statement, `polynomialFamilyLinearMap_C_mul` could be stated for general `p` via `map_smul`. Then use them to shorten the `monomial` case of `coeFn_polynomialFamilyLinearMap` and the Brownian recurrence proofs.",
+      "benefit": "Simp can then evaluate `polynomialFamilyLinearMap` on `X`, `1`, monomials and scaled monomials, which are exactly the forms simp produces from `X ^ n`. The hand-written `hmonomial` rewrite and the `smul_eq_C_mul` / `map_smul` juggling in the downstream recurrence proofs can then be replaced by simp.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/BrownianPurePowerRecurrence.lean",
+          "declaration": "brownianWickPowerLp_add_two",
+          "excerpt": "varianceHermite_succ, map_sub, \u2190 Polynomial.smul_eq_C_mul, map_smul,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/BrownianHermite.lean",
+          "declaration": "coeFn_polynomialFamilyLinearMap",
+          "excerpt": "rw [hmonomial, map_smul, polynomialFamilyLinearMap_X_pow]"
+        }
+      ]
+    },
+    {
+      "declaration": "varianceHermite",
+      "start_line": 86,
+      "end_line": 88,
+      "excerpt": "| 0 => 1\n  | 1 => Polynomial.X",
+      "problem": "`varianceHermite` has no named simp lemmas for its base cases. The unified recurrence `varianceHermite_succ` is rightly not simp, since its right-hand side still contains `n - 1`. Because there is no `varianceHermite_zero` or `varianceHermite_one`, callers run `simp [varianceHermite]` or `simp only [varianceHermite, ...]`. That unfolds the whole definition, including the `n + 2` recursion clause, so it can expand any literal-successor argument unwantedly. Examples are GaussianHermite.lean lines 137, 310 and 341, BrownianPurePowerRecurrence.lean line 79, and this file's own `varianceHermite_succ`, `derivative_varianceHermite` and `varianceHermite_isMonicOfDegree` proofs.",
+      "proposed_change": "Add `@[simp] theorem varianceHermite_zero (variance : \u211d) : varianceHermite variance 0 = 1 := rfl` and `@[simp] theorem varianceHermite_one (variance : \u211d) : varianceHermite variance 1 = Polynomial.X := rfl`. Optionally add the non-simp `varianceHermite_add_two`, stating the `n + 2` clause. Callers can then use `simp` or `rw [varianceHermite_add_two]` instead of unfolding the definition.",
+      "benefit": "This gives a stable simp interface for the base cases and keeps the recursive clause from being expanded by accident. Proofs become independent of how the definition is implemented, and the `simp [varianceHermite]` calls turn into plain `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/GaussianHermite.lean",
+          "declaration": "integral_varianceHermite_centeredGaussian",
+          "excerpt": "| zero => simp [varianceHermite]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/BrownianPurePowerRecurrence.lean",
+          "declaration": "brownianStepTimesWickPowerLp_one",
+          "excerpt": "simpa only [brownianStepTimesWickPowerLp, varianceHermite, pow_two] using"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 14485,
+    "cache_read_input_tokens": 86762,
+    "output_tokens": 5874,
+    "output_tokens_details": {
+      "thinking_tokens": 1741
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14485,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2522,
+        "cache_read_input_tokens": 17265,
+        "cache_creation_input_tokens": 1233,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1233
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1253842,
+  "duration_ms": 41662,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T01:29:15",
+  "unit": "file",
+  "source_sha256": "57ed6abb404965bc8e51773cb5dc9360e50957f724050b63ee37ed45f9267018",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0078",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "partial",
+  "review_notes": "I read the whole file's declarations and grepped for simp usage. I did not open the imported definitions of lambdaEval or pointEval, so I did not check how they interact with the proposed simp lemmas. I checked three things: the new `ev`/`tw`/`pev`/`DD` definitions, the rfl coercion lemmas, and the places where `simp [..]` has to unfold the definitions by hand. The two findings are about missing canonical simp lemmas, not about loops or competing rules. I did not run Lean, so I can't say whether the suggested lemmas would compile or actually shorten the proofs.",
+  "findings": [
+    {
+      "declaration": "ev, tw, pev, DD (and local lemmas evC/twC/peC/evX0/evX1/peX0/peX1/evDD/peDD in exists_twist, peDD in mem_of_mul_tw_eq)",
+      "start_line": 487,
+      "end_line": 517,
+      "excerpt": "noncomputable def pev : MvPolynomial (Fin 2) A\u2080 \u2192+* \u03ba := eval\u2082Hom red ![l, lq]",
+      "problem": "The four new definitions `ev`, `tw`, `pev` and `DD` have no simp API. Each proof that touches them has to unfold the definition by hand, e.g. `simp [ev]`, `simp [tw]`, `simp [pev]`, `simp [DD, pev]` and `rw [lambdaEval_eq_ev, ev]; simp`. The evaluation facts on `C c`, `X 0` and `X 1` and the value of `DD` are re-proved as local `have`s inside `exists_twist`. `peDD` is proved a second time in `mem_of_mul_tw_eq`. `evC` and `evX0`/`evX1` are proved a third time in `stab_of_data`, for `lambdaEval`. Callers therefore unfold `ev`, `tw` and `pev` instead of using one normal form, and `simp [pev]` exposes `eval\u2082Hom` and the vector notation `![..]` to later steps.",
+      "proposed_change": "State top-level lemmas and tag them `@[simp]`: `ev_C`, `ev_X_zero`, `ev_X_one`, and the same for `tw` and `pev`, with right-hand sides `cst c`, `\u03bc`, `\u03bcq` and so on. Also add `ev_DD : ev cst \u03bc \u03bcq (DD g d) = (cst g * \u03bc + cst d) * (cst g * \u03bcq + cst d)` and the matching `pev_DD`. Then replace the local `have`s in `exists_twist`, the repeated `peDD` in `mem_of_mul_tw_eq`, and the `simp [pointEval_eq_pev, pev]` calls with plain `simp`.",
+      "benefit": "The normal form is stated once, and `simp` closes goals without unfolding the definitions. Each proof no longer re-derives the same facts, and `ev`, `tw` and `pev` remain usable by `simp` if the definitions change.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_LambdaNodeLocalized_exists_ringEquiv_sub_smul_mem_sq_sup_of_stabilizer_of_eq_zero_or_eq_1728.lean",
+          "declaration": "mem_of_mul_tw_eq",
+          "excerpt": "simp [DD, pev]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_LambdaNodeLocalized_exists_ringEquiv_sub_smul_mem_sq_sup_of_stabilizer_of_eq_zero_or_eq_1728.lean",
+          "declaration": "stab_of_data",
+          "excerpt": "rw [lambdaEval_eq_ev, ev]; simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_LambdaNodeLocalized_exists_ringEquiv_sub_smul_mem_sq_sup_of_stabilizer_of_eq_zero_or_eq_1728.lean",
+          "declaration": "stab_of_data",
+          "excerpt": "simp [pointEval_eq_pev, pev]; exact hD"
+        }
+      ]
+    },
+    {
+      "declaration": "lambdaEval_eq_ev, pointEval_eq_pev, coe_evF, coe_restrictHom, coe_restrictEquiv",
+      "start_line": 647,
+      "end_line": 652,
+      "excerpt": "theorem lambdaEval_eq_ev (A\u2080 : Subring (AlgebraicClosure \u211a)) :",
+      "problem": "These lemmas are all proved by `rfl` and exist to rewrite into the local `ev`/`pev` forms or to compute coercions. None is tagged `@[simp]`, so callers perform the rewriting and unfolding by hand. Examples are `rw [lambdaEval_eq_ev, ev]; simp`, `simp [pointEval_eq_pev, pev]`, `rw [hg, coe_restrictEquiv]; exact h\u03c3\u03bc` and `rw [coe_evF, lambdaEval_eq_ev, ev, eval\u2082Hom_C]`. The rewrites and unfolds are repeated across `lambdaEval_mem_lambdaFieldOver`, `sigma_mem` and `stab_of_data`. This is a missing canonical simp rule for the coercion lemmas.",
+      "proposed_change": "Mark `coe_evF`, `coe_restrictHom` and `coe_restrictEquiv` as `@[simp]`; they are rfl-style coercion lemmas with a smaller or more primitive right-hand side. Give `lambdaEval_eq_ev` and `pointEval_eq_pev` a deliberate orientation, together with the `ev_C`/`ev_X`/`pev_*` simp lemmas suggested for `ev`/`pev`. Combined with those lemmas, this lets `simp` reduce `lambdaEval q A\u2080 (C c)` and `(X i)` directly without the `rw [lambdaEval_eq_ev, ev]` prelude. Alternatively, state `lambdaEval_C` and `lambdaEval_X` directly.",
+      "benefit": "It removes the manual `rw [..., ev]; simp` pattern. Coercions of `g z` and `evF r` reduce to `\u03c3` and `lambdaEval` automatically, which makes the long membership goals in `stab_of_data` easier to simplify.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_LambdaNodeLocalized_exists_ringEquiv_sub_smul_mem_sq_sup_of_stabilizer_of_eq_zero_or_eq_1728.lean",
+          "declaration": "stab_of_data",
+          "excerpt": "have hg\u03bc0 : ((g \u03bcS : \u21a5Sr) : L\u2080) = T\u03bc := by rw [hg, coe_restrictEquiv]; exact h\u03c3\u03bc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_LambdaNodeLocalized_exists_ringEquiv_sub_smul_mem_sq_sup_of_stabilizer_of_eq_zero_or_eq_1728.lean",
+          "declaration": "lambdaEval_mem_lambdaFieldOver",
+          "excerpt": "rw [lambdaEval_eq_ev, ev, eval\u2082Hom_C]; exact constSeries_mem_lambdaFieldOver K c"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 63763,
+    "cache_read_input_tokens": 136414,
+    "output_tokens": 3864,
+    "output_tokens_details": {
+      "thinking_tokens": 559
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 63763,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2737,
+        "cache_read_input_tokens": 67351,
+        "cache_creation_input_tokens": 425,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 425
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.30734539999999994,
+  "duration_ms": 29443,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T22:58:27",
+  "unit": "file",
+  "source_sha256": "61191df8177bc2eb24ee9b9b1fc48a85b4f4bea3239b65bed5120cb6c7ef3da5",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

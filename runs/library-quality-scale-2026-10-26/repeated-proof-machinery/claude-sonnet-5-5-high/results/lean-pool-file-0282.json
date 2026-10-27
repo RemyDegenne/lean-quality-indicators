@@ -1,0 +1,151 @@
+{
+  "id": "lean-pool-file-0282",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "partial",
+  "review_notes": "I read the target in the supplied text. I used Grep to locate repeated blocks and Read to check exact line ranges of the convolution-bound copies, the Picard-Lindel\u00f6f assembly copies, the Phi_step/Phi_step_envelope preambles and the first Picard assembly. I did not re-read every line of every duplicate (for example the other three Picard blocks) in the tool view, though I did see their text in the supplied source. Other likely duplications that I did not report because they are shorter or less clear-cut: the h_cont_z Lipschitz-to-continuity block shared by charFlow_measurable_via_gronwall and charFlow_measurable_via_gronwall_Ioo, and vlasov_traj_chain_rule vs vlasov_traj_chain_rule_at. The latter pair is a near-verbatim copy, and the first could simply be the second applied pointwise. The proposed shared lemmas are sketches and untested, and their hypotheses are chosen to match the actual call sites.",
+  "findings": [
+    {
+      "declaration": "flow_distance_growth_bound_on (h_conv_bound); also flow_distance_growth_bound_on_timedep, vlasov_trajectory_lipschitz_bound_on, exists_vlasov_trajectory (hbound_local)",
+      "start_line": 196,
+      "end_line": 239,
+      "excerpt": "have h_conv_bound : \u2200 s \u2208 Set.Icc 0 T, \u2200 x : PhysSpace d,\n        \u2016convolveFunctionMeasure gradW (\u03c1 s) x\u2016 \u2264 \u03b5\u2080 + (L : \u211d) * \u2016x\u2016 := by",
+      "problem": "The same ~45-line analytic argument is re-proved four times. It is: `\u2016(\u2207W\u2217\u03c1)(x)\u2016 \u2264 \u2016gradW 0\u2016 + L\u00b7\u222b\u2016x\u2212y\u2016d\u03c1 \u2264 \u2016gradW 0\u2016 + L(\u2016x\u2016 + \u222b\u2016y\u2016d\u03c1)`. It proceeds by integrability of `\u2016x-y\u2016` via `Integrable.mono'`, the pointwise Lipschitz-growth bound `h_pt`, `norm_integral_le_integral_norm`, `integral_mono`, `integral_add`, and the probability-mass computation. Copies are at 196\u2013239, 821\u2013861, 3347\u20133384 and 4324\u20134381 (the last carries an extra ball step). They differ only in how the moment is bounded (`M_\u03c1`, `m t`, `M_\u03c1`+ball radius). Any fix to the argument must be made four times.",
+      "proposed_change": "Add one lemma before `flow_distance_growth_bound_on`:\n\nlemma norm_convolveFunctionMeasure_le_moment {d} (gradW : PhysSpace d \u2192 PhysSpace d) (L : NNReal) (hL : LipschitzWith L gradW) (\u03bc : Measure (PhysSpace d)) [IsProbabilityMeasure \u03bc] (hy : Integrable (fun y : PhysSpace d => \u2016y\u2016) \u03bc) (hint : \u2200 x, Integrable (fun y => gradW (x - y)) \u03bc) (x : PhysSpace d) : \u2016convolveFunctionMeasure gradW \u03bc x\u2016 \u2264 \u2016gradW 0\u2016 + (L:\u211d) * (\u2016x\u2016 + \u222b y, \u2016y\u2016 \u2202\u03bc).\n\nProof: move the existing `h_sub_int`, `h_pt` and the calc chain into it verbatim, stopping at `\u222b\u2016x-y\u2016 \u2264 \u2016x\u2016 + \u222b\u2016y\u2016`. Then rewrite the four uses:\n- `flow_distance_growth_bound_on`: `h_conv_bound s hs x` follows from the lemma, `hM_\u03c1 s hs` and `mul_le_mul_of_nonneg_left`, then `linarith` with `\u03b5\u2080`.\n- `flow_distance_growth_bound_on_timedep`: use `hm s hs_T` and `hms_le_mt` in place of `hM_\u03c1`.\n- `vlasov_trajectory_lipschitz_bound_on`: same as the first use.\n- `exists_vlasov_trajectory.hbound_local`: apply the lemma, then `hM_\u03c1 t` and `hx_norm`.\nEach use is then about five lines. Every call site already has `hL`, `h_y_int` and `h_int` for the relevant measure.",
+      "benefit": "Removes roughly 150 duplicated proof lines. The key estimate is stated once and named, so a reader sees the mathematical content and each consumer only the moment-bound bookkeeping specific to it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "flow_distance_growth_bound_on_timedep",
+          "excerpt": "have h_conv_bound : \u2200 s \u2208 Set.Icc 0 t, \u2200 x : PhysSpace d,\n      \u2016convolveFunctionMeasure gradW (\u03c1 s) x\u2016 \u2264 \u03b5t + (L : \u211d) * \u2016x\u2016 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "vlasov_trajectory_lipschitz_bound_on",
+          "excerpt": "have h_conv_bound : \u2200 s \u2208 Set.Icc 0 T, \u2200 x : PhysSpace d,\n      \u2016convolveFunctionMeasure gradW (\u03c1 s) x\u2016 \u2264 \u03b5\u2080 + (L : \u211d) * \u2016x\u2016 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "exists_vlasov_trajectory",
+          "excerpt": "have hbound_local : \u2200 t \u2208 Set.Icc (0 : \u211d) T,\n                     \u2200 x \u2208 Metric.closedBall z.1 (R : \u211d),\n                     \u2016convolveFunctionMeasure gradW (\u03c1 t) x\u2016 \u2264 M := by"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_vlasov_characteristicFlow_local (hpl block); copies in exists_vlasov_extend_one_window, exists_vlasov_extend_one_window_tight, exists_vlasov_characteristicFlow_twoWindow",
+      "start_line": 1370,
+      "end_line": 1435,
+      "excerpt": "have hpl : IsPicardLindelof (vlasovVectorField gradW \u03c1) t\u2080 z\u2080 a r_pl L_pl K_pl := by",
+      "problem": "A ~65-line `IsPicardLindelof` assembly is copy-pasted four times, at 1370\u20131435, 1544\u20131604, 1917\u20131975 and 2661\u20132727. The four fields are: Lipschitz from `vlasovVectorField_lipschitzWith`; continuity in `t`; the `norm_le` bound; and the contraction `L_pl * \u03b4 \u2264 a/2`. The `norm_le` chain is the nontrivial part. It splits `x` into projection bounds `\u2016x.2\u2016 \u2264 \u2016w.2\u2016 + a` and `x.1 \u2208 closedBall w.1 (3a/2)`, applies the force bound and `max_le`. The contraction field is proved by the same `h_step/h_rewrite/h_frac_le/h_bound` algebra each time. The `_twoWindow` copy even says 'verbatim from `_local`'. The post-processing that projects `\u03b1` to `HasDerivAt` of `.1`/`.2` is also repeated in every theorem.",
+      "proposed_change": "Extract:\n\nlemma vlasov_isPicardLindelof (gradW L hL \u03c1 h_int h\u03c1_cont) (w : PhaseSpace d) (a M V_max : NNReal) (hV : \u2016w.2\u2016 \u2264 V_max) (tmin tmax : \u211d) (t\u2080 : Set.Icc tmin tmax) (hbound : \u2200 t \u2208 Set.Icc tmin tmax, \u2200 x \u2208 closedBall w.1 (3a/2), \u2016conv \u03c1 t x\u2016 \u2264 M) (hcontr : (V_max + a + M : NNReal) * max (tmax - t\u2080) (t\u2080 - tmin) \u2264 a/2) : IsPicardLindelof (vlasovVectorField gradW \u03c1) t\u2080 w a (a/2) (V_max + a + M) (max 1 L).\n\nSeparately extract the contraction algebra as `lemma mul_le_half_of_le_div (h\u03b4 : \u03b4 \u2264 (a/2)/(Lpl+1)) : Lpl * \u03b4 \u2264 a/2`.\n\nAt the four sites:\n- `_local`: `V_max := \u2016z\u2080.2\u2016\u208a`, window `[0,\u03b4]`, with `hbound` on `Icc 0 1` restricted by `\u03b4 \u2264 1`.\n- `_one_window`: window `[t_start, t_start+\u03b4]`, with `hbound` restricted from `Icc t_start (t_start+1)`.\n- `_tight`: the window is `[t_start, t_start+\u03b4]`, which is exactly what `hbound` gives.\n- `_twoWindow`: window `[0, 2\u03b4]`.\nThe existing `L_pl` definitions all have the form `V_max + a + M`, so `hpl` becomes a one-line call. The `\u03b1 \u2192 (charX, charV)` projection can likewise be a single lemma that returns the `Ioo` `HasDerivAt` and `Icc` `HasDerivWithinAt` facts.",
+      "benefit": "Removes about 250 lines. The ODE-existence theorems then read as parameter choices plus one lemma call, and any change to the Picard hypotheses (for example the `IsPicardLindelof` interface) is made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "exists_vlasov_extend_one_window",
+          "excerpt": "have hpl : IsPicardLindelof (vlasovVectorField gradW \u03c1) t\u2080 w a r_pl L_pl K_pl := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "exists_vlasov_extend_one_window_tight",
+          "excerpt": "have hpl : IsPicardLindelof (vlasovVectorField gradW \u03c1) t\u2080 w a r_pl L_pl K_pl := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "exists_vlasov_characteristicFlow_twoWindow",
+          "excerpt": "-- norm_le \u2014 verbatim from `_local` (uses hbound on Icc 0 1, ball 3a/2)."
+        }
+      ]
+    },
+    {
+      "declaration": "Phi_step and Phi_step_envelope (clamped-pushforward bundling)",
+      "start_line": 5421,
+      "end_line": 5498,
+      "excerpt": "let charX_clamped : \u211d \u2192 PhaseSpace d \u2192 PhysSpace d :=\n    fun t z => charX (clampToIcc T t) z",
+      "problem": "After producing a flow with Icc-regularity data, `Phi_step` and `Phi_step_envelope` repeat about 80 lines. They build the clamped flow `charX_clamped` and prove AE-measurability from `charFlow_measurable_via_gronwall`. They prove the clamped growth bound `h_growth_clamped` and integrability `h_int_charX_clamped` by `Integrable.mono'` against `C_T*(\u2016z\u2016+1)`. They prove clamped continuity `h_charX_cont_clamped` and build `PhiAsVlasovMeasureCurve`. They also prove the clamp-agreement identity `Phi charX_clamped f\u2080 t = map (charX t) f\u2080`. The second copy is at 5593\u20135672. The preamble (`h\u03c1_cont`, `h_y_int`, `hm_M`, `h_growth_timedep`, `h_growth`) is also duplicated at 5379\u20135420 and 5551\u20135592. The blocks are identical up to renaming `Mbar`/`M_f\u2080` to `m T`/`\u222b\u2016z\u2016`.",
+      "proposed_change": "Extract a lemma `Phi_clamped_curve`. Its hypotheses are: `charX charV`, `h_init h_cont_Icc h_deriv_Ico`, `C_T` with `hC_T_nn`, `h_growth` (the `\u03c1.extend`-independent growth hypothesis), `f\u2080`, `h_f\u2080_int`, `M_f\u2080 hM_f\u2080` and the measurability input from `charFlow_measurable_via_gronwall`. Its conclusion is `\u2203 \u03c3 : VlasovMeasureCurve d T (fun _ => C_T*(M_f\u2080+1)), \u2200 t \u2208 Icc 0 T, \u03c3.\u03c1 t = map (charX t) f\u2080`. A second small lemma gives `\u03c1.extend t = \u03c1.\u03c1 t` on `Icc 0 T`; the current proofs repeat this `min_eq_left/max_eq_right` argument four times. `Phi_step` becomes `obtain` plus `Phi_clamped_curve`. `Phi_step_envelope` calls it with `M_f\u2080 := \u222b\u2016z\u2016\u2202f\u2080` and then rebundles `hasMoment`, as it already does by hand.",
+      "benefit": "Two 170-line theorems collapse to short assemblies of named steps. The clamping argument is proved once and kept in sync between the constant-bound and envelope versions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "Phi_step_envelope",
+          "excerpt": "let charX_clamped : \u211d \u2192 PhaseSpace d \u2192 PhysSpace d :=\n    fun t z => charX (clampToIcc T t) z"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "Phi_step_envelope",
+          "excerpt": "have h_int_charX_clamped : \u2200 t,\n      Integrable (fun z : PhaseSpace d => \u2016charX_clamped t z\u2016) f\u2080 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "wasserstein1_Phi_le_integral_diff vs wasserstein1_pushforward_pair_le_integral_norm_diff",
+      "start_line": 4629,
+      "end_line": 4721,
+      "excerpt": "theorem wasserstein1_Phi_le_integral_diff {d : \u2115}",
+      "problem": "`wasserstein1_Phi_le_integral_diff` (4629\u20134721) and `wasserstein1_pushforward_pair_le_integral_norm_diff` (5871\u20135930) have the same ~90-line KR-dual proof. Both do `wasserstein1_eq_iSup_lipschitz` and `iSup_le`. Both prove the 1-Lipschitz linear-growth bound `|\u03c6 y| \u2264 |\u03c6 0| + \u2016y\u2016` and integrability of `\u03c6` under each pushforward via `Integrable.mono'`. Both then apply `integral_map`, `integral_sub` and `integral_mono` with the pointwise Lipschitz estimate. The second is strictly more general (arbitrary `f g`); the first is the special case `f := charX s`, `g := charX t`, because `Phi charX f\u2080 s` unfolds to `Measure.map (fun z => charX s z) f\u2080`.",
+      "proposed_change": "Move `wasserstein1_pushforward_pair_le_integral_norm_diff` above `wasserstein1_Phi_le_integral_diff`. Reprove the latter as `unfold Phi; exact wasserstein1_pushforward_pair_le_integral_norm_diff (fun z => charX s z) (fun z => charX t z) f\u2080 (h_meas s) (h_meas t) (h_int_charX s) (h_int_charX t) h_diff_int`. This matches its existing hypotheses exactly, and the file already has all of them (`h_meas`, `h_int_charX`, `h_diff_int`). Optionally factor out the `|\u03c6 y| \u2264 |\u03c6 0| + \u2016y\u2016` bound.",
+      "benefit": "Deletes about 90 duplicated lines. The Lipschitz-duality argument lives in one lemma, and the Phi-specific statement becomes a thin specialisation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "wasserstein1_pushforward_pair_le_integral_norm_diff",
+          "excerpt": "theorem wasserstein1_pushforward_pair_le_integral_norm_diff {d : \u2115}\n    (f g : PhaseSpace d \u2192 PhysSpace d)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "wasserstein1_pushforward_pair_le_integral_norm_diff",
+          "excerpt": "exact integral_mono (h\u03c6_comp_int_f.sub h\u03c6_comp_int_g) h_diff_int h_pt"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 218752,
+    "cache_read_input_tokens": 1271350,
+    "output_tokens": 10844,
+    "output_tokens_details": {
+      "thinking_tokens": 2177
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 218752,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 6235,
+        "cache_read_input_tokens": 221690,
+        "cache_creation_input_tokens": 991,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 991
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 1.110611,
+  "duration_ms": 81673,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-27T00:58:15",
+  "unit": "file",
+  "source_sha256": "75fee9808509d517492c376bbb7d67901088869f1db2e6e239515dc3d850dff5",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

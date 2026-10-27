@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0360",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the Mathlib WideSubcategory and its monoidal structure (`Widesubcategory.lean`, `Monoidal/Widesubcategory.lean`), the `Functor.lean` monoidal-functor simp attributes, and the uses of `wide_hom_inv` and `wide_inv_hom`. I did not run Lean, so I did not check how any specific simp call behaves. The two findings come from the shape of the proofs (repeated `change` and `erw` steps followed by plain `simp`) compared with the simp lemmas that exist. Nothing here suggests a rewrite cycle or competing simp rules. I did not review `IntervalFunctor.lean` beyond a grep for its simp lemmas.",
+  "findings": [
+    {
+      "declaration": "inclusionBraided / inclusionMonoidal / reindexBraided / reindexMonoidal",
+      "start_line": 74,
+      "end_line": 77,
+      "excerpt": "change \ud835\udfd9 _ \u226b (\u03b2_ _ _).hom = (\u03b2_ _ _).hom \u226b \ud835\udfd9 _",
+      "problem": "The monoidal structure on `inclusion W` and `reindex W u` is built with `\u03b5Iso := Iso.refl _` and `\u03bcIso _ _ := Iso.refl _`. No simp lemmas say that `Functor.Monoidal.\u03b5` and `Functor.Monoidal.\u03bc` of these functors are `\ud835\udfd9 _`. Every braiding and coherence proof therefore has to `change` the goal into an explicit `\ud835\udfd9 _ \u226b ... = ... \u226b \ud835\udfd9 _` or `... \u226b \ud835\udfd9 _ \u226b ...` form (lines 76, 125 and the `change`s in `reindexMonoidal`) before `simp` can finish. The simp set is not usable on the raw `\u03bc`/`\u03b5` goals, and each new proof about these functors, such as the `unit`/`cut` fields in `stringVertexMap`, has to repeat the same `change` or `erw` workaround.",
+      "proposed_change": "State the identification once as simp lemmas, e.g. `@[simp] lemma inclusion_\u03bc (X Y) : Functor.LaxMonoidal.\u03bc (inclusion W) X Y = \ud835\udfd9 _ := rfl` and `inclusion_\u03b5 : Functor.LaxMonoidal.\u03b5 (inclusion W) = \ud835\udfd9 _ := rfl`. Add the analogous lemmas for `reindex W u`, whose `\u03b5` and `\u03bc` come from `Iso.refl`. With these, the `braided` fields and the `reindexMonoidal` fields reduce to `simp`, with no `change` needed. Whether `simp` alone closes them is untested.",
+      "benefit": "Later proofs about the inclusion and reindex functors can use plain `simp` instead of shape-specific `change ... \ud835\udfd9 _ \u226b ...` steps. The normal form (`\u03bc = \ud835\udfd9`) is also stated in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Simplicial/RestrictedMonoidal.lean",
+          "declaration": "reindexBraided",
+          "excerpt": "change \ud835\udfd9 _ \u226b (\u03b2_ _ _).hom = (\u03b2_ _ _).hom \u226b \ud835\udfd9 _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Simplicial/RestrictedMonoidal.lean",
+          "declaration": "inclusionMonoidal",
+          "excerpt": "\u03b5Iso := Iso.refl _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/CategoryTheory/Monoidal/Widesubcategory.lean",
+          "declaration": "WideSubcategory.instMonoidalCategoryStruct",
+          "excerpt": "@[simps]\ninstance [P.IsMonoidalStable] : MonoidalCategoryStruct (WideSubcategory P) where"
+        }
+      ]
+    },
+    {
+      "declaration": "wide_hom_inv / wide_inv_hom",
+      "start_line": 37,
+      "end_line": 43,
+      "excerpt": "@[simp] lemma wide_hom_inv {source target : WideSubcategory W} (iso : source \u2245 target) :",
+      "problem": "These two lemmas are tagged `@[simp]` but are only ever used by hand through `erw`, in the chains `erw [Category.id_comp, wide_inv_hom, Category.assoc, he, wide_inv_hom]` and `erw [wide_hom_inv, Category.id_comp]`. They are stated only in the bare form `iso.hom.hom \u226b iso.inv.hom = \ud835\udfd9 _`. In `untransposeDiagramObj` the iso appears in the middle of a longer composite, so the pure form does not fire without manual `Category.assoc` rewrites. The usual simp-friendly companions `_assoc` are missing. The `@[simp]` tag therefore does not help the proofs that need it, and the proofs fall back on `erw`.",
+      "proposed_change": "Follow Mathlib's `Iso.hom_inv_id` pattern and use `@[reassoc (attr := simp)]` on both lemmas, so that `wide_hom_inv_assoc` and `wide_inv_hom_assoc` exist and are simp lemmas. Then replace the `erw [... wide_inv_hom, Category.assoc, he, wide_inv_hom]` and `erw [wide_hom_inv, ...]` chains with `simp` or `simp [he]` where they apply. Note that `omit ... in` must still precede the attribute.",
+      "benefit": "Simp can then cancel `iso.hom.hom \u226b iso.inv.hom` inside longer composites. The naturality proofs for `untransposeDiagramObj` need fewer `erw` and `Category.assoc` steps, and later users get a complete simp interface for isomorphisms in `WideSubcategory W`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Simplicial/RestrictedMonoidal.lean",
+          "declaration": "untransposeDiagramObj",
+          "excerpt": "erw [Category.id_comp, wide_inv_hom, Category.assoc, he, wide_inv_hom]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/GroupTheory/SimpleAmenable/Simplicial/RestrictedMonoidal.lean",
+          "declaration": "untransposeDiagramObj",
+          "excerpt": "erw [\u2190he,Category.assoc,wide_hom_inv]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/CategoryTheory/Widesubcategory.lean",
+          "declaration": "WideSubcategory.comp_def",
+          "excerpt": "(f \u226b g).1 = (f.1 \u226b g.1 : X.obj \u27f6 Z.obj) := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 25515,
+    "cache_read_input_tokens": 138310,
+    "output_tokens": 6057,
+    "output_tokens_details": {
+      "thinking_tokens": 1706
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25515,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3075,
+        "cache_read_input_tokens": 27562,
+        "cache_creation_input_tokens": 1966,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1966
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17648899999999998,
+  "duration_ms": 54433,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T02:03:03",
+  "unit": "file",
+  "source_sha256": "3e4472dbd98f49955ab40b7b5cdafddc2b357ca62e3087ef6b6b947a154e0c10",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

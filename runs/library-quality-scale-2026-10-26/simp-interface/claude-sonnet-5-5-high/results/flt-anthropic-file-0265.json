@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0265",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the relevant definitions in Definitions/Def_AutomorphicForm_TwistedOrbital.lean and Def_AutomorphicForm_TwistedCommutant.lean. Almost every declaration in the file is private and proved by rw, calc or group, so most of the file has no simp interface to assess. The only concrete problems I found are around semiLocalHomeomorph and sigmaTensor. I did not run Lean. I did not find a simp loop or a competing-rule problem. The findings are about missing or misplaced simp lemmas, and I am moderately confident in them.",
+  "findings": [
+    {
+      "declaration": "semiLocalHomeomorph_apply / semiLocalHomeomorph_mul / semiLocalHomeomorph_add / semiLocalHomeomorph_neg / semiLocalHomeomorph_one / semiLocalHomeomorph_zero",
+      "start_line": 399,
+      "end_line": 419,
+      "excerpt": "private theorem semiLocalHomeomorph_mul (a b : L \u2297[K] v.adicCompletion K) :\n    semiLocalHomeomorph K L v (a * b) = semiLocalHomeomorph K L v a * semiLocalHomeomorph K L v b := by\n  rw [semiLocalHomeomorph_apply, semiLocalHomeomorph_apply, semiLocalHomeomorph_apply, map_mul]",
+      "problem": "semiLocalHomeomorph is a Homeomorph, so the generic map_mul, map_add, map_one and map_zero simp lemmas do not apply to it. The file therefore proves a local, private, un-attributed simp interface by hand. Each lemma is proved by unfolding to baseChangeContinuousAlgEquiv with an rfl lemma, which is a second spelling of the same function.\n\nThe two spellings are mixed in the proofs, so there are two competing normal forms. isUnit_one_add must `rw [semiLocalHomeomorph_apply] at hlt` to move from one spelling to the other. Most uses are long manual rw chains such as `rw [semiLocalHomeomorph_add, Pi.add_apply]` and `rw [semiLocalHomeomorph_mul, Pi.mul_apply, map_mul]`. The one simp call, in inverse_mem_semiLocalIntegers, has to list every lemma explicitly with simp only. The lemmas are private to this file, so no other file can use them.",
+      "proposed_change": "Move these lemmas to Def_AutomorphicForm_TwistedOrbital.lean next to semiLocalHomeomorph and make them public. Tag semiLocalHomeomorph_mul, _add, _neg, _one and _zero with @[simp]. Do not tag semiLocalHomeomorph_apply @[simp]. Its right-hand side is the unfolded form, so it would force that spelling everywhere. Alternatively, define the ring equivalence first and keep semiLocalHomeomorph only as its underlying homeomorphism, so the generic map_* simp lemmas apply to the ring-equiv spelling. Then replace rw chains such as `rw [semiLocalHomeomorph_add, Pi.add_apply]` with `simp` (or `simp only` with the Pi.*_apply lemmas).",
+      "benefit": "The semi-local valuation lemmas (add_mem_rad, mul_mem_rad_left, mul_mem_semiLocalIntegers, and so on) could be closed by one simp call instead of hand-ordered rw chains. The rad lemmas would also no longer depend on whether the goal is spelled with semiLocalHomeomorph or baseChangeContinuousAlgEquiv. Downstream files such as the one with its own semiLocalHomeomorph_apply could reuse the same lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AutomorphicForm_TwistedOrbital.lean",
+          "declaration": "semiLocalHomeomorph",
+          "excerpt": "def semiLocalHomeomorph :\n    L \u2297[K] v.adicCompletion K \u2243\u209c \u03a0 w : v.Extension (\ud835\udcde L), w.1.adicCompletion L :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_finset_forall_eq_and_forall_exists_of_isRegularSemisimple_normString.lean",
+          "declaration": "inverse_mem_semiLocalIntegers",
+          "excerpt": "simp only [semiLocalHomeomorph_mul, semiLocalHomeomorph_one, Pi.mul_apply, Pi.one_apply, map_mul, map_one,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_finset_forall_eq_and_forall_exists_of_isRegularSemisimple_normString.lean",
+          "declaration": "isUnit_one_add",
+          "excerpt": "rw [semiLocalHomeomorph_apply] at hlt"
+        }
+      ]
+    },
+    {
+      "declaration": "sigmaTensor_tmul (with sigmaTensor_mul_apply, sigmaTensor_one_apply, coe_sigmaGL)",
+      "start_line": 85,
+      "end_line": 87,
+      "excerpt": "private theorem sigmaTensor_tmul (\u03c3 : L \u2243\u2090[K] L) (\u2113 : L) (a : A) :\n    AutomorphicForm.sigmaTensor K L A \u03c3 (\u2113 \u2297\u209c[K] a) = \u03c3 \u2113 \u2297\u209c[K] a := by",
+      "problem": "sigmaTensor_tmul is the canonical computation rule for sigmaTensor on pure tensors, but it is a private, un-attributed lemma that is only invoked by rw. The definition file does not provide it as a simp lemma. The proof itself is `simp [AutomorphicForm.sigmaTensor, Algebra.TensorProduct.map_tmul]`, which unfolds the definition by hand.\n\nEvery use re-derives or manually sequences it, for example `rw [sigmaTensor_tmul, sigmaTensor_tmul, sigmaTensor_tmul, AlgEquiv.mul_apply]`. continuous_sigmaTensor rewrites with it and then falls back to an unfolding simp call that mentions baseChange. A near-identical sigmaTensor_tmul is separately reproved as a public theorem in another Sol file. The same pattern holds for the private coe_sigmaGL near line 235, which duplicates the public coe_sigmaGL in Def_AutomorphicForm_TwistedCommutant.lean. That is a second lemma with the same name and statement, so it can create ambiguity when AutomorphicForm is open.",
+      "proposed_change": "Put sigmaTensor_tmul in Def_AutomorphicForm_TwistedOrbital.lean next to sigmaTensor and mark it @[simp]. It rewrites sigmaTensor (\u2113 \u2297\u209c a) to \u03c3 \u2113 \u2297\u209c a, so each application removes one sigmaTensor and cannot loop. Reuse the public coe_sigmaGL from the definitions file instead of the private copy. Then the induction cases in sigmaTensor_mul_apply and sigmaTensor_one_apply can be closed by `simp`, and the unfolding simp call in continuous_sigmaTensor can be shortened.",
+      "benefit": "One canonical, shared simp rule replaces several private copies. The tensor-induction proofs shrink to simp calls. Different files can no longer disagree about how sigmaTensor acts on pure tensors.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AutomorphicForm_TwistedOrbital.lean",
+          "declaration": "sigmaTensor",
+          "excerpt": "def sigmaTensor : L \u2297[K] A \u2192+* L \u2297[K] A :=\n  (Algebra.TensorProduct.map \u03c3.toAlgHom (AlgHom.id K A)).toRingHom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_IsTwistedOrbitalIntegralOn_exists_of_isRegularSemisimple_normString_of_finrank_eq_two.lean",
+          "declaration": "sigmaTensor_tmul",
+          "excerpt": "theorem sigmaTensor_tmul (l : L) (a : A) : sT (l \u2297\u209c[K] a) = \u03c3 l \u2297\u209c[K] a := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AutomorphicForm_TwistedCommutant.lean",
+          "declaration": "coe_sigmaGL",
+          "excerpt": "theorem coe_sigmaGL (t : GL (Fin 2) (L \u2297[K] A)) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 49980,
+    "cache_read_input_tokens": 146703,
+    "output_tokens": 6070,
+    "output_tokens_details": {
+      "thinking_tokens": 1835
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 49980,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3431,
+        "cache_read_input_tokens": 51230,
+        "cache_creation_input_tokens": 2763,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2763
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.27530629999999995,
+  "duration_ms": 42009,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:45:41",
+  "unit": "file",
+  "source_sha256": "0b86e4466336252ac1334ad512215dd36feb621944eef4fadf1ce99eb550482b",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

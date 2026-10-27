@@ -1,0 +1,83 @@
+{
+  "id": "openai-math-file-0123",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the other uses of its lemmas (FactorizedAngularState.lean, JetNormalization.lean). The first three lemmas (descriptorJetProduct_norm_le, the fixed-measurable wrapper and endpoint_remove_factors) are short or are not repeated, so I did not flag them. The two endpoint-factor uses elsewhere (JetNormalization, FactorizedAngularState.energy_remove_reached) are thin applications of the target lemmas, so I did not flag them. The only substantial repetition is in the last theorem. Its F-side and G-side blocks are copies of each other, and the same measurability-and-bound pattern appears in DescriptorJetSymbol.value_measurable and value_norm_le. The duplicated pieces are fairly short, which is the main uncertainty about how much the refactor gains. I did not compile the proposed lemma.",
+  "findings": [
+    {
+      "declaration": "independentAngularEnergy_descriptorJets_remove",
+      "start_line": 149,
+      "end_line": 178,
+      "excerpt": "have hf'C (x : Space d) (w : Sphere d) : \u2016f' x w\u2016 \u2264 A*C\u2081 := by\n    change \u2016descriptorJetProduct Q \u03c1 m N \u03c3 J i FX b S k v x w * f x w\u2016 \u2264 _\n    rw [norm_mul]\n    exact mul_le_mul (hF FX (Finset.filter_subset _ _) x w) (hfC x w) (norm_nonneg _) hA",
+      "problem": "The proof builds, for each of the two endpoint sides, the same package: a sub-product over a subset H \u2286 F of the descriptor jets is bounded by (descriptorJetBound d K)^K (hF / hG, lines 149\u2013158). The measurability of that sub-product times a bounded measurable amplitude (hf' / hg', lines 165\u2013170) and the product norm bound A*C (hf'C / hg'C, lines 171\u2013178) follow. These blocks are the same argument twice with F,b,k,v,f replaced by G,c,l,u,g. The same pattern also appears separately in FactorizedAngularState.lean, where value_measurable uses `hp.mul ...` and value_norm_le uses `rw [value,norm_mul]; exact mul_le_mul (descriptorJetProduct_norm_le ...) ...`. Each copy repeats the long argument list for descriptorJetProduct and the subset/sum-order bookkeeping (`Finset.sum_le_sum_of_subset hH` then `.trans horder`).",
+      "proposed_change": "Add one lemma before the main theorem, polymorphic in the index type:\n\ntheorem descriptorJetProduct_mul_measurable_bound {d K : \u2115} {\u03b9 : Type*} (Q : DyadicCube d) (\u03c1 : Measure (Space d)) (m : \u211d \u2192 \u211d) (N : \u2115) (\u03c3 : \u211d) (J i : \u2115) (F H : Finset \u03b9) (hH : H \u2286 F) (b : \u03b9 \u2192 PolicyDescriptor) (S : PolicyDescriptor \u2192 Finset (Sphere d)) (k : \u03b9 \u2192 \u2115) (v : (j : \u03b9) \u2192 Sphere d \u2192 Fin (k j) \u2192 Space d) (hsep : <same as in descriptorJetProduct_norm_le for F>) (horder : (\u2211 j \u2208 F, k j) \u2264 K) (hv : \u2200 j \u2208 F, \u2200 w t, \u2016v j w t\u2016 \u2264 1) (hvm : \u2200 j \u2208 F, Measurable (v j)) (f : Space d \u2192 Sphere d \u2192 \u2102) (hf : Measurable (Function.uncurry f)) {C : \u211d} (hfC : \u2200 x w, \u2016f x w\u2016 \u2264 C) : Measurable (Function.uncurry fun x w => descriptorJetProduct Q \u03c1 m N \u03c3 J i H b S k v x w * f x w) \u2227 \u2200 x w, \u2016descriptorJetProduct Q \u03c1 m N \u03c3 J i H b S k v x w * f x w\u2016 \u2264 (descriptorJetBound d K)^K * C.\n\nProof sketch: measurability is `(descriptorJetProduct_measurable ... (fun j hj => hvm j (hH hj))).mul hf`. For the bound, `rw [norm_mul]` and apply `mul_le_mul` to `descriptorJetProduct_norm_le` (with hsep/hv restricted via hH and horder via `(Finset.sum_le_sum_of_subset hH).trans horder`), `hfC`, `norm_nonneg _` and `pow_nonneg (zero_le_one.trans (descriptorJetBound_one_le d K)) K`.\n\nIn the main theorem, delete hF, hG, hf', hg', hf'C and hg'C. Obtain `obtain \u27e8hf', hf'C\u27e9 := descriptorJetProduct_mul_measurable_bound Q \u03c1 m N \u03c3 J i F FX (Finset.filter_subset _ _) b S k v hsepF horderF hv hvm f hf hfC`, and the same with G, GY, c, l, u, g for the other side. The final `exact` is unchanged except that the uncurried-measurability and bound arguments come from these results. Only the sub-products RX and RY still need the plain `descriptorJetProduct_norm_le`, which can stay as one-line `have`s. In FactorizedAngularState, value_norm_le and value_measurable can use the lemma with H = F, F = F, v = fun b _ => (f.jet b).vectors, hH = Finset.Subset.refl _ and f := f.multiplier A. The expected bound (descriptorJetBound ..)^K * A\u207b\u00b9 matches the lemma's conclusion, so nothing changes in the mathematics.",
+      "benefit": "The F/G duplication disappears, so any later change to the bound constant or hypotheses is made in one place instead of three or four. The main proof reduces to two obtain calls plus the final application. The remaining argument is easier to read as: split reached and unreached factors, bound both sides, and apply the removal lemma. The reusable lemma also removes the near-duplicate reasoning in value_measurable and value_norm_le.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Fourier/DescriptorJetRemoval.lean",
+          "declaration": "independentAngularEnergy_descriptorJets_remove (hG branch)",
+          "excerpt": "have hg'C (x : Space d) (w : Sphere d) : \u2016g' x w\u2016 \u2264 A*C\u2082 := by\n    change \u2016descriptorJetProduct Q \u03c1 m N \u03c3 J i GY c S l u x w * g x w\u2016 \u2264 _\n    rw [norm_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Angular/FactorizedAngularState.lean",
+          "declaration": "DescriptorJetSymbol.value_norm_le",
+          "excerpt": "rw [value,norm_mul]\n  exact mul_le_mul\n    (descriptorJetProduct_norm_le Q \u03c1 m N \u03c3 J i F id S"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MeasureTheory/Falconer/Angular/FactorizedAngularState.lean",
+          "declaration": "DescriptorJetSymbol.value_measurable",
+          "excerpt": "exact hp.mul (f.multiplier_measurable A)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 21865,
+    "cache_read_input_tokens": 81522,
+    "output_tokens": 5647,
+    "output_tokens_details": {
+      "thinking_tokens": 2113
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21865,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3027,
+        "cache_read_input_tokens": 22977,
+        "cache_creation_input_tokens": 2817,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2817
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1521022,
+  "duration_ms": 42968,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:06:53",
+  "unit": "file",
+  "source_sha256": "6a9448031ded0aec769595f440943c90300e08285fc0bf47217f97ce6a0baeab",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

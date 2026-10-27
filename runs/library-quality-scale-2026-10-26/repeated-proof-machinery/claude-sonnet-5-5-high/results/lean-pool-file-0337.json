@@ -1,0 +1,88 @@
+{
+  "id": "lean-pool-file-0337",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the TM structure (`\u03b4_right_of_start`), `TM.allReadBack` and `TM.rightOfStart_allReadBack` in Combinators/Helpers.lean, and the matching \u03b4 and `\u03b4_right_of_start` code in EntryScan/Defs.lean. The time-bound defs (lines 28\u2013110) are mostly single formulas and don't repeat proof machinery. The Fintype instance is a one-off. The one candidate is the copy-pasted \"delegate to a nested TM until its halt state, then hand off\" step. It appears in \u03b4 for eight states and again in the eight matching `\u03b4_right_of_start` branches. The same shape also occurs in EntryScan/Defs.lean, so there is no existing shared helper. The proof of the proposed `rightOfStart_delegate` is only a sketch. I couldn't run Lean, so I haven't checked how the destructuring `let` unfolds under `split`, and the helper may need `simp only`/`dsimp only` first. Whether to define a generic `TM.delegate` combinator is partly a style choice. The `.matching` state is a variant with a different halt branch, so it only partly fits the helper. Also, `.test` and `.done` are not delegations.",
+  "findings": [
+    {
+      "declaration": "Complexity.RAM.RegisterStore.Machine.entryUpdateTM (\u03b4 and \u03b4_right_of_start)",
+      "start_line": 185,
+      "end_line": 309,
+      "excerpt": "(entryMissCopyTM tapes.entry).\u03b4 q iHead wHeads oHead",
+      "problem": "The same nested-machine delegation step is written out eight times in `\u03b4` (matching, miss, delete, replace, append, remaining, deleteCount, appendCount). Each time the code does the following. If q is the nested machine's halt state, it takes `TM.allReadBack` into the next controller state. Otherwise it runs the nested \u03b4, destructures the 6-tuple, and re-wraps only the state component. The proof of `\u03b4_right_of_start` then repeats the same argument for each state: `dsimp only; split; exact TM.rightOfStart_allReadBack ..; exact (nested).\u03b4_right_of_start q iHead wHeads oHead`. Each repetition spells out the six-component tuple by hand, and the structure repeats across the roughly 125 lines. Adding a phase means copying a 8\u20139 line \u03b4 block and a 5 line proof block and re-editing the nested machine, wrapper constructor and successor in three places, with no check that the halt test and the nested \u03b4 refer to the same machine. The same shape also occurs in EntryScan/Defs.lean, which shows there is no shared helper.",
+      "proposed_change": "Add a generic combinator and one preservation lemma, e.g. in Combinators/Helpers.lean next to `allReadBack`:\n\n```lean\n/-- Run nested machine `M` from state `q`; at its halt state, take the\ncontent-preserving hand-off to `next`. -/\ndef TM.delegate {\u03c3 : Type} {n : \u2115} (M : TM n) (wrap : M.Q \u2192 \u03c3) (next : \u03c3)\n    (q : M.Q) (iHead : \u0393) (wHeads : Fin n \u2192 \u0393) (oHead : \u0393) :\n    \u03c3 \u00d7 (Fin n \u2192 \u0393w) \u00d7 \u0393w \u00d7 Dir3 \u00d7 (Fin n \u2192 Dir3) \u00d7 Dir3 :=\n  if q = M.qhalt then allReadBack next iHead wHeads oHead\n  else\n    let (q', w, o, i, wd, od) := M.\u03b4 q iHead wHeads oHead\n    (wrap q', w, o, i, wd, od)\n\ntheorem TM.rightOfStart_delegate {\u03c3 : Type} {n : \u2115} (M : TM n) (wrap : M.Q \u2192 \u03c3)\n    (next : \u03c3) (q : M.Q) (iHead : \u0393) (wHeads : Fin n \u2192 \u0393) (oHead : \u0393) :\n    let (_, _, _, inDir, workDirs, outDir) :=\n      TM.delegate M wrap next q iHead wHeads oHead\n    (iHead = \u0393.start \u2192 inDir = Dir3.right) \u2227\n    (\u2200 i, wHeads i = \u0393.start \u2192 workDirs i = Dir3.right) \u2227\n    (oHead = \u0393.start \u2192 outDir = Dir3.right) := by\n  unfold TM.delegate\n  split\n  \u00b7 exact TM.rightOfStart_allReadBack iHead wHeads oHead\n  \u00b7 exact M.\u03b4_right_of_start q iHead wHeads oHead\n```\n\nThe proof is a sketch and may need a `dsimp only` or `simp only` before `split`. With it, each \u03b4 case becomes one line. For example:\n\n`| .miss q => TM.delegate (entryMissCopyTM tapes.entry) .miss (.remaining (TM.binaryPredTM tapes.remaining).qstart) q iHead wHeads oHead`\n\n`| .remaining q => TM.delegate (TM.binaryPredTM tapes.remaining) .remaining .test q iHead wHeads oHead`\n\nThe other six delegating cases take the same form, with `.delete`, `.replace`, `.append`, `.deleteCount`, `.appendCount` and their halt targets `.deleteCount (...)`, `.remaining (...)`, `.appendCount (...)`, `.done`. The matching `\u03b4_right_of_start` branches for those cases become `| miss q => exact TM.rightOfStart_delegate _ _ _ q iHead wHeads oHead`, and so on, with no `dsimp only; split` boilerplate. The `.matching` state keeps its custom halt branch, so it only partly benefits: its non-halt part can use the helper by being split into a halt-branch `if` plus `delegate`. The `.test` and `.done` cases stay as they are.",
+      "benefit": "The nested-machine hand-off and its left-edge invariant are stated and proved once. Each controller phase then becomes one line naming the nested machine, the wrapper and the successor, instead of an 8\u20139 line tuple-destructuring block plus a separate proof block. This removes the risk of a copy-paste mismatch between a state's halt test, its nested \u03b4 and its proof. The helper would also serve the identical pattern in EntryScan/Defs.lean and other controller files, which reduces maintenance across the machine library.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/RandomAccessMachine/Simulation/RegisterStore/Machine/EntryUpdate/Defs.lean",
+          "declaration": "entryUpdateTM (.remaining case of \u03b4)",
+          "excerpt": "(TM.binaryPredTM tapes.remaining).\u03b4 q iHead wHeads oHead"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/RandomAccessMachine/Simulation/RegisterStore/Machine/EntryUpdate/Defs.lean",
+          "declaration": "entryUpdateTM (.appendCount case of \u03b4_right_of_start)",
+          "excerpt": "exact (TM.binarySuccTM tapes.resultCount).\u03b4_right_of_start"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/RandomAccessMachine/Simulation/RegisterStore/Machine/EntryScan/Defs.lean",
+          "declaration": "entryScanTM (\u03b4_right_of_start, same delegate-then-handoff proof)",
+          "excerpt": "\u00b7 exact TM.rightOfStart_allReadBack iHead wHeads oHead"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Combinators/Helpers.lean",
+          "declaration": "TM.allReadBack",
+          "excerpt": "def allReadBack {\u03c3 : Type} {k : \u2115}"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 18952,
+    "cache_read_input_tokens": 118331,
+    "output_tokens": 7015,
+    "output_tokens_details": {
+      "thinking_tokens": 2024
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18952,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3852,
+        "cache_read_input_tokens": 22468,
+        "cache_creation_input_tokens": 413,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 413
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1578231,
+  "duration_ms": 57202,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T01:39:20",
+  "unit": "file",
+  "source_sha256": "f78c3ec7fba3d9521ee58346b1123eac09c1b8b49614f55e8ed767cc8169fa93",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

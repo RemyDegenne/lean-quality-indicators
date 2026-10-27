@@ -1,0 +1,109 @@
+{
+  "id": "formal-frontier-file-0160",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the simp-tagged lemmas it depends on in RestrictedLevelCompact.lean and RestrictedLevelCompactFunctoriality.lean, and the example file that uses the comparison-isomorphism lemmas. I could not run Lean. The findings are about the shape of the simp set, not observed simplifier failures. The `hom_\u03c0` finding is the weaker of the two. A `@[simp]` on `restrictedNormLimitIso_hom_\u03c0` may or may not fire in practice, depending on how the coercions elaborate.",
+  "findings": [
+    {
+      "declaration": "fullNorm_map_coe / normDiagram_map_coe",
+      "start_line": 44,
+      "end_line": 65,
+      "excerpt": "have hmap := ConcreteCategory.congr_hom\n    (restrictedNormDiagram_map (full A) (homOfLE hVU)) y",
+      "problem": "Both private lemmas evaluate a diagram map on an element as a relative norm on the underlying invariants. They do it by hand with a three-step `calc`: `restrictedNormDiagram_map` (simp), then `relativeNormHom_apply` (not simp), then `relativeNorm_coe` (simp). Because `relativeNormHom_apply` is not simp, the chain `(restrictedNormDiagram A).map h x` \u2192 `relativeNormHom` \u2192 `relativeNorm` \u2192 `LevelCompact.relativeNorm` stops halfway under `simp`. The same ~20-line proof is therefore written twice, once for `full A` and once for a general `B`. They are the same statement, since `full A` is a `RestrictedLevelCompactRep` whose `rep` is `A.rep`. Neither is public or simp, so downstream files cannot normalise `((restrictedNormDiagram B).map h x).1` either.",
+      "proposed_change": "Make the normal form of a diagram map on an element simp-reachable. Tag `RestrictedLevelSystem.relativeNormHom_apply` with `@[simp]`; its LHS is a bundled-hom application and its RHS is the plain `relativeNorm`, so there is no cycle with `relativeNorm_coe`. Alternatively, state one public `@[simp]` lemma `restrictedNormDiagram_map_coe` for a general `RestrictedLevelCompactRep` (the content of `normDiagram_map_coe`). Then delete `fullNorm_map_coe` and use the general lemma at `B := full A` (the use sites at lines 81, 88, 159 and 259). The `calc` bodies would reduce to `simp`.",
+      "benefit": "This gives one canonical rewrite from `((restrictedNormDiagram B).map h x).1` to `LevelCompact.relativeNorm \u2026 x.1`, usable by `simp` in every downstream file. It removes a duplicated lemma and the long `congrArg`/`calc` plumbing in `fullNormLimit_projection_mem_iff`, `universalNorm_relativeNorm_surjective` and `fullPoint_coefficient_compatible`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/RestrictedLevelCompact.lean",
+          "declaration": "RestrictedLevelSystem.relativeNormHom_apply",
+          "excerpt": "theorem relativeNormHom_apply (S : RestrictedLevelSystem A L)\n    (U V : OpenNormalSubgroup G) (h : V \u2264 U) (x : S.coefficients V) :\n    S.relativeNormHom U V h x = S.relativeNorm U V h x :=\n  by rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/RestrictedLevelCompact.lean",
+          "declaration": "RestrictedLevelSystem.relativeNorm_coe",
+          "excerpt": "@[simp]\ntheorem relativeNorm_coe (S : RestrictedLevelSystem A L)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/RestrictedLevelCompactFunctoriality.lean",
+          "declaration": "restrictedNormDiagram_map",
+          "excerpt": "@[simp]\ntheorem restrictedNormDiagram_map (A : RestrictedLevelCompactRep R G)"
+        }
+      ]
+    },
+    {
+      "declaration": "restrictedNormLimitIso_hom_\u03c0 (with fullInclusion_limitMap_\u03c0 and fullInclusion_apply)",
+      "start_line": 381,
+      "end_line": 386,
+      "excerpt": "@[reassoc] theorem restrictedNormLimitIso_hom_\u03c0",
+      "problem": "The comparison isomorphism is a `def` built from a tactic block (`asIso comparison`). `simp` therefore cannot see that `(restrictedNormLimitIso B).hom` is `lim.map (restrictedNormDiagramMap (fullInclusion B))`. The projection equation `hom \u226b \u03c0 full U = \u03c0 B U \u226b groupMap (fullInclusion B) U` is the canonical normal form for this iso, but it is not simp. `fullInclusion_limitMap_\u03c0` is already an instance of the simp lemma `limit.map_\u03c0`, so tagging it would add nothing. The proofs and the example file avoid `simp`: they unfold by hand with `ConcreteCategory.congr_hom`, `change`, and `simpa only [full] using hval`. The `@[simp]` lemma `fullInclusion_apply` is then applied only by explicit `.trans` chains (lines 308\u2013309, 336), not by the simplifier.",
+      "proposed_change": "Mark `restrictedNormLimitIso_hom_\u03c0` as `@[reassoc (attr := simp)]`, so that `hom \u226b limit.\u03c0 \u2026` rewrites to `limit.\u03c0 \u2026 \u226b groupMap (fullInclusion B) U`. Optionally add a `@[simp]` lemma `restrictedNormLimitIso_hom : (restrictedNormLimitIso B).hom = lim.map (restrictedNormDiagramMap (fullInclusion B))`. After that, the pointwise goals at lines ~300\u2013336 could be closed by `simp` using `groupMap_apply`, `coefficientMap_coe` and `fullInclusion_apply`. I have not run this, so confluence with `limit.map_\u03c0` should be checked once the lemma is added.",
+      "benefit": "Users of the isomorphism would get its projection behaviour from `simp` and `simp [reassoc]` instead of rebuilding it with `congr_hom`. The `simpa only [full]` unfolding and the manual `.trans` chains in `fullInclusion_limitMap_bijective` become unnecessary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/examples/CompactUniversalNormLimitsNative.lean",
+          "declaration": "example using restrictedNormLimitIso_hom_\u03c0",
+          "excerpt": "exact ConcreteCategory.congr_hom (restrictedNormLimitIso_hom_\u03c0 B U) x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CompactUniversalNormLimits.lean",
+          "declaration": "restrictedNormLimitIso",
+          "excerpt": "letI : IsIso comparison :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/CompactUniversalNormLimits.lean",
+          "declaration": "fullInclusion_limitMap_bijective",
+          "excerpt": "simpa only [full] using hval"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 24906,
+    "cache_read_input_tokens": 118089,
+    "output_tokens": 6455,
+    "output_tokens_details": {
+      "thinking_tokens": 2058
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24906,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2877,
+        "cache_read_input_tokens": 27356,
+        "cache_creation_input_tokens": 1563,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1563
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1760069,
+  "duration_ms": 45787,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:14:09",
+  "unit": "file",
+  "source_sha256": "365c04931c87a758c327a461f000496c6f064e40534a40050a9c101ac85219fe",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

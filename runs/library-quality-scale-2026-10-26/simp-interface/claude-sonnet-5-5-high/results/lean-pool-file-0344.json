@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0344",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definitions of clearWorkTimeBound, blankWorkTM, rewindWorkTM and scanRightTM, the signature of clearWorkTM_hoareTime_frame_of_binaryString, and the other places that unfold these machines or the bound. I found no rewrite cycles or competing simp rules; the file registers no simp lemmas. Both findings are about missing or ad hoc simp interface pieces. I could not run Lean. I do not know how the `split <;> ... <;> split <;> decide` chains behave in practice, nor how the non-terminal `simp` at line 55 behaves. The suggested lemmas and orientations are untested. The second finding is lower confidence than the first.",
+  "findings": [
+    {
+      "declaration": "blankWorkTM_isTransducer_internal / rewindWorkTM_isTransducer_internal",
+      "start_line": 99,
+      "end_line": 123,
+      "excerpt": "      simp only [blankWorkTM]\n      split <;> simp only [idleDir, ne_eq] <;> split <;> decide",
+      "problem": "The machines blankWorkTM and rewindWorkTM have no per-phase \u03b4 equations. Each proof unfolds the whole machine with `simp only [blankWorkTM]` and then uses an anonymous `split <;> simp only [...] <;> split <;> decide` chain. Which hypotheses end up in the goal, and in what order, depends on how the unfolded `match` and `if` expressions happen to look. Other files repeat the same ad hoc unfolding, e.g. `simp only [TM.step, \u2193reduceIte, hst, rewindWorkTM, hread]` and `simp only [TM.step, hstate, rewindWorkTM, allIdle]` in Subroutines/Internal.lean. No reusable normal form for `(blankWorkTM idx).\u03b4 phase iHead wHeads oHead` exists.",
+      "proposed_change": "In Subroutines.lean, next to each machine definition, add equation lemmas for each phase. Examples: `blankWorkTM_\u03b4_scanning_blank` (hypothesis `wHeads idx = \u0393.blank`, result the `.done` tuple), `blankWorkTM_\u03b4_scanning_ne` (hypothesis `wHeads idx \u2260 \u0393.blank`) and `blankWorkTM_\u03b4_done` (result `allIdle ..`). Add the same for rewindWorkTM's `moveLeft` (start and non-start cases), `moveRight` and `done`. Mark them `@[simp]`, with the condition as a side goal. Then rewrite the transducer proofs as `simp [blankWorkTM_\u03b4_scanning_blank, ...]`, or `by_cases` followed by `simp`, and reuse the lemmas in the step lemmas elsewhere.",
+      "benefit": "The \u03b4 rewriting is stated once and applies by rewriting, so the transducer proofs no longer rely on the shape produced by `split` and `decide`. The same lemmas can replace the repeated `simp only [TM.step, ..., rewindWorkTM, ...]` unfoldings in the step lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Subroutines.lean",
+          "declaration": "blankWorkTM",
+          "excerpt": "      if wHeads idx = \u0393.blank then\n        (.done,\n         fun i => readBackWrite (wHeads i),"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Subroutines/Internal.lean",
+          "declaration": "rewindWorkTM_rewind_step_left",
+          "excerpt": "simp only [TM.step, \u2193reduceIte, hst, rewindWorkTM, hread]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Subroutines/Internal.lean",
+          "declaration": "rewindWorkTM_moveRight_to_done",
+          "excerpt": "simp only [TM.step, hstate, rewindWorkTM, allIdle]"
+        }
+      ]
+    },
+    {
+      "declaration": "clearWorkTM_hoareTime_frame_internal",
+      "start_line": 55,
+      "end_line": 55,
+      "excerpt": "(by simp [clearWorkTimeBound]; omega)",
+      "problem": "clearWorkTimeBound has no equation lemma or canonical unfolding rule. Its use is solved by unfolding it inside the full default simp set (`simp [clearWorkTimeBound]`) followed by `omega`. The goal is `(x.length + 1) + 1 + (x.length + 1 + 2) \u2264 clearWorkTimeBound bits.length`. A non-terminal full `simp` can rewrite and normalise the arithmetic in unpredictable ways, and `omega` may then see a different goal. The sibling files unfold the bound in different ways: `unfold clearWorkTimeBound`, `simp only [binaryCopyTime, clearWorkTimeBound]`, and `simp only [..., clearWorkTimeBound, List.length_cons]`. Each caller re-derives the `2 * length + 5` form by hand.",
+      "proposed_change": "Add an explicit equation lemma in ClearWork/Defs.lean, e.g. `theorem clearWorkTimeBound_eq (length : \u2115) : clearWorkTimeBound length = 2 * length + 5 := rfl`. Do not mark it `@[simp]`, because the named bound should stay folded in statements. Use it with `simp only [clearWorkTimeBound_eq]; omega`, or just `unfold clearWorkTimeBound; omega`, as ResetBinary/Internal.lean does. Alternatively, state a monotonicity or `le` lemma such as `clearWorkTimeBound_ge`, so callers do not unfold the definition at all.",
+      "benefit": "The arithmetic step becomes a deterministic `simp only` plus `omega`. It no longer depends on the default simp set, and all callers use one canonical unfolding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Subroutines/ClearWork/Defs.lean",
+          "declaration": "clearWorkTimeBound",
+          "excerpt": "def clearWorkTimeBound (length : \u2115) : \u2115 :=\n  2 * length + 5"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Subroutines/ResetBinary/Internal.lean",
+          "declaration": "resetBinaryWorkTM_hoareTime_frame_internal (use site)",
+          "excerpt": "\u00b7 unfold clearWorkTimeBound\n      omega"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Subroutines/BinaryCopy/Internal.lean",
+          "declaration": "binaryCopyTime bound lemma (use site)",
+          "excerpt": "simp only [binaryCopyTime, clearWorkTimeBound]\n  omega"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 21283,
+    "cache_read_input_tokens": 94506,
+    "output_tokens": 5478,
+    "output_tokens_details": {
+      "thinking_tokens": 1136
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21283,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3112,
+        "cache_read_input_tokens": 21777,
+        "cache_creation_input_tokens": 3519,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3519
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1493906,
+  "duration_ms": 40329,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T01:51:06",
+  "unit": "file",
+  "source_sha256": "bd48530daf4cf49acb488f1e8691702a3c8be6ec54504d0db4d41027a641e2bf",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

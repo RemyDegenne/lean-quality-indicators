@@ -1,0 +1,125 @@
+{
+  "id": "lean-pool-file-0211",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also checked the `TM.step` API in Models/TuringMachine.lean, which has `step_eq_none_iff_halted` but no lemma that unpacks `tm.step c = some c'`. I did not compile any replacement. The proofs sketched below are my own and untested; they rely on lemmas that appear in the file (`cellsCode_succ_left`, `symDecode_symCode`, `List.take_left'`, `List.drop_left'`, `Tape.read`).\n\nI looked at other repetition and rejected it as too short, or as duplicated statements rather than duplicated proof: the `hhead` head-after-move facts, and the repeated `Forall\u2082` predicate and `tapeStepBlocks` pair expressions in statements.\n\nUncertainty: the `rfl` steps in the sketches assume `Tape.read` unfolds definitionally to `t.cells t.head`. The existing `take_rightCode` ends with `rfl` after the same rewrite, which supports this.",
+  "findings": [
+    {
+      "declaration": "rightCode_write_stay / rightCode_write_right (with symDecode_rightCode and take_rightCode)",
+      "start_line": 322,
+      "end_line": 344,
+      "excerpt": "rw [rightCode, rightCode, hhead, show W + 1 - t.head = (W - t.head) + 1 from by omega,\n    cellsCode_succ_left, List.drop_left' (by simp),",
+      "problem": "Four proofs redo the same step: unfold `rightCode`, rewrite the width `W + 1 - t.head` as `(W - t.head) + 1` by omega, then peel the head cell with `cellsCode_succ_left`. The sites are `symDecode_rightCode` (line 226), `rightCode_write_stay` (line 327), `rightCode_write_right` (line 340) and `take_rightCode` (line 565). `rightCode_write_left` does the same at `m` and `m+1`. Each site then separately discharges `take_left'`/`drop_left'` with `(by simp)` on the two-bit length. The fact that `rightCode` is the read symbol's code followed by the next window is never stated, so every proof re-derives it.",
+      "proposed_change": "Add one lemma after `rightCode_length`:\n\ntheorem rightCode_eq_of_le (t : Tape) {W : \u2115} (hW : t.head \u2264 W) :\n    rightCode t W = symCode t.read ++ cellsCode t (t.head + 1) (W - t.head)\n\nProof: `rw [rightCode, show W + 1 - t.head = (W - t.head) + 1 from by omega, cellsCode_succ_left]; rfl`. The `rfl` closes `t.cells t.head = t.read`, as in the existing `take_rightCode`.\n\nRewritten uses:\n- `symDecode_rightCode`: `rw [rightCode_eq_of_le t hw]; exact symDecode_symCode _ _`.\n- `take_rightCode`: `rw [rightCode_eq_of_le t hW, List.take_left' (by simp)]`.\n- `rightCode_write_right`: `rw [rightCode, hhead, show W + 1 - (t.head+1) = W - t.head from by omega, \u2190 ...]`. Rewrite only the RHS with `rightCode_eq_of_le t hW`, then `List.drop_left' (by simp)`. The goal reduces to `cellsCode_congr ...` exactly as now.\n- `rightCode_write_stay`: rewrite the `t`-side with the lemma. The `(t.write s).move stay` side needs the lemma too, but its head is `t.head` and `hW` still applies. The remaining goal is the same `congr 1` pair.\n\nThe hypotheses are unchanged (`t.head \u2264 W`, plus `h : t.head \u2260 0` for stay), and no new imports are needed.",
+      "benefit": "The width arithmetic and head-cell peeling are proved once. The four proofs shrink to a rewrite plus their genuine content (congruence and `write_cells_*`). A change to the `rightCode` width convention then needs one edit instead of five.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/Encoding.lean",
+          "declaration": "symDecode_rightCode",
+          "excerpt": "rw [rightCode, show W + 1 - t.head = (W - t.head) + 1 from by omega,\n    cellsCode_succ_left]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/Encoding.lean",
+          "declaration": "take_rightCode",
+          "excerpt": "rw [rightCode, show W + 1 - t.head = (W - t.head) + 1 from by omega,\n    cellsCode_succ_left, List.take_left' (by simp)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/Encoding.lean",
+          "declaration": "rightCode_write_stay",
+          "excerpt": "rw [rightCode, rightCode, hhead, show W + 1 - t.head = (W - t.head) + 1 from by omega,\n    cellsCode_succ_left, cellsCode_succ_left]"
+        }
+      ]
+    },
+    {
+      "declaration": "length_flatMap_symCode (duplicates length_flatMap_const)",
+      "start_line": 117,
+      "end_line": 124,
+      "excerpt": "private theorem length_flatMap_symCode (l : List \u2115) (f : \u2115 \u2192 \u0393) :",
+      "problem": "`length_flatMap_symCode` proves by list induction that a `flatMap` of equal-length blocks has length `2 * l.length`. Further down, `length_flatMap_const` proves the same fact for an arbitrary constant block length `m`, again by list induction. The file therefore contains two induction proofs of one statement. The first is just the case `m = 2` of the second, and `length_flatMap_const` is already used with `m = 2` at lines 559, 576, 658 and 821.",
+      "proposed_change": "Move `length_flatMap_const` (currently line 424) above the symbol-code section, next to `symCode_length`, and delete `length_flatMap_symCode`. Then `cellsCode_length` becomes:\n\n  rw [cellsCode, length_flatMap_const _ _ 2 (fun j => symCode_length _), List.length_range, Nat.mul_comm]\n\nThe same lemma also covers `leftCodeFrom_length`. Alternatively, restate `length_flatMap_const` using `List.length_flatMap` and `List.sum_const_nat`, which also avoids the hand-written induction. Hypotheses are unchanged. `l.length * 2` against `2 * l.length` is fixed by `Nat.mul_comm`, as done in `keyCode_length`.",
+      "benefit": "There is one length-of-concatenation lemma instead of two parallel inductions. A reader sees why the two-bit case needs no special treatment.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/Encoding.lean",
+          "declaration": "length_flatMap_const",
+          "excerpt": "(m : \u2115) (h : \u2200 a, (f a).length = m) : (l.flatMap f).length = l.length * m := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/Encoding.lean",
+          "declaration": "keyPattern_length",
+          "excerpt": "length_flatMap_const (List.ofFn p.2) symCode 2 symCode_length, List.length_ofFn,"
+        }
+      ]
+    },
+    {
+      "declaration": "step_state_eq and cfgTapes_step",
+      "start_line": 723,
+      "end_line": 747,
+      "excerpt": "have hne : \u00ac c.state = tm.qhalt := fun hq => by simp [TM.step, hq] at h\n  rw [TM.step, ite_eq_right hne] at h\n  injection h with h\n  subst h",
+      "problem": "`step_state_eq` and `cfgTapes_step` open with the same four-line analysis of `tm.step c = some c'`. Each proves that the state is not `qhalt`, unfolds `TM.step`, and extracts the explicit successor configuration by `injection` and `subst`. The file's `Cfg`/`TM.step` API has no lemma that exposes the successor. The unpacking is repeated in the target and would be repeated again by any further `step` lemma, such as one about the work-tape components.",
+      "proposed_change": "Prove one helper before `step_state_eq`:\n\ntheorem step_eq_some_iff_or_exists ... : tm.step c = some c' \u2192 c.state \u2260 tm.qhalt \u2227 c' = <explicit successor record built from tm.\u03b4>\n\nIts proof is the current four lines (`hne`, `rw [TM.step, ite_eq_right hne] at h`, `injection`). Both theorems then start with `obtain \u27e8hne, rfl\u27e9 := step_unpack tm h` (a name to choose) and continue as now. `step_state_eq` becomes `rfl` after that line. `cfgTapes_step` keeps its `rw [cfgTapes, \u2026]` and `simp only` tail. Hypotheses (`h`, the `StartInvariant` facts) are unchanged. Ideally the helper lives beside `step_eq_none_iff_halted` in TuringMachine.lean, though it could stay private in this file.",
+      "benefit": "The detail of how `TM.step` builds its successor is stated once. The two lemmas then read as the facts they prove (the state follows the key; the tapes follow the actions) and no longer carry the unfolding boilerplate.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/Encoding.lean",
+          "declaration": "cfgTapes_step",
+          "excerpt": "rw [TM.step, ite_eq_right hne] at h\n  injection h with h\n  subst h\n  rw [cfgTapes, cfgTapes, stepActs, tapesStep]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine.lean",
+          "declaration": "step_eq_none_iff_halted",
+          "excerpt": "by_cases h : c.state = tm.qhalt <;> simp [step, h]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 31057,
+    "cache_read_input_tokens": 153013,
+    "output_tokens": 7030,
+    "output_tokens_details": {
+      "thinking_tokens": 1921
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31057,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4203,
+        "cache_read_input_tokens": 33078,
+        "cache_creation_input_tokens": 1908,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1908
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2098533,
+  "duration_ms": 49068,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:35",
+  "unit": "file",
+  "source_sha256": "e35633a90b62ed27fca2e371fe54a1c1a0c4dd1476301a5261493925edaf6228",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

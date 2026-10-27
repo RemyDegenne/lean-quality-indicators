@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0104",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read Mathlib's `AdicCompletion.pi` (`@[simps!]`), `piEquivOfFintype_apply`, and `map_of`, and the repo's test file. I found no loops. The `piEquivOfFG_symm_*` and `map_proj_piEquivOfFG_symm` lemmas look fine. The main problem is a set of overlapping simp lemmas about `piEquivOfFG`. I did not run Lean, so I can't say which rule simp tries first when several match; the claims below only say the rules overlap.",
+  "findings": [
+    {
+      "declaration": "AdicCompletion.piEquivOfFG_apply (with piEquivOfFG_apply_apply and piEquivOfFG_of)",
+      "start_line": 123,
+      "end_line": 126,
+      "excerpt": "theorem piEquivOfFG_apply (hI : I.FG) (x : AdicCompletion I (\u2200 j, M j)) :\n    piEquivOfFG I M hI x = pi I M x :=",
+      "problem": "`piEquivOfFG_apply` is a simp lemma whose left side, `piEquivOfFG I M hI x`, is a subterm of the left sides of two other simp lemmas. Those are `piEquivOfFG_apply_apply` (`piEquivOfFG I M hI x j`) and `piEquivOfFG_of` (`piEquivOfFG I M hI (of I _ x)`). Simp simplifies subterms first. So on `piEquivOfFG \u2026 x j` the head `piEquivOfFG \u2026 x` can be rewritten to `pi I M x` before the whole-term lemma is tried. In that case `piEquivOfFG_apply_apply` is bypassed. The `@[simps!]`-generated lemma for `pi` presumably finishes the job there, so the lemma is redundant. For `piEquivOfFG \u2026 (of x)`, the generic lemma and `piEquivOfFG_of` both match the whole term. If the generic one wins, the result is `pi I M (of x)`, which becomes `fun j => map I (proj j) (of x)`. Mathlib's `map_of` is not a simp lemma, so that form is stuck and `piEquivOfFG_of` never fires. The file therefore has no single normal form for `piEquivOfFG`: its own proofs rewrite with `piEquivOfFG_apply` or `piEquivOfFG_apply_apply` by name, and the repo test calls `piEquivOfFG_symm_of` by name instead of using simp.",
+      "proposed_change": "Choose one normal form. For example, keep `piEquivOfFG_apply` as the only simp lemma that unfolds the equivalence to `pi I M`. Then make the `of` case a simp lemma for `pi I M (of I _ x)` (statement `pi I M (of I (\u2200 j, M j) x) = fun j => of I (M j) (x j)`). Mark `piEquivOfFG_apply_apply` and `piEquivOfFG_of` as non-simp (or delete them). Alternatively, drop the generic `piEquivOfFG_apply` from simp and keep the specific lemmas, giving `piEquivOfFG_of` and `piEquivOfFG_apply_apply` a higher priority than the generic one.",
+      "benefit": "Simp results for `piEquivOfFG` terms no longer depend on which overlapping rule fires first. `piEquivOfFG I M hI (of I _ x)` reliably reduces to `fun j => of I (M j) (x j)`. The unused simp lemma `piEquivOfFG_apply_apply` goes away, and users no longer have to call lemmas by name as the proofs here and the test do.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/AdicCompletion/Functoriality.lean",
+          "declaration": "AdicCompletion.pi",
+          "excerpt": "@[simps!]\ndef pi : AdicCompletion I (\u2200 j, M j) \u2192\u2097[AdicCompletion I R] \u2200 j, AdicCompletion I (M j) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/AdicCompletion/Functoriality.lean",
+          "declaration": "AdicCompletion.map_of",
+          "excerpt": "theorem map_of (f : M \u2192\u2097[R] N) (x : M) : map I f (of I M x) = of I N (f x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/AdicCompletion/Functoriality.lean",
+          "declaration": "AdicCompletion.piEquivOfFintype_apply",
+          "excerpt": "theorem piEquivOfFintype_apply (x : AdicCompletion I (\u2200 j, M j)) :\n    piEquivOfFintype I M x = pi I M x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/adic-modules/AdicModulesTest/AdicCompletionPi.lean",
+          "declaration": "completedAlternating_preimage",
+          "excerpt": "exact AdicCompletion.piEquivOfFG_symm_of twoIdeal (fun _ : \u2115 \u21a6 ZMod 4)"
+        }
+      ]
+    },
+    {
+      "declaration": "AdicCompletion.piEquivOfFG_toLinearMap",
+      "start_line": 109,
+      "end_line": 112,
+      "excerpt": "theorem piEquivOfFG_toLinearMap (hI : I.FG) :\n    (piEquivOfFG I M hI).toLinearMap = pi I M :=\n  rfl",
+      "problem": "`piEquivOfFG_toLinearMap` is a simp lemma whose left side is `(piEquivOfFG I M hI).toLinearMap`. `piEquivOfFG_apply` already covers the pointwise form, and `piEquivOfFG_apply_apply` covers the coordinate form. All three duplicate the same fact (`piEquivOfFG` is `pi I M`) at different levels of application, with no simp lemma for the coercion `\u21d1(piEquivOfFG I M hI)`. For function-level statements such as `\u21d1(piEquivOfFG I M hI) = \u21d1(pi I M)`, one of these forms will match depending on how the term is elaborated.",
+      "proposed_change": "State the canonical simp lemma once, as the coercion lemma `\u21d1(piEquivOfFG I M hI) = \u21d1(pi I M)`. This also covers function-level uses. Keep `toLinearMap` as a plain, non-simp lemma, or derive it with `LinearMap.ext`. Keep the pointwise form only if it is the chosen normal form.",
+      "benefit": "A single simp lemma for the equivalence-to-`pi` rewrite replaces three overlapping ones. This makes simp behaviour on `piEquivOfFG` more predictable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/adic-modules/AdicModules/AdicCompletion/Pi.lean",
+          "declaration": "AdicCompletion.piEquivOfFG_apply",
+          "excerpt": "LinearMap.congr_fun (piEquivOfFG_toLinearMap I M hI) x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 14692,
+    "cache_read_input_tokens": 85085,
+    "output_tokens": 6293,
+    "output_tokens_details": {
+      "thinking_tokens": 2360
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14692,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2643,
+        "cache_read_input_tokens": 17830,
+        "cache_creation_input_tokens": 875,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 875
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1302345,
+  "duration_ms": 55547,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:03:19",
+  "unit": "file",
+  "source_sha256": "9f5c57a0dd65d5d0e822d7198aea6a5e80eba0b08bfde8445a53aeffe9c71103",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

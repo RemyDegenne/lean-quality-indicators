@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0111",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the simp attributes in ScalarExtension.lean (map_of, map_ofClass, map_of_self for both ProjectiveClass and K0). I grepped the repo for uses of the flagged lemmas. All uses I found are explicit `rw`/`simp only` calls (Product.lean lines 404, 560, 594, 793, and the K0ProductEquivalenceClient tests). So removing @[simp] from them should not break those callers, although I did not check other downstream files. I did not run Lean. The claims about simp behaviour come from reading the rewrite rules, not from observed simp traces. The other @[simp] lemmas (the *_apply ones) look fine. Lemmas such as piEquiv_symm_ofClass are not simp, which is reasonable.",
+  "findings": [
+    {
+      "declaration": "KTheory.K0.piEquiv_ofClass",
+      "start_line": 580,
+      "end_line": 585,
+      "excerpt": "      ofClass (Ri i) (ProjectiveClass.piEquiv Ri a i) := by",
+      "problem": "This @[simp] lemma has a right-hand side that is not in simp normal form. Its RHS contains `ProjectiveClass.piEquiv Ri a i`, which the simp lemma `ProjectiveClass.piEquiv_apply` rewrites to `ProjectiveClass.map (Pi.evalRingHom Ri i) a`. Its LHS is also rewritten first by `K0.piEquiv_apply` and then by the simp lemma `K0.map_ofClass`, giving `ofClass (Ri i) (ProjectiveClass.map (Pi.evalRingHom Ri i) a)`. The lemma's own proof shows it follows from those three existing simp lemmas. So it competes with them and, as a simp lemma, adds nothing. If it fires first, it puts an unfolded `ProjectiveClass.piEquiv \u2026 a i` into the goal, and simp must then rewrite that back.",
+      "proposed_change": "Remove @[simp] from `K0.piEquiv_ofClass` and keep it as a plain lemma for `rw`. The simp normal form is already `ofClass (Ri i) (ProjectiveClass.map (Pi.evalRingHom Ri i) a)`, reached via `piEquiv_apply` and `map_ofClass`. Alternatively, state the lemma with `ProjectiveClass.map (Pi.evalRingHom Ri i) a` on the RHS if a simp-normal statement is wanted.",
+      "benefit": "There is one canonical rewrite path for `K0.piEquiv` applied to a class generator. The simp set no longer has an overlapping lemma whose RHS needs further rewriting, and simp traces are easier to predict.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/Product.lean",
+          "declaration": "KTheory.K0.piEquiv_ofClass",
+          "excerpt": "simpa only [piEquiv_apply, ProjectiveClass.piEquiv_apply] using\n    map_ofClass (Pi.evalRingHom Ri i) a"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/ScalarExtension.lean",
+          "declaration": "KTheory.K0.map_ofClass",
+          "excerpt": "map \u03c6 (ofClass R a) = ofClass S (ProjectiveClass.map \u03c6 a)"
+        }
+      ]
+    },
+    {
+      "declaration": "KTheory.K0.prodEquiv_ofClass",
+      "start_line": 780,
+      "end_line": 785,
+      "excerpt": "      (ofClass R (ProjectiveClass.prodEquiv R S a).1,\n        ofClass S (ProjectiveClass.prodEquiv R S a).2) := by",
+      "problem": "This @[simp] lemma has a non-normal RHS. The projections `(ProjectiveClass.prodEquiv R S a).1` and `.2` are rewritten by the simp lemma `ProjectiveClass.prodEquiv_apply` to `map (RingHom.fst R S) a` and `map (RingHom.snd R S) a`. Its LHS is rewritten by `K0.prodEquiv_apply` and `K0.map_ofClass` to `(ofClass R (ProjectiveClass.map fst a), ofClass S (ProjectiveClass.map snd a))`. The proof is exactly `simp only [prodEquiv_apply, ProjectiveClass.prodEquiv_apply, map_ofClass]`, so the lemma is subsumed by the existing simp set. It does not describe the form that simp actually produces.",
+      "proposed_change": "Remove @[simp] from `K0.prodEquiv_ofClass` and keep it for explicit `rw`, which the tests and `prodEquiv_symm_ofClass` use. Or restate its RHS as `(ofClass R (ProjectiveClass.map (RingHom.fst R S) a), ofClass S (ProjectiveClass.map (RingHom.snd R S) a))`.",
+      "benefit": "Simp has a single canonical normal form for the K\u2080 decomposition of a class generator, and no lemma re-introduces `ProjectiveClass.prodEquiv` projections that simp must then unfold.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/Product.lean",
+          "declaration": "KTheory.ProjectiveClass.prodEquiv_apply",
+          "excerpt": "prodEquiv R S a = (map (RingHom.fst R S) a, map (RingHom.snd R S) a)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/Product.lean",
+          "declaration": "KTheory.K0.prodEquiv_ofClass",
+          "excerpt": "simp only [prodEquiv_apply, ProjectiveClass.prodEquiv_apply, map_ofClass]"
+        }
+      ]
+    },
+    {
+      "declaration": "KTheory.ProjectiveClass.piEquiv_of_module / KTheory.K0.piEquiv_of_module / prodEquiv_of_module (both namespaces)",
+      "start_line": 129,
+      "end_line": 138,
+      "excerpt": "  simpa only [piEquiv_apply] using map_of (Pi.evalRingHom Ri i) M",
+      "problem": "Four `*_of_module` lemmas are tagged @[simp]: `ProjectiveClass.piEquiv_of_module`, `ProjectiveClass.prodEquiv_of_module`, `K0.piEquiv_of_module` and `K0.prodEquiv_of_module`. Each is a direct consequence of the simp lemmas `piEquiv_apply` or `prodEquiv_apply` (same namespace) followed by `map_of` (also simp). The proofs are just `simpa only [piEquiv_apply] using map_of \u2026` or `simp only [prodEquiv_apply, map_of]`. The LHS `piEquiv Ri (of M) i` also matches the more general `piEquiv_apply`, so two simp lemmas compete for the same redex. Which one fires first is not specified, and they give the same result only because `map_of` finishes the job. This is redundant simp surface.",
+      "proposed_change": "Remove @[simp] from the four `*_of_module` lemmas and leave `piEquiv_apply`/`prodEquiv_apply` plus `map_of` as the simp route. Keep the lemmas as plain named statements, since the tests and `prodEquiv_symm_of_module` use them via `rw`.",
+      "benefit": "There is one simp path for each decomposition applied to a module generator. Removing the redundant lemmas leaves a smaller simp set that does not depend on lemma ordering.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/ScalarExtension.lean",
+          "declaration": "KTheory.ProjectiveClass.map_of",
+          "excerpt": "map \u03c6 (of R M) = of S (ModuleCat.RightExtension.Obj \u03c6 M)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/Product.lean",
+          "declaration": "KTheory.ProjectiveClass.prodEquiv_of_module",
+          "excerpt": "simp only [prodEquiv_apply, map_of]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 27469,
+    "cache_read_input_tokens": 54677,
+    "output_tokens": 5331,
+    "output_tokens_details": {
+      "thinking_tokens": 1595
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27469,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3147,
+        "cache_read_input_tokens": 26503,
+        "cache_creation_input_tokens": 4979,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4979
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1686657,
+  "duration_ms": 38463,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T23:04:30",
+  "unit": "file",
+  "source_sha256": "853665869e2578b78f9c06d1a13b8acfec41c75775edcda2b08403640315ed9e",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

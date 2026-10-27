@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0335",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read phaseEquiv, phaseEquiv_apply and phaseEquiv_symm_apply (both @[simp]) in PhaseCoordinates.lean, and dx and dy in OscillatoryModel.lean (plain defs). I read the determinant computation in PhaseFrameMargins.lean and grepped the uses of phaseInverse_*. I did not find a simp loop or competing rules. The findings are about missing canonical rewrite lemmas that cause duplicated unfolding and field_simp work. I could not run Lean, so the proposed lemmas are untested. Whether a lemma should be tagged @[simp] depends on how the dx/dy-applied form appears in other files, which I only sampled.",
+  "findings": [
+    {
+      "declaration": "ClosedSurfaceR4.RealModes.phaseInverse_det",
+      "start_line": 16,
+      "end_line": 28,
+      "excerpt": "lemma phaseInverse_det {\u03be : Base} (h\u03be : \u03be \u2260 0) :",
+      "problem": "The canonical value of the determinant of the inverse phase frame, (\u03be.1^2+\u03be.2^2)\u207b\u00b9, is proved only as a local `have he` inside a lemma whose statement is the weaker `\u2260 0`. PhaseFrameMargins.lean (`gramDet_phase`, `hdet`) therefore re-proves the same equation with the same `simp only [phaseEquiv_symm_apply,dx,dy]; field_simp; ring`. The simp-normal form of this determinant is not available as a rewrite rule. Each client has to unfold dx and dy and redo the field arithmetic.",
+      "proposed_change": "Extract the equation as a named lemma, for example `phaseInverse_det_eq (h\u03be : \u03be \u2260 0) : ((phaseEquiv \u03be h\u03be).symm dx).1 * ((phaseEquiv \u03be h\u03be).symm dy).2 - ((phaseEquiv \u03be h\u03be).symm dx).2 * ((phaseEquiv \u03be h\u03be).symm dy).1 = (\u03be.1^2+\u03be.2^2)\u207b\u00b9`. Derive `phaseInverse_det` from it with `inv_ne_zero`. Replace the duplicate `hdet` in `gramDet_phase` by `phaseInverse_det_eq h\u03be`, so the call `rw [hdet]` becomes `rw [phaseInverse_det_eq h\u03be]`. The lemma needs the hypothesis h\u03be, so it should be a plain lemma used with `rw`/`simp [phaseInverse_det_eq h\u03be]`, not a global simp lemma.",
+      "benefit": "There is one proof of the determinant normal form instead of two. Callers can rewrite the determinant directly to its inverse-length-square form, and `phaseInverse_det` becomes a one-line corollary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Atlas/PhaseFrameMargins.lean",
+          "declaration": "gramDet_phase",
+          "excerpt": "simp only [phaseEquiv_symm_apply,dx,dy]\n    field_simp\n    ring"
+        }
+      ]
+    },
+    {
+      "declaration": "ClosedSurfaceR4.RealModes.phaseInverse_dy",
+      "start_line": 30,
+      "end_line": 32,
+      "excerpt": "(phaseEquiv \u03be h\u03be).symm dy = (\u03be.1 ^ 2 + \u03be.2 ^ 2)\u207b\u00b9 \u2022 (-\u03be.2, \u03be.1) := by",
+      "problem": "The simp interface for the inverse phase map applied to the basis vectors dx and dy is incomplete. `phaseEquiv_symm_apply` is simp, but `dx` and `dy` are plain defs with no simp lemmas for their components, and `phaseInverse_dy` has no `dx` counterpart. As a result, both `phaseInverse_dy` and `phaseInverse_det` need explicit `simp [dy, ...]` or `simp only [..., dx, dy]` calls that unfold the definitions. The same unfolding appears in many other files, for example `simp [dx,dy]` in TensorCoordinates, MetricPullback and SecondForms. The statement of `phaseInverse_dy` also uses a smul form, while the neighbouring determinant lemma computes through the componentwise division form from `phaseEquiv_symm_apply`. These are two different normal forms for the same vector, and nothing relates them as simp rules.",
+      "proposed_change": "Add a symmetric `phaseInverse_dx : (phaseEquiv \u03be h\u03be).symm dx = (\u03be.1^2+\u03be.2^2)\u207b\u00b9 \u2022 (\u03be.1, \u03be.2)`. Provide simp component lemmas for the basis vectors where `dx` and `dy` are defined, for example `dx_fst`, `dx_snd`, `dy_fst`, `dy_snd` (all `rfl`/`by simp [dx]`). Then decide on a single orientation for `(phaseEquiv \u03be h\u03be).symm dx` and `(phaseEquiv \u03be h\u03be).symm dy`. Either tag `phaseInverse_dx` and `phaseInverse_dy` with `@[simp]` (each is guarded by the explicit `h\u03be` argument, which simp can only discharge when it is available), or state the determinant and `phaseInverse_dy` lemmas through the same componentwise form so that both simp-normalize to the same expression.",
+      "benefit": "Clients that mention `(phaseEquiv \u03be h\u03be).symm dx` or `dy` can rely on `simp` to reach a single canonical form, instead of unfolding dx and dy by hand and then running `field_simp; ring`. The `ext <;> simp [dy, div_eq_mul_inv, mul_comm]` proof of `phaseInverse_dy` also becomes shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Immersion/ClosedSurface/OscillatoryModel.lean",
+          "declaration": "dx",
+          "excerpt": "def dx : Base := (1, 0)\ndef dy : Base := (0, 1)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Immersion/ClosedSurface/PhaseCoordinates.lean",
+          "declaration": "phaseEquiv_symm_apply",
+          "excerpt": "@[simp] lemma phaseEquiv_symm_apply (\u03be : Base) (h\u03be : \u03be \u2260 0) (p : Base) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/Immersion/ClosedSurface/SecondForms.lean",
+          "declaration": "base_eq_basis",
+          "excerpt": "ext <;> simp [dx,dy]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 25273,
+    "cache_read_input_tokens": 81413,
+    "output_tokens": 4195,
+    "output_tokens_details": {
+      "thinking_tokens": 763
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25273,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2772,
+        "cache_read_input_tokens": 27579,
+        "cache_creation_input_tokens": 1707,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1707
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1512033,
+  "duration_ms": 33882,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:38:39",
+  "unit": "file",
+  "source_sha256": "d837b9122b4a45f961d328da1d22b37d99763b1f4ea101853ebabb0c2712ccc1",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

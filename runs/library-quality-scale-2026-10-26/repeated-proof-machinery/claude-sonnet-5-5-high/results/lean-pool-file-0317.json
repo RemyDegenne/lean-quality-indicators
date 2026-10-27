@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0317",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the two imported APIs it uses: `re_inner_specProjection_Icc_bounds` in SpectralFormBounds.lean, and `specProjection_apply_domain` and `specProjection_mem_domain` in SpectralMeasure/Construction.lean. The file already factors out the cutoff-limit step in `tendsto_specProjection_inter_of_fix`. Two duplications remain: the pair of \"fixed by complement\" lemmas, and the `hzA` annihilation block shared by the two energy bounds. Both are nontrivial spectral-measure reasoning, not routine unfolding. I did not compile any proposed replacement. In particular I did not check the exact name `Set.Iio_subset_Iic_self` or the exact form of `proj_congr` and `proj_compl`, so the sketches use the same calls the existing proofs use. I also considered extracting the final limit step shared by the two energy bounds, but it is short and I did not claim it.",
+  "findings": [
+    {
+      "declaration": "specProjection_Ici_apply_eq_self_of_Iic_apply_eq_zero and specProjection_Iic_apply_eq_self_of_Ici_apply_eq_zero",
+      "start_line": 91,
+      "end_line": 161,
+      "excerpt": "have hset : Set.Iio c \u2229 Set.Iic c = Set.Iio c := by",
+      "problem": "The two theorems have the same ~30-line proof, differing only by renaming Iio\u2194Ioi and Iic\u2194Ici. Each one (1) shows `proj B x = 0` for an open half-line B \u2286 C via `proj_inter` and `proj_congr` on `B \u2229 C = B`, then (2) rewrites the target as `proj B\u1d9c x` via `proj_congr` and `proj_compl` to get `x - 0 = x`. The file's own docstring for `tendsto_specProjection_inter_of_fix` makes the same point about the other duplicated pair: only the set algebra differs.",
+      "proposed_change": "Add one lemma for an arbitrary measurable pair:\n`private theorem specProjection_apply_eq_self_of_compl_subset {B C D : Set \u211d} (hB : MeasurableSet B) (hC : MeasurableSet C) (hD : MeasurableSet D) (hBC : B \u2286 C) (hcompl : B\u1d9c = D) (x : H) (hz : specProjection hA C hC x = 0) : specProjection hA D hD x = x`.\nProof sketch:\n- Rewrite `B = B \u2229 C` using `Set.inter_eq_left.mpr hBC` and `P.proj_congr`.\n- Apply `P.proj_inter`, `mul_apply_eq_comp` and `hz` to get `proj B x = 0`.\n- Rewrite `D` as `B\u1d9c` with `proj_congr`, then use `P.proj_compl`, `sub_apply` and `sub_zero`.\nThe two public theorems then become one-liners:\n`specProjection_Ici_apply_eq_self_of_Iic_apply_eq_zero hA x hz := specProjection_apply_eq_self_of_compl_subset hA measurableSet_Iio measurableSet_Iic measurableSet_Ici Set.Iio_subset_Iic_self Set.compl_Iio x hz`.\nThe Iic/Ici theorem is the same with `Ioi`, `Ici`, `Iic`, `Set.Ioi_subset_Ici_self` and `Set.compl_Ioi`. The hypotheses (`hA`, `hz`) and the statements of both public theorems are unchanged. Imports are unchanged: `proj_inter`, `proj_compl`, `proj_congr` and `mul_apply_eq_comp` are already used here.",
+      "benefit": "This removes about 60 lines of duplicated measure-theoretic algebra and gives one place to maintain it. The two public lemmas are then visibly the same fact for two half-lines. This matches the factoring the file already did for the truncation lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/ForTauCeti/Analysis/InnerProductSpace/LinearPMap/SpectralVectorBounds.lean",
+          "declaration": "specProjection_Iic_apply_eq_self_of_Ici_apply_eq_zero",
+          "excerpt": "have hset : Set.Ioi c \u2229 Set.Ici c = Set.Ioi c := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/ForTauCeti/Analysis/InnerProductSpace/LinearPMap/SpectralVectorBounds.lean",
+          "declaration": "tendsto_specProjection_inter_of_fix",
+          "excerpt": "**Only the set algebra differs"
+        }
+      ]
+    },
+    {
+      "declaration": "le_re_inner_of_specProjection_Iic_apply_eq_zero and re_inner_le_of_specProjection_Ici_apply_eq_zero",
+      "start_line": 165,
+      "end_line": 247,
+      "excerpt": "have hsub :\n        (\u27e8specProjection hA (Set.Iic c) measurableSet_Iic (x : H),",
+      "problem": "The two energy bounds share most of their proof skeleton. The `hzA` block (170\u2013176 and 213\u2013219) is the same argument in both: `A` commutes with the projection (`specProjection_apply_domain`), so `proj B x = 0` forces `proj B (A x) = 0`. It is rebuilt by hand with an explicit subtype `hsub`, `Subtype.ext` and `map_zero`, once for Iic and once for Ici. That fact does not depend on the half-line and is a natural standalone lemma. After it, the bodies run the same sequence: hfix, hfixA, hlim_of_fix, hbound, hlx, hlA, and `le_of_tendsto_of_tendsto'` with the argument order swapped.",
+      "proposed_change": "Add a lemma, which could be public because it is reusable:\n`theorem specProjection_apply_eq_zero_of_domain (B : Set \u211d) (hB : MeasurableSet B) (x : A.domain) (hz : specProjection hA B hB (x : H) = 0) : specProjection hA B hB (A x) = 0`.\nProof: `rw [\u2190 specProjection_apply_domain hA B hB x]`, then show the subtype `\u27e8proj x, _\u27e9` equals `0` by `Subtype.ext hz`, and use `LinearPMap.map_zero`. This is the existing `hzA` proof with `Iic c` generalised to `B`.\nIn both theorems, `hzA` becomes `specProjection_apply_eq_zero_of_domain hA _ measurableSet_Iic x hz` for the lower bound and `... measurableSet_Ici x hz` for the upper bound.\nThe two `hlim_of_fix` blocks (Icc c \u03c4 from Ici, and Icc (-\u03c4) c from Iic) differ only in set algebra. They could be stated once each as separate lemmas, e.g. `tendsto_specProjection_Icc_of_Ici_fix`, taking `c`, `v` and the fixed-point hypothesis. The two theorem bodies would then shrink to hfix, hzA, hfixA and the final limit comparison. The statements of both theorems stay the same, and no new imports are needed.",
+      "benefit": "The commutation fact and the cutoff-limit statements are named once and readable independently. The two theorem proofs shrink from about 40 lines each to a short, parallel argument. A change to the subtype or domain plumbing is then made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/ForTauCeti/Analysis/InnerProductSpace/LinearPMap/SpectralVectorBounds.lean",
+          "declaration": "re_inner_le_of_specProjection_Ici_apply_eq_zero",
+          "excerpt": "have hzA : specProjection hA (Set.Ici c) measurableSet_Ici (A x) = 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/ForTauCeti/Analysis/InnerProductSpace/LinearPMap/SpectralMeasure/Construction.lean",
+          "declaration": "specProjection_apply_domain",
+          "excerpt": "= specProjection hA B hB (A x)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 14654,
+    "cache_read_input_tokens": 14960,
+    "output_tokens": 5416,
+    "output_tokens_details": {
+      "thinking_tokens": 1905
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14654,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4944,
+        "cache_read_input_tokens": 11031,
+        "cache_creation_input_tokens": 7552,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 7552
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11427999999999999,
+  "duration_ms": 40021,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T01:34:29",
+  "unit": "file",
+  "source_sha256": "aeddfffd3098e10983894bedae7c40cf0bb7d1d4a308f33b3e5baa3ce582e833",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

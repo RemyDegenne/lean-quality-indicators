@@ -1,0 +1,115 @@
+{
+  "id": "tauceti-file-0217",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the simp-tagged lemmas against Mathlib's `IsometryEquiv` simp lemmas. I also compared the parallel `orthogonalGroupCongr` and `specialOrthogonalGroupCongr` API. I did not run Lean. The claims about simp behaviour are inferred from the lemma statements and the attributes. I did not review the hypothesis-conditional simp lemmas (`polar_apply_of_mem_orthogonalGroup`, `isOrtho_iff_of_mem_orthogonalGroup`) together with the simp lemma `mem_orthogonalGroup_iff` in detail. I also did not review the `simp high` and `simp\u2193` priority arrangements beyond noting them. Both look intentional and are documented in the file.",
+  "findings": [
+    {
+      "declaration": "QuadraticMap.IsometryEquiv.coe_orthogonalGroupCongr_apply / coe_orthogonalGroupCongr_symm_apply",
+      "start_line": 300,
+      "end_line": 312,
+      "excerpt": "= e.toLinearEquiv ((f : M\u2081 \u2243\u2097[R] M\u2081) (e.toLinearEquiv.symm m)) := by",
+      "problem": "The right-hand sides of these two @[simp] lemmas are not in simp normal form. They mention `e.toLinearEquiv` and `e.toLinearEquiv.symm`, but Mathlib already has simp lemmas `IsometryEquiv.coe_toLinearEquiv` (`\u21d1(f : M\u2081 \u2243\u2097[R] M\u2082) = f`) and `coe_symm_toLinearEquiv` (`f.toLinearEquiv.symm = f.symm`). Simp therefore rewrites each RHS again to the `e (f (e.symm m))` spelling. The parallel special-orthogonal lemmas (`coe_specialOrthogonalGroupCongr_apply`) already state the normal form `e ((f : M\u2081 \u2243\u2097[R] M\u2081) (e.symm m))`, so the two APIs are inconsistent. This probably explains why `orthogonalGroupCongr_refl`, `orthogonalGroupCongr_trans` and `orthogonalGroupCongr_symm` each need a trailing `simp; rfl`.",
+      "proposed_change": "State the RHS of `coe_orthogonalGroupCongr_apply` as `e ((f : M\u2081 \u2243\u2097[R] M\u2081) (e.symm m))` and that of `coe_orthogonalGroupCongr_symm_apply` as `e.symm ((g : M\u2082 \u2243\u2097[R] M\u2082) (e m))`, exactly as in the special-orthogonal versions. Prove them by `simp [...]` plus `rfl`. The downstream proofs `orthogonalGroupCongr_refl`, `orthogonalGroupCongr_trans` and `orthogonalGroupCongr_symm` should then lose their non-terminal `simp; rfl`, and `orthogonalDet_orthogonalGroupCongr` would no longer need its `rfl` step.",
+      "benefit": "The lemma RHS is stable under simp, so rewriting does not need a second round of normalisation. The ordinary and special orthogonal transport APIs get the same normal form. The downstream proofs no longer depend on a fragile `simp; rfl` pair.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/LinearAlgebra/QuadraticForm/IsometryEquiv.lean",
+          "declaration": "QuadraticMap.IsometryEquiv.coe_toLinearEquiv",
+          "excerpt": "theorem coe_toLinearEquiv (f : Q\u2081.IsometryEquiv Q\u2082) : \u21d1(f : M\u2081 \u2243\u2097[R] M\u2082) = f :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/LinearAlgebra/QuadraticForm/IsometryEquiv.lean",
+          "declaration": "QuadraticMap.IsometryEquiv.coe_symm_toLinearEquiv",
+          "excerpt": "lemma coe_symm_toLinearEquiv (f : Q\u2081.IsometryEquiv Q\u2082) : f.toLinearEquiv.symm = f.symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/QuadraticForm/OrthogonalGroup/Basic.lean",
+          "declaration": "QuadraticMap.IsometryEquiv.coe_specialOrthogonalGroupCongr_apply",
+          "excerpt": "e ((f : M\u2081 \u2243\u2097[R] M\u2081) (e.symm m)) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.QuadraticMap.reflection_smul_eq (and reflectionOrthogonal_smul_eq)",
+      "start_line": 888,
+      "end_line": 894,
+      "excerpt": "let _ : Invertible (Q (a \u2022 v)) := by",
+      "problem": "These are tagged @[simp], but the conclusion is a `let` that fixes one particular `Invertible (Q (a \u2022 v))` instance, built from `invertibleMul`. `Invertible` is data (`invOf`), so an arbitrary instance in a goal is not defeq to this one. The unification therefore only succeeds when that exact term occurs. A goal with some other `Invertible (Q (a \u2022 v))` instance, such as one from `isUnit.invertible`, will not match. The `let` also makes the statement an unusual simp-lemma shape. Evidence of the problem is that `reflectionTransport_self` rewrites with this fact by hand, through `congrArg` on `reflectionOrthogonal_smul_eq` and `simpa`, rather than by simp.",
+      "proposed_change": "Restate both lemmas with a generic instance: `theorem reflection_smul_eq (a : R) [Invertible a] [Invertible (Q (a \u2022 v))] : reflection Q (a \u2022 v) = reflection Q v`. This is sound because `Invertible` is a subsingleton and `\u215f` is unique. The proof can obtain `\u215f(Q (a \u2022 v))` from the hypothesis and drop the local `let`. Alternatively, remove @[simp] and keep the `let` form as a plain lemma.",
+      "benefit": "The simp attribute becomes honest, because the lemma fires for any instance, as with `reflectionTransport_eq_reflection`. The proof of `reflectionTransport_self` can use simp instead of the `congrArg`/`simpa` workaround, and users no longer have to unfold a `let` to apply the lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/QuadraticForm/OrthogonalGroup/Basic.lean",
+          "declaration": "QuadraticMap.reflectionTransport_self",
+          "excerpt": "(TauCeti.QuadraticMap.reflectionOrthogonal_smul_eq Q x (2 : K))"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.QuadraticMap.reflection_mul_self",
+      "start_line": 932,
+      "end_line": 934,
+      "excerpt": "theorem reflection_mul_self : reflection Q v * reflection Q v = 1 :=",
+      "problem": "The involution fact for the bundled `reflectionOrthogonal` is @[simp] (`reflectionOrthogonal_mul_self`, `reflectionOrthogonal_inv`). So are `negOrthogonal_mul_self`, `reflection_inv` and `reflection_symm`. The unbundled `reflection_mul_self` in `M \u2243\u2097[R] M` is not. The simp set is therefore inconsistent: `reflection Q v * reflection Q v` does not normalise to `1`, although `(reflection Q v)\u207b\u00b9` and `(reflection Q v).symm` do normalise to `reflection Q v`. The proof of `reflectionOrthogonal_mul_self` also has to name it explicitly in `simp only [..., reflection_mul_self]`.",
+      "proposed_change": "Add `@[simp]` to `reflection_mul_self`. The LHS is a product of two identical terms with the same implicit `Invertible (Q v)` instance, and the RHS `1` is smaller, so it cannot cycle. If a version for `reflection Q v * (reflection Q v * g)` is wanted, add the usual `mul_self_mul` companion.",
+      "benefit": "`simp` can then cancel a doubled reflection in `M \u2243\u2097[R] M`, as it already does for the bundled reflection and for `negOrthogonal`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/QuadraticForm/OrthogonalGroup/Basic.lean",
+          "declaration": "TauCeti.QuadraticMap.reflectionOrthogonal_mul_self",
+          "excerpt": "simp only [Subgroup.coe_mul, coe_reflectionOrthogonal, Subgroup.coe_one, reflection_mul_self]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 46043,
+    "cache_read_input_tokens": 140205,
+    "output_tokens": 9214,
+    "output_tokens_details": {
+      "thinking_tokens": 4483
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 46043,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3839,
+        "cache_read_input_tokens": 48275,
+        "cache_creation_input_tokens": 1781,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1781
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2903485,
+  "duration_ms": 63483,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:31:50",
+  "unit": "file",
+  "source_sha256": "8efaa130ab6002371314a0ce8bcdc3534c60b4989a911217a83eff9287828fdb",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

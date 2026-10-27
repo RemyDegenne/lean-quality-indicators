@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0070",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked its simp-related declarations. These were the scoped simp lemmas truncQ_zero and coe_galSmul, the unattributed rfl-style lemmas (fixedAlgebra_algebraMap, resMap_apply, mem_center_iff, algHomBase_apply), and the ad hoc simp calls. I also checked the Mathlib ValuationSubring lemmas mem_nonunits_iff and valuation_lt_one_iff. I did not recommend simp for truncQ_succ, coeff_truncQ or the nonunits lemmas, because the rewrites would unfold or expand terms and have no clear canonical normal form. I found no loops or competing rules. The two findings are modest and depend on how simp would behave downstream, which I could not run. The attribute would be `scoped`, so it would apply only inside the S17Rao namespace.",
+  "findings": [
+    {
+      "declaration": "mem_center_iff (and center / center_isPrime)",
+      "start_line": 464,
+      "end_line": 466,
+      "excerpt": "r \u2208 center h \u2194 (r : L) \u2208 V.nonunits := by\n  rw [ValuationSubring.mem_nonunits_iff]; rfl",
+      "problem": "Membership in `center h` is the canonical thing to rewrite, but no simp-normal-form lemma exposes it. `mem_center_iff` is not a simp lemma, and its right-hand side `(r:L) \u2208 V.nonunits` is not in the valuation form `V.valuation r < 1` that the rest of the file works in. Every consumer therefore bridges by hand with `change V.valuation \u2026 < 1` (center_isPrime: lines 471, 474, 479, 480) or ends a `rw` chain with a bare `rfl` (resMap_eq_zero_iff, line 602\u2013603). `mem_center_iff` also does not unfold `nonunits` to a valuation inequality, so `simp` cannot reduce a goal such as `\u00ac r \u2208 center h` on its own. The `change` calls depend on definitional unfolding of the `Ideal` carrier.",
+      "proposed_change": "State the canonical membership lemma directly in valuation form, `theorem mem_center_iff' \u2026 : r \u2208 center h \u2194 V.valuation (r : L) < 1 := Iff.rfl`, and tag it `@[scoped simp]`. Keep `mem_center_iff` (nonunits form) for the places that rewrite with `mem_nonunits_smul_iff`. Then center_isPrime and resMap_eq_zero_iff can use `simp only [mem_center_iff']`/`rw` instead of `change \u2026 at` and `rfl`. This also removes the dependence on the exact shape of the `carrier` set-builder.",
+      "benefit": "Readers and `simp` get one canonical form for center membership. The repeated `change` boilerplate in center_isPrime goes away, and later proofs stop depending on definitional unfolding of `center`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ValuationSubring_exists_mem_decompositionSubgroup_forall_residue_smul_eq.lean",
+          "declaration": "center_isPrime",
+          "excerpt": "change \u00ac V.valuation ((1 : intCl (L := L) A\u2080) : L) < 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ValuationSubring_exists_mem_decompositionSubgroup_forall_residue_smul_eq.lean",
+          "declaration": "resMap_eq_zero_iff",
+          "excerpt": "rw [resMap_apply, IsLocalRing.residue_eq_zero_iff, ValuationSubring.valuation_lt_one_iff]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/Valuation/ValuationSubring.lean",
+          "declaration": "ValuationSubring.mem_nonunits_iff",
+          "excerpt": "theorem mem_nonunits_iff {x : K} : x \u2208 A.nonunits \u2194 A.valuation x < 1 :="
+        }
+      ]
+    },
+    {
+      "declaration": "fixedAlgebra_algebraMap",
+      "start_line": 399,
+      "end_line": 403,
+      "excerpt": "theorem fixedAlgebra_algebraMap (a : fixedSubring (L := L) A\u2080) :\n    algebraMap (fixedSubring (L := L) A\u2080) (intCl (L := L) A\u2080) a = a.1 := by",
+      "problem": "`fixedAlgebra` is a custom scoped `Algebra` instance built via `subtype.toAlgebra`. Its `algebraMap` is only reachable through this unattributed lemma, so `simp` cannot see through it. The lemma has the canonical shape `algebraMap \u2026 a = \u2191a` and is used by explicit `rw` at lines 408, 518 and 715, plus as a term at line 412. It is not tagged simp, and the same file elsewhere tags the analogous coercion lemma `coe_galSmul` as `@[scoped simp]`. The omission makes the interface inconsistent. Any later `simp` on goals mentioning `algebraMap (fixedSubring \u2026) (intCl \u2026)` gets stuck, and callers must remember to `rw` by name.",
+      "proposed_change": "Add `@[scoped simp]` to `fixedAlgebra_algebraMap`. It is a terminating, non-looping rewrite to a coercion, with no hypotheses. The `rw [...]` calls in fixedSMulCommClass, under_center_eq and exists_stabilizer_residue_eq could then become, or be folded into, `simp` calls.",
+      "benefit": "The `algebraMap` of the custom instance gets a single normal form, `\u2191a`, which matches how `coe_galSmul` already gives a normal form for the Galois action. Proofs about the fixed subring no longer need to name this lemma in each `rw` chain.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ValuationSubring_exists_mem_decompositionSubgroup_forall_residue_smul_eq.lean",
+          "declaration": "fixedSMulCommClass",
+          "excerpt": "rw [Algebra.smul_def, Algebra.smul_def, fixedAlgebra_algebraMap, smul_mul', a.2 g]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ValuationSubring_exists_mem_decompositionSubgroup_forall_residue_smul_eq.lean",
+          "declaration": "coe_galSmul",
+          "excerpt": "@[scoped simp] theorem coe_galSmul"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 33085,
+    "cache_read_input_tokens": 64135,
+    "output_tokens": 5366,
+    "output_tokens_details": {
+      "thinking_tokens": 2315
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33085,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2660,
+        "cache_read_input_tokens": 33201,
+        "cache_creation_input_tokens": 3897,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3897
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1924255,
+  "duration_ms": 39790,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T22:57:20",
+  "unit": "file",
+  "source_sha256": "02a3bb4451a96c90d3e1562cc9e91a5de2e01269690cb4a531db69bb85ea09a1",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

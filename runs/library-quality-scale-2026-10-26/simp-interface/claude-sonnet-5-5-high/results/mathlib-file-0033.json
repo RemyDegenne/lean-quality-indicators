@@ -1,0 +1,125 @@
+{
+  "id": "mathlib-file-0033",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I compared its simp-related declarations with GroupCompletion.lean (coe_zero, coe_eq_zero_iff, coe_add) and with Completion.lean (map_coe, extension_coe). I grepped Mathlib for uses of extensionHom_coe, mapRingHom_coe and mapRingHom_apply. I did not run Lean, so I did not check how simp behaves in practice. The suggested changes carry some uncertainty: the interaction between mapRingHom_apply and a new mapRingHom_coe depends on simp's rule ordering, so I recommend one explicit orientation. I considered coe_mul and the algebraMap_def/coe_mapRingHom shape but did not report them. coe_mul matches the norm_cast-only style of coe_add and coe_neg. For coe_mapRingHom, the Mathlib uses I found are mostly rw or simp only with explicit lemmas.",
+  "findings": [
+    {
+      "declaration": "UniformSpace.Completion.coe_one",
+      "start_line": 56,
+      "end_line": 58,
+      "excerpt": "@[norm_cast]\ntheorem coe_one : ((1 : \u03b1) : Completion \u03b1) = 1 :=\n  rfl",
+      "problem": "The sibling `coe_zero` is tagged `@[simp, norm_cast]`, and the neighbouring `coe_eq_one_iff` is `@[simp]`. `coe_one` has only `norm_cast`. So `simp` can rewrite `(x : Completion \u03b1) = 1` into `x = 1` under `T0Space`. It cannot normalise a bare `((1 : \u03b1) : Completion \u03b1)` to `1`. That `rfl` proof goes through `One (Completion \u03b1)`, which is a plain instance and not reducible, so `simp` should not close it by `rfl` alone. The simp set therefore treats `0` and `1` inconsistently. The Mathlib uses I found call `coe_one` explicitly with `rw` or `simpa [Completion.coe_one]`.",
+      "proposed_change": "Change the attribute to `@[simp, norm_cast]` on `coe_one`, matching `UniformSpace.Completion.coe_zero`. The left side `((1 : \u03b1) : Completion \u03b1)` is strictly more structured than the right side `1`, so it cannot loop. The lemma needs only `[Ring \u03b1] [UniformSpace \u03b1]`, so no side conditions are involved.",
+      "benefit": "`simp` will normalise `\u2191(1 : \u03b1)` to `1` without the `[Completion.coe_one]` hint. Proofs about `coe_mul`, `coeRingHom` and `algebraMap` into the completion also become more uniform, because `0` and `1` are handled the same way.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Algebra/GroupCompletion.lean",
+          "declaration": "UniformSpace.Completion.coe_zero",
+          "excerpt": "@[simp, norm_cast]\ntheorem UniformSpace.Completion.coe_zero [Zero \u03b1] : ((0 : \u03b1) : Completion \u03b1) = 0 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Algebra/ValuativeRel/Completion.lean",
+          "declaration": "usage of Completion.coe_one",
+          "excerpt": "simpa [hx\u2080, Completion.coe_one] using"
+        }
+      ]
+    },
+    {
+      "declaration": "UniformSpace.Completion.mapRingHom_apply / mapRingHom_coe",
+      "start_line": 155,
+      "end_line": 161,
+      "excerpt": "@[simp] theorem mapRingHom_apply {x : Completion \u03b1} : mapRingHom f hf x = .map f x := rfl",
+      "problem": "`mapRingHom_apply` is `@[simp]` and fires on every `mapRingHom f hf x`, including `x = \u2191a`. It rewrites to `Completion.map f \u2191a`. The evaluation lemma `Completion.map_coe` needs a `UniformContinuous` hypothesis, and `simp` has no obvious way to discharge it from `hf : Continuous f` for a ring hom. So `simp` should stop at `Completion.map f \u2191a` and never reach `f a`. The lemma that actually reduces this, `mapRingHom_coe`, is not simp. Callers must `rw [mapRingHom_coe]` explicitly, as they do in the NumberField and WithAbs files. Because `mapRingHom_apply` is simp, `simp [mapRingHom_coe]` also does not look like a reliable fix. The two rules compete on the same term, so the result depends on rule ordering, which I have not tested.",
+      "proposed_change": "Choose one canonical form. The simplest option is to give `mapRingHom_coe` priority over the generic rewrite, as `@[simp high] theorem mapRingHom_coe`. Then `mapRingHom f hf \u2191a` simplifies to `f a`, and `mapRingHom_apply` handles non-coerced arguments. The alternative is to drop `@[simp]` from `mapRingHom_apply` and keep `coe_mapRingHom`. The first option is better because it keeps the existing `simp [RingHom.ext_iff, mapRingHom_apply]` style proofs working.",
+      "benefit": "`simp` will evaluate `mapRingHom f hf (a : Completion \u03b1)` to `f a`. Users no longer get stuck at `Completion.map f \u2191a` with a hypothesis they cannot supply, and no longer need `rw [mapRingHom_coe]` workarounds.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Algebra/UniformRing.lean",
+          "declaration": "mapRingHom_coe",
+          "excerpt": "rw [mapRingHom_apply, map_coe (uniformContinuous_addMonoidHom_of_continuous hf)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/UniformSpace/Completion.lean",
+          "declaration": "UniformSpace.Completion.map_coe",
+          "excerpt": "theorem map_coe (hf : UniformContinuous f) (a : \u03b1) : (Completion.map f) a = f a :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/NumberField/Completion/LiesOverInstances.lean",
+          "declaration": "usage of mapRingHom_coe",
+          "excerpt": "Completion.ext <| UniformSpace.Completion.mapRingHom_coe _ x"
+        }
+      ]
+    },
+    {
+      "declaration": "UniformSpace.Completion.extensionHom_coe",
+      "start_line": 142,
+      "end_line": 145,
+      "excerpt": "theorem extensionHom_coe [CompleteSpace \u03b2] [T0Space \u03b2] (a : \u03b1) :\n    Completion.extensionHom f hf a = f a := by",
+      "problem": "This is the basic evaluation lemma for `extensionHom` on coerced elements. It is a natural simp lemma: both `f` and `hf` appear on the left side, and the side conditions are instance arguments only. It is not tagged `@[simp]`. Every use I found invokes it by name through `rw [extensionHom_coe]` or as a term, and none of them need an extra hypothesis for it. `extensionHom` is a structure-valued definition, so `simp` cannot unfold it to compute `extensionHom f hf \u2191a`. The result is an unevaluated `extensionHom f hf \u2191a` that `simp` cannot reduce.",
+      "proposed_change": "Mark it `@[simp]`. The left side `extensionHom f hf (\u2191a)` is headed by a coercion of a constant definition applied to `Completion.coe`, and the right side is smaller. So there is no loop risk. If rule competition with `mapRingHom` is a concern, the `mapRingHom` rules above can be the ones to fix, since `mapRingHom` is defined as an `extensionHom`.",
+      "benefit": "`simp` will compute `extensionHom f hf \u2191a = f a` automatically. This helps in downstream files such as Padics/WithVal and NumberField/Completion/InfinitePlace, which currently have to rewrite with the lemma explicitly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/Padics/WithVal.lean",
+          "declaration": "usage of extensionHom_coe",
+          "excerpt": "\u00b7 rw [extensionHom_coe]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/NumberField/Completion/InfinitePlace.lean",
+          "declaration": "usage of extensionHom_coe",
+          "excerpt": "extensionHom_coe _ v.isometry_embedding.continuous _"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19618,
+    "cache_read_input_tokens": 52958,
+    "output_tokens": 5810,
+    "output_tokens_details": {
+      "thinking_tokens": 1562
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19618,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3158,
+        "cache_read_input_tokens": 21844,
+        "cache_creation_input_tokens": 1787,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1787
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1418838,
+  "duration_ms": 42840,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T22:50:31",
+  "unit": "file",
+  "source_sha256": "ee4bea49200f920f11dc87074e945f7a85c802944f505929d11333450b4ddc75",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

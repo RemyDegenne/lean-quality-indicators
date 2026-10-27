@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0203",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. It has no @[simp] declarations and no competing rewrite rules, so I found no loops or bad orientations. I read the downstream files ComponentBaseChange.lean (around lines 80\u2013100, 478\u2013525, 785\u2013800), ComponentProduct.lean and ComponentFibers.lean to see how the file's definitions are used. The findings concern missing simp-facing API: the equation lemmas for the bundled defs `algebraMapOfToSpec`, `toSpecOver` and `componentFactorAlgHom`, and one inverse round-trip lemma that is private elsewhere. I have not run Lean. Whether the proposed simp lemmas fire as intended, and whether `toSpecOver_algebraMapOfToSpec` can be tagged @[simp] without instance-argument trouble, is untested. I did not recommend simp on the identities that are already stated as theorems unless downstream code shows a repeated manual rewrite.",
+  "findings": [
+    {
+      "declaration": "AlgebraicGeometry.algebraMapOfToSpec",
+      "start_line": 388,
+      "end_line": 401,
+      "excerpt": "toRingHom := ((Scheme.\u0393SpecIso (.of B)).inv \u226b f.left.appTop).hom",
+      "problem": "`algebraMapOfToSpec` is a bundled `AlgHom` with no equation lemma for its application. Every later use that needs its value on an element has to `change` the goal into the unfolded categorical expression. ComponentBaseChange.lean does this twice, at about lines 496\u2013501 and 516\u2013522, each time restating `(CommRingCat.ofHom ...) \u226b (Scheme.\u0393SpecIso ...).inv \u226b f.left.appTop`. ComponentBaseChange.lean:793 also uses `change algebraMapOfToSpec X f a = ...`. The file has no simp lemma giving the canonical normal form `algebraMapOfToSpec X f b = f.left.appTop ((Scheme.\u0393SpecIso (.of B)).inv b)`. So a simp call cannot unfold it, and the proofs depend on the definitional shape.",
+      "proposed_change": "Add a @[simp] application lemma right after the definition, for example `algebraMapOfToSpec_apply (b : B) : algebraMapOfToSpec X f b = f.left.appTop ((Scheme.\u0393SpecIso (.of B)).inv b) := rfl`. Its LHS is a coercion applied to the defined constant and its RHS contains no `algebraMapOfToSpec`, so it cannot loop. Also add a `toSpecOver_left` lemma, stated as `(toSpecOver X f).left = X.left.toSpec\u0393 \u226b Spec.map (CommRingCat.ofHom f.toRingHom)`. Then replace the `change` calls at lines 73\u201390, 409, 425 and the downstream ones with `simp` or `rw`.",
+      "benefit": "Callers get one stable normal form for these maps. The `change` blocks that restate large categorical expressions become `simp`/`rw` steps. That makes the proofs shorter and less sensitive to how the definitions are unfolded.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/ComponentBaseChange.lean",
+          "declaration": "componentBaseChange... (proof using algebraMapOfToSpec)",
+          "excerpt": "change (CommRingCat.ofHom\n            (Algebra.TensorProduct.includeLeftRingHom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/ComponentBaseChange.lean",
+          "declaration": "algebraMapOfToSpec_toSpecOver",
+          "excerpt": "change ((Scheme.\u0393SpecIso (.of A)).inv \u226b"
+        }
+      ]
+    },
+    {
+      "declaration": "AlgebraicGeometry.toSpecOver_algebraMapOfToSpec",
+      "start_line": 402,
+      "end_line": 415,
+      "excerpt": "toSpecOver X (algebraMapOfToSpec X f) = f",
+      "problem": "The two directions of the correspondence between maps `X \u27f6 specOver K B` and algebra maps `B \u2192\u2090[K] \u0393(X.left, \u22a4)` are split across files. This file states `toSpecOver (algebraMapOfToSpec f) = f` as a public theorem with no simp attribute. The inverse round-trip `algebraMapOfToSpec X (toSpecOver X f) = f` exists only as `private theorem algebraMapOfToSpec_toSpecOver` in ComponentBaseChange.lean. Downstream files therefore cannot use it, and it is not available to simp. In ComponentScheme.lean the first lemma is applied by an explicit `rw` at line 483 rather than being part of a simp set. The pair is a natural left and right inverse, and neither direction is registered.",
+      "proposed_change": "Move `algebraMapOfToSpec_toSpecOver` into this file next to `toSpecOver_algebraMapOfToSpec` and make it public. Mark both @[simp], since each LHS is a strictly smaller composite that reduces to `f` and the two lemmas do not rewrite into each other. Then drop the private copy in ComponentBaseChange.lean. If simp tagging proves problematic because of the `Over` coercions, at least make the lemma public.",
+      "benefit": "Anyone using the universal property can collapse the round trip with `simp`, in both directions, without importing a private lemma or redoing the `change`/`rw` proof. The simp-normal form of these maps becomes the original `f`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/ComponentBaseChange.lean",
+          "declaration": "algebraMapOfToSpec_toSpecOver",
+          "excerpt": "private theorem algebraMapOfToSpec_toSpecOver"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/ComponentScheme.lean",
+          "declaration": "toComponentScheme_comp_componentFactor",
+          "excerpt": "rw [hcomp, toSpecOver_algebraMapOfToSpec]"
+        }
+      ]
+    },
+    {
+      "declaration": "AlgebraicGeometry.componentFactorAlgHom",
+      "start_line": 451,
+      "end_line": 462,
+      "excerpt": "(Subalgebra.inclusion\n      (range_algebraMapOfToSpec_le_componentSubalgebra X hB f)).comp\n    (algebraMapOfToSpec X f).rangeRestrict",
+      "problem": "`componentFactorAlgHom` has no simp or equation lemma, either for `(componentFactorAlgHom X hB f b : \u0393(X.left, \u22a4)) = algebraMapOfToSpec X f b` or for the composite with `Subalgebra.val`. The proof of `toComponentScheme_comp_componentFactor` has to re-derive this by hand with an inline `have hcomp : ... := by ext x; rfl` (lines 479\u2013482). ComponentBaseChange.lean (around lines 789\u2013794) re-derives the same coercion fact through `congrArg Subtype.val hab` plus a `change`. The repeated fact is not in the file's simp interface, so each client proves it again.",
+      "proposed_change": "Add `@[simp] theorem coe_componentFactorAlgHom (b : B) : (componentFactorAlgHom X hB f b : \u0393(X.left, \u22a4)) = algebraMapOfToSpec X f b := rfl`. Also add `val_comp_componentFactorAlgHom : (componentSubalgebra X).val.comp (componentFactorAlgHom X hB f) = algebraMapOfToSpec X f`. Use them in `toComponentScheme_comp_componentFactor` instead of the local `hcomp`. The first lemma's RHS has no `componentFactorAlgHom`, so it cannot loop.",
+      "benefit": "The factorization is exposed by a canonical rewrite, which replaces the ad hoc `ext x; rfl` proof. Later uses, such as the injectivity argument in ComponentBaseChange.lean, can then reduce `componentFactorAlgHom` directly to `algebraMapOfToSpec`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/ComponentScheme.lean",
+          "declaration": "toComponentScheme_comp_componentFactor",
+          "excerpt": "(componentFactorAlgHom X hB f) = algebraMapOfToSpec X f := by\n    ext x\n    rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/ComponentBaseChange.lean",
+          "declaration": "injectivity of componentFactorAlgHom (line ~793)",
+          "excerpt": "change algebraMapOfToSpec X f a = algebraMapOfToSpec X f b\n    exact congrArg Subtype.val hab"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 19873,
+    "cache_read_input_tokens": 63247,
+    "output_tokens": 5602,
+    "output_tokens_details": {
+      "thinking_tokens": 1229
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19873,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3838,
+        "cache_read_input_tokens": 22502,
+        "cache_creation_input_tokens": 1384,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1384
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1418527,
+  "duration_ms": 38872,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:23:01",
+  "unit": "file",
+  "source_sha256": "0c3e06fe85e892f2e4ae5b64d1ce2f9467f03157ac2b369941b5664dac89b065",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

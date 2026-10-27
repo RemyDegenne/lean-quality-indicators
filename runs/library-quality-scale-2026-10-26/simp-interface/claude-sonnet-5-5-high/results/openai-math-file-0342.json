@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0342",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions of radialMassDensity, radialMassFlux, radialScalarForm and radialScalarVirial. I grepped the Profile directory for other uses. The file has no simp attributes and no loop risk. The only simp-interface problem I found is that these definitions are unfolded by hand instead of through canonical lemmas. I did not run Lean. I do not know whether Mathlib's `positivity` would close a goal that is stated with `radialMassDensity` still folded. Making radialMassDensity_nonneg a `positivity` extension is therefore a suggestion, not something I tested. I did not recommend making radialScalarForm_diag a simp lemma, because it expands the general bilinear form into a diagonal form and would interact with radialScalarForm_symm. radialSpectralPressure_nonneg exists in RadialSpectralPressureCalculus.lean, which is downstream of this file, so the inline proof here may be unavoidable without moving the definition.",
+  "findings": [
+    {
+      "declaration": "radialScalarForm_nonneg (and radialDrift_integral_lower, hM)",
+      "start_line": 24,
+      "end_line": 36,
+      "excerpt": "    unfold radialMassDensity\n    positivity",
+      "problem": "There is no canonical nonnegativity lemma for radialMassDensity, which is defined as r^11*\u2016radialMatchedProfile n z r\u2016^2. Every client proves 0 \u2264 radialMassDensity n z r by unfolding the definition and calling positivity. This file does it three times, in radialScalarForm_nonneg (twice) and in the hM step of radialDrift_integral_lower. The same pattern appears in at least RadialEnergyMonotone, RadialZeroEnergyDecay, RadialEnergyZero, RadialCoefficientTail and the RadialDilation* files, some with dsimp only. Unfolding the definition at each use leaks its implementation into every proof. If the definition changes, all of these sites break. The same unfold-then-positivity block also appears in several sibling files.",
+      "proposed_change": "In RadialMassDivergence.lean, next to the definition, add `theorem radialMassDensity_nonneg (n) (z) {r : \u211d} (hr : 0 \u2264 r) : 0 \u2264 radialMassDensity n z r := by unfold radialMassDensity; positivity`. Use it here: `exact mul_nonneg (radialMassDensity_nonneg n z hr0) (sq_nonneg _)`, and `by have := radialMassDensity_nonneg n z hr0; positivity` where q r is also involved. If hypotheses of the form 0 \u2264 r are common, also register a `positivity` extension for radialMassDensity. Alternatively tag the lemma `@[simp]` only if the bare form is used with simp. Keep the unfold in one place.",
+      "benefit": "This gives one canonical nonnegativity fact that both simp and positivity-style tactics can use without exposing the definition. It removes the repeated unfold boilerplate and makes later changes to radialMassDensity local.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialMassDivergence.lean",
+          "declaration": "radialMassDensity",
+          "excerpt": "r^11*\u2016radialMatchedProfile n z r\u2016^2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialEnergyMonotone.lean",
+          "declaration": "radialScalarForm_mono (same unfold + positivity pattern)",
+          "excerpt": "    unfold radialMassDensity\n    positivity"
+        }
+      ]
+    },
+    {
+      "declaration": "radialMatched_spectral_coercivity (third bullet)",
+      "start_line": 108,
+      "end_line": 112,
+      "excerpt": "    delta radialSpectralPressure\n    simpa only [radialMassDensity,radialMassFlux,mul_assoc] using h.trans_eq (add_comm _ _)",
+      "problem": "The proof matches a hypothesis from radialMatched_pressure_energy_absorption to the goal by unfolding the definitions radialSpectralPressure (with `delta`), radialMassDensity and radialMassFlux, and then relying on `mul_assoc` and `add_comm`. There are no lemmas stating radialMassFlux = radialMassDensity * velocity or the shape of the pressure, so every client that mixes these quantities has to unfold to the raw r^11*\u2016\u2026\u2016^2 level and normalize products by hand. The same `simpa only [radialMassDensity,radialMassFlux,mul_assoc]` recipe is copied in RadialCoercivityBoundary.lean. Full unfolding of radialMassDensity inside a simp set is fragile: the result depends on the exact association of products and on the form of the definition. `delta` is used instead of a rewrite lemma such as `radialSpectralPressure` unfolding via simp/equation lemma.",
+      "proposed_change": "Add `@[simp]`-free but canonical unfolding lemmas, for example `radialMassFlux_def : radialMassFlux n z r = radialMassDensity n z r * radialVelocity (6-2*radialShootingA n) (fun t => \u2016radialMatchedProfile n z t\u2016) r` (stated as `rfl`), and `radialSpectralPressure_apply`. Alternatively restate radialMatched_pressure_energy_absorption in terms of radialScalarForm with radialSpectralPressure, so that the glue step becomes `rw [radialScalarForm_diag]; exact h.trans_eq (add_comm _ _)` with no full unfolding of radialMassDensity. Replace `delta` with `unfold` or `simp only [radialSpectralPressure]`.",
+      "benefit": "Clients no longer expand the mass density to a raw power-and-norm expression and renormalize with mul_assoc. The glue step between the absorption lemma and the coercivity lemma becomes robust, and the duplicated simpa recipe in RadialCoercivityBoundary.lean can use the same lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialCoercivityBoundary.lean",
+          "declaration": "radialMatched_spectral_coercivity_boundary (same recipe)",
+          "excerpt": "simpa only [radialMassDensity,radialMassFlux,mul_assoc] using he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialMassDivergence.lean",
+          "declaration": "radialMassFlux",
+          "excerpt": "radialMassDensity n z r*radialVelocity (6-2*radialShootingA n)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 18633,
+    "cache_read_input_tokens": 148438,
+    "output_tokens": 4855,
+    "output_tokens_details": {
+      "thinking_tokens": 982
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18633,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2493,
+        "cache_read_input_tokens": 28925,
+        "cache_creation_input_tokens": 2090,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2090
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.13795380000000002,
+  "duration_ms": 40166,
+  "turns": 9,
+  "attempts": 2,
+  "judged": "2026-10-27T01:50:53",
+  "unit": "file",
+  "source_sha256": "65f4c617dcbf487ac244c7fa05a3dc901fcd454290471361630488b260e69afd",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

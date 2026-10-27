@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0211",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read Driver.lean (the step_* simp lemmas), RawSolutions.lean (Size.fst, Size.snd and related lemmas), and the Preparation.lean uses of DetDriver.advance. Size.pair is a correctly oriented simp lemma, and the Size.* inequality lemmas are rightly not simp. I found no rewrite loop. The two findings concern the `let` in step_down/step_up and the opaque `advance`. I did not run Lean, so I cannot confirm that the proposed replacements compile. The effect on the simp-normal form of Driver.lean's `step_down`/`step_up` also needs checking against its other users.",
+  "findings": [
+    {
+      "declaration": "down_pass / up_pass (use sites of the simp lemmas step_down and step_up)",
+      "start_line": 48,
+      "end_line": 51,
+      "excerpt": "change (if different (us,vs) then _ else _)=_",
+      "problem": "The simp lemmas `step_down` and `step_up` (Driver.lean) put a `let us := down (x,vs,ls)` in their right-hand side. After `rw [step_down]` the goal is a `let` expression, so the file must run `change (if different (us,vs) then _ else _)=_` before it can rewrite with `hc` and `ite_eq_*`. The same four-line workaround appears four times (lines 50, 66, 103, 119). A `let` in a simp lemma's RHS is an awkward normal form: simp zeta-reduces it, but `rw` does not, and the `change` is needed only to avoid unfolding by hand.",
+      "proposed_change": "Restate `step_down` and `step_up` in Driver.lean without the `let`, for example `if different (down (x,vs,ls),vs) then call (child false (x,down (x,vs,ls))) (frame 0 x ds (down (x,vs,ls))::ks) else ...`. Alternatively, keep the lemmas and use `simp only [step_down]` here. Then drop the four `change (if different ...)` lines and rewrite directly with `hc`, since `us` is a `let` that unfolds definitionally.",
+      "benefit": "The simp/rw interface for `step` gives a directly usable `ite` normal form, which removes the repeated `change` boilerplate. It also means the proofs no longer depend on the exact shape of the `let` in the lemma statement.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/Driver.lean",
+          "declaration": "step_down",
+          "excerpt": "let us := down (x,vs,ls)\n      if different (us,vs) then call (child false (x,us)) (frame 0 x ds us::ks)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/Driver.lean",
+          "declaration": "step_up",
+          "excerpt": "let us := up (x,vs,ls)\n      if different (us,vs) then call (child true (x,us)) (frame 1 x ds us::ks)"
+        }
+      ]
+    },
+    {
+      "declaration": "advance",
+      "start_line": 8,
+      "end_line": 8,
+      "excerpt": "noncomputable def advance (ar : RawBasic.Arena) (s : State) : State := step (ar,s)",
+      "problem": "`advance` is a plain def with no unfolding lemma such as `advance ar s = step (ar,s)`, although `tick_eval` and `run_eval` are @[simp] and produce `advance e.1 e.2` and `(advance e.1)^[n] e.2`. All the `step_*` simp lemmas stop at `advance`. Users therefore unfold it by hand with `simpa only [..., advance]` (line 244), `change`, or `rfl`. The proof of `hr` in Preparation.lean (`succ j ih => rw [Function.iterate_succ_apply',ih]; rfl`) and its `change ((DetDriver.advance ...)^[N] ...)` lines are examples. No `Exec` lemma is available to simp either: `Exec.one` forces the `have heq : step ... ; simpa only [heq] using Exec.one ...` pattern, repeated at lines 52, 68, 105 and 121.",
+      "proposed_change": "Add `@[simp] theorem advance_apply (ar s) : advance ar s = step (ar,s) := rfl`, so that `advance` normalizes to `step` and the existing `step_call`, `step_down`, `step_up` and `step_ret_nil` rules fire. Alternatively, make it `@[reducible]`. For `tick_eval`/`run_eval`, keep `advance` as an opaque iterate and add `advance_ret_nil`, a lemma that `advance` fixes `ret ls []`, so the `hr` induction closes with `simp`. Add a lemma `Exec.of_step (h : step (ar,s)=t) : Exec ar s t 1` so the `simpa only [heq] using Exec.one ..` pattern collapses to `Exec.of_step heq`.",
+      "benefit": "Execution-trace proofs, both here and in Preparation.lean, can be closed by simp or one-line rewrites. This replaces the repeated manual unfolding of `advance` and the four-line `heq`/`simpa` pattern.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/DriverExecution.lean",
+          "declaration": "iterate_small",
+          "excerpt": "simpa only [Nat.mul_succ,Nat.add_assoc,advance] using hs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/Preparation.lean",
+          "declaration": "value_game",
+          "excerpt": "| succ j ih => rw [Function.iterate_succ_apply',ih]; rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/MeanPayoff/Driver.lean",
+          "declaration": "step_ret_nil",
+          "excerpt": "step (ar,ret ls [])=ret ls []"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 35423,
+    "cache_read_input_tokens": 159077,
+    "output_tokens": 5718,
+    "output_tokens_details": {
+      "thinking_tokens": 2156
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35423,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2450,
+        "cache_read_input_tokens": 38589,
+        "cache_creation_input_tokens": 847,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 847
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2148037,
+  "duration_ms": 45027,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:36",
+  "unit": "file",
+  "source_sha256": "d21bff1b5e07e07c5c8583732f2a49896f15468287183124e52f10ee5fff48ae",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

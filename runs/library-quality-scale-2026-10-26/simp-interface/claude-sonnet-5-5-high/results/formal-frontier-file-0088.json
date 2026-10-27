@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0088",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and the downstream NonUnitalQuasiregular.lean/CongruenceSubgroup.lean uses of unitizationMatrix. The existing simp attributes (positivePow_zero/succ, the rfl-valued `_val`/`_inv` lemmas) look orientation-safe and non-looping. The findings are about missing simp coverage for the `unitizationMatrix` interface. I did not run Lean, so I don't claim any simp failure was observed. The effect of the proposed lemmas on specific simp calls is inferred from reading, not tested.",
+  "findings": [
+    {
+      "declaration": "Matrix.GeneralLinearGroup.unitizationMatrix",
+      "start_line": 135,
+      "end_line": 136,
+      "excerpt": "def unitizationMatrix (x : Matrix n n I) : Matrix n n (Unitization \u2124 I) :=\n  x.map fun a \u21a6 (a : Unitization \u2124 I)",
+      "problem": "`unitizationMatrix` is an ordinary (irreducible-to-simp) def with only a `_zero` simp lemma. It has no entrywise simp lemma `unitizationMatrix x i j = (x i j : Unitization \u2124 I)`. Every proof that needs the entries has to unfold the definition by name in the simp set. This happens at line 145, at line 208, and in the sibling file at NonUnitalQuasiregular.lean lines 47 and 59. Unfolding exposes `Matrix.map`/lambda forms instead of the canonical `\u2191(x i j)` form. The simp interface is therefore incomplete, and unfolding is the only entry point.",
+      "proposed_change": "Add `@[simp] theorem unitizationMatrix_apply (x : Matrix n n I) (i j : n) : unitizationMatrix x i j = (x i j : Unitization \u2124 I) := rfl` (with the appropriate `omit`s). Then replace `simp [..., unitizationMatrix, ...]` by `simp [...]` in the proofs at lines 145 and 208 and in NonUnitalQuasiregular.lean. The rewrite direction is terminating and has the entrywise coercion as its normal form.",
+      "benefit": "Callers get a stable normal form (`\u2191(x i j)`) without unfolding the def. Proofs no longer name `unitizationMatrix` in simp sets, and the definition can later change representation without breaking those proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/NonUnitalQuasiregular.lean",
+          "declaration": "matrixFst_one_add_unitizationMatrix",
+          "excerpt": "simp [matrixFst, unitizationMatrix, Matrix.one_apply, h]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/NonUnitalQuasiregular.lean",
+          "declaration": "matrixSnd_one_add_unitizationMatrix",
+          "excerpt": "simp [matrixSnd, unitizationMatrix, h]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/NonUnitalNilpotent.lean",
+          "declaration": "Matrix.GeneralLinearGroup.nilpotentMatrixElement",
+          "excerpt": "simp [nonUnitalAugmentation, unitizationMatrix, h]"
+        }
+      ]
+    },
+    {
+      "declaration": "Matrix.GeneralLinearGroup.unitizationMatrix_mul / unitizationMatrix_positivePow",
+      "start_line": 149,
+      "end_line": 150,
+      "excerpt": "theorem unitizationMatrix_mul (x y : Matrix n n I) :\n    unitizationMatrix (x * y) = unitizationMatrix x * unitizationMatrix y := by",
+      "problem": "The simp coverage of `unitizationMatrix` is inconsistent. `unitizationMatrix_zero` is `@[simp]`, but the structural lemma `unitizationMatrix_mul` is not, nor is `unitizationMatrix_positivePow` (line 165). The result is that goals like `unitizationMatrix (x * y)` or `unitizationMatrix (positivePow x k)` are not normalized by `simp`. The file instead rewrites them explicitly, for example `rw [NonUnital.positivePow_succ, unitizationMatrix_mul]` at line 175 and `rw [\u2190 unitizationMatrix_positivePow, hk, unitizationMatrix_zero]` at line 187. Both rewrites push the map inward towards `unitizationMatrix x`, so they cannot loop with each other. The only caveat is that `_positivePow` produces `^ (k+1)`.",
+      "proposed_change": "Mark `unitizationMatrix_mul` and `unitizationMatrix_positivePow` as `@[simp]`, in the push-the-map-inside direction. They do not conflict with `positivePow_succ`, since both normalize toward a product of `unitizationMatrix x`. Alternatively, bundle the map as a `NonUnitalRingHom`-style hom and let `map_mul` do the work. Then simplify the calc in `unitizationMatrix_positivePow` to `simp [pow_succ, ih]`.",
+      "benefit": "The behavior of `unitizationMatrix` is predictable under `simp`. Proofs such as `isNilpotent_unitizationMatrix` and the induction step can be shortened. Clients of the public API get the zero, mul and power rules from one simp set.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/NonUnitalNilpotent.lean",
+          "declaration": "Matrix.GeneralLinearGroup.isNilpotent_unitizationMatrix",
+          "excerpt": "rw [\u2190 unitizationMatrix_positivePow, hk, unitizationMatrix_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/NonUnitalNilpotent.lean",
+          "declaration": "Matrix.GeneralLinearGroup.unitizationMatrix_zero",
+          "excerpt": "@[simp]\ntheorem unitizationMatrix_zero :"
+        }
+      ]
+    },
+    {
+      "declaration": "NonUnital.positivePow",
+      "start_line": 33,
+      "end_line": 35,
+      "excerpt": "def positivePow [Mul A] (x : A) : \u2115 \u2192 A :=\n  Nat.rec x (fun _ y => y * x)",
+      "problem": "`positivePow` has simp lemmas only for its own recursion (`_zero`, `_succ`). It has no bridge to the ordinary power in a monoid, `positivePow x k = x ^ (k+1)`. The file re-proves this bridge by hand for matrices in `unitizationMatrix_positivePow` (an induction with a calc). When the base is a unital ring, the file's own notions (`NonUnital.IsNilpotent`) therefore never simp to Mathlib's `x ^ n`/`IsNilpotent`, and each unital use needs a manual induction.",
+      "proposed_change": "Add `theorem positivePow_eq_pow_succ [Monoid A] (x : A) (k : \u2115) : positivePow x k = x ^ (k + 1)` (proved by induction using `pow_succ`), and make it `@[simp]`. The direction is terminating, because the target uses `Monoid.npow`, which has no rule back to `positivePow`. Optionally add `NonUnital.isNilpotent_iff` for `MonoidWithZero`, relating it to `IsNilpotent`. Then `unitizationMatrix_positivePow` follows from this lemma plus a homomorphism-style `map_pow` argument.",
+      "benefit": "A canonical normal form into Mathlib's `x ^ (k+1)` in unital settings. It removes duplicated induction and lets unitized-matrix goals be closed by `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/NonUnitalNilpotent.lean",
+          "declaration": "Matrix.GeneralLinearGroup.unitizationMatrix_positivePow",
+          "excerpt": "(pow_succ (unitizationMatrix x) (k + 1)).symm"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 16122,
+    "cache_read_input_tokens": 45237,
+    "output_tokens": 6126,
+    "output_tokens_details": {
+      "thinking_tokens": 2246
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16122,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3279,
+        "cache_read_input_tokens": 16630,
+        "cache_creation_input_tokens": 3505,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3505
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1302877,
+  "duration_ms": 43536,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:00:23",
+  "unit": "file",
+  "source_sha256": "c604be38ffe49c857cfb2d99b87ed776d92d159ebd66e1e2adff36ce3ffe1d6c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

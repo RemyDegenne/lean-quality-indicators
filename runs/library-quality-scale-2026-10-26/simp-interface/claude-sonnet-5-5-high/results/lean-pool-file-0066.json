@@ -1,0 +1,141 @@
+{
+  "id": "lean-pool-file-0066",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and its main downstream uses in OS2Invariance, OS4MGF and OS4Clustering. I also checked Mathlib's LinearIsometry simp lemmas (coe_one, coe_comp, id_comp). I did not run Lean. I did not report the `comp_apply`/`one_apply` duplication of Mathlib lemmas, because I found no concrete simp conflict. The findings below are about missing or badly shaped simp lemmas, and I could not test whether they would make the downstream proofs shorter. I assumed `simp` does not match structure literals like `\u27e81,0\u27e9` against `1 : E`, which is true syntactically but not checked against instance reducibility.",
+  "findings": [
+    {
+      "declaration": "QFT.act_one / QFT.act_mul / QFT.act_inv",
+      "start_line": 59,
+      "end_line": 68,
+      "excerpt": "@[simp] lemma act_one (x : SpaceTime) : act \u27e81,0\u27e9 x = x := by simp [act]",
+      "problem": "The three simp lemmas state their left-hand sides with raw structure literals (`\u27e81,0\u27e9`, `\u27e8g.R.comp h.R, \u2026\u27e9`, `\u27e8g.R, -g.R g.t\u27e9`), not with the group operations `(1 : E)`, `g * h` and `g\u207b\u00b9`. The `E` group structure is only defined later, so after that point `act 1 x`, `act (g*h) x` and `act g\u207b\u00b9 x` are the forms users write, and none of these lemmas matches them syntactically. `act_one` therefore does not fire on `act (1 : E) x`. `act_mul` is shadowed by `act_mul_general`. Its right-hand side, `g.R (h.R x + h.t) + g.t`, unfolds `act`, while `act_mul_general` rewrites to the folded `act g (act h x)`, so the two rules disagree about the normal form. `act_inv` is not an inverse law at all: its right-hand side is `g.R (x - g.t)`, and the real inverse uses `LinearIsometry.inv`. Downstream proofs about `act \u27e81, a\u27e9 x` must unfold `act` by hand and cannot use these lemmas.",
+      "proposed_change": "State `act_one` as `act (1 : E) x = x` and move it after the `One E` instance. Delete `act_mul` and `act_inv`, or keep them as non-simp lemmas with accurate names. Add `@[simp] act_mk : act \u27e8R, t\u27e9 x = R x + t` (or make `act` unfold to this form) as the single canonical rule for constructor-form motions. Group the remaining action lemmas (`act_mul_general`, `act_inv_general`) with `act_one`.",
+      "benefit": "There is one folded normal form (`act (g*h)`, `act 1`, `act g\u207b\u00b9`) and one rule that unfolds constructor-form motions. Lemmas like `act_one` actually fire on the terms users write, and users no longer need `simp only [act, \u2026]` workarounds.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/Spacetime/Euclidean.lean",
+          "declaration": "QFT.act_mul_general",
+          "excerpt": "act (g * h) x = act g (act h x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Clustering.lean",
+          "declaration": "h_transl_eq in the clustering proof",
+          "excerpt": "simp only [euclideanAction, SchwartzMap.compCLM_apply,\n               Function.comp_apply, euclideanPullback, act]"
+        }
+      ]
+    },
+    {
+      "declaration": "QFT.act_inv_general",
+      "start_line": 186,
+      "end_line": 190,
+      "excerpt": "@[simp] lemma act_inv_general (g : E) (x : SpaceTime) :\n    act g\u207b\u00b9 (act g x) = x := by",
+      "problem": "Only the left-inverse law is a simp lemma. The companion `act g (act g\u207b\u00b9 x) = x` is missing. The target is meant to give an action of `E`, so both cancellation forms are needed for simp to normalize `act g (act g\u207b\u00b9 x)`. Downstream code derives the missing one by instantiating `act_inv_general` at `g\u207b\u00b9` and then simplifying with `inv_inv`. It does this twice, in `act_euclidean_pullback` and in the `right_inv` field of `actEquiv`.",
+      "proposed_change": "Add `@[simp] lemma act_act_inv (g : E) (x : SpaceTime) : act g (act g\u207b\u00b9 x) = x` immediately after `act_inv_general`, proved from `act_inv_general g\u207b\u00b9 x` and `inv_inv`. The downstream `simpa \u2026 using act_inv_general (g := g\u207b\u00b9) x` workarounds can then use it directly.",
+      "benefit": "Terms of the form `act g (act g\u207b\u00b9 x)` simplify automatically, and `actEquiv` and `act_euclidean_pullback` stop re-deriving the identity.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS2Invariance.lean",
+          "declaration": "QFT.act_euclidean_pullback",
+          "excerpt": "simpa [euclidean_pullback_eq_inv_act] using act_inv_general (g := g\u207b\u00b9) x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS2Invariance.lean",
+          "declaration": "QFT.actEquiv",
+          "excerpt": "right_inv x := by simpa using act_inv_general (g := g\u207b\u00b9) x"
+        }
+      ]
+    },
+    {
+      "declaration": "QFT.euclideanAction (also euclideanActionReal, euclideanActionCLM)",
+      "start_line": 297,
+      "end_line": 300,
+      "excerpt": "noncomputable def euclideanAction (g : E) (f : TestFunction\u2102) : TestFunction\u2102 :=\n  SchwartzMap.compCLM (\ud835\udd5c := \u2102)",
+      "problem": "The action is defined through `SchwartzMap.compCLM`, but the file gives no simp lemma for the pointwise value `euclideanAction g f x`. That is the interface the docstring describes: `(g \u2022 f)(x) = f(g\u207b\u00b9 \u2022 x)`. `euclideanActionReal` and `euclideanActionCLM` have no evaluation lemma either. As a result, every downstream use must `unfold euclideanAction` or `simp only [euclideanAction, SchwartzMap.compCLM_apply, Function.comp_apply, euclideanPullback, act]`. The evaluation lemma `euclidean_action_apply` does exist, but it is in OS2Invariance and is not tagged `@[simp]`. Its proof uses `unfold` followed by `simp_all`.",
+      "proposed_change": "Add next to the definitions: `@[simp] lemma euclideanAction_apply (g : E) (f : TestFunction\u2102) (x : SpaceTime) : euclideanAction g f x = f (act g\u207b\u00b9 x)`, proved by `rfl` or by `SchwartzMap.compCLM_apply`. Add analogous `euclideanActionReal_apply` and `euclideanActionCLM_apply` lemmas. Mark `euclideanPullback` `@[reducible]`, or add `euclideanPullback_apply : euclideanPullback g x = act g\u207b\u00b9 x`, so the right-hand side lands in the same `act` normal form as `act_inv_general`.",
+      "benefit": "`simp` can evaluate and cancel Euclidean actions on test functions, for example by combining with `act_inv_general`. Users no longer need to unfold the definitions and the `compCLM` machinery by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS2Invariance.lean",
+          "declaration": "QFT.euclidean_action_apply",
+          "excerpt": "euclideanAction g f x = f (euclideanPullback g x) := by\n  unfold euclideanAction\n  simp_all"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Clustering.lean",
+          "declaration": "h_transl_eq in the clustering proof",
+          "excerpt": "simp only [euclideanAction, SchwartzMap.compCLM_apply,"
+        }
+      ]
+    },
+    {
+      "declaration": "QFT.LinearIsometry.inv_apply / comp_inv",
+      "start_line": 84,
+      "end_line": 107,
+      "excerpt": "@[simp] lemma inv_apply (g : O4) (x : SpaceTime) :\n    (LinearIsometry.inv g) (g x) = x := by",
+      "problem": "The simp interface for the custom `LinearIsometry.inv` is incomplete. Only `inv g (g x) = x` is provided. The other cancellation, `g (inv g x) = x`, is missing. `comp_inv` has to prove it inline through a `have` on `toLinearIsometryEquiv` and a `congrArg`. Also missing is `inv 1 = 1`, which would make `E`'s `1\u207b\u00b9` and `(1 : O4)` collapse. Downstream, OS4Clustering proves this separately as `LinearIsometry_inv_one`, and OS4MGF unfolds `LinearIsometry.inv` and `toLinearIsometryEquiv` to get it. Both indicate that `inv_one` and the other direction should be simp lemmas here.",
+      "proposed_change": "Add `@[simp] lemma apply_inv (g : O4) (x : SpaceTime) : g (LinearIsometry.inv g x) = x` using `LinearIsometryEquiv.apply_symm_apply`. Add `@[simp] lemma inv_one : LinearIsometry.inv (1 : O4) = 1`, proved from `comp_inv` (as in OS4Clustering). Then simplify `comp_inv` to use `apply_inv`, and delete `LinearIsometry_inv_one` and the manual unfolding in OS4MGF.",
+      "benefit": "Simp can fully cancel `R (inv R x)` and normalize `inv 1`. The proof of `comp_inv` becomes symmetric with `inv_comp`, and the downstream workarounds go away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Clustering.lean",
+          "declaration": "LinearIsometry_inv_one",
+          "excerpt": "lemma LinearIsometry_inv_one : LinearIsometry.inv (1 : O4) = 1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4MGF.lean",
+          "declaration": "QFT.euclidean_action_timeTranslationE",
+          "excerpt": "simp only [QFT.inv_R, QFT.inv_t, QFT.LinearIsometry.inv]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 17732,
+    "cache_read_input_tokens": 34442,
+    "output_tokens": 8080,
+    "output_tokens_details": {
+      "thinking_tokens": 2985
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17732,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5306,
+        "cache_read_input_tokens": 18139,
+        "cache_creation_input_tokens": 3606,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3606
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1551842,
+  "duration_ms": 58786,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T22:57:01",
+  "unit": "file",
+  "source_sha256": "3eb6e9829b718d28928eea2ef42d674f1256cbf241ff5e856e5686566dd352d5",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

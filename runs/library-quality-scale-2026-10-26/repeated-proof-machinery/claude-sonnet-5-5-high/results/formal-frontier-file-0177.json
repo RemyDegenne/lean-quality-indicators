@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0177",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I looked for repeated non-trivial proofs and checked the related uses of the private lemmas. I did not run Lean, so none of the proposed replacements has been compiled. One uncertainty concerns the module system. The public `@[expose]` defs `globalSectionsBaseChangeEquiv` and `baseChangeTowerIso` would reference the private lemmas `globalSectionsBaseChange_isPushout` and `baseChangeTower_isPullback`. The reference sits only in proof terms, so it may be fine as it is. If it is not, the fix is to drop `private` from those two lemmas. The two `*_eq_oldConstruction` `rfl` lemmas show the author already knows the lemma-based and inlined versions are definitionally equal.",
+  "findings": [
+    {
+      "declaration": "globalSectionsBaseChangeEquiv (inlined copy of globalSectionsBaseChange_isPushout)",
+      "start_line": 134,
+      "end_line": 175,
+      "excerpt": "    let H : IsPullback (pullback.fst p s) (pullback.snd p s) p s :=\n      IsPullback.of_hasPullback p s",
+      "problem": "The roughly 40-line proof that the global-section square is a pushout appears twice, line for line. The first copy is `globalSectionsBaseChange_isPushout` (lines 74-112). The second is the `let h : IsPushout ...` block inside `globalSectionsBaseChangeEquiv`. Both run the same steps: flatness of `Spec K \u2192 Spec k` from a field, the `pushoutSection` isomorphism for the qcqs flat base change, `isIso_pushoutSection_iff`, then `of_iso` with `\u0393SpecIso`. Later declarations (`_tmul_one`, `_one_tmul`) call the lemma, while the definition they are about re-inlines it. `globalSectionsBaseChangeEquiv_eq_oldConstruction` is proved by `rfl`, so the two are already definitionally equal. Any fix to the pushout argument has to be made twice, and the definition is about 40 lines longer than it needs to be.",
+      "proposed_change": "In `globalSectionsBaseChangeEquiv`, replace the whole `let h : IsPushout ... := by ...` block with `let h := globalSectionsBaseChange_isPushout k K p`. Both places have the same hypotheses `[CompactSpace X] [QuasiSeparatedSpace X]` and the same `letI := p.globalSectionsAlgebra k`, so no new hypotheses are needed. Then delete `globalSectionsBaseChangeEquiv_eq_oldConstruction`, since the two sides coincide syntactically. If an `@[expose]` def cannot mention a private lemma, drop `private` from `globalSectionsBaseChange_isPushout`.",
+      "benefit": "The pushout argument exists once, so a reader sees what the equivalence rests on without wading through a duplicate. The definition shrinks to the tensor-product identification and the `commutes'` field. All three uses (`Equiv`, `_tmul_one`, `_one_tmul`) share one source of `h`. The `rfl` lemma, which only exists to compare the two copies, goes away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/GlobalSectionsBaseChange.lean",
+          "declaration": "globalSectionsBaseChange_isPushout",
+          "excerpt": "    apply h\u2080.of_iso (\u0393SpecIso (.of k)) (Iso.refl _) (\u0393SpecIso (.of K)) (Iso.refl _)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/GlobalSectionsBaseChange.lean",
+          "declaration": "globalSectionsBaseChangeEquiv_tmul_one",
+          "excerpt": "  let h := globalSectionsBaseChange_isPushout k K p"
+        }
+      ]
+    },
+    {
+      "declaration": "baseChangeTowerIso (inlined copy of baseChangeTower_isPullback)",
+      "start_line": 424,
+      "end_line": 447,
+      "excerpt": "    have h := (IsPullback.of_hasPullback (pullback.snd p sK) sL).paste_horiz\n      (IsPullback.of_hasPullback p sK)",
+      "problem": "`baseChangeTower_isPullback` (lines 387-410) proves the composite pullback square. It pastes the two pullbacks and rewrites with `sL \u226b sK = Spec.map (algebraMap k L)`, using `IsScalarTower.algebraMap_apply`. `baseChangeTowerIso` then repeats the same proof as a `show ... from by` term, restating the whole statement of the square. Later lemmas use the private lemma, and `baseChangeTowerIso_eq_oldConstruction` is again proved by `rfl`. The result is two copies of the proof and a duplicated, very long type ascription.",
+      "proposed_change": "Define `baseChangeTowerIso` as `(baseChangeTower_isPullback k K L p).isoIsPullback X (Spec (.of L)) (IsPullback.of_hasPullback p (Spec.map (CommRingCat.ofHom (algebraMap k L))))`. This is exactly the right-hand side of `baseChangeTowerIso_eq_oldConstruction`. Delete the `show ... from by ...` block and that `rfl` lemma. If the module system objects, make `baseChangeTower_isPullback` non-private.",
+      "benefit": "The definition drops from about 35 lines to a few. The one proof of the pasted square is shared by the definition and by `baseChangeTowerIso_hom_fst` and `baseChangeTowerIso_hom_snd`. The restated square type is no longer written out twice.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/GlobalSectionsBaseChange.lean",
+          "declaration": "baseChangeTower_isPullback",
+          "excerpt": "  have hs : sL \u226b sK = Spec.map (CommRingCat.ofHom (algebraMap k L)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/GlobalSectionsBaseChange.lean",
+          "declaration": "baseChangeTowerIso_hom_fst",
+          "excerpt": "  exact (baseChangeTower_isPullback k K L p).isoIsPullback_hom_fst _ _"
+        }
+      ]
+    },
+    {
+      "declaration": "globalSectionsBaseChangeIdentityEquiv and globalSectionsBaseChangeTowerEquiv",
+      "start_line": 329,
+      "end_line": 352,
+      "excerpt": "        congr 1\n        rw [\u2190 RingHom.comp_assoc, \u2190 CommRingCat.hom_comp, \u2190 Hom.comp_appTop,\n          baseChangeIdentityIso_inv_snd] }",
+      "problem": "These two definitions (identity at 329-352, tower at 523-550) build the same thing from an isomorphism of schemes. They take `e.inv.app \u22a4` as a ring equivalence via `asIso ... commRingCatIsoToRingEquiv`. They then prove `commutes'` by the same chain: unfold to `appTop.hom.comp (\u0393SpecIso).inv.hom`, `congr 1`, then `RingHom.comp_assoc`, `\u2190 CommRingCat.hom_comp`, `\u2190 Hom.comp_appTop`, and the lemma `e.inv \u226b snd = ...`. Each also repeats the `letI : IsIso e.inv` and `IsIso (e.inv.app \u22a4)` boilerplate. The only mathematical input is `e.inv \u226b a = b` for the structure maps to `Spec K`, so the scaffolding is copied twice.",
+      "proposed_change": "Add one helper. For `a : Y \u27f6 Spec (.of K)`, `b : Z \u27f6 Spec (.of K)`, `f : Z \u27f6 Y` with `[IsIso f]` and `h : f \u226b a = b`, define `Hom.globalSectionsAlgEquivOfComp` with type `letI := a.globalSectionsAlgebra K; letI := b.globalSectionsAlgebra K; \u0393(Y, \u22a4) \u2243\u2090[K] \u0393(Z, \u22a4)`. Its `toRingEquiv` is `(asIso (f.app \u22a4)).commRingCatIsoToRingEquiv`, and `commutes'` is the shared `rw` chain using `h`. `baseChangeGlobalSectionsAlgebra k K p` is defeq to `(pullback.snd p _).globalSectionsAlgebra K`, as the definitions at lines 57-61 and 50-52 show. The two public equivalences then become `helper (baseChangeIdentityIso k p).inv (baseChangeIdentityIso_inv_snd k p)` and `helper (baseChangeTowerIso k K L p).inv (baseChangeTowerIso_inv_snd k K L p)`. The `_apply` lemmas stay `rfl`.",
+      "benefit": "The compatibility-with-structure-map argument is written once. Both equivalences shrink to one line plus their already-proved `inv_snd` lemmas. Any later transport along an isomorphism of schemes over `Spec K` can reuse the helper.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/GlobalSectionsBaseChange.lean",
+          "declaration": "globalSectionsBaseChangeTowerEquiv",
+          "excerpt": "        rw [\u2190 RingHom.comp_assoc, \u2190 CommRingCat.hom_comp, \u2190 Hom.comp_appTop,\n          baseChangeTowerIso_inv_snd] }"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/GlobalSectionsBaseChange.lean",
+          "declaration": "Hom.globalSectionsAlgebra",
+          "excerpt": "  (p.appTop.hom.comp (\u0393SpecIso (.of k)).inv.hom).toAlgebra"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 4863,
+    "cache_read_input_tokens": 65827,
+    "output_tokens": 5611,
+    "output_tokens_details": {
+      "thinking_tokens": 1474
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 4863,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4931,
+        "cache_read_input_tokens": 24687,
+        "cache_creation_input_tokens": 746,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 746
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.08215669999999999,
+  "duration_ms": 38762,
+  "turns": 4,
+  "attempts": 2,
+  "judged": "2026-10-26T23:18:05",
+  "unit": "file",
+  "source_sha256": "01c835c2a591048bb885450729301847da148844053bb637d5c52eff84f9971d",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

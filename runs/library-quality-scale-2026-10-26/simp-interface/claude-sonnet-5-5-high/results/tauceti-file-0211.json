@@ -1,0 +1,109 @@
+{
+  "id": "tauceti-file-0211",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the sibling files First.lean, DividedSquare.lean, Exponential.lean, Modular/Matrix.lean, Modular/DividedAction.lean, Modular/Action.lean, and Tits/Basic.lean and ReeF4/Basic.lean. I checked which simp lemmas fire on the column definitions and on isogenyReverse/isogenyExponent. I did not run Lean, so I make no claim about simp behaviour that I observed. Downstream proofs mostly use `simp only` or `rw`. Changing the global simp set could therefore affect call sites that rely on the first column staying in the form `f4ShortRootSignedSimpleAdjoint k (basis a)`. I did not report the other unfolding simp lemmas (`f4ShortRootQuotientFirstColumn_eq` and similar), since they are used as explicit unfold rules and chain consistently with the other simp lemmas.",
+  "findings": [
+    {
+      "declaration": "f4ShortRootIdealFirstColumn_apply / f4ShortRootIdealFirstColumn_eq",
+      "start_line": 161,
+      "end_line": 191,
+      "excerpt": "@[simp] theorem f4ShortRootIdealFirstColumn_apply\n    (k : Fin 4 \u2295 Fin 4) (a : Fin 26) :\n    f4ShortRootIdealFirstColumn k a =\n      f4ShortRootSignedSimpleAdjoint k (f4ShortRootLieIdealBasis a) := by",
+      "problem": "The simp interface for the ideal-side columns is asymmetric. For the divided-square column, the simp unfolding lemma `f4ShortRootIdealDividedSquareColumn_apply` sends the column to `f4ShortRootDividedAdjointSquare k (basis a)`. The simp lemma `f4ShortRootDividedAdjointSquare_basis` then rewrites that to the sparse form `coeff \u2022 basis target`. For the first-order column, the simp lemma `f4ShortRootIdealFirstColumn_apply` also unfolds it, to `f4ShortRootSignedSimpleAdjoint k (basis a)`. The sparse-form lemma for that expression is the private theorem `f4ShortRootSignedSimpleAdjoint_basis` in Modular/Matrix.lean, which is not simp. The public sparse-form lemma `f4ShortRootIdealFirstColumn_eq` is not simp either. So simp on a first column stops at the intermediate adjoint form, while the divided-square column goes all the way to the sparse normal form. A user has to rewrite by hand with `f4ShortRootIdealFirstColumn_eq`, and that rewrite is not applied by simp once `_apply` has already unfolded the column.",
+      "proposed_change": "Make the two columns behave the same way. Preferred option: add a public simp lemma `f4ShortRootSignedSimpleAdjoint k (f4ShortRootLieIdealBasis a) = (f4SimpleRootCoeff k a : ZMod 2) \u2022 f4ShortRootLieIdealBasis (f4SimpleRootTarget k a)`, either by making the Modular/Matrix.lean lemma public and `@[simp]` or by restating it. This mirrors `f4ShortRootDividedAdjointSquare_basis`. Alternative: stop using `_apply` as a global simp lemma, and mark `f4ShortRootIdealFirstColumn_eq` as the canonical `@[simp]` rewrite for the column. Downstream `simp only [f4ShortRootIdealFirstColumn_apply]` calls (DividedSquare.lean lines 338, 412, 545) would need checking against whichever option is chosen.",
+      "benefit": "`simp` normalises both kinds of ideal columns to the same sparse `coeff \u2022 basis target` form. Proofs about first-order columns no longer need a manual rewrite with `f4ShortRootIdealFirstColumn_eq`, and the simp set no longer leaves a half-unfolded `f4ShortRootSignedSimpleAdjoint k (basis a)` term.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/F4/ShortRoot/Modular/DividedAction.lean",
+          "declaration": "f4ShortRootDividedAdjointSquare_basis",
+          "excerpt": "@[simp] theorem f4ShortRootDividedAdjointSquare_basis (k : Fin 4 \u2295 Fin 4) (b : Fin 26) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/F4/ShortRoot/Modular/Matrix.lean",
+          "declaration": "f4ShortRootSignedSimpleAdjoint_basis",
+          "excerpt": "private theorem f4ShortRootSignedSimpleAdjoint_basis (k : Fin 4 \u2295 Fin 4) (b : Fin 26) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/F4/ShortRoot/Quotient/Pinning/DividedSquare.lean",
+          "declaration": "(use site of f4ShortRootIdealFirstColumn_apply)",
+          "excerpt": "simp only [f4ShortRootIdealFirstColumn_apply]"
+        }
+      ]
+    },
+    {
+      "declaration": "isogenyReverse / isogenyExponent",
+      "start_line": 29,
+      "end_line": 36,
+      "excerpt": "@[expose] def isogenyReverse : Fin 4 \u2295 Fin 4 \u2192 Fin 4 \u2295 Fin 4 :=\n  Sum.map Fin.revPerm Fin.revPerm",
+      "problem": "The only simp lemma for these data definitions is the involution `isogenyReverse_isogenyReverse`. There are no evaluation lemmas on `Sum.inl`/`Sum.inr`, such as `isogenyReverse (.inl i) = .inl i.rev` or `isogenyExponent (.inl i) = ![1,1,2,2] i`. Every user must unfold the definition by name and add `Sum.map_inl`/`Sum.map_inr`. This happens at lines 246, 255 and 271 of this file, in First.lean (lines 178, 183, 194, 201), and in Tits/Basic.lean line 81 and ReeF4/Basic.lean line 75. Tits/Basic.lean line 67 also re-proves a per-index `isogenyExponent (.inl j)` formula with `decide`. Unfolding the definition inside a bare `simp` is not an ideal normal form either, because it exposes `Sum.map Fin.revPerm Fin.revPerm`.",
+      "proposed_change": "Add `@[simp]` evaluation lemmas `isogenyReverse_inl : isogenyReverse (Sum.inl i) = Sum.inl (Fin.rev i)`, `isogenyReverse_inr`, and `isogenyExponent_inl`/`isogenyExponent_inr` (the latter stated as `![1,1,2,2] i`). Their proofs would be `rfl`. Then replace the `simp only [isogenyReverse, Sum.map_inl, ...]` calls with these lemmas, so the definition itself stays folded.",
+      "benefit": "Simp normalises these terms uniformly and the call sites stop repeating the unfolding recipe. It also keeps `isogenyReverse k` for a variable `k` folded, so `isogenyReverse_isogenyReverse` stays applicable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/F4/ShortRoot/Quotient/Pinning/First.lean",
+          "declaration": "(unfolding at use site)",
+          "excerpt": "simp only [isogenyReverse, Sum.map_inl, Fin.revPerm_apply, Fin.rev,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/GroupTheory/SpecificGroups/CFSG/Tits/Basic.lean",
+          "declaration": "steinberg_simpleRootSubgroup",
+          "excerpt": "simp only [F4ShortRoot.isogenyReverse, Sum.map_inl]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/GroupTheory/SpecificGroups/CFSG/Tits/Basic.lean",
+          "declaration": "carrierExponent",
+          "excerpt": "have h : \u2200 j : Fin 4, F4ShortRoot.isogenyExponent (.inl j) ="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 34662,
+    "cache_read_input_tokens": 112645,
+    "output_tokens": 8357,
+    "output_tokens_details": {
+      "thinking_tokens": 3641
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 34662,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3118,
+        "cache_read_input_tokens": 36005,
+        "cache_creation_input_tokens": 2670,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2670
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2335025,
+  "duration_ms": 56344,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:45",
+  "unit": "file",
+  "source_sha256": "a657612b469c934f94796f9c0f1f6bb91589e69e6747879f48892016668b17af",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

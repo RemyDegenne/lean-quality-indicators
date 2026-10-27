@@ -1,0 +1,93 @@
+{
+  "id": "openai-math-file-0135",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Grid.lean definitions it relies on (Grid.stage, boundary, boundary_succ, stage_apply_same, stage_apply_ne, binaryLayer, orderedProduct, binarySweep, Cube, Slot). I judged the following to be not worth reporting: the alternating-sum and isolated-insert lemmas, the two union-bound lemmas (probability_lineShares_le and probability_vertexShares_le), and the probability_path_vertex and probability_path_line pair. They repeat only short calculations or are thin glue. The one substantial repetition is that the Grid boundary/path machinery is proved twice, once for Grid (lines 252\u2013322) and once for the binary cube (lines 443\u2013554). Uncertainty: I could not compile the proposed generic lemmas. Instantiating them needs Cube d = \u2200 j : Fin d, (fun _ => Bool) j to unify with an explicit X, and Grid.boundary / binaryBoundary to be defeq to the generic partial sweep. Both should hold by unfolding, but I have not tested either.",
+  "findings": [
+    {
+      "declaration": "CoordinateSweeps.Grid.boundary_coordinate_before / boundary_coordinate_stable / boundary_eq_pathBetween / sweep_eq_iff_line_assignments (duplicated by binaryBoundary_before / binaryBoundary_stable / binaryBoundary_eq_path / binarySweep_eq_iff_coins)",
+      "start_line": 252,
+      "end_line": 322,
+      "excerpt": "rw [G.stage_apply_ne \u03c9 _ k (by intro he; have := congrArg Fin.val he; dsimp at this; omega)]",
+      "problem": "The same four-step argument is proved twice, once for Grid.boundary (lines 252\u2013322) and once for binaryBoundary (lines 443\u2013554). The steps are: (1) coordinate k is unchanged by boundary t when t \u2264 k; (2) it is frozen once t > k; (3) boundary t x equals the 'y before t, x after t' path; (4) the sweep equals y iff each stage's line assignment holds, by induction on t. The two copies are nearly line-for-line identical. This includes the same `change \u2026 (boundary \u2026 x) k = _; rw [..._apply_ne \u2026(by intro he; have := congrArg Fin.val he; dsimp at this; omega)]; exact ih (by omega)` block, repeated four times in total. It also includes the same `by_cases hkt : k = \u27e8t,_\u27e9; subst k` induction in the iff proof, and the same list-take definition of the boundary (`((List.ofFn _).take t).reverse.prod`). The only model-specific facts used are 'stage j fixes every coordinate k \u2260 j' and the value of stage j at coordinate j. A change to the path or boundary convention must currently be made in both places. Inside each copy, before and stable also repeat the same induction step.",
+      "proposed_change": "Add one generic section for a family of coordinate types `X : Fin n \u2192 Type*` and layers `S : Fin n \u2192 Equiv.Perm (\u2200 j, X j)`, with hypothesis `hS : \u2200 j k, k \u2260 j \u2192 \u2200 x, S j x k = x k`.\n\nDefinitions:\n- `partialSweep S t := ((List.ofFn S).take t).reverse.prod`.\n- `pathAt x y (t : \u2115) : \u2200 j, X j := fun j => if j.val < t then y j else x j`.\n\nLemmas:\n- `partialSweep_succ`: for `t < n`, `partialSweep S (t+1) = S \u27e8t,ht\u27e9 * partialSweep S t`. The proof is the existing `List.take_succ_eq_append_getElem` one.\n- `partialSweep_eq_pathAt`: for `t \u2264 n`, `partialSweep S t x = pathAt x (partialSweep S n x) t`. The proof is a single induction on t, using `hS` for k \u2260 t. It replaces both `before` and `stable`, since both are inductions whose step only uses `hS`.\n- `partialSweep_eq_iff`: `partialSweep S n x = y \u2194 \u2200 j, S j (pathAt x y j.val) j = y j`. Forward: apply the previous lemma at j+1 and j and evaluate at coordinate j. Backward: induction on t showing `partialSweep S t x = pathAt x y t`, using `hS` for k \u2260 t and the hypothesis at k = t.\n\nInstantiate with `S := G.stage \u03c9` and `hS := G.stage_apply_ne \u03c9`. Define `Grid.pathBetween x y t := pathAt x y t.val`, which keeps `pathBetween_zero/last/input/output/step`. Then `sweep_eq_iff_line_assignments` becomes `partialSweep_eq_iff` followed by `stage_apply_same` and `pathBetween_input`.\n\nInstantiate with `X := fun _ => Bool`, `S := fun j => binaryLayer j (bits j)` and `hS := binaryLayer_apply_ne`. Then `binaryBoundary` and `binaryPath` become abbreviations of the generic objects. `binarySweep_eq_iff_coins` keeps only the `Bool.xor` rearrangement (`hxor`) around `partialSweep_eq_iff` and `binaryLayer_apply_same`.",
+      "benefit": "About 150 lines of mirrored induction proofs shrink to one generic proof plus two short instantiations. The brittle `change \u2026 ; rw [..._apply_ne (by \u2026 omega)]` block then appears once. A reader sees that the Grid and binary sweeps share one path-decomposition argument, with only the layer's action on its own coordinate differing. Fixes to the indexing (for example the off-by-one conventions on `j.val < t`) are made once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Kernel.lean",
+          "declaration": "CoordinateSweeps.binaryBoundary_before",
+          "excerpt": "rw [binaryLayer_apply_ne _ k (by intro he; have := congrArg Fin.val he; dsimp at this; omega)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Kernel.lean",
+          "declaration": "CoordinateSweeps.binarySweep_eq_iff_coins",
+          "excerpt": "by_cases hkt : k = \u27e8t,htd\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Grid.lean",
+          "declaration": "CoordinateSweeps.Grid.boundary",
+          "excerpt": "((List.ofFn (G.stage \u03c9)).take t).reverse.prod"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Grid.lean",
+          "declaration": "CoordinateSweeps.Grid.stage_apply_ne",
+          "excerpt": "G.stage \u03c9 j x k = x k"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Grid.lean",
+          "declaration": "CoordinateSweeps.binaryLayer",
+          "excerpt": "(Equiv.funSplitAt j Bool).trans ((pairSwitch bits).trans (Equiv.funSplitAt j Bool).symm)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 49017,
+    "cache_read_input_tokens": 130937,
+    "output_tokens": 6228,
+    "output_tokens_details": {
+      "thinking_tokens": 2544
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 49017,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3869,
+        "cache_read_input_tokens": 49613,
+        "cache_creation_input_tokens": 3333,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3333
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2714577,
+  "duration_ms": 46009,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:09:21",
+  "unit": "file",
+  "source_sha256": "6dd1a59a644bf2e4590529eebc30e22b3e1d9ccc4ac6644a7ac05f634f9aeb80",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

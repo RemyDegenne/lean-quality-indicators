@@ -1,0 +1,89 @@
+{
+  "id": "lean-pool-file-0085",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, focusing on the long proofs. I compared the two kuhnBuild induction proofs with each other. I also compared the case5 and case6 branches of kuhnSearchWork_le. I did not check other files for uses of these theorems. I could not compile anything, so the proposed lemmas are unchecked. The other repeated pieces are short, such as the `hnot` and `hcardInsert` boilerplate in the fun_induction cases and the by_cases blocks in update_none and update_some. I judged those too small to report under this rubric.",
+  "findings": [
+    {
+      "declaration": "kuhnBuild_of_hasPerfectMatching / kuhnBuild_support (htailUnmatched blocks)",
+      "start_line": 765,
+      "end_line": 774,
+      "excerpt": "have htailUnmatched : \u2200 r, r \u2208 rows \u2192 RowUnmatched mateOne r := by\n        intro r hr\n        rw [rowUnmatched_iff_not_matchesRow]\n        intro hmatched\n        rw [hrowsOne r] at hmatched",
+      "problem": "Both build theorems contain the same argument. After a successful augmentation from `mate` to `mateOne`, every remaining row of the duplicate-free tail is still unmatched. The argument is: `MatchesRow mateOne r` means `MatchesRow mate r \u2228 r = row`. The first case contradicts `hunmatched r`. The second case contradicts `row \u2209 rows`. The block is about ten lines, has the same hypotheses in both places, and appears again at lines 817\u2013826 of `kuhnBuild_support`. A fix to one copy can be missed in the other.",
+      "proposed_change": "Add a lemma before `kuhnBuild_of_hasPerfectMatching`:\n\ntheorem rowUnmatched_tail_of_augment {n : \u2115} {mate mateOne : ColumnMate n} {row : Fin n} {rows : List (Fin n)} (hnotmem : row \u2209 rows) (hunmatched : \u2200 r, r \u2208 row :: rows \u2192 RowUnmatched mate r) (hrowsOne : \u2200 r, MatchesRow mateOne r \u2194 MatchesRow mate r \u2228 r = row) : \u2200 r, r \u2208 rows \u2192 RowUnmatched mateOne r\n\nProof: take `r` and `hr`. Rewrite with `rowUnmatched_iff_not_matchesRow` and `hrowsOne r`, then use `rcases`. The case `MatchesRow mate r` is refuted by `hunmatched r (List.mem_cons_of_mem _ hr)`. The case `r = row` is refuted by `hnotmem`, after `subst`.\n\nIn `kuhnBuild_of_hasPerfectMatching`, replace lines 765\u2013774 with `have htailUnmatched := rowUnmatched_tail_of_augment hheadNotMem hunmatched hrowsOne`. In the `some mateOne` branch of `kuhnBuild_support`, replace lines 817\u2013826 with the same call. Both proofs already have `hheadNotMem`, `hunmatched` and `hrowsOne` in scope under exactly these hypotheses, so no new imports are needed.",
+      "benefit": "This removes a duplicated argument of about ten lines from two proofs. The lemma states the invariant of the build loop directly. Both build proofs then show only their own structure: the success step and the failure step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/KuhnMatching.lean",
+          "declaration": "kuhnBuild_support",
+          "excerpt": "have htailUnmatched : \u2200 r, r \u2208 rows \u2192 RowUnmatched mateOne r := by\n            intro r hr\n            rw [rowUnmatched_iff_not_matchesRow]\n            intro hmatched\n            rw [hrowsOne r] at hmatched"
+        }
+      ]
+    },
+    {
+      "declaration": "kuhnSearchWork_le (case5 / case6 cardinality bookkeeping)",
+      "start_line": 289,
+      "end_line": 304,
+      "excerpt": "have hsubset : seen' \u2286 recursive.seen := by\n        simpa [recursive] using kuhnSearch_seen_mono A fuel\n          (List.finRange n) oldRow seen' mateWithoutOld",
+      "problem": "Cases 5 and 6 repeat the same accounting for the recursive call. They show `col \u2209 seen`, so `seen'.card = seen.card + 1`. They show `seen' \u2286 recursive.seen` from `kuhnSearch_seen_mono`, and so `seen'.card \u2264 recursive.seen.card`. They convert the induction hypothesis to `recursiveWork \u2264 n + (n+1)*(recursive.seen.card - seen'.card)`. They then prove `recursive.seen.card - seen.card = (recursive.seen.card - seen'.card) + 1` and expand with `Nat.mul_add`. This is about 15 lines in each case (lines 289\u2013304 and 319\u2013351). It is mixed with the `simpa` unfolding of the `let`-bound names. The only difference is the extra continuation term in case 6.",
+      "proposed_change": "Prove one pure arithmetic lemma and use it in both cases. For example:\n\ntheorem kuhnSearchWork_recursive_charge {n : \u2115} {seen seen' rs : Finset (Fin n)} {W : \u2115} (hcard : seen'.card = seen.card + 1) (hsub : seen' \u2286 rs) (hW : W \u2264 n + (n + 1) * (rs.card - seen'.card)) : 1 + W \u2264 (n + 1) * (rs.card - seen.card)\n\nProof sketch: `Finset.card_le_card hsub` gives `seen'.card \u2264 rs.card`. Rewrite `rs.card - seen.card` as `(rs.card - seen'.card) + 1` and use `Nat.mul_add` followed by `omega`.\n\nIn case 5, apply the lemma with `hcardInsert`, `hsubset` and the converted `ih`. The goal then follows by `omega`, because `remaining.length \u2265 0`. In case 6, apply the same lemma to the recursive call. Combine its result with `hihContinue` and `hsplitAll`, which is the only extra step in that case. Both cases still need the `kuhnSearch.eq_def` unfolding. No new imports are needed.",
+      "benefit": "This isolates the amortization argument, which is the key idea of the polynomial bound, in one place. The two `fun_induction` branches then reduce to unfolding the definition and applying the lemma. If the bound constants change, only the lemma needs editing.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/KuhnMatching.lean",
+          "declaration": "kuhnSearchWork_le (case6)",
+          "excerpt": "have hsubsetRec : seen' \u2286 recursive.seen := by\n        simpa [recursive] using kuhnSearch_seen_mono A fuel\n          (List.finRange n) oldRow seen' mateWithoutOld"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 26718,
+    "cache_read_input_tokens": 57061,
+    "output_tokens": 4760,
+    "output_tokens_details": {
+      "thinking_tokens": 1707
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26718,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3998,
+        "cache_read_input_tokens": 29577,
+        "cache_creation_input_tokens": 1070,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1070
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1601901,
+  "duration_ms": 33304,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T22:59:40",
+  "unit": "file",
+  "source_sha256": "5c710ba971ee1e8d36506b386c69160a73faeb611283696b14e25344294fd97f",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

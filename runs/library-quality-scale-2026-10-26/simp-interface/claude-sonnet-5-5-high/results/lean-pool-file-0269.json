@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0269",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also grepped the repo for uses of projectString and the embed lemmas, and compared them with the parallel LengthRestriction.lean, which defines projectString as an abbrev and has projectString_append. The file has no @[simp] attributes at all. I found two issues: a projectString interface that simp cannot see through, and small normalisation lemmas used only by rw. Nothing was run in Lean, so the suggested replacements are untested. I did not find any simp loops or competing rules, since no rules are tagged.",
+  "findings": [
+    {
+      "declaration": "projectString",
+      "start_line": 67,
+      "end_line": 67,
+      "excerpt": "def projectString (u : List (Symbol T (N \u2295 T))) : List (Symbol T N) := u.map projectSymbol",
+      "problem": "projectString is a plain def, while its siblings embedString and rightEmbedString are abbrevs. The standard List.map lemmas (map_append, map_cons, map_nil) therefore cannot fire on it, and the file has no projectString_append or projectString_cons lemma. Every proof has to unfold it first with `unfold projectString`, `simp only [projectString, ...]` or `rw [..., projectString]`. See the unfolds at lines 223 and 231 in restrictTerminals_produces_derives_projectString and at line 325 in restrictTerminals_correct. The same file also has `simp only [projectString, projectSymbol, List.map_cons, List.map_nil]` at line 186. The unfold exposes List.map, which is only a partial normal form: it leaves projectSymbol applied to terms, so the `projectSymbol_nonterminal` rewrite at line 326 is still needed afterwards. The sibling file LengthRestriction.lean already took the other route, with an abbrev projectString and an explicit projectString_append.",
+      "proposed_change": "Make projectString an `abbrev`, as embedString and rightEmbedString are. Alternatively, keep the def and add `@[simp] lemma projectString_append`, `projectString_cons` and `projectString_nil`, plus `@[simp] projectSymbol_nonterminal_inl` and `projectSymbol_terminal`. Then the `unfold projectString; repeat rw [List.map_append]` steps in restrictTerminals_produces_derives_projectString can become `simp only [projectString_append]` or a plain `simp`. The final chain in restrictTerminals_correct can also shrink.",
+      "benefit": "Proofs about project/embed strings reduce with simp to a canonical list-map form without manual unfolding. This makes the file consistent with embedString and rightEmbedString, and with the parallel LengthRestriction file. Downstream proofs also become shorter and less fragile.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PumpingCfg/ChomskyNormalForm/TerminalRestriction.lean",
+          "declaration": "restrictTerminals_produces_derives_projectString",
+          "excerpt": "unfold projectString at hr\u2092 \u22a2\n    repeat rw [List.map_append]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PumpingCfg/ChomskyNormalForm/TerminalRestriction.lean",
+          "declaration": "restrictTerminals_correct",
+          "excerpt": "unfold projectString at hw'\n    rwa [List.map_cons, List.map_nil, projectSymbol_nonterminal] at hw'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PumpingCfg/ChomskyNormalForm/LengthRestriction.lean",
+          "declaration": "projectString",
+          "excerpt": "abbrev projectString (u : List (Symbol T g.NT')) : List (Symbol T g.NT) :="
+        }
+      ]
+    },
+    {
+      "declaration": "projectString_rightEmbedString_id / projectSymbol_nonterminal / projectString_terminals / embedString_terminals",
+      "start_line": 73,
+      "end_line": 101,
+      "excerpt": "lemma projectString_rightEmbedString_id {u : List (Symbol T N)} :\n    projectString (rightEmbedString u) = u := by",
+      "problem": "These lemmas are all oriented as canonical simplifications. Each rewrites a compound expression to a smaller one: project\u2218rightEmbed = id, project of an inl nonterminal, project or embed of a terminal map, and embed of an append. None is tagged @[simp], and they are applied only by explicit `rw`, as at lines 188, 318, 324 and 326. The consumers therefore follow each lemma with hand-written clean-up. For example, restrictTerminals_correct does `rw [projectString_terminals] at hw'`, then `unfold projectString`, then `rwa [List.map_cons, List.map_nil, projectSymbol_nonterminal]`. Because the identities are not in the simp set, the normal form of embed/project expressions is not available to simp.",
+      "proposed_change": "Mark the terminating, directed lemmas @[simp]: projectString_rightEmbedString_id, projectSymbol_nonterminal, projectString_terminals, embedString_terminals, and, if embedString is kept as a def, embedString_append. Together with the projectString interface change in the previous finding, restrictTerminals_correct and restrictTerminalRule_left could then close their bookkeeping with `simpa using ...`. embedString_append is already List.map_append by rfl, so it needs no new attribute while embedString stays an abbrev. Note that projectString_terminals and embedString_terminals have LHSs of the form `List.map Symbol.terminal` under a projection, so there is no overlap with List.map_map.",
+      "benefit": "Callers stop repeating project/embed bookkeeping. The simp normal form of embed and project expressions becomes canonical, and each rule has a clear non-looping orientation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PumpingCfg/ChomskyNormalForm/TerminalRestriction.lean",
+          "declaration": "restrictTerminals_correct",
+          "excerpt": "rw [projectString_terminals] at hw'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PumpingCfg/ChomskyNormalForm/TerminalRestriction.lean",
+          "declaration": "restrictTerminalRule_left",
+          "excerpt": "\u00b7 rw [projectString_rightEmbedString_id]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PumpingCfg/ChomskyNormalForm/TerminalRestriction.lean",
+          "declaration": "embedString_terminals",
+          "excerpt": "rwa [embedString_terminals] at hw"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 12610,
+    "cache_read_input_tokens": 15894,
+    "output_tokens": 3521,
+    "output_tokens_details": {
+      "thinking_tokens": 878
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12610,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2965,
+        "cache_read_input_tokens": 11881,
+        "cache_creation_input_tokens": 4742,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4742
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0872474,
+  "duration_ms": 24939,
+  "turns": 3,
+  "attempts": 1,
+  "judged": "2026-10-27T00:46:41",
+  "unit": "file",
+  "source_sha256": "ad336b7d21153871d111e08ef33bd092e9ef863fa6f32d09bf3e58d344bf3711",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

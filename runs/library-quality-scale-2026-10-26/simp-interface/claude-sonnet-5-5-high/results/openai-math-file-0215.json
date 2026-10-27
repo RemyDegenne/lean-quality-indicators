@@ -1,0 +1,120 @@
+{
+  "id": "openai-math-file-0215",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked how the simp-tagged lemmas (embed_apply, coeff_apply, perp_apply, coeff_embed, perp_embed, perp_perp, interleave_even/odd, interleave_split, split_interleave, frozenInv_fst/snd, norm_moving, moving_zero) interact. I found no loops or competing rules. perp_apply needs an index argument, so it does not clash with the unapplied perp_perp and perp_embed. The findings are about missing canonical simp lemmas for the bundled equivalences and the split function, and about statements that are not in the normal form of the file's own simp set. I read downstream uses in FiniteApproximants.lean and MovingSlots.lean. I did not run Lean, so I don't claim any proposed lemma compiles. In particular, the frozenEquiv symm lemma needs a uniqueness argument, because ofSurjective's inverse is not defeq to frozenInv.",
+  "findings": [
+    {
+      "declaration": "frozenEquiv / interleaveEquiv (missing coercion simp lemmas)",
+      "start_line": 184,
+      "end_line": 229,
+      "excerpt": "LinearIsometryEquiv.ofSurjective (frozen \u03be h\u03be) (fun y => \u27e8frozenInv \u03be h\u03be y, frozen_right_inv \u03be h\u03be y\u27e9)",
+      "problem": "The bundled equivalences `frozenEquiv` and `interleaveEquiv` have no apply or symm_apply simp lemmas. The unbundled `frozen` and `interleave` have simp-facing API: `interleave_even`, `interleave_odd`, `frozen_apply`. `frozenInv` has `frozenInv_fst` and `frozenInv_snd`. The bundled equivalence cannot reach any of it through simp. Downstream code works around this with `change`, as in FiniteApproximants.lean, where `change \u2016fderiv \u2026 z - frozenEquiv \u2026 z\u2016 \u2264 _ at h` bridges `frozen.toContinuousLinearMap` to `frozenEquiv`. It also relies on defeq in `hy : frozen \u03be h\u03be (L.symm y) = y := L.apply_symm_apply y`. Because `frozenEquiv` is built with `ofSurjective`, `L.symm y` is not syntactically `frozenInv \u03be h\u03be y`, and no lemma says they agree.",
+      "proposed_change": "Add `@[simp] theorem frozenEquiv_apply (x) : frozenEquiv \u03be h\u03be x = frozen \u03be h\u03be x := rfl`. Add `frozenEquiv_symm_apply (y) : (frozenEquiv \u03be h\u03be).symm y = frozenInv \u03be h\u03be y`, proved by `LinearIsometryEquiv.symm_apply_eq` plus `frozen_right_inv`, so simp can turn `.symm` into the explicit `frozenInv`. Add `interleaveEquiv_apply : interleaveEquiv x = interleave x` and `interleaveEquiv_symm_apply : interleaveEquiv.symm a = split a`. Mark them simp, or `@[simp]`/`@[norm_cast]` as appropriate. Also check whether `ofSurjective` already provides a coe lemma so the new one is not redundant.",
+      "benefit": "Goals mentioning `frozenEquiv ... z` or `.symm` reduce directly to `frozen_apply`, `frozenInv_fst` and `frozenInv_snd`. This removes the `change` and defeq workarounds in FiniteApproximants.lean and makes the equivalences usable by simp.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzEquivalence/FiniteApproximants.lean",
+          "declaration": "approximant_derivative_close",
+          "excerpt": "change \u2016fderiv \u211d (approximant w hw \u03be h\u03be N) x z -\n    frozenEquiv (fun n => approxSlots w \u03be N n x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzEquivalence/FiniteApproximants.lean",
+          "declaration": "approximant_bijective",
+          "excerpt": "have hy : frozen \u03be h\u03be (L.symm y) = y := L.apply_symm_apply y"
+        }
+      ]
+    },
+    {
+      "declaration": "split (missing apply/projection simp lemmas)",
+      "start_line": 169,
+      "end_line": 176,
+      "excerpt": "cases i <;> simp [split, subsequence]",
+      "problem": "`split` is a plain `def` with no simp lemma for its components. The pointwise equations `(split a).fst n = a (2*n)` and `(split a).snd n = a (2*n+1)` are not stated. `interleave_split` has to unfold `split` and `subsequence` with `simp [split, subsequence]`. `frozenInv_fst` and `frozenInv_snd` hide the same facts behind `rfl`, so simp only sees them after `frozenInv` has been expanded. A simp call on `(split b).fst n` has no canonical rewrite. Unfolding `split` through `simp [split]` also exposes `WithLp.toLp` and the subtype constructor.",
+      "proposed_change": "Add `@[simp] theorem split_fst_apply (a : RealL2) (n : \u2115) : (split a).fst n = a (2*n) := rfl` and `@[simp] theorem split_snd_apply \u2026 : (split a).snd n = a (2*n+1) := rfl`. Optionally add `split_apply` for the WithLp pair. Then prove `interleave_split` as `cases i <;> simp`, and the `rfl` lemmas `frozenInv_fst` and `frozenInv_snd` can be stated and used through these lemmas.",
+      "benefit": "This gives one canonical simp normal form for `split`. It removes the need for `simp [split, subsequence]` and lets other files simplify `(split \u2026).fst n` without unfolding definitions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzEquivalence/HilbertDecomposition.lean",
+          "declaration": "subsequence_apply",
+          "excerpt": "@[simp] theorem subsequence_apply (f : \u2115 \u2192 \u2115) (hf : Function.Injective f)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzEquivalence/HilbertDecomposition.lean",
+          "declaration": "frozenInv_snd",
+          "excerpt": "(frozenInv \u03be h\u03be y).snd n = \u27ea\u03be (2*n), y (2*n)\u27eb_\u211d := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "frozenInv_fst_sq / inverse_prefix_energy (statements not in simp normal form for coeff)",
+      "start_line": 257,
+      "end_line": 285,
+      "excerpt": "simp only [Finset.sum_add_distrib, Finset.sum_sub_distrib, coeff_apply]",
+      "problem": "The file declares `@[simp] coeff_apply : coeff \u03be h\u03be u i = \u27ea\u03be i, u i\u27eb_\u211d`, so the simp normal form is the inner product. The simp lemmas `frozenInv_fst` and `frozenInv_snd` also use the inner-product form. `frozenInv_fst_sq` states its right side as `(coeff \u03be h\u03be y n)^2 + (coeff \u03be h\u03be y (2*n+1))^2`, and the intermediate sums in `inverse_prefix_energy` are also in `coeff` form. The coefficient form is therefore not stable under `simp`. Any later `simp` call changes the statement and forces `coeff_apply` into the proof, as at line 285. The mismatch is visible when `simp_rw [frozenInv_fst_sq, frozenInv_snd, \u2026]` on line 284 mixes `coeff` terms (from `frozenInv_fst_sq`) with inner-product terms (from `frozenInv_snd`) and needs `coeff_apply` afterwards. `frozen_apply` also mixes `coeff` inside `interleaveRaw` with an inner product in the same expression.",
+      "proposed_change": "Choose one normal form. Either state `frozenInv_fst_sq` and the sums in `inverse_prefix_energy` with `\u27ea\u03be n, y n\u27eb_\u211d^2`, so the simp-tagged `frozenInv_*` lemmas feed it directly. Or drop `@[simp]` from `coeff_apply`, keep `coeff` as the opaque coefficient map, and state `frozenInv_fst` and `frozenInv_snd` through `coeff \u03be h\u03be y n`. Then the `coeff_apply` step in `inverse_prefix_energy` is no longer needed.",
+      "benefit": "Consumers can rewrite with `frozenInv_fst_sq` and then call `simp` without the statement changing form. The simp set becomes consistent between `coeff` and inner-product terms, and the `coeff_apply` step in `inverse_prefix_energy` (line 285) disappears.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzEquivalence/HilbertDecomposition.lean",
+          "declaration": "coeff_apply",
+          "excerpt": "coeff \u03be h\u03be u i = \u27ea\u03be i, u i\u27eb_\u211d := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/LipschitzEquivalence/HilbertDecomposition.lean",
+          "declaration": "frozenInv_fst_sq",
+          "excerpt": "\u2016(frozenInv \u03be h\u03be y).fst n\u2016^2 = \u2016y n\u2016^2 - (coeff \u03be h\u03be y n)^2 +"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 27200,
+    "cache_read_input_tokens": 73977,
+    "output_tokens": 7460,
+    "output_tokens_details": {
+      "thinking_tokens": 3147
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27200,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3523,
+        "cache_read_input_tokens": 28588,
+        "cache_creation_input_tokens": 2625,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2625
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1908137,
+  "duration_ms": 51551,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:31:10",
+  "unit": "file",
+  "source_sha256": "3cd248e1e285d1ea0b572954db39457727631280f973715d968e2afc692acfc6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,135 @@
+{
+  "id": "lean-pool-file-0282",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the target file's simp-relevant definitions and their uses. These were `vlasovVectorField`, `clampToIcc`, `VlasovMeasureCurve.extend`, `supW1On` and the `wasserstein1_self` uses. I used grep to count the repeated unfold/rewrite patterns, and I read the Wasserstein.lean source of `wasserstein1_self`. The file has no `@[simp]` attributes at all. The three findings are missing canonical simp or equation lemmas. I found no competing-rule or looping problems. I did not run Lean, so none of the proposed lemmas has been compiled. WellPosedness.lean repeats the clamp-unfolding pattern, which suggests the lemma pays off downstream as well.",
+  "findings": [
+    {
+      "declaration": "clampToIcc / VlasovMeasureCurve.extend (missing identity-on-Icc simp lemmas)",
+      "start_line": 4110,
+      "end_line": 4135,
+      "excerpt": "def clampToIcc (T t : \u211d) : \u211d := max 0 (min t T)",
+      "problem": "`clampToIcc` has no simp or equation lemma saying it is the identity on `Icc 0 T`. `VlasovMeasureCurve.extend` has no lemma saying `\u03c1.extend t = \u03c1.\u03c1 t` on `Icc 0 T`. Every consumer therefore unfolds both definitions and redoes `rw [min_eq_left ht.2, max_eq_right ht.1]`. The proof `have h_clamp_eq : clampToIcc T t = t := by unfold clampToIcc; rw [min_eq_left ht.2, max_eq_right ht.1]` is copied about eight times in `Phi_step` and `Phi_step_envelope`. The `\u03c1.extend t = \u03c1.\u03c1 t` proof (`unfold VlasovMeasureCurve.extend clampToIcc; congr 1; rw [...]`) is copied four times in those two theorems. The same blocks recur in WellPosedness.lean. The unfolding is also fragile: it exposes `max 0 (min t T)` and needs `congr 1`.",
+      "proposed_change": "After the definitions, add `@[simp] lemma clampToIcc_of_mem {T t : \u211d} (ht : t \u2208 Set.Icc (0:\u211d) T) : clampToIcc T t = t` (proof: `unfold clampToIcc; rw [min_eq_left ht.2, max_eq_right ht.1]`). Also add `lemma VlasovMeasureCurve.extend_of_mem (\u03c1) {t} (ht : t \u2208 Set.Icc 0 T) : \u03c1.extend t = \u03c1.\u03c1 t` (proof: `simp [VlasovMeasureCurve.extend, clampToIcc_of_mem ht]`). A simp lemma with a membership hypothesis can be discharged from a hypothesis `ht` in context, e.g. `simp [ht]`. Keep `clampToIcc`, `extend` and `clampToIcc_mem` reducible by unfolding only inside these lemmas. Then replace each `h_clamp_eq` / `h_eq` block with `simp [ht]` or `rw [clampToIcc_of_mem ht]`.",
+      "benefit": "Callers no longer unfold `clampToIcc` or `extend`, so definitions stay opaque and proofs stay robust. The clamp-then-identity normal form is stated once and used by `simp`. This removes about twelve duplicated proof blocks in this file and the same ones in WellPosedness.lean.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "Phi_step (h_eq inside h\u03c1_cont)",
+          "excerpt": "unfold VlasovMeasureCurve.extend clampToIcc\n        congr 1\n        rw [min_eq_left ht.2, max_eq_right ht.1]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "Phi_step_envelope (h_clamp_eq)",
+          "excerpt": "have h_clamp_eq : clampToIcc T t = t := by\n      unfold clampToIcc\n      rw [min_eq_left ht.2, max_eq_right ht.1]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/WellPosedness.lean",
+          "declaration": "hclamp_id (same identity re-proved downstream)",
+          "excerpt": "unfold clampToIcc; rw [min_eq_left hs.2, max_eq_right hs.1]"
+        }
+      ]
+    },
+    {
+      "declaration": "vlasovVectorField (no equation/simp lemma)",
+      "start_line": 65,
+      "end_line": 71,
+      "excerpt": "noncomputable def vlasovVectorField",
+      "problem": "The definition has no `vlasovVectorField_apply`-style lemma, so the component form `(z.2, -(convolveFunctionMeasure gradW (\u03c1 t) z.1))` is only reachable by unfolding. The file does this about 18 times: `unfold vlasovVectorField at hderiv` (lines 251, 873), `simp only [vlasovVectorField]` (lines 1378, 1550, 1923, 2667) and `simpa [vlasovVectorField] using h_proj` (lines 1465\u20132770, ten times). The projections `(vlasovVectorField ... z).1` and `.2` are also not simp-normalised. As a result every `HasDerivAt ... .1` and `.2` projection step needs a hand-written `simpa [vlasovVectorField]`.",
+      "proposed_change": "Add an equation lemma `lemma vlasovVectorField_apply (gradW \u03c1 t z) : vlasovVectorField gradW \u03c1 t z = (z.2, -(convolveFunctionMeasure gradW (\u03c1 t) z.1)) := rfl`. Also add `@[simp] vlasovVectorField_fst` and `@[simp] vlasovVectorField_snd` for the two projections. Then `simpa using h_proj` and `rw [vlasovVectorField_apply] at hderiv` replace the unfold calls, and the definition itself need not be unfolded outside its own file section.",
+      "benefit": "The definition stays opaque. Projections of the vector field normalise to the force and velocity components with a single canonical rule, replacing repeated, definition-unfolding `simpa [vlasovVectorField]` calls with plain `simpa`. Later changes to the vector field's definition then affect only these three lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "exists_vlasov_characteristicFlow_local (projection step)",
+          "excerpt": "simpa [vlasovVectorField] using h_proj"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "flow_distance_growth_bound_on (h_deriv)",
+          "excerpt": "unfold vlasovVectorField at hderiv"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "flow_difference_gronwall_bound (h_VF_diff_explicit)",
+          "excerpt": "simp only [vlasovVectorField, Prod.mk_sub_mk, sub_self, neg_sub_neg]"
+        }
+      ]
+    },
+    {
+      "declaration": "supW1On_self and the `(wasserstein1 \u03bc \u03bc).toReal = 0` pattern (wasserstein1_self not simp)",
+      "start_line": 4051,
+      "end_line": 4052,
+      "excerpt": "have h_self : (wasserstein1 (\u03c1.\u03c1 s) (\u03c1.\u03c1 s)).toReal = 0 := by\n    rw [wasserstein1_self]; rfl",
+      "problem": "`wasserstein1_self : wasserstein1 \u03bc \u03bc = 0` is not tagged `@[simp]`, and neither is `supW1On_self` in this file. The `(wasserstein1 \u03bc \u03bc).toReal = 0` fact is therefore re-proved by hand with `rw [wasserstein1_self]; rfl` in `vlasovMeasureCurve_convCont` (line 4051), `constantCurve` (line 4192), `Phi_hW1Cont` (line 4835) and `picard_iterate_exists_limit` (lines 6505 and 6515). `supW1On_self` has to pass `wasserstein1_self` explicitly (`simp [wasserstein1_self]`, line 3858). Plain `simp` cannot close these goals, because `ENNReal.toReal 0 = 0` is only reachable once `wasserstein1_self` fires.",
+      "proposed_change": "Mark `wasserstein1_self` as `@[simp]` in Wasserstein.lean (its statement `wasserstein1 \u03bc \u03bc = 0` is a canonical, non-looping rewrite). Mark `supW1On_self` as `@[simp]` here. Then each `h_self` can be `by simp`, and `simp [wasserstein1_self]` in `supW1On_self` becomes plain `simp`. Alternatively, add `@[simp] lemma wasserstein1_self_toReal (\u03bc) : (wasserstein1 \u03bc \u03bc).toReal = 0` next to it.",
+      "benefit": "A self-distance is the standard normal form `0`, so every later `simp` call that meets `wasserstein1 \u03bc \u03bc` or `supW1On S \u03c1 \u03c1` simplifies it automatically. This removes five copies of the `rw \u2026 ; rfl` workaround.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/Wasserstein.lean",
+          "declaration": "wasserstein1_self",
+          "excerpt": "lemma wasserstein1_self {\u03b1 : Type*} [MeasurableSpace \u03b1] [PseudoMetricSpace \u03b1]\n    (\u03bc : Measure \u03b1) : wasserstein1 \u03bc \u03bc = 0 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "supW1On_self",
+          "excerpt": "simp [wasserstein1_self]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Vlasov/OT/CharacteristicFlow.lean",
+          "declaration": "picard_iterate_exists_limit",
+          "excerpt": "have h_self : (wasserstein1 (\u03c1_lim s) (\u03c1_lim s)).toReal = 0 := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 209551,
+    "cache_read_input_tokens": 833842,
+    "output_tokens": 6825,
+    "output_tokens_details": {
+      "thinking_tokens": 1596
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 209551,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4319,
+        "cache_read_input_tokens": 212019,
+        "cache_creation_input_tokens": 1545,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1545
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.9898581999999999,
+  "duration_ms": 52884,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T00:58:08",
+  "unit": "file",
+  "source_sha256": "75fee9808509d517492c376bbb7d67901088869f1db2e6e239515dc3d850dff5",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

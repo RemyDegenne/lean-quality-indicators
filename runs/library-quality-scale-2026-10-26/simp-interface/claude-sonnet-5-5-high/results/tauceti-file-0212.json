@@ -1,0 +1,99 @@
+{
+  "id": "tauceti-file-0212",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and its uses in TauCeti/NumberTheory (BetweenCusps, FunctionalEquation, ResToImagAxis, Period/Integral). I also read Mathlib's ofComplex lemmas in UpperHalfPlane/Topology.lean. The simp set for resToImagAxis (zero/neg/add/sub/mul/smul) looks consistent. I found no loops and no overlapping rules, and the `_of_pos` and `_of_nonpos` lemmas have disjoint hypotheses. The two findings are a missing finite-sum rule and a non-canonical right-hand side in `resToImagAxis_of_pos`. I did not run Lean, so I did not check how simp behaves on the proposed lemmas. A `resToImagAxis_pow` rule is not worth adding: `F ^ 0 = 1` restricts to the indicator of `t > 0`, not to `1`, so it would need a side condition `n \u2260 0`.",
+  "findings": [
+    {
+      "declaration": "UpperHalfPlane.resToImagAxis_add / resToImagAxis_zero (pointwise-operation simp set lacks a Finset.sum rule)",
+      "start_line": 92,
+      "end_line": 109,
+      "excerpt": "theorem resToImagAxis_add (F G : \u210d \u2192 \u2102) :\n    resToImagAxis (F + G) = resToImagAxis F + resToImagAxis G := by",
+      "problem": "The simp set covers 0, neg, add, sub, mul and smul, but has no rule for finite sums, which is the natural extension of `_zero` and `_add`. `resToImagAxis (\u2211 i \u2208 s, F i)` therefore stays unnormalised under `simp`. Downstream, `cuspIntegral_sum` in BetweenCusps.lean re-proves this by hand with `funext t; rcases le_or_gt t 0 ... simp [resToImagAxis_of_pos, resToImagAxis_of_nonpos, ht]`. That proof is the unfolding pattern the file's own `_add` lemmas were meant to avoid.",
+      "proposed_change": "Add `@[simp] theorem resToImagAxis_sum {\u03b9 : Type*} (s : Finset \u03b9) (F : \u03b9 \u2192 \u210d \u2192 \u2102) : resToImagAxis (\u2211 i \u2208 s, F i) = \u2211 i \u2208 s, resToImagAxis (F i)`. Prove it by `Finset.induction_on` from `resToImagAxis_zero` and `resToImagAxis_add`, or by `funext` with the same case split. Then shorten `hres` in `cuspIntegral_sum` to `by simp`, or drop it from the `simp only` list.",
+      "benefit": "Sums of functions on \u210d restrict to sums of restrictions under `simp`, with the same normal form as the other pointwise operations. Callers no longer repeat the `t \u2264 0` / `t > 0` case split.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/NumberTheory/ModularForms/GeodesicIntegral/BetweenCusps.lean",
+          "declaration": "TauCeti.cuspIntegral_sum",
+          "excerpt": "have hres : resToImagAxis ((\u2211 i \u2208 s, F i) \u2223[(2 : \u2124)] g) =\n      \u2211 i \u2208 s, resToImagAxis (F i \u2223[(2 : \u2124)] g) := by\n    funext t\n    rcases le_or_gt t 0 with ht | ht <;> simp [resToImagAxis_of_pos, resToImagAxis_of_nonpos, ht]"
+        }
+      ]
+    },
+    {
+      "declaration": "UpperHalfPlane.resToImagAxis_of_pos",
+      "start_line": 77,
+      "end_line": 80,
+      "excerpt": "resToImagAxis F t = F \u27e8Complex.I * t, by simpa using ht\u27e9 := dite_eq_left ht",
+      "problem": "The only simp rule for positive `t` rewrites to a raw subtype constructor carrying an embedded proof term. Every other statement in the file and its users is phrased with `F (ofComplex (I * t))`, including `Asymptotics.IsBigO.resToImagAxis`, `differentiableAt_resToImagAxis` and the `tendsto_ofComplex_I_mul\u2026` lemma. `ofComplex_apply_of_im_pos` is not a simp lemma, so simp output in the `\u27e8_, _\u27e9` form does not match these statements. Users rewrite back by hand: `rw [resToImagAxis_of_pos _ ht, \u2190 ofComplex_apply_of_im_pos (by simpa using ht)]` appears in BetweenCusps.lean at two sites. Inside this file, `differentiableAt_resToImagAxis` and `Asymptotics.IsBigO.resToImagAxis` each pair `resToImagAxis_of_pos` with a separate `ofComplex_apply_of_im_pos` step.",
+      "proposed_change": "Add a conditional bridge lemma `resToImagAxis_eq_ofComplex (F : \u210d \u2192 \u2102) {t : \u211d} (ht : 0 < t) : resToImagAxis F t = F (ofComplex (Complex.I * t))`, proved with `resToImagAxis_of_pos` and `ofComplex_apply_of_im_pos`. Use it in the two in-file proofs and in the BetweenCusps sites. To fix one canonical form, consider keeping `_of_pos` as a non-simp characteristic equation and making the `ofComplex` form the simp lemma. This matches the `ofComplex` convention already used in `UpperHalfPlane.comp_ofComplex_of_im_pos` and in this file's statements.",
+      "benefit": "Simp and rw produce the `ofComplex (I * t)` form that the file's statements and the manifold/derivative lemmas expect. The repeated two-step rewrite with a side proof goes away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/NumberTheory/ModularForms/GeodesicIntegral/BetweenCusps.lean",
+          "declaration": "hderiv inside the proof of the integral-along-geodesic theorem (line ~268)",
+          "excerpt": "rw [resToImagAxis_of_pos _ ht, \u2190 ofComplex_apply_of_im_pos (by simpa using ht)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/NumberTheory/ModularForms/GeodesicIntegral/BetweenCusps.lean",
+          "declaration": "tendsto_limUnder_I_mul",
+          "excerpt": "rw [resToImagAxis_of_pos _ ht0, \u2190 ofComplex_apply_of_im_pos (by simpa using ht0)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/Complex/UpperHalfPlane/ResToImagAxis.lean",
+          "declaration": "Asymptotics.IsBigO.resToImagAxis",
+          "excerpt": "rw [Function.comp_apply, resToImagAxis_of_pos _ ht,\n    ofComplex_apply_of_im_pos (by simpa using ht)]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 30552,
+    "cache_read_input_tokens": 111414,
+    "output_tokens": 6512,
+    "output_tokens_details": {
+      "thinking_tokens": 2640
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30552,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2916,
+        "cache_read_input_tokens": 30801,
+        "cache_creation_input_tokens": 3764,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3764
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19849340000000001,
+  "duration_ms": 46423,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:59",
+  "unit": "file",
+  "source_sha256": "a080a1899b3f851ac5edca3cc66d6ccd11dab53e14c94250aca994db1c8b91be",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

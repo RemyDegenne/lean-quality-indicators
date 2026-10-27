@@ -1,0 +1,115 @@
+{
+  "id": "openai-math-file-0358",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped it for @[simp], `change` and the key definitions. The file has no @[simp] or other simp attributes. I found no rewrite cycles or competing rules. The findings are about missing membership lemmas for the defs `centered`, `superlevel` and `sectionDomain`. The proofs unfold these with `change`, `simp [superlevel, h]` or `simp only [sectionDomain, ...]` instead. I did not run Lean, so the proposed lemmas are untested. I could not read the downstream files that import this one, so I only know of uses inside this file.",
+  "findings": [
+    {
+      "declaration": "VerticalRearrangement.superlevel",
+      "start_line": 352,
+      "end_line": 352,
+      "excerpt": "noncomputable def superlevel (f : X \u2192 \u211d) (u : \u211d) : Set X := {x | 0 < u \u2227 u < f x}",
+      "problem": "`superlevel` has no membership lemma, so membership is unfolded by hand. Line 553 uses `change 0 < u \u2227 u < F (x,s) at hs`. Line 743 uses `change 0 < u \u2227 u < F (y,r) at hr`. Line 363 uses `simp [superlevel, h]`, which unfolds the def inside a full `simp`. Each use needs the exact definitional shape to be written out. A plain `simp` cannot see through `r \u2208 superlevel (fun s => F (x,s)) u`.",
+      "proposed_change": "Add `@[simp] lemma mem_superlevel {f : X \u2192 \u211d} {u : \u211d} {x : X} : x \u2208 superlevel f u \u2194 0 < u \u2227 u < f x := Iff.rfl`. Then replace the `change ... at hs` calls and `simp [superlevel, h]` with `rw [mem_superlevel] at hs` or `simp only [mem_superlevel]`. Keep `layer_superlevel` as a plain lemma. Making it @[simp] is optional and not needed for this change.",
+      "benefit": "The unfolded form 0 < u \u2227 u < f x becomes the single normal form for membership. Proofs no longer restate the body of the definition, and a change to the definition touches one lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Steinitz/Rearrangement.lean",
+          "declaration": "VerticalRearrangement.superlevel_measure_ne_top_of_strip",
+          "excerpt": "change 0 < u \u2227 u < F (x,s) at hs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Steinitz/Rearrangement.lean",
+          "declaration": "ShiftedSections.fiberStar_supported",
+          "excerpt": "change 0 < u \u2227 u < F (y,r) at hr"
+        }
+      ]
+    },
+    {
+      "declaration": "VerticalRearrangement.centered",
+      "start_line": 166,
+      "end_line": 167,
+      "excerpt": "noncomputable def centered (a : \u211d\u22650\u221e) : Set \u211d :=\n  {s | |s| < a.toReal / 2}",
+      "problem": "`centered` has no `mem_centered` lemma, so every use rewrites membership with `change`. Line 175 in `measure_centered` uses `change |s| < a.toReal / 2 \u2194 -(a.toReal/2) < s \u2227 s < a.toReal/2`. Line 223 in `heightMeasure_centered` uses the same `change` again. Line 604 in `fiberStar_eq_zero_of_measure_le` uses `change \u00ac |s| < (volume (superlevel ...)).toReal/2`. The same `Ioo (-(a.toReal/2)) (a.toReal/2)` identity is also proved twice, as `he` in both `measure_centered` and `heightMeasure_centered`.",
+      "proposed_change": "Add `@[simp] lemma mem_centered {a : \u211d\u22650\u221e} {s : \u211d} : s \u2208 centered a \u2194 |s| < a.toReal / 2 := Iff.rfl`. Add `lemma centered_eq_Ioo (a : \u211d\u22650\u221e) : centered a = Ioo (-(a.toReal/2)) (a.toReal/2)`, proved by `ext; simp [abs_lt]`. Use it in `measure_centered` and `heightMeasure_centered`, replacing the duplicated `he` blocks and the `change` calls.",
+      "benefit": "Membership in `centered` gets one normal form, and the Ioo identity is proved once instead of twice. The `change` calls with long restated bodies go away, so proofs no longer depend on how `centered` is defined.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Steinitz/Rearrangement.lean",
+          "declaration": "VerticalRearrangement.heightMeasure_centered",
+          "excerpt": "change |s| < a.toReal/2 \u2194 -(a.toReal/2) < s \u2227 s < a.toReal/2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Steinitz/Rearrangement.lean",
+          "declaration": "VerticalRearrangement.fiberStar_eq_zero_of_measure_le",
+          "excerpt": "change \u00ac |s| < (volume (superlevel (fun r => F (x,r)) u)).toReal/2"
+        }
+      ]
+    },
+    {
+      "declaration": "ShiftedSections.sectionDomain",
+      "start_line": 14,
+      "end_line": 15,
+      "excerpt": "def sectionDomain (K : Set E) (e : E) (ell s : \u211d) : Set E :=\n  {y | \u2203 c : \u211d, |c|+s < ell \u2227 y+(c-s) \u2022 e \u2208 K \u2227 y+(c+s) \u2022 e \u2208 K}",
+      "problem": "`sectionDomain` has no `mem_sectionDomain` lemma. `section_open` unfolds it with `simp only [sectionDomain, mem_ofPred_eq, mem_iUnion, mem_inter_iff, mem_preimage]` and then closes the goal with a bare `aesop`. Other proofs destructure membership with `obtain \u27e8c,hc,hcl,hcr\u27e9 := hy` or `rintro y \u27e8c,hc,hl,hr\u27e9`, which relies on the definition unfolding. The `aesop` call depends on the exact shape of the unfolded set.",
+      "proposed_change": "Add `lemma mem_sectionDomain {K : Set E} {e y : E} {ell s : \u211d} : y \u2208 sectionDomain K e ell s \u2194 \u2203 c : \u211d, |c|+s < ell \u2227 y+(c-s) \u2022 e \u2208 K \u2227 y+(c+s) \u2022 e \u2208 K := Iff.rfl`. Use it with `simp only [mem_sectionDomain, ...]` in `section_open`. Make it @[simp] only if later files confirm that expanding membership is the desired normal form.",
+      "benefit": "Membership has one canonical, discoverable statement. The `section_open` set-extensionality proof then depends on that stated lemma and not on `aesop` search over the unfolded definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Steinitz/Rearrangement.lean",
+          "declaration": "ShiftedSections.section_open",
+          "excerpt": "simp only [sectionDomain, mem_ofPred_eq, mem_iUnion, mem_inter_iff, mem_preimage]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 34078,
+    "cache_read_input_tokens": 74410,
+    "output_tokens": 3910,
+    "output_tokens_details": {
+      "thinking_tokens": 678
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 34078,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2731,
+        "cache_read_input_tokens": 36983,
+        "cache_creation_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1108
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18286500000000003,
+  "duration_ms": 30080,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T02:00:59",
+  "unit": "file",
+  "source_sha256": "3136ad79ad3ca16ee44c624f66ce0239f2c1ba9714654f547ada86276bde0f91",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,130 @@
+{
+  "id": "flt-anthropic-file-0139",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file with a focus on simp attributes, coercion/apply lemmas and how proofs invoke them. I did not run Lean, so I make no claims about how the simplifier actually behaves. The findings are about missing or inconsistent simp coverage. I found no rewrite cycles and no clearly bad orientations among the existing scoped simp lemmas, which are repMat_none/some, repGL_coe, alGL_coe, atkinLehner_coe, the *Hom_apply lemmas, and the det lemmas. Uncertainty: I did not check downstream files that may add their own simp lemmas for these coercions.",
+  "findings": [
+    {
+      "declaration": "WcPort.ModularForm.heckeU_coe / WcPort.CuspForm.heckeU_coe",
+      "start_line": 842,
+      "end_line": 844,
+      "excerpt": "lemma heckeU_coe (\u2113 : \u2115) [NeZero \u2113] (h\u2113 : \u2113.Prime) (h\u2113N : \u2113 \u2223 N)\n    (f : ModularForm (Gamma0 N) k) :\n    \u21d1(ModularForm.heckeU \u2113 h\u2113 h\u2113N f) = heckeUSlashSum k \u2113 (\u21d1f) := rfl",
+      "problem": "`heckeU_coe` is the canonical coercion lemma for `heckeU`. It is a plain `rfl` lemma with no `@[simp]` or `@[scoped simp]` attribute. The parallel `atkinLehner_coe` lemmas, in the same file and for the same two structures, are `@[scoped simp]`. Without the attribute, `simp` cannot reduce `\u21d1(heckeU \u2113 h\u2113 h\u2113N f)` to `heckeUSlashSum k \u2113 \u21d1f`. The proofs work around this by naming it in `simp only [heckeU_coe, ...]` (lines 851 and 900), or by using `show ... ; rw [...]` in `heckeU_smul`. The `*Hom_apply` simp lemmas then rewrite `heckeUHom \u2113 h\u2113 h\u2113N f` to `heckeU \u2113 h\u2113 h\u2113N f` and stop there, leaving a normal form that `simp` cannot see through.",
+      "proposed_change": "Mark both coercion lemmas `@[scoped simp]`, as for `atkinLehner_coe`. In `ModularForm` and `CuspForm` this gives `@[scoped simp] lemma heckeU_coe ...`. Then `heckeUHom_apply` followed by `heckeU_coe` normalises `heckeUHom ... f` to `heckeUSlashSum k \u2113 \u21d1f`. The `heckeU_smul` proof can then use `simp [heckeUSlashSum_smul]`, so the `show` and `rfl` lines go. The direction is safe because the RHS is a fixed head symbol and no rewrite rule turns it back into `heckeU`.",
+      "benefit": "Adding the attribute gives `heckeU` the same simp interface as `atkinLehner`, with a single normal form `heckeUSlashSum k \u2113 \u21d1f`. Downstream users no longer need `simp only [heckeU_coe, ...]` or manual `show` steps, and `simp` would work on `heckeU` terms.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_alSlash_add_heckeU_alSlash_alSlash.lean",
+          "declaration": "WcPort.ModularForm.atkinLehner_coe",
+          "excerpt": "@[scoped simp] lemma atkinLehner_coe [NeZero M] (W : ALData M q) (f : ModularForm (Gamma0 M) k) :\n    \u21d1(atkinLehner W f) = alSlash W k f := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_alSlash_add_heckeU_alSlash_alSlash.lean",
+          "declaration": "WcPort.ModularForm.heckeU_add",
+          "excerpt": "simp only [heckeU_coe, ModularForm.coe_add, Pi.add_apply, heckeUSlashSum_add]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_alSlash_add_heckeU_alSlash_alSlash.lean",
+          "declaration": "WcPort.ModularForm.heckeUHom_apply",
+          "excerpt": "@[scoped simp] lemma heckeUHom_apply (\u2113 : \u2115) (h\u2113 : \u2113.Prime) (h\u2113N : \u2113 \u2223 N)"
+        }
+      ]
+    },
+    {
+      "declaration": "WcPort.ModularForm.atkinLehnerHom (missing apply lemma)",
+      "start_line": 1383,
+      "end_line": 1387,
+      "excerpt": "def atkinLehnerHom [NeZero M] (W : ALData M q) :\n    ModularForm (Gamma0 M) k \u2192\u2097[\u2102] ModularForm (Gamma0 M) k where\n  toFun := atkinLehner W\n  map_add' := atkinLehner_add W\n  map_smul' := atkinLehner_smul W",
+      "problem": "`ModularForm.atkinLehnerHom` has no `atkinLehnerHom_apply` simp lemma. `CuspForm.atkinLehnerHom` has one (`@[scoped simp] lemma atkinLehnerHom_apply`). `ModularForm.heckeUHom` and `CuspForm.heckeUHom` both have one, and so does `traceMapHom`. For `ModularForm`, `atkinLehnerHom W f` therefore stays opaque to `simp`, even though `atkinLehner_coe` is a simp lemma. The linear-map form never reaches the `atkinLehner` / `alSlash` normal form.",
+      "proposed_change": "After the definition (line 1387), add `@[scoped simp] lemma atkinLehnerHom_apply [NeZero M] (W : ALData M q) (f : ModularForm (Gamma0 M) k) : atkinLehnerHom W f = atkinLehner W f := rfl`, mirroring the CuspForm version.",
+      "benefit": "This makes the `ModularForm` interface consistent with the `CuspForm` one. `simp` can unfold `atkinLehnerHom W f` to `atkinLehner W f` and then, via `atkinLehner_coe`, to `alSlash W k \u21d1f`. Users need no ad hoc `show` or `rfl` to see through the linear map.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_alSlash_add_heckeU_alSlash_alSlash.lean",
+          "declaration": "WcPort.CuspForm.atkinLehnerHom_apply",
+          "excerpt": "@[scoped simp] lemma atkinLehnerHom_apply [NeZero M] (W : ALData M q) (f : CuspForm (Gamma0 M) k) :\n    atkinLehnerHom W f = atkinLehner W f := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_alSlash_add_heckeU_alSlash_alSlash.lean",
+          "declaration": "WcPort.ModularForm.atkinLehner_coe",
+          "excerpt": "@[scoped simp] lemma atkinLehner_coe [NeZero M] (W : ALData M q) (f : ModularForm (Gamma0 M) k) :"
+        }
+      ]
+    },
+    {
+      "declaration": "WcPort.CuspForm.traceMap_coe (and the unattributed hecke / heckeU coercions)",
+      "start_line": 1943,
+      "end_line": 1945,
+      "excerpt": "lemma traceMap_coe (W : ALData M q) (hq : q.Prime) (f : CuspForm (Gamma0 M) 2) :\n    haveI : NeZero q := \u27e8hq.ne_zero\u27e9\n    \u21d1(traceMap W hq f) = traceSlashSum W 2 \u21d1f := rfl",
+      "problem": "`traceMap_coe` is the coercion lemma for the new `traceMap`. It is not tagged simp, although `traceMapHom_apply` is `@[scoped simp]`, so the simp chain ends at `traceMap W hq f`. `traceMap_add`, `traceMap_smul` and `traceMap_atkinLehner` all fall back to `show traceSlashSum W 2 ... ` instead of rewriting. `SlashInvariantForm.hecke`, `ModularForm.hecke` and `CuspForm.hecke` have no coercion lemma at all, and `heckeSlashSum_slash` is applied by unfolding. So the file's simp interface is applied unevenly across its operators.",
+      "proposed_change": "Mark `traceMap_coe` `@[scoped simp]`. Its `haveI` binder in the statement makes the `NeZero q` instance an explicit term; `simp` can normally use this form, but if it cannot unify the instance, state the lemma with `[NeZero q]` as a hypothesis instead (as `heckeU_coe` does) and keep `hq` for the proof of `traceMap`. Add a `hecke_coe` lemma stating `\u21d1(hecke \u2113 h\u2113 h\u2113N f) = heckeSlashSum k \u2113 \u21d1f` for the three hecke definitions, with the same `[scoped simp]` treatment, to match `heckeU`.",
+      "benefit": "With the coercion lemma as a simp rule, `traceMap_add` and `traceMap_smul` become `ext \u03c4; simp [traceSlashSum_add]` and similar one-liners without `show`. Clients that apply the trace map get a stable `traceSlashSum` normal form instead of an opaque `traceMap` term.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_alSlash_add_heckeU_alSlash_alSlash.lean",
+          "declaration": "WcPort.CuspForm.traceMapHom_apply",
+          "excerpt": "@[scoped simp] lemma traceMapHom_apply (W : ALData M q) (hq : q.Prime) (f : CuspForm (Gamma0 M) 2) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_alSlash_add_heckeU_alSlash_alSlash.lean",
+          "declaration": "WcPort.CuspForm.traceMap_add",
+          "excerpt": "show traceSlashSum W 2 (\u21d1f + \u21d1g) \u03c4 = (traceSlashSum W 2 \u21d1f + traceSlashSum W 2 \u21d1g) \u03c4"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_alSlash_add_heckeU_alSlash_alSlash.lean",
+          "declaration": "WcPort.CuspForm.traceMap_atkinLehner",
+          "excerpt": "show traceSlashSum W 2 (alSlash W 2 \u21d1f) = alSlash W 2 \u21d1f + heckeUSlashSum 2 q \u21d1f"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 83070,
+    "cache_read_input_tokens": 169565,
+    "output_tokens": 6907,
+    "output_tokens_details": {
+      "thinking_tokens": 2118
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 83070,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4497,
+        "cache_read_input_tokens": 84384,
+        "cache_creation_input_tokens": 2699,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2699
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.41831850000000004,
+  "duration_ms": 45408,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:10:09",
+  "unit": "file",
+  "source_sha256": "144e5af4680ae8cef17edad4761185d6ff457593156a072ba5edfb86380aabe7",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

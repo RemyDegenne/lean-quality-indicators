@@ -1,0 +1,109 @@
+{
+  "id": "formal-frontier-file-0280",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the downstream files Functoriality.lean and Reconstruction.lean for uses of basicOpen. The simp-interface gaps are all around the defs `basicOpen`, `toPoint`, `ofPointIdeal` and `intersectionIdeal`, which have no membership or apply lemmas. The existing @[simp] `mem_primeFilter` is fine: it is an `Iff.rfl` rewrite to a smaller form. I did not run Lean. The suggested lemma names and forms are untested, and I did not check how they would interact with existing Mathlib simp lemmas such as `Order.Ideal.principal_le_iff`.",
+  "findings": [
+    {
+      "declaration": "PrimeIdealSpectrum.basicOpen (missing mem_basicOpen / mem_basicOpen_principal simp lemmas)",
+      "start_line": 182,
+      "end_line": 185,
+      "excerpt": "def basicOpen (I : Order.Ideal A) : Set (PrimeIdealSpectrum A) :=\n  {P | \u00ac I \u2264 P.1}",
+      "problem": "`basicOpen` is an exposed def with no membership lemma. Every proof that needs `P \u2208 basicOpen (principal a)` unfolds the def by hand with `simp only [basicOpen, Set.mem_ofPred_eq, Order.Ideal.principal_le_iff]`. The same long simp set appears in this file at lines 221, 349, 435, 438, 444 and 446. It is copied again in Functoriality.lean (`spectrumComap_preimage_basicOpen_principal`) and Reconstruction.lean (`spaceToSpectrum_preimage_basicOpen`). Other proofs use `change`. This unfolds the definition at each use and ties the proofs to the `Set.mem_ofPred_eq` representation. The canonical normal forms are `P \u2208 basicOpen I \u2194 \u00ac I \u2264 P.1` and, for principal ideals, `P \u2208 basicOpen (principal a) \u2194 a \u2209 P.1`. Neither is available to `simp`.",
+      "proposed_change": "After `basicOpen`, add `@[simp] theorem mem_basicOpen (I) (P : PrimeIdealSpectrum A) : P \u2208 basicOpen I \u2194 \u00ac I \u2264 P.1 := Iff.rfl`. Also add `@[simp] theorem mem_basicOpen_principal (a : A) (P : PrimeIdealSpectrum A) : P \u2208 basicOpen (Order.Ideal.principal a) \u2194 a \u2209 P.1 := by rw [mem_basicOpen, Order.Ideal.principal_le_iff]`. The rewrites go to a smaller form, so there is no loop. The `simpa only [basicOpen, Set.mem_ofPred_eq, \u2026]` calls then become `simpa using h` or `simp [mem_basicOpen_principal]`. Consider also making `basicOpen_subset_iff` a simp lemma, since its `I \u2264 J` right-hand side is the normal form and it is already used by `rw` in Functoriality.lean.",
+      "benefit": "Proofs about the spectrum, here and in the downstream files, can use plain `simp` and no longer depend on how `basicOpen` is defined. The repeated three-lemma simp set goes away, and the preimage lemmas in Functoriality and Reconstruction get shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/PrimeSpectrum.lean",
+          "declaration": "PrimeIdealSpectrum.irreducibleGenericPoint_isGeneric / intersectionIdeal_isPrime",
+          "excerpt": "simpa only [basicOpen, Set.mem_ofPred_eq, Order.Ideal.principal_le_iff] using hPa"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Reconstruction.lean",
+          "declaration": "spaceToSpectrum_preimage_basicOpen",
+          "excerpt": "simp only [Set.mem_preimage, basicOpen, Set.mem_ofPred_eq, Order.Ideal.principal_le_iff,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Functoriality.lean",
+          "declaration": "spectrumComap_preimage_basicOpen_principal",
+          "excerpt": "simp only [Set.mem_preimage, basicOpen, Set.mem_ofPred_eq,"
+        }
+      ]
+    },
+    {
+      "declaration": "toPoint, ofPointIdeal, intersectionIdeal (missing apply/membership simp lemmas)",
+      "start_line": 71,
+      "end_line": 72,
+      "excerpt": "def toPoint (P : PrimeIdealSpectrum A) : Locale.PT (Order.Ideal A) where\n  toFun I := \u00ac I \u2264 P.1",
+      "problem": "`toPoint P I`, `a \u2208 (ofPoint f).1` and `a \u2208 intersectionIdeal Z` have no simp or apply lemmas. The proofs reach the underlying statements only through `change`, for example `change \u00ac (\u00ac Order.Ideal.principal a \u2264 P.1) \u2194 a \u2208 P.1` (line 147). Other examples: `change (\u00ac I \u2264 ofPointIdeal f) \u2194 f I` in `toPoint_ofPoint`, `change \u00ac f (Order.Ideal.principal (a \u2293 b)) at hab`, `change \u00ac \u2200 P \u2208 Z, a \u2208 P.1 at ha` (line 429) and `change \u00ac \u2200 Q \u2208 Z, a \u2208 Q.1 at haP` (line 467). `simp` cannot see through these definitions. Each proof therefore has to restate the unfolded form, and a change to the representation would break all of them.",
+      "proposed_change": "Add the rewrite lemmas as `@[simp]`: `toPoint_apply : toPoint P I = \u00ac I \u2264 P.1` (or the `Prop`-level iff), `mem_ofPoint : a \u2208 (ofPoint f).1 \u2194 \u00ac f (Order.Ideal.principal a)`, and `mem_intersectionIdeal : a \u2208 intersectionIdeal Z \u2194 \u2200 P \u2208 Z, a \u2208 P.1`. All three are `Iff.rfl` or `rfl` proofs, and each rewrites a definition to its unfolded body. Then replace the `change` calls with `simp` or `rw`, e.g. `simp [mem_ofPoint, Order.Ideal.principal_le_iff]` for `ofPoint_toPoint`.",
+      "benefit": "Users can compute with `toPoint` and `ofPoint` through `simp` and don't need `change`. The core equivalence proofs become robust and shorter. The membership forms are also the canonical ones for the `push Not` steps in `intersectionIdeal_isPrime`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/PrimeSpectrum.lean",
+          "declaration": "PrimeIdealSpectrum.ofPoint_toPoint",
+          "excerpt": "change \u00ac (\u00ac Order.Ideal.principal a \u2264 P.1) \u2194 a \u2208 P.1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/PrimeSpectrum.lean",
+          "declaration": "PrimeIdealSpectrum.intersectionIdeal_isPrime",
+          "excerpt": "change \u00ac \u2200 P \u2208 Z, a \u2208 P.1 at ha"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/PrimeSpectrum.lean",
+          "declaration": "PrimeIdealSpectrum.mem_primeFilter",
+          "excerpt": "@[simp] theorem mem_primeFilter (P : PrimeIdealSpectrum A) (a : A) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18012,
+    "cache_read_input_tokens": 58863,
+    "output_tokens": 4708,
+    "output_tokens_details": {
+      "thinking_tokens": 794
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18012,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3000,
+        "cache_read_input_tokens": 20661,
+        "cache_creation_input_tokens": 1364,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1364
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1250303,
+  "duration_ms": 30506,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:56:00",
+  "unit": "file",
+  "source_sha256": "ec26578eb6761788ac9ddc4a8c56e66222c0804048c3b9552bdf08eb95b612a5",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

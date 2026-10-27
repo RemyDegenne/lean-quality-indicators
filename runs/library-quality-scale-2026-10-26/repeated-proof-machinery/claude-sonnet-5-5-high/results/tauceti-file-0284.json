@@ -1,0 +1,99 @@
+{
+  "id": "tauceti-file-0284",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Filtration.lean it imports. I searched the tensor-coalgebra directory for the `filtration_le_iff` / `PiTensorProduct.induction_on` pattern, and for uses of `map_eq_of_map_le` and `bijective_of_comp_ofLetter_eq`. Two findings. (1) The surjectivity half of `bijective_of_comp_ofLetter_eq` repeats the induction in `map_eq_of_map_le` and is the case p = \u22a4. (2) `coalgHom_mem_filtration` and `sub_mem_filtration` repeat the same \"check on generators\" scaffold, as does `prepend_mem_filtration` in Filtration.lean. I did not flag the structural similarity between `coalgHom_subword_mem_filtration` and `sub_subword_mem_filtration`. Their bodies differ substantially, and any shared lemma would be contrived. Nothing here was compiled. The rewrites are sketches, and I am not certain about exact elaboration details such as `Submodule.map_top` rewriting and the `of_tprod_eq_subword` forms.",
+  "findings": [
+    {
+      "declaration": "IsCoalgHom.bijective_of_comp_ofLetter_eq (surjectivity half) / IsCoalgHom.map_eq_of_map_le",
+      "start_line": 531,
+      "end_line": 543,
+      "excerpt": "  \u00b7 have key : \u2200 n : \u2115, filtration R M n \u2264 LinearMap.range G := by",
+      "problem": "The surjectivity half of `bijective_of_comp_ofLetter_eq` reproves the filtration induction of `map_eq_of_map_le`. Each step corrects `w` by `G w - w` of lower filtration (`hG.sub_mem_filtration h\u2081 hn`), pulls it back by induction, and returns `w - u` using `map_sub`, the inductive equation and `sub_sub_cancel`. `map_eq_of_map_le` is the same argument for an arbitrary submodule `p` with `p.map G \u2264 p`. Taking `p = \u22a4` gives `range G = \u22a4`, so the first block is a special case of the second. The general lemma is stated after its special case, so the argument is written twice.",
+      "proposed_change": "Move `IsCoalgHom.map_eq_of_map_le` above `IsCoalgHom.bijective_of_comp_ofLetter_eq`. Replace the surjectivity branch by\n```lean\n  \u00b7 have h := hG.map_eq_of_map_le h\u2081 (p := \u22a4) le_top\n    rw [Submodule.map_top] at h\n    exact LinearMap.range_eq_top.1 h\n```\nHere `h : (\u22a4 : Submodule R _).map G = \u22a4` becomes `LinearMap.range G = \u22a4`, and `LinearMap.range_eq_top` turns that into `Function.Surjective G`. The `hp : \u22a4.map G \u2264 \u22a4` hypothesis is `le_top`. Both uses sit under the same hypotheses (`hG`, `h\u2081`, `CommRing R`, `AddCommGroup M`) in the `Unipotent` section, so no import or typeclass changes are needed.",
+      "benefit": "The induction along the filtration that corrects `w` by `w - u` appears once instead of twice. The lemma `map_eq_of_map_le` becomes the single place to maintain it. The bijectivity proof shrinks to a short derivation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/CoalgHom.lean",
+          "declaration": "IsCoalgHom.map_eq_of_map_le",
+          "excerpt": "exact \u27e8w - u, Submodule.sub_mem _ hw hu, by rw [map_sub, hGu, sub_sub_cancel]\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Algebra/Module/Submodule/Range.lean",
+          "declaration": "Submodule.map_top",
+          "excerpt": "theorem map_top [RingHomSurjective \u03c4\u2081\u2082] (f : M \u2192\u209b\u2097[\u03c4\u2081\u2082] M\u2082) : map f \u22a4 = range f :="
+        }
+      ]
+    },
+    {
+      "declaration": "coalgHom_mem_filtration / IsCoalgHom.sub_mem_filtration (and prepend_mem_filtration in Filtration.lean)",
+      "start_line": 358,
+      "end_line": 374,
+      "excerpt": "  have h : filtration R M n \u2264 (filtration R N n).comap (coalgHom R f) := by\n    rw [filtration_le_iff]\n    rintro k hk _ \u27e8x, rfl\u27e9\n    simp only [Submodule.mem_comap]\n    induction x using PiTensorProduct.induction_on with",
+      "problem": "`coalgHom_mem_filtration` and `IsCoalgHom.sub_mem_filtration` (lines 497\u2013513) share the same scaffold. Each reduces `filtration_le_iff` to a statement about generators `of R M k x`. Each then runs `PiTensorProduct.induction_on`, handling `smul_tprod` with `map_smul`, `of_tprod_eq_subword` and `Submodule.smul_mem`, and the `add` case with `map_add` and `Submodule.add_mem`. The `add` branch is identical in both proofs. `prepend_mem_filtration` in Filtration.lean, which this file imports, repeats the scaffold a third time, and the same pattern also appears in `map_deconcatenation_filtration_succ_le`. Only the single-tprod estimate differs between the uses. The linearity and scalar bookkeeping is rewritten each time.",
+      "proposed_change": "Add to Filtration.lean a generator-reduction lemma, with `P` an additive commutative monoid and `R`-module:\n```lean\ntheorem map_mem_of_tprod {P : Type*} [AddCommMonoid P] [Module R P]\n    (\u03c6 : ReducedTensorWords R M \u2192\u2097[R] P) (q : Submodule R P) {n : \u2115}\n    (h : \u2200 k : {k : \u2115 // 0 < k}, k.1 \u2264 n \u2192 \u2200 y : Fin k.1 \u2192 M,\n      \u03c6 (of R M k (PiTensorProduct.tprod R y)) \u2208 q) :\n    \u2200 z \u2208 filtration R M n, \u03c6 z \u2208 q\n```\nProof sketch: `rw [\u2190 Submodule.mem_comap]`-style reduction with `filtration_le_iff`, then `rintro k hk _ \u27e8x, rfl\u27e9`, then `PiTensorProduct.induction_on`. The smul case is `by rw [map_smul, map_smul]; exact q.smul_mem _ (h k hk y)`, and the add case is `map_add` with `add_mem`. Then:\n- `coalgHom_mem_filtration` becomes `map_mem_of_tprod (coalgHom R f) (filtration R N n) (fun k hk y \u21a6 by rw [of_tprod_eq_subword R k.2]; exact filtration_monotone R N hk (coalgHom_subword_mem_filtration f y 0 k.1)) z hz`.\n- `sub_mem_filtration` becomes `map_mem_of_tprod (G - LinearMap.id) (filtration R M n) (fun k hk y \u21a6 by rw [LinearMap.sub_apply, LinearMap.id_apply, of_tprod_eq_subword R k.2]; exact filtration_monotone R M (by omega) (hG.sub_subword_mem_filtration h\u2081 y 0 k.1)) z hz`, followed by `simpa` to unfold `(G - id) z`.\n- `prepend_mem_filtration` becomes `map_mem_of_tprod (prepend R M a) (filtration R M (n+1)) (fun k hk y \u21a6 by rw [prepend_of_tprod]; exact of_mem_filtration R M (Nat.succ_le_succ hk) _) z hz`.\nHypotheses match the originals, since the lemma is general in the target module.",
+      "benefit": "Each of the three proofs reduces to its mathematical content, the one-word estimate. The smul/add induction over `PiTensorProduct` is stated and checked once. Future filtration-compatibility lemmas become one-liners instead of copies of a 10-line scaffold.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/CoalgHom.lean",
+          "declaration": "IsCoalgHom.sub_mem_filtration",
+          "excerpt": "have h : filtration R M (n + 1) \u2264 (filtration R M n).comap (G - LinearMap.id) := by\n    rw [filtration_le_iff]\n    rintro k hk _ \u27e8x, rfl\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/Filtration.lean",
+          "declaration": "prepend_mem_filtration",
+          "excerpt": "have h : filtration R M n \u2264 (filtration R M (n + 1)).comap (prepend R M a) := by\n    rw [filtration_le_iff]\n    rintro k hk _ \u27e8x, rfl\u27e9"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 26940,
+    "cache_read_input_tokens": 97713,
+    "output_tokens": 6905,
+    "output_tokens_details": {
+      "thinking_tokens": 2579
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26940,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4034,
+        "cache_read_input_tokens": 27389,
+        "cache_creation_input_tokens": 3480,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3480
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1866013,
+  "duration_ms": 48837,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:59:10",
+  "unit": "file",
+  "source_sha256": "3139e665ffee5f68b23061bff1f44ca4e50e6a84ae06fd811657d05373518b15",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

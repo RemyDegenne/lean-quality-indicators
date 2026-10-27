@@ -1,0 +1,131 @@
+{
+  "id": "formal-frontier-file-0120",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, and its uses in Valuation/Completeness.lean and LocalizedCompletion.lean (they use the uniform-inducing and closed-embedding results). I searched Mathlib for an existing ring-equivalence-from-AbstractCompletion lemma and found none, so the two-variable density argument is not covered by existing API. None of the proposed lemma statements or rewrites has been compiled. The universe/instance details (letI Valued structures, the restrict/embedding rewriting) may need adjustment.",
+  "findings": [
+    {
+      "declaration": "ValuationRing.principalAdicCompletionRingEquiv (map_mul' / map_add' branches)",
+      "start_line": 273,
+      "end_line": 304,
+      "excerpt": "apply congr_fun (P.funext\n      (e.continuous.comp (continuous_id.mul continuous_const))\n      (e.continuous.mul continuous_const) fun r \u21a6 ?_) x",
+      "problem": "The multiplicativity and additivity goals are proved by the same two-variable density argument. It applies `P.funext` once in each variable, then rewrites with `compare_coe` three times, then closes with `map_mul` or `map_add`. The two blocks differ only in the operation and its continuity lemmas. The inline `change` statements make each block about 16 lines of near-identical text. Any change to the argument has to be made twice.",
+      "proposed_change": "Factor out a lemma about abstract completions P and Q of V, with e := P.compare Q. Its hypotheses are binary operations `opP`, `opQ` that are jointly continuous (`ContinuousMul`/`ContinuousAdd` supply this for the mul and add instances), plus `hop : \u2200 r s, Q.coe (r \u22c6 s) = Q.coe r \u22c6 Q.coe s` and `hopP` for P. The conclusion is `\u2200 x y, e (opP x y) = opQ (e x) (e y)`. The proof is the existing one: apply `P.funext` in x with y fixed, then in y with x = P.coe r fixed, then rewrite with `compare_coe` and the hypotheses. Then `map_mul' := fun x y \u21a6 compare_binary (\u00b7 * \u00b7) (\u00b7 * \u00b7) ... x y` and `map_add'` is the same with `(\u00b7 + \u00b7)`. An alternative is to build the two ring homomorphisms `P.space \u2192+* Q.space` from `P.extend`/`compare` and show they are inverse; either way the density argument appears once.",
+      "benefit": "The delicate two-variable density argument is written and checked once, and the `change` boilerplate disappears. The ring-equivalence definition shrinks to the data plus two one-line uses, and the argument can be reused for other completion comparisons.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/adic-modules/AdicModules/CompletedIntegers.lean",
+          "declaration": "ValuationRing.principalAdicCompletionRingEquiv",
+          "excerpt": "apply congr_fun (P.funext\n      (e.continuous.comp (continuous_id.add continuous_const))\n      (e.continuous.add continuous_const) fun r \u21a6 ?_) x"
+        }
+      ]
+    },
+    {
+      "declaration": "ValuationRing.isOpenEmbedding_algebraMap_fractionRing / isClosedEmbedding_algebraMap_fractionRing",
+      "start_line": 167,
+      "end_line": 197,
+      "excerpt": "refine \u27e8\u27e8(isUniformInducing_algebraMap_fractionRing (V := V) (K := K)).isInducing,\n    IsFractionRing.injective V K\u27e9, ?_\u27e9",
+      "problem": "The two theorems have identical statements apart from the predicate, and identical proofs apart from `.isOpen` versus `.isClosed`. Each rebuilds the topological embedding from `isUniformInducing_algebraMap_fractionRing` and `IsFractionRing.injective`. Each also re-derives the set equality `range (algebraMap V K) = integer` by the same `congrArg ... range_algebraMap_eq` / `convert ... using 1` step.",
+      "proposed_change": "Add two small lemmas under the same `letI` setup: `isEmbedding_algebraMap_fractionRing : Topology.IsEmbedding (algebraMap V K)` (inducing plus `IsFractionRing.injective V K`), and `range_algebraMap_eq_integer : Set.range (algebraMap V K) = (Valued.integer K : Set K)`, which is the `congrArg` line. Then `isOpenEmbedding_algebraMap_fractionRing := \u27e8isEmbedding_algebraMap_fractionRing, range_algebraMap_eq_integer \u25b8 (Valued.isClopen_integer K).isOpen\u27e9`, and likewise for closed. The embedding lemma is also useful on its own (the file already reuses the inducing fact in the abstract completion).",
+      "benefit": "The `convert` and `congrArg` plumbing, which depends on the universe/instance setup, is stated once. The open and closed versions become one-line corollaries. The range characterisation becomes a named, reusable fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/adic-modules/AdicModules/CompletedIntegers.lean",
+          "declaration": "ValuationRing.isClosedEmbedding_algebraMap_fractionRing",
+          "excerpt": "convert (Valued.isClopen_integer K).isClosed using 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/adic-modules/AdicModules/CompletedIntegers.lean",
+          "declaration": "ValuationRing.isOpenEmbedding_algebraMap_fractionRing",
+          "excerpt": "convert (Valued.isClopen_integer K).isOpen using 1"
+        }
+      ]
+    },
+    {
+      "declaration": "ValuationRing.principalAdicCompletionRingEquiv (definition of Q)",
+      "start_line": 251,
+      "end_line": 261,
+      "excerpt": "complete := by\n        change CompleteSpace (Valued.integer (UniformSpace.Completion K))\n        exact (Valued.isClosed_integer (UniformSpace.Completion K)).completeSpace_coe",
+      "problem": "`Q` is a field-by-field re-assembly of `completionIntegersAbstractCompletion`. It repeats the completeness proof (closed integers give a complete space) verbatim from lines 215\u2013216. Its `isUniformInducing` field is already taken from `completionIntegersAbstractCompletion`, so the structure is built partly from the def and partly by copying it.",
+      "proposed_change": "Replace the `let Q : AbstractCompletion V := { ... }` block by `let Q : AbstractCompletion V := completionIntegersAbstractCompletion (V := V) (K := K)`. The def's type is the `letI`-wrapped `AbstractCompletion V`, which should unfold under the matching local `Valued V` instance. A fallback is to state `Q.complete` and `Q.separation` by projection from the def.",
+      "benefit": "This removes about 10 lines and a duplicated analytic argument. Any change to how the completed-integers completion is built is then made only in `completionIntegersAbstractCompletion`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/adic-modules/AdicModules/CompletedIntegers.lean",
+          "declaration": "ValuationRing.completionIntegersAbstractCompletion",
+          "excerpt": "exact (Valued.isClosed_integer (UniformSpace.Completion K)).completeSpace_coe"
+        }
+      ]
+    },
+    {
+      "declaration": "ValuationRing.isUniformInducing_algebraMap_fractionRing",
+      "start_line": 108,
+      "end_line": 165,
+      "excerpt": "obtain \u27e8x, hx'\u27e9 := hsurj\n      (ValueGroup\u2080.embedding (f := .ofClass \u03bdK) \u03b3.1)",
+      "problem": "Both nhds-basis bullets repeat the same reasoning: pick a preimage of a value-group unit under the surjective valuation, show it has nonzero value, form the unit `Units.mk0 (\u03bd.restrict _) _`, and convert `restrict_lt_iff_lt_embedding` to a comparison of valuations. Only the roles of V and K are swapped, and one bullet has an extra branch. The repeated 'nonzero element \u2192 unit \u03b4' construction (`hx0`/`h\u03b40`/`Units.mk0` and `h\u03b40`/`Units.mk0` in the second bullet) is written out twice. The surjectivity fact `hsurj` is stated three times.",
+      "proposed_change": "Prove once, for a valuation `\u03bd` on a field or ring, a lemma that for `\u03b3 : (ValueGroup\u2080 (.ofClass \u03bd))\u02e3` and `x` with `\u03bd x = embedding \u03b3.1`, the element `x` is nonzero and `Units.mk0 (\u03bd.restrict x) _` is a unit whose `restrict_lt_iff_lt_embedding` form is `\u03bd b < \u03bd x`. Also add `valuation_surjective : Function.Surjective (valuation V K)` (`Quotient.mk''_surjective`) as a named lemma. Each bullet then reduces to supplying the preimage and applying the helper.",
+      "benefit": "The two directions read as the symmetric comparison of basic open sets that they are. The fiddly `restrict`/`embedding` rewriting is maintained in one place, and the 60-line proof gets shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/adic-modules/AdicModules/CompletedIntegers.lean",
+          "declaration": "ValuationRing.isUniformInducing_algebraMap_fractionRing",
+          "excerpt": "let \u03b4 : (ValueGroup\u2080 (.ofClass \u03bdV))\u02e3 := Units.mk0 (\u03bdV.restrict a) h\u03b40"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/adic-modules/AdicModules/CompletedIntegers.lean",
+          "declaration": "ValuationRing.isUniformInducing_algebraMap_fractionRing",
+          "excerpt": "let \u03b4 : (ValueGroup\u2080 (.ofClass \u03bdK))\u02e3 := Units.mk0 (\u03bdK.restrict x) h\u03b40"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 15986,
+    "cache_read_input_tokens": 32325,
+    "output_tokens": 5632,
+    "output_tokens_details": {
+      "thinking_tokens": 1302
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15986,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4510,
+        "cache_read_input_tokens": 15288,
+        "cache_creation_input_tokens": 4627,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4627
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1235085,
+  "duration_ms": 42173,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T23:06:13",
+  "unit": "file",
+  "source_sha256": "450b51e7f86a2969421512991a20906be884933f588fc7bf4af5ebfe33bf0927",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

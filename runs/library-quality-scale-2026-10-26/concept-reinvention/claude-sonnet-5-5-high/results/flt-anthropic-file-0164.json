@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0164",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I compared its definitions with Mathlib (Algebra.adjoin, HahnSeries) and with the project's own Definitions/Def_AlgebraicCurve_RatFuncPlaces.lean. I found two findings. (1) The Transport section re-implements `Place.congrRingEquiv`, `Place.congrEquiv` and `comapSymmRingEquiv` almost line for line. The attribute list at the top of the target removes simp lemmas named `Place.congrRingEquiv_toValuationSubring`, `Place.congrEquiv_apply` and `Place.coe_comapSymmRingEquiv_apply`, so those declarations are in scope, though I did not trace the import chain myself. (2) `R k \u03a8` is a hand-built subalgebra that should equal `Algebra.adjoin k (Set.range \u03a8)`. I did not report `coeff_smul'` or `coeffMap_ofPowerSeries'`, because the rubric excludes standalone theorem duplication. `coeffMap` is defined in another file and is only exported here. I did not look into `curveModelOfRingEquiv` or the T/TA construction as possible duplicates of Mathlib tensor-product or base-change API, so I have no claim about them. I could not compile anything, so the proposed replacements are untested.",
+  "findings": [
+    {
+      "declaration": "ModularCurve.QExpModelBaseChange.placeMap (with valuationSubringEquiv, he_symm, placeMap_bijective)",
+      "start_line": 461,
+      "end_line": 519,
+      "excerpt": "def placeMap (v : Place k L) : Place k F where\n  toValuationSubring := v.toValuationSubring.comap e.symm.toRingHom",
+      "problem": "The Transport section builds its own transport of a `Place` along a field isomorphism that commutes with the base field. `placeMap` has the same construction as the project's existing `AlgebraicCurve.Place.congrRingEquiv`: the valuation subring is pulled back along `e.symm`, and `ne_top'` and `isPrincipalIdealRing'` are proved the same way. `valuationSubringEquiv` repeats `comapSymmRingEquiv`, `he_symm` repeats `symm_algebraMap_comm`, and `placeMap_symm_placeMap`, `placeMap_placeMap_symm` and `placeMap_bijective` repeat the `left_inv`/`right_inv` fields of `Place.congrEquiv`. The existing API also has `congrEquiv_apply`, `congrEquiv_symm_apply`, `ord_congrRingEquiv` and `deg_congrRingEquiv`. The local copy has none of these, so the copy is the weaker API, and any later work that mixes the two has to convert between them. The two versions are definitionally the same in meaning: both take `[Field K]`, `e : F \u2243+* F'` and `he : \u2200 a, e (algebraMap K F a) = algebraMap K F' a`.",
+      "proposed_change": "Delete `valuationSubringEquiv`, `placeMap`, `placeMap_toValuationSubring`, `he_symm`, `placeMap_symm_placeMap`, `placeMap_placeMap_symm` and `placeMap_bijective`. In `curveModelOfRingEquiv`, use `Place.congrRingEquiv lam hlam` for `placeOfPoint`. Take bijectivity from `(Place.congrEquiv lam hlam).bijective` composed with `M'.placeOfPoint_bijective`. In `range_stalk_eq`, rewrite with `Place.congrRingEquiv_toValuationSubring`. It remains to check that the two versions agree on the instances and `Algebra` arguments.",
+      "benefit": "This removes about 60 lines of duplicated definition and bijectivity proofs. The transport of places then goes through one canonical definition that already has the `ord` and `deg` compatibility lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_RatFuncPlaces.lean",
+          "declaration": "AlgebraicCurve.Place.congrRingEquiv",
+          "excerpt": "def congrRingEquiv (v : Place K F) : Place K F' where\n  toValuationSubring := v.toValuationSubring.comap (e.symm : F' \u2192+* F)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_RatFuncPlaces.lean",
+          "declaration": "AlgebraicCurve.Place.congrEquiv",
+          "excerpt": "def congrEquiv : Place K F \u2243 Place K F' where\n  toFun := congrRingEquiv e he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_RatFuncPlaces.lean",
+          "declaration": "AlgebraicCurve.Place.comapSymmRingEquiv",
+          "excerpt": "def comapSymmRingEquiv (V : ValuationSubring F) :\n    V \u2243+* (V.comap (e.symm : F' \u2192+* F)) where"
+        }
+      ]
+    },
+    {
+      "declaration": "ModularCurve.QExpModelBaseChange.R (with mem_R_iff, adjoin_le_R, and the hgen hypotheses)",
+      "start_line": 41,
+      "end_line": 80,
+      "excerpt": "def R : Subalgebra k K' where\n  carrier := Submodule.span k (Set.range \u03a8)",
+      "problem": "`R k \u03a8` is defined as a subalgebra whose carrier is the `k`-span of `Set.range \u03a8`. The range of a ring homomorphism is a submonoid, so by `Algebra.adjoin_eq_span` the carrier is the submodule underlying `Algebra.adjoin k (Set.range \u03a8)`. The file already proves `adjoin_le_R`, and the reverse inequality is just `Submodule.span_le` combined with `Algebra.subset_adjoin`. So `R` is a second, hand-built name for the Mathlib subalgebra, and it needs a 30-line `mul_mem'` proof by nested `span_induction`. The file then has to move between the two descriptions. The `hgen` hypotheses (lines 214\u2013215) and the lemma `exists_adjoin_of_mem_closure` are stated with `Algebra.adjoin`, while `isFractionRing_R` and the basis construction use `R`, and `adjoin_le_R` bridges them.",
+      "proposed_change": "Define `R k \u03a8 := Algebra.adjoin k (Set.range \u03a8)`, or make it an `abbrev`. Prove once that `Set.range \u03a8` is closed under multiplication and contains 1 (the range of a ring hom), so that `Algebra.adjoin_eq_span` gives `Subalgebra.toSubmodule (R k \u03a8) = Submodule.span k (Set.range \u03a8)`. Keep `\u03a8R`, `bR`, `T` and `TA` unchanged. Delete the custom `mul_mem'` proof and `adjoin_le_R`. `isFractionRing_R` can then use `hgen` directly.",
+      "benefit": "The file would use the standard `Algebra.adjoin` subalgebra and its API instead of a parallel structure. The `hgen` hypotheses would no longer need `adjoin_le_R`. The long hand-written `span_induction` proof would be replaced by one Mathlib lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Algebra/Subalgebra/Lattice.lean",
+          "declaration": "Algebra.adjoin_eq_span",
+          "excerpt": "theorem adjoin_eq_span : Subalgebra.toSubmodule (adjoin R s) = span R (Submonoid.closure s)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_exists_curveModel_qExpFunctionFieldC_iso_pullback_germ_eq_coeffMap_of_ringHom.lean",
+          "declaration": "ModularCurve.QExpModelBaseChange.adjoin_le_R",
+          "excerpt": "theorem adjoin_le_R : Algebra.adjoin k (Set.range \u03a8) \u2264 R k \u03a8 :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 41987,
+    "cache_read_input_tokens": 310843,
+    "output_tokens": 9207,
+    "output_tokens_details": {
+      "thinking_tokens": 2569
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 41987,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3039,
+        "cache_read_input_tokens": 44643,
+        "cache_creation_input_tokens": 1425,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1425
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2911383,
+  "duration_ms": 81467,
+  "turns": 22,
+  "attempts": 1,
+  "judged": "2026-10-26T23:15:32",
+  "unit": "file",
+  "source_sha256": "61ebecaa8e5c4fe59d433a7e3f691f252daddec27ce12c4852c9bf451f249fb3",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

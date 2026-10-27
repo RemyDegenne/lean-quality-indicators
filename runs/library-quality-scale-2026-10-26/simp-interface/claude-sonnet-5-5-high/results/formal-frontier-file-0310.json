@@ -1,0 +1,130 @@
+{
+  "id": "formal-frontier-file-0310",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read Reindex.lean, ElementaryStabilization.lean and StableElementary.lean, and grepped the repo for uses of firstRestBlock, firstRestEquiv and reindexEquiv_elementaryUnit. I did not run Lean. The suggested lemmas are untested and their exact statements and orientations would need checking. I found no loop or competing-rule problems. The existing simp lemmas (rectangularLowerUnit_val, rectangularLowerUnit_inv, firstRestEquiv_*, leadingPrincipalMinor_zero and leadingPrincipalMinor_full) look orientation-correct. The findings below are about missing canonical simp rules.",
+  "findings": [
+    {
+      "declaration": "Matrix.GeneralLinearGroup.reindexEquiv_elementaryUnit",
+      "start_line": 31,
+      "end_line": 38,
+      "excerpt": "theorem reindexEquiv_elementaryUnit (e : \u03b9 \u2243 \u03ba) (i j : \u03b9) (hij : i \u2260 j) (a : R) :",
+      "problem": "This is the canonical rewrite for `reindexEquiv R e (elementaryUnit i j hij a)`, but it carries no `@[simp]`. Its sibling `stabilize_elementaryUnit` is `@[simp]`, and the pair is used together. Callers have to name it by hand: `rw [reindexEquiv_elementaryUnit]` at line 51 of this file, and `simp only [stabilize_elementaryUnit, reindexEquiv_elementaryUnit, ...]` in StableElementary. Without it, `simp` on a reindexed elementary unit does not reach the normal form `elementaryUnit (e i) (e j) _ a`. Instead `simp` can only use the entrywise `reindexEquiv_apply`, which is `@[simp]`. That exposes matrix entries and loses the elementary-unit structure.",
+      "proposed_change": "Add `@[simp]` to `reindexEquiv_elementaryUnit`. The direction is terminating and already canonical: the reindexed expression becomes an elementary unit at the images of the indices. The index-distinctness proof is a proof argument, so it causes no matching trouble. After this, StableElementary's `simp only [stabilize_elementaryUnit, reindexEquiv_elementaryUnit, ...]` can use the default simp set. If wider firing is a worry, restrict the attribute to a `simp` set that includes `stabilize_elementaryUnit`.",
+      "benefit": "`simp` normalizes reindexed elementary generators the same way it already does stabilized ones. The manual `rw` and `simp only` calls go away, and a reindexed generator is recognizable as elementary for later membership goals.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/ElementaryStabilization.lean",
+          "declaration": "stabilize_elementaryUnit",
+          "excerpt": "theorem stabilize_elementaryUnit (i j : X) (hij : i \u2260 j) (a : R) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/StableElementary.lean",
+          "declaration": "finStabilize_elementaryUnit",
+          "excerpt": "simp only [stabilize_elementaryUnit, reindexEquiv_elementaryUnit,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/UnitPivotDiagonalization.lean",
+          "declaration": "reindexEquiv_mem_elementarySubgroup",
+          "excerpt": "rw [reindexEquiv_elementaryUnit]"
+        }
+      ]
+    },
+    {
+      "declaration": "Matrix.GeneralLinearGroup.reindexElementarySubgroup_coe",
+      "start_line": 62,
+      "end_line": 65,
+      "excerpt": "      reindexEquiv R e g := rfl",
+      "problem": "The only simp lemma for `reindexElementarySubgroup` unfolds the subtype coercion to a `GL \u03ba R` element, `reindexEquiv R e g`. Downstream code needs the matrix-level coercion `((reindexElementarySubgroup e g : GL _ _) : Matrix _ _ R)`, in the form `submatrix e.symm e.symm`. That statement is absent, so the main proof re-proves it as a local `have hcoe` (about lines 379\u2013390) with a hand-picked `simp only [reindexElementarySubgroup_coe, reindexEquiv_apply, Matrix.submatrix_apply, Equiv.symm_symm]`. Because `reindexEquiv_apply` is stated for the coercion to a function, this form does not fire on the matrix coercion. Every other client therefore has to repeat this ext argument.",
+      "proposed_change": "Add a simp lemma next to `reindexElementarySubgroup_coe` giving the matrix coercion as a submatrix. It would read: for `g : elementarySubgroup \u03b9 R`, `(((reindexElementarySubgroup e g : elementarySubgroup \u03ba R) : GL \u03ba R) : Matrix \u03ba \u03ba R) = ((g : GL \u03b9 R) : Matrix \u03b9 \u03b9 R).submatrix e.symm e.symm`. Prove it by `ext; rfl` or by the existing `simp only`. Then `hcoe` is replaced by `simp`, or the lemma is cited with `rw`. Optionally add an analogous GL-level `reindexEquiv` matrix-coercion lemma if none exists in Reindex.lean.",
+      "benefit": "This gives `simp` a canonical matrix-level normal form (`submatrix`) for reindexed elementary elements. The local `hcoe` is removed, and later products of reindexed elementary matrices can be handled with `Matrix.submatrix_mul_equiv` without a bespoke lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/UnitPivotDiagonalization.lean",
+          "declaration": "exists_elementary_diagonalization_of_unit_pivot",
+          "excerpt": "have hcoe (g : GeneralLinearGroup.elementarySubgroup (Fin 1 \u2295 Fin n) R) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/Reindex.lean",
+          "declaration": "reindexEquiv_apply",
+          "excerpt": "reindexEquiv R e g i j = g (e.symm i) (e.symm j) := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "Matrix.firstRestBlock",
+      "start_line": 217,
+      "end_line": 220,
+      "excerpt": "  M.submatrix (firstRestEquiv n).symm (firstRestEquiv n).symm",
+      "problem": "`firstRestBlock` has simp lemmas only for the pivot determinant (`firstRestBlock_pivot`) and for `firstRestEquiv`. It has no simp lemmas for its entries or blocks, and none saying that re-indexing it by `firstRestEquiv` returns `M`. Each use therefore unfolds it. `firstRestBlock_prefix` unfolds `toBlocks\u2081\u2081/\u2081\u2082/\u2082\u2081/\u2082\u2082` by hand. The pivot proof uses `simp [leadingPrincipalMinor, firstRestBlock, Matrix.toBlocks\u2081\u2081, ...]`. In the main proof, `hM : T.submatrix (firstRestEquiv n) (firstRestEquiv n) = M` is closed by `simp [T, firstRestBlock]`, and `hpivot` and `hdiag` follow similar patterns. Because `firstRestBlock` is a plain `def` with no simp API, these proofs depend on the internal definition rather than a stable interface.",
+      "proposed_change": "Add simp lemmas stating the canonical forms. Examples: `(firstRestBlock M).submatrix (firstRestEquiv n) (firstRestEquiv n) = M`, and entry lemmas such as `(firstRestBlock M).toBlocks\u2081\u2081 i j = M 0 0`, `(firstRestBlock M).toBlocks\u2082\u2082 i j = M i.succ j.succ`, and the mixed ones for `toBlocks\u2081\u2082` and `toBlocks\u2082\u2081`. Then `hM` becomes a single lemma call, and `firstRestBlock_prefix` and `hpivot` can use the entry lemmas instead of unfolding `firstRestBlock` and the `toBlocks` definitions.",
+      "benefit": "The block decomposition gets a simp-complete interface. Proofs and downstream users no longer unfold `firstRestBlock` or the `toBlocks` definitions, and later changes to its definition cannot break the proofs. Proofs about the reindexing, such as `hM`, become one-line rewrites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/UnitPivotDiagonalization.lean",
+          "declaration": "exists_elementary_diagonalization_of_unit_pivot",
+          "excerpt": "have hM : T.submatrix (firstRestEquiv n) (firstRestEquiv n) = M := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/UnitPivotDiagonalization.lean",
+          "declaration": "firstRestBlock_prefix",
+          "excerpt": "simp [firstRestBlock, Matrix.toBlocks\u2081\u2081, Matrix.toBlocks\u2081\u2082,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/general-linear-groups/GeneralLinearGroups/UnitPivotDiagonalization.lean",
+          "declaration": "firstRestBlock_pivot",
+          "excerpt": "simp [leadingPrincipalMinor, firstRestBlock,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 24629,
+    "cache_read_input_tokens": 117448,
+    "output_tokens": 7692,
+    "output_tokens_details": {
+      "thinking_tokens": 2666
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24629,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4005,
+        "cache_read_input_tokens": 27268,
+        "cache_creation_input_tokens": 1374,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1374
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1872048,
+  "duration_ms": 74897,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:32:42",
+  "unit": "file",
+  "source_sha256": "2cf80922c1c385b4198498c9900a79d97ee068dccfc01063c991beff4a68585a",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

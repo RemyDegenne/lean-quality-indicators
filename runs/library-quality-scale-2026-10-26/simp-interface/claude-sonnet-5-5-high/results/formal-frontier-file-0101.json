@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0101",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of Functoriality.lean. I also read the basicOpen and simp declarations in PrimeSpectrum.lean, and the uses in Category.lean and Examples/SpectralStoneDuality.lean. Nothing was compiled. The existing @[simp] lemma compactOpenOrderIso_apply is fine in direction and cannot loop. The problems are missing companion simp lemmas for spectrumComap and principalCompactOpen. In the downstream code I saw, the `change` and `rfl` steps stand in for those lemmas. I am less sure the preimage lemma should be tagged @[simp]. That depends on how often `\u207b\u00b9' basicOpen (principal _)` appears in other simp calls, and I did not check that.",
+  "findings": [
+    {
+      "declaration": "SpectralStoneDuality.PrimeIdealSpectrum.spectrumComap",
+      "start_line": 68,
+      "end_line": 95,
+      "excerpt": "carrier := {a | f a \u2208 P.1}",
+      "problem": "`spectrumComap` is an @[expose] def built with an inline `let ideal` structure. No membership or coe lemma states what it does to a point, e.g. `a \u2208 (spectrumComap f P).1 \u2194 f a \u2208 P.1`. Every user has to see through the construction with `change` or `rfl`. `spectrumComap_id` and `spectrumComap_comp` (lines 198-212) each end in `ext a; rfl`. `spectrumComap_preimage_basicOpen_principal` does `simp only [...]` and then `rfl`. Category.lean (lines 167-178) works around the same gap with several `change` steps. Without such a lemma, simp cannot reduce `a \u2208 (spectrumComap f P).1`, so the functor's action on points cannot be used through the simp interface.",
+      "proposed_change": "Add a lemma `@[simp] theorem mem_spectrumComap (f : BoundedLatticeHom A B) (P : PrimeIdealSpectrum B) (a : A) : a \u2208 (spectrumComap f P).1 \u2194 f a \u2208 P.1 := Iff.rfl`. It rewrites toward the simpler expression and cannot loop, because `f a \u2208 P.1` has no `spectrumComap` left to rewrite. Then shorten `spectrumComap_id`, `spectrumComap_comp` and the preimage lemma to `simp`-style proofs. Tag `spectrumComap_id` and `spectrumComap_comp` @[simp] only if composites of these maps appear in simp calls. Otherwise leave them as plain lemmas.",
+      "benefit": "Users can rewrite membership in the pulled-back prime ideal directly. The `ext a; rfl` proofs and the downstream `change` steps in Category.lean shrink, and they no longer depend on the definitional unfolding of the private construction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Functoriality.lean",
+          "declaration": "spectrumComap_id",
+          "excerpt": "  ext a\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Category.lean",
+          "declaration": "compactOpenOrderIso_symm_naturality",
+          "excerpt": "PrimeIdealSpectrum.spectrumComap f.hom \u207b\u00b9' (U : Set (PrimeIdealSpectrum X))"
+        }
+      ]
+    },
+    {
+      "declaration": "SpectralStoneDuality.PrimeIdealSpectrum.principalCompactOpen / compactOpenOrderIso_apply",
+      "start_line": 194,
+      "end_line": 196,
+      "excerpt": "theorem compactOpenOrderIso_apply (a : A) :\n    compactOpenOrderIso (A := A) a = principalCompactOpen a := rfl",
+      "problem": "`compactOpenOrderIso_apply` is @[simp] and rewrites `compactOpenOrderIso a` to `principalCompactOpen a`. That is a good direction. But `principalCompactOpen` (lines 137-142) is an @[expose] def with no simp lemma for its coercion or membership. The simp normal form therefore stops at an opaque constructor. Neither `\u2191(principalCompactOpen a) = basicOpen (Order.Ideal.principal a)` nor `P \u2208 principalCompactOpen a \u2194 \u00ac a \u2208 P.1` is available. Category.lean line 167 has to use `change PrimeIdealSpectrum.principalCompactOpen (f a) = ...` followed by more `change` steps to get at the underlying set. There is also no simp lemma for `compactOpenOrderIso.symm` applied to `principalCompactOpen a`.",
+      "proposed_change": "Add `@[simp] theorem coe_principalCompactOpen (a : A) : (principalCompactOpen a : Set (PrimeIdealSpectrum A)) = basicOpen (Order.Ideal.principal a) := rfl`. Optionally add `@[simp] theorem mem_principalCompactOpen (P : PrimeIdealSpectrum A) (a : A) : P \u2208 principalCompactOpen a \u2194 a \u2209 P.1`. The proof would use `Order.Ideal.principal_le_iff`, i.e. the `simp only [basicOpen, Set.mem_ofPred_eq, Order.Ideal.principal_le_iff]` step already used in the file. If `a \u2209 P.1` is not the desired normal form, make the first lemma the only simp one. Also add `@[simp] compactOpenOrderIso_symm_principalCompactOpen`, so the iso round-trips normalize.",
+      "benefit": "The existing simp lemma then leads to a usable normal form, and proofs about compact opens can finish with `simp` instead of `change`/`rfl` chains.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Category.lean",
+          "declaration": "compactOpenOrderIso_symm_naturality",
+          "excerpt": "change PrimeIdealSpectrum.principalCompactOpen (f a) = spectralMapCompactOpenComap"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/PrimeSpectrum.lean",
+          "declaration": "basicOpen",
+          "excerpt": "{P | \u00ac I \u2264 P.1}"
+        }
+      ]
+    },
+    {
+      "declaration": "SpectralStoneDuality.PrimeIdealSpectrum.spectrumComap_preimage_basicOpen_principal",
+      "start_line": 104,
+      "end_line": 111,
+      "excerpt": "spectrumComap f \u207b\u00b9' basicOpen (Order.Ideal.principal a) =\n      basicOpen (Order.Ideal.principal (f a))",
+      "problem": "This is the canonical rewrite rule for the preimage of a principal basic open under `spectrumComap`. Its right-hand side is strictly simpler: the `spectrumComap` is gone, and `f` is applied at the element level. It has no simp attribute. The only users are explicit `rw` calls (lines 119, 133) and the `exact (...).symm` in Category.lean (line 178). The Examples file just restates it. Because of this, `simp` cannot push preimages of basic opens through the functor, and every consumer has to name the lemma.",
+      "proposed_change": "Mark it @[simp], consistent with the other additions. The orientation is correct. The left-hand pattern is specific (a `spectrumComap` preimage of a `basicOpen (principal _)`) and the rewrite removes `spectrumComap`, so it cannot loop and should not conflict with other rules. Re-check the two internal `rw` uses, which can stay as they are.",
+      "benefit": "Simp-based reasoning about compact opens under pullback, as in the naturality theorem, can be automated. The lemma's role as the normal form for these preimages becomes explicit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Category.lean",
+          "declaration": "compactOpenOrderIso_symm_naturality",
+          "excerpt": "exact (PrimeIdealSpectrum.spectrumComap_preimage_basicOpen_principal f.hom a).symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Functoriality.lean",
+          "declaration": "isSpectralMap_spectrumComap",
+          "excerpt": "rw [\u2190 hIs, spectrumComap_preimage_basicOpen_principal]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18017,
+    "cache_read_input_tokens": 46842,
+    "output_tokens": 4975,
+    "output_tokens_details": {
+      "thinking_tokens": 834
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18017,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3582,
+        "cache_read_input_tokens": 19901,
+        "cache_creation_input_tokens": 2129,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2129
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1265182,
+  "duration_ms": 39105,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:02:28",
+  "unit": "file",
+  "source_sha256": "4addfb9e1c3b99cc469393c418979ce5e2494cc5b6aab582c79cd7b91ecf34fd",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

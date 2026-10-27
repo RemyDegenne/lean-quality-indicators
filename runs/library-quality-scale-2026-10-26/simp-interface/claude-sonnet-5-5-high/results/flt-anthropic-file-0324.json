@@ -1,0 +1,115 @@
+{
+  "id": "flt-anthropic-file-0324",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and the definition of localIntegralSet / mem_localIntegralSet in Definitions/Def_AutomorphicForm_LocalOrbitalBase.lean. The file has no simp attributes at all. All of its characterizing lemmas (mem_localCong_iff, mem_congFin_iff, mem_cosetSet_iff) are Iff.rfl and are used only through rw. The localWindow and cosetFactor definitions are unfolded manually with simp only [def, ...] in many places. I found no loops or competing rules. The findings are about missing unfolding/case lemmas, and the proposed attributes are conditional and non-looping. I did not run Lean, so the suggestions are uncompiled. A grep found no uses of localWindow, cosetFactor or cosetSet in other files, so these lemmas are local to this file.",
+  "findings": [
+    {
+      "declaration": "localWindow / isOpen_localWindow / isCompact_localWindow",
+      "start_line": 247,
+      "end_line": 275,
+      "excerpt": "  by_cases hv : v \u2208 T\n  \u00b7 have : localWindow K T n v = (localCong K v n : Set (GL (Fin 2) (v.adicCompletion K))) := by",
+      "problem": "localWindow has no rewrite interface. Its value depends on whether v \u2208 T, and this case split is redone by hand in both isOpen_localWindow and isCompact_localWindow. Each time it uses an ad-hoc `ext y; simp only [localWindow, Set.mem_setOf_eq, ...]` block. There is no lemma that gives the canonical forms `localWindow K T n v = localCong K v n` (taking the intersection with localIntegralSet into account) when v \u2208 T, or `= localIntegralSet K v` when v \u2209 T. The final `simp only [hiff]` step and the proofs involving cosetSet also have to unfold the definition by hand.",
+      "proposed_change": "Add conditional rewrite lemmas, proved once by the existing ext arguments. One is `localWindow_of_mem (hv : v \u2208 T) : localWindow K T n v = localIntegralSet K v \u2229 (localCong K v n : Set _)`. The other is `localWindow_of_notMem (hv : v \u2209 T) : localWindow K T n v = localIntegralSet K v`. Also add a `mem_localWindow` Iff.rfl lemma. Mark the two case lemmas @[simp] (the side condition v \u2208 T or v \u2209 T is dischargeable by simp when it is a hypothesis). Then isOpen_localWindow and isCompact_localWindow become `by_cases hv : v \u2208 T <;> simp [hv, ...]` plus the topological facts, with no repeated ext blocks. Termination is not an issue because the right-hand sides do not mention localWindow.",
+      "benefit": "The two near-duplicate case analyses collapse into two reusable normal-form lemmas. Later goals involving localWindow K T n v with known membership of v in T then simplify directly to localIntegralSet or localCong instead of needing to unfold the set-builder.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_sum_isUnitFactorization_of_isFactorizableTestFn.lean",
+          "declaration": "isCompact_localWindow",
+          "excerpt": "simp only [localWindow, Set.mem_setOf_eq, Set.mem_inter_iff, SetLike.mem_coe]"
+        }
+      ]
+    },
+    {
+      "declaration": "cosetFactor / prod_cosetFactor_eq / isLocalTestFn_cosetFactor",
+      "start_line": 297,
+      "end_line": 318,
+      "excerpt": "simp only [cosetFactor, Set.indicator_of_mem (hall v hv)]",
+      "problem": "cosetFactor is a bare `Set.indicator ... fun _ => 1` with no application lemma. Every use unfolds the definition and picks indicator_of_mem or indicator_of_notMem by hand (lines 305, 315, 318). The mem/notMem facts are supplied as explicit proof arguments inside simp only. The main proof at about line 438 also relies on `change (\u220f v \u2208 Ti i, cosetFactor ...) = _` to match the shape. A canonical form such as `if x \u2208 cosetSet K T n r v then 1 else 0`, or `cosetFactor_of_mem` / `cosetFactor_of_notMem` as conditional simp lemmas, is missing.",
+      "proposed_change": "Add `cosetFactor_apply : cosetFactor K T n r v x = if x \u2208 cosetSet K T n r v then 1 else 0`. This needs `open scoped Classical`, or use `Set.indicator_apply`, so it does not require a DecidablePred instance. Alternatively add `cosetFactor_of_mem (hx : x \u2208 cosetSet K T n r v) : cosetFactor K T n r v x = 1` and `cosetFactor_of_notMem (hx : x \u2209 ...) : ... = 0` and mark them @[simp]. Then the three simp calls become `simp [hall v hv]` and `simp [hnot]`, and prod_cosetFactor_eq can be `by simp [cosetFactor_apply, Finset.prod_ite_zero]`-style, or use Finset.prod_eq_one/prod_eq_zero as at present, with the application lemma.",
+      "benefit": "The indicator representation stays hidden behind a stable interface. Proofs that use cosetFactor can state the membership hypothesis to simp, instead of repeating `unfold + indicator_of_*` incantations. This also keeps the downstream `hff\u2080` computation (which multiplies cosetFactor values) in a predictable normal form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_sum_isUnitFactorization_of_isFactorizableTestFn.lean",
+          "declaration": "isLocalTestFn_cosetFactor",
+          "excerpt": "simp [cosetFactor, Set.indicator_of_notMem hx]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_sum_isUnitFactorization_of_isFactorizableTestFn.lean",
+          "declaration": "prod_cosetFactor_eq",
+          "excerpt": "simp only [cosetFactor, Set.indicator_of_notMem hnot]"
+        }
+      ]
+    },
+    {
+      "declaration": "mem_congFin_iff, mem_cosetSet_iff, mem_localCong_iff (and the use of `show ... from rfl`)",
+      "start_line": 167,
+      "end_line": 172,
+      "excerpt": "theorem mem_congFin_iff {T : Finset (HeightOneSpectrum (\ud835\udcde K))} {n : \u2115}",
+      "problem": "The membership characterizations are all Iff.rfl, but none is tagged @[simp] or used in simp. The main proof compensates by writing `show ((rep i)\u207b\u00b9 * h \u2208 Kf) = ((rep i)\u207b\u00b9 * h \u2208 congFin K T e) from rfl, mem_congFin_iff` (line 439) to get around the `set Kf` abbreviation. It also uses `rw [mem_cosetSet_iff, map_mul, map_inv]` at line 432 and `.1`/`.2` projections of membership throughout. The result is that map_mul and map_inv on finComponent, together with membership, have to be threaded manually. For congFin, a related issue is that coe_congFin (the Set-coercion form) is also not simp-tagged, so `SetLike.mem_coe` goals have no canonical direction.",
+      "proposed_change": "Mark mem_congFin_iff as @[simp] (it is stated for the SetLike membership `k \u2208 congFin K T n`, and its right side does not contain congFin, so there is no cycle). Likewise mark mem_cosetSet_iff @[simp]. Keep the `set Kf ... with` abbreviation out of simp-critical goals, or avoid `set` so that no `show ... from rfl` coercion is required. After that, hcoset and hiff can be closed with `simp [map_mul, map_inv]` plus the existing mul_mem lemmas.",
+      "benefit": "This removes the `show ... from rfl` workaround and the manual rewrites. It gives a single canonical expansion of congFin/cosetSet membership into per-place conditions, so statements about these sets can be discharged by simp. The cost is that these Iff.rfl lemmas unfold structure on every membership simp call. That is acceptable here because they are local to this file and the definitions are used nowhere else.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_sum_isUnitFactorization_of_isFactorizableTestFn.lean",
+          "declaration": "main",
+          "excerpt": "rw [show ((rep i)\u207b\u00b9 * h \u2208 Kf) = ((rep i)\u207b\u00b9 * h \u2208 congFin K T e) from rfl, mem_congFin_iff]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_sum_isUnitFactorization_of_isFactorizableTestFn.lean",
+          "declaration": "main",
+          "excerpt": "rw [mem_cosetSet_iff, map_mul, map_inv]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 21021,
+    "cache_read_input_tokens": 71615,
+    "output_tokens": 4999,
+    "output_tokens_details": {
+      "thinking_tokens": 796
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21021,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3391,
+        "cache_read_input_tokens": 23964,
+        "cache_creation_input_tokens": 1070,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1070
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1412515,
+  "duration_ms": 42324,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:36:25",
+  "unit": "file",
+  "source_sha256": "d8a9d3fffc631301dff0c3390bcc26ab98ccaae0ba3e0ee60f599557b027186b",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

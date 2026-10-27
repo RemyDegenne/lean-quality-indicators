@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0207",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the definitions of ParabolicPoint, spatialPartial, timePartial, spatialDeriv, spatialLaplacian and backwardHeatCutoff. I read the statement of caccioppoli_cutoff_heat_timePartial in Terms.lean and the private bridge lemma in Endgame/CutoffDerivatives.lean. The file has no @[simp] attributes of its own, and its local simp_rw uses are terminating rewrites with explicit hypotheses. I found no loops or competing rules. The two findings concern the missing canonical shape and bridge lemmas for the simp set. Both are moderate in strength. I could not run Lean, so I do not claim that the proposed forms compile or that the ParabolicPoint unfolding is the only thing the simpa calls do.",
+  "findings": [
+    {
+      "declaration": "CKN.caccioppoli_I1_heat_operator (and its three consumers)",
+      "start_line": 33,
+      "end_line": 47,
+      "excerpt": "timePartial (fun w : ParabolicPoint =>\n        backwardHeatCutoff \u03b7 x\u2080 t\u2080 r w) z +",
+      "problem": "The theorem is stated with eta-expanded lambdas `fun w : ParabolicPoint => backwardHeatCutoff \u03b7 x\u2080 t\u2080 r w`. That is not the form simp or the neighbouring lemmas use. `caccioppoli_cutoff_heat_timePartial` in Terms.lean is stated as `timePartial (backwardHeatCutoff \u03b7 x\u2080 t\u2080 r) z`. The mismatch forces `simpa only [ParabolicPoint] using htime` at line 70 and `simpa only [ParabolicPoint] using hht` at lines 362 and 538. These calls pass the definition `ParabolicPoint` to simp as an unfolding rule just to reshape binders. `ParabolicPoint` is a plain `def`, deliberately distinct from `Vec3 \u00d7 \u211d` because of the parabolic metric, so unfolding it is brittle. Every downstream user, such as the `hht'` restatements, must copy the long lambda form. In the cutoff theorems that copy then needs the same conversion.",
+      "proposed_change": "State `caccioppoli_I1_heat_operator` in the eta-reduced normal form, for example `timePartial (backwardHeatCutoff \u03b7 x\u2080 t\u2080 r) z + \u2211 i, spatialSecondPartial (backwardHeatCutoff \u03b7 x\u2080 t\u2080 r) i i z = (timePartial \u03b7 z + \u2211 i, spatialSecondPartial \u03b7 i i z) * ... + 2 * \u2211 i, spatialPartial \u03b7 i z * ...`. Do the same for the `\u03b7 w` and `caccioppoliCutoff ... w` lambdas. Then delete the `htime'` and `hht'` restatements and the `simpa only [ParabolicPoint]` calls. Use `hht` and `htime` directly in the `rw` and `calc` steps.",
+      "benefit": "Readers and `rw`/`simp` calls see one canonical shape that matches Terms.lean. The proofs no longer unfold `ParabolicPoint` through simp, and each annulus theorem loses roughly 15 lines of restated hypotheses.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Caccioppoli/Terms.lean",
+          "declaration": "CKN.caccioppoli_cutoff_heat_timePartial",
+          "excerpt": "timePartial (backwardHeatCutoff \u03b7 x\u2080 t\u2080 r) z ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Basic.lean",
+          "declaration": "CKN.Foundation.Parabolic.ParabolicPoint",
+          "excerpt": "def ParabolicPoint := Vec3 \u00d7 \u211d"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Caccioppoli/I1.lean",
+          "declaration": "CKN.caccioppoli_I1_heat_cutoff_annulus_pointwise",
+          "excerpt": "simpa only [ParabolicPoint] using hht"
+        }
+      ]
+    },
+    {
+      "declaration": "CKN.caccioppoli_I1_heat_operator (slice bridge facts)",
+      "start_line": 113,
+      "end_line": 134,
+      "excerpt": "rw [show spatialLaplacian (fun x : Vec3 => \u03b7 (x, z.2)) z.1 =\n      \u2211 i, spatialSecondPartial (fun w : ParabolicPoint => \u03b7 w) i i z by rfl]",
+      "problem": "The proof moves between the slice-level API (`spatialDeriv`, `spatialLaplacian` on `fun x => f (x, z.2)`) and the point-level API (`spatialPartial`, `spatialSecondPartial`) with one-off local facts. These are `h\u03b7partial` (an `rfl`), `h\u0393partial` (via `simpa only [spatialPartial, spatialDeriv]`) and an inline `show \u2026 by rfl`. The earlier `hsum` step does the same with `change` followed by `rfl`. The same bridge `spatialLaplacian (fun x => \u03c8 (x, z.2)) z.1 = \u2211 i, spatialSecondPartial \u03c8 i i z` is re-proved as a private `rfl` lemma in Endgame/CutoffDerivatives.lean. No public simp-usable lemma exists, so each proof must unfold the definitions or restate the fact. The direction is also hidden: `simp_rw [h\u0393partial]` and `simp_rw [h\u03b7partial]` rewrite only because the pattern was restated per call.",
+      "proposed_change": "Add public bridge lemmas near `spatialPartial` or `LeibnizLaplacian`. One is `spatialDeriv (fun x => g (x, z.2)) i z.1 = spatialPartial g i z`. The other is `spatialLaplacian (fun x => g (x, z.2)) z.1 = \u2211 i, spatialSecondPartial g i i z`, with the slice form as the left-hand side. Mark them `@[simp]` only after checking that the left-hand sides do not clash with the existing `spatialDeriv_mul`/`spatialDeriv_add` rules. Otherwise use them via `simp only [...]`/`rw`. Then replace `h\u03b7partial`, the inline `show \u2026 by rfl`, and the private `laplacian_eq_sum_second` with these lemmas.",
+      "benefit": "The slice-to-point conversion gets one canonical oriented rule instead of per-proof `rfl` restatements. This removes duplication between I1 and the Endgame file. It also lets later heat-cutoff computations normalise to `spatialPartial`/`spatialSecondPartial` with a single `simp only`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Endgame/CutoffDerivatives.lean",
+          "declaration": "CKN.Core.Endgame.laplacian_eq_sum_second",
+          "excerpt": "spatialLaplacian (fun x => \u03c8 (x, z.2)) z.1 = \u2211 i, spatialSecondPartial \u03c8 i i z := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Pressure/LeibnizLaplacian.lean",
+          "declaration": "CKN.spatialLaplacian",
+          "excerpt": "fun x => \u2211 i : Fin 3, spatialDeriv (spatialDeriv f i) i x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Caccioppoli/I1.lean",
+          "declaration": "CKN.caccioppoli_I1_heat_operator",
+          "excerpt": "intro i\n    rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 32870,
+    "cache_read_input_tokens": 186981,
+    "output_tokens": 6909,
+    "output_tokens_details": {
+      "thinking_tokens": 1954
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32870,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2915,
+        "cache_read_input_tokens": 35909,
+        "cache_creation_input_tokens": 974,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 974
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2192961,
+  "duration_ms": 66597,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T00:24:09",
+  "unit": "file",
+  "source_sha256": "b894144fd638ab369c24725a328494e6a8232e678a0eb24ce5fafa91d13774ce",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

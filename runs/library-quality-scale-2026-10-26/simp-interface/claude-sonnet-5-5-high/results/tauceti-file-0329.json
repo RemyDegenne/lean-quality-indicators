@@ -1,0 +1,99 @@
+{
+  "id": "tauceti-file-0329",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and the stieltjesWeight definition and simp lemma in Stieltjes/Basic.lean. Grepped the repo for uses of the inversion lemmas; they are only used inside this file. I did not run Lean, so both findings are about expected simp behaviour. They are not observed failures. The other simp lemmas (`stieltjesInversion_singleton_zero`, `stieltjesInversion_stieltjesInversion_eq_restrict`, `isStieltjesFunction_comp_inv_div_iff`) look sound: each shrinks its term or has a clear normal form.",
+  "findings": [
+    {
+      "declaration": "MeasureTheory.Measure.integrable_stieltjesInversion_iff",
+      "start_line": 93,
+      "end_line": 100,
+      "excerpt": "@[simp]\ntheorem integrable_stieltjesInversion_iff",
+      "problem": "This iff is a `@[simp]` lemma that expands any `Integrable g (stieltjesInversion \u03bc)` into `Integrable (fun x => (x:\u211d)\u207b\u00b9 \u2022 g x\u207b\u00b9) \u03bc`. The right side is larger, and it hides the `stieltjesInversion` structure. The file's own consumer is the weight lemma `integrable_weight_stieltjesInversion_iff_restrict`, which has the nicer normal form `Integrable stieltjesWeight (\u03bc.restrict {0}\u1d9c)`. That lemma is not simp. Once the generic lemma is simp, a `simp` call on the weight goal will probably use the generic lemma first. It would then produce `(x:\u211d)\u207b\u00b9 \u2022 stieltjesWeight x\u207b\u00b9`, which `stieltjesWeight_apply` unfolds further. The two lemmas compete, and the generic one gives the worse form. The file itself uses `rw [integrable_stieltjesInversion_iff]` and never relies on simp for it. Its sibling `integral_stieltjesInversion` is not simp either, so the interface is inconsistent.",
+      "proposed_change": "Remove `@[simp]` from `integrable_stieltjesInversion_iff`. Mark the specialised `integrable_weight_stieltjesInversion_iff_restrict` as `@[simp]`, or at least keep it as the documented entry point. The proof in that lemma already uses `rw`, so it needs no change. Do the same for `integrable_weight_stieltjesInversion_iff`, which needs the discharger `\u03bc {0} = 0`.",
+      "benefit": "`simp` on Stieltjes-weight integrability for a transformed measure would reach the intended normal form, the restriction of `\u03bc` to `{0}\u1d9c`. It would no longer expand into a `smul` of an inverse composition. Callers would also be less likely to see unexpected goal shapes from this generic rewrite.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/CompletelyMonotone/Stieltjes/Inversion.lean",
+          "declaration": "MeasureTheory.Measure.integrable_weight_stieltjesInversion_iff_restrict",
+          "excerpt": "Integrable TauCeti.stieltjesWeight (\u03bc.restrict {0}\u1d9c)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/CompletelyMonotone/Stieltjes/Basic.lean",
+          "declaration": "TauCeti.stieltjesWeight_apply",
+          "excerpt": "lemma stieltjesWeight_apply (x : \u211d\u22650) : stieltjesWeight x = (1 + (x : \u211d))\u207b\u00b9"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.representsStieltjes_comp_inv_div_iff",
+      "start_line": 202,
+      "end_line": 214,
+      "excerpt": "theorem representsStieltjes_comp_inv_div_iff {\u03bd : Measure \u211d\u22650} {a b : \u211d\u22650} {f : \u211d \u2192 \u211d}\n    (h\u03bd : \u03bd {0} = 0) :",
+      "problem": "This conditional iff is `@[simp]` and its left-hand pattern is `RepresentsStieltjes \u03bd b a (fun t => f t\u207b\u00b9 / t)`. It rewrites to `RepresentsStieltjes \u03bd.stieltjesInversion a b f`. Three problems follow. First, simp has to discharge `\u03bd {0} = 0`, which holds only if the caller supplies it. Second, the pattern contains `?f t\u207b\u00b9` under a binder, which is not a higher-order pattern. It will match only when the target has a syntactically similar lambda. Third, the right side can match the same rule again when `f` is itself of the form `fun t => g t\u207b\u00b9 / t`. Then `stieltjesInversion_stieltjesInversion_eq_restrict` gives `\u03bd.restrict {0}\u1d9c`, whose atom-at-zero hypothesis is not syntactically `\u03bd {0} = 0`. The proof of this very lemma works around the competing rule by passing `Measure.stieltjesInversion_stieltjesInversion h\u03bd` to `simpa`. The unconditional simp lemma `stieltjesInversion_stieltjesInversion_eq_restrict` would normally rewrite the same term first.",
+      "proposed_change": "Make the simp interface explicit. Drop `@[simp]` from `representsStieltjes_comp_inv_div_iff` and keep it as a manually applied iff. If a simp form is wanted, add a separate unconditional rule such as `RepresentsStieltjes \u03bd b a (fun t => f t\u207b\u00b9 / t) \u2194 RepresentsStieltjes \u03bd.stieltjesInversion a b f` for `\u03bd` already of the form `stieltjesInversion _`, or state the rule for `\u03bd.restrict {0}\u1d9c`. That removes the side condition and the interaction with the double-inversion rewrite.",
+      "benefit": "The simp set would have one unconditional normal form for double inversion. Rewriting would no longer depend on a side goal that simp usually cannot discharge, and a repeated application would not produce `restrict` forms that no longer match the hypothesis. Callers would get predictable behaviour from `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/CompletelyMonotone/Stieltjes/Inversion.lean",
+          "declaration": "MeasureTheory.Measure.stieltjesInversion_stieltjesInversion_eq_restrict",
+          "excerpt": "stieltjesInversion (stieltjesInversion \u03bc) = \u03bc.restrict {0}\u1d9c"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Analysis/CompletelyMonotone/Stieltjes/Inversion.lean",
+          "declaration": "TauCeti.representsStieltjes_comp_inv_div_iff",
+          "excerpt": "simpa [Measure.stieltjesInversion_stieltjesInversion h\u03bd] using h.comp_inv_div"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 10619,
+    "cache_read_input_tokens": 43136,
+    "output_tokens": 5533,
+    "output_tokens_details": {
+      "thinking_tokens": 2437
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10619,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2525,
+        "cache_read_input_tokens": 19930,
+        "cache_creation_input_tokens": 2292,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2292
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1021316,
+  "duration_ms": 40655,
+  "turns": 5,
+  "attempts": 2,
+  "judged": "2026-10-27T01:38:11",
+  "unit": "file",
+  "source_sha256": "b097a051e93b1db136d08d9475073ac404aae1483864891992747d2857622687",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0295",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the upstream FrobeniusTwistedLine.lean (SatisfiesEquation, lift, nilpotentWitness, and their simp lemmas). I also checked Mathlib's AlgHom.liftEquiv simp lemmas and grepped for downstream uses of thickenedLine*/baseChangeNormalForm. The existing simp lemmas look consistent: the Hom, Inv and equivalence lemmas have different head symbols, so they don't compete, and I found no rewrite cycle. thickenedLineW_pow, lift_x/w and the symm lemmas are oriented sensibly. The two findings are missing-coverage issues and both are moderate. Nothing was run, so I make no claim about observed simp behaviour. The first finding is the stronger one, since the file's own proof works around the gap by hand. The second has no current downstream use beyond the charP instance.",
+  "findings": [
+    {
+      "declaration": "baseChangeNormalForm_tmul_y / baseChangeNormalForm_witness (simp interface of baseChangeNormalForm)",
+      "start_line": 296,
+      "end_line": 319,
+      "excerpt": "theorem baseChangeNormalForm_witness {p : \u2115} (hp : p.Prime) [CharP K p]",
+      "problem": "The simp interface for the equivalence only covers elements of the form `1 \u2297\u209c x`, `1 \u2297\u209c y`, and the opaque def `nilpotentWitness`. It has no rule for a general pure tensor `a \u2297\u209c x` or `a \u2297\u209c y` with `a : L`. `nilpotentWitness` is a plain def, and its body is `1 \u2297\u209c y - \u03b1 \u2297\u209c x`. So once a term is unfolded or written out, `map_sub` leaves `baseChangeNormalForm (\u03b1 \u2297\u209c x)` stuck, because no simp rule applies. The file's own proof of `baseChangeNormalFormInv_comp_hom` hits this. It pushes the inverse through by hand, using `change`, `rw [map_add, \u2026]`, `.commutes \u03b1` and then `simp [nilpotentWitness, \u2026]`. The underlying `liftEquiv_tmul` is `@[simp]`, but it only fires after unfolding `baseChangeNormalFormHom`, which is deliberately not simp. So the coordinate formulas advertised as simp lemmas do not extend to the scalar-extended coordinates `a \u2297\u209c x` and `a \u2297\u209c y`.",
+      "proposed_change": "Add simp lemmas for general scalars, for example `baseChangeNormalForm K L hp t \u03b1 h\u03b1 (a \u2297\u209c[K] x K p t) = algebraMap L (ThickenedLineCoordinateRing L p) a * thickenedLineX L p`. Add the analogous `a \u2297\u209c y` lemma with right-hand side `algebraMap L _ a * (thickenedLineW L p + algebraMap L _ \u03b1 * thickenedLineX L p)`, or `a \u2022 (\u2026)`. Prove them via the Hom lemma, since `liftEquiv_tmul` gives `s \u2022 f a`, together with `Algebra.smul_def`. Optionally add a lemma unfolding `nilpotentWitness` as `1 \u2297\u209c y - \u03b1 \u2297\u209c x`, so the `\u2026_witness` lemma and the tmul lemmas agree on a normal form. The `\u2026_comp_inv/hom` proofs could then use simp instead of `change`/`rw` chains.",
+      "benefit": "`simp` can then evaluate the equivalence on every pure tensor of coordinates, not just `1 \u2297\u209c _`. The unfolded witness `1 \u2297\u209c y - \u03b1 \u2297\u209c x` simplifies to `W` without manual `change`/`rw`. Users working with the base-changed coordinate ring get a complete simp normal form (`W`, `X`, `algebraMap \u03b1`).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/FrobeniusTwistedLineBaseChange.lean",
+          "declaration": "baseChangeNormalFormInv_comp_hom",
+          "excerpt": "rw [(baseChangeNormalFormInv K L hp t \u03b1 h\u03b1).commutes \u03b1]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/FrobeniusTwistedLine.lean",
+          "declaration": "nilpotentWitness",
+          "excerpt": "(1 : L) \u2297\u209c[K] y K p t - \u03b1 \u2297\u209c[K] x K p t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/TensorProduct/Basic.lean",
+          "declaration": "AlgHom.liftEquiv_tmul",
+          "excerpt": "f.liftEquiv R S A B (s \u2297\u209c a) = s \u2022 f a"
+        }
+      ]
+    },
+    {
+      "declaration": "thickenedLineOrigin",
+      "start_line": 165,
+      "end_line": 180,
+      "excerpt": "thickenedLineLift L p 0 0 (by simp [(Fact.out : p.Prime).ne_zero])",
+      "problem": "`thickenedLineOrigin` is a def built from `thickenedLineLift`, and it comes with no simp lemmas for its values on the generators. Its defining properties are `origin X = 0` and `origin W = 0`. A simp call cannot see through the def to `thickenedLineLift_x/w`. It only works on `algebraMap` images through `AlgHom.commutes`, which the charP instance uses (`simpa using h`). Any later use that evaluates the origin on `X`, `W` or a polynomial in them has to unfold the definition by hand.",
+      "proposed_change": "Add `@[simp] theorem thickenedLineOrigin_x : thickenedLineOrigin L (thickenedLineX L p) = 0` and `thickenedLineOrigin_w : \u2026 (thickenedLineW L p) = 0`. Prove them by `simp [thickenedLineOrigin]`, or directly from `thickenedLineLift_x` and `thickenedLineLift_w`.",
+      "benefit": "The interface becomes complete for the one additional definition that has simp-relevant behaviour. Origin evaluations of coordinate expressions then normalise automatically, in the same way as for `thickenedLineLift`, `baseChangeNormalFormHom` and `baseChangeNormalFormInv`. This is a modest improvement, since the file currently only uses the origin for nontriviality and characteristic.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/FrobeniusTwistedLineBaseChange.lean",
+          "declaration": "thickenedLineLift_x",
+          "excerpt": "thickenedLineLift L p x' w' hw (thickenedLineX L p) = x'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/FrobeniusTwistedLineBaseChange.lean",
+          "declaration": "thickenedLineCoordinateRing_charP",
+          "excerpt": "have h := congrArg (thickenedLineOrigin L) hab"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 21420,
+    "cache_read_input_tokens": 117935,
+    "output_tokens": 7639,
+    "output_tokens_details": {
+      "thinking_tokens": 3466
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21420,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2687,
+        "cache_read_input_tokens": 24284,
+        "cache_creation_input_tokens": 1149,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1149
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1738915,
+  "duration_ms": 60832,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:17:39",
+  "unit": "file",
+  "source_sha256": "aea172e1f01564d10859bbda4be2b352811706688d45f07f90760b170e982e54",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

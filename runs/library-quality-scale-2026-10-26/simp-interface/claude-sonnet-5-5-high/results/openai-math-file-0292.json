@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0292",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, then HilbertBiprod.lean and HilbertBiprodProjections.lean, which define inlL, inrL, left, right, adjoint_inlL, adjoint_inrL, inl_adjoint and inr_adjoint. I grepped the repo for downstream uses of component_* and adjoint_inlL/inrL. Only two findings are well supported, and both are modest. Nothing here looks like a simp loop or a competing rule. The target file declares no @[simp] lemmas, so the issues are missing canonical rules and non-terminal simp calls. I could not run Lean, so I don't know whether the proposed lemmas would fire as intended in every context.",
+  "findings": [
+    {
+      "declaration": "Kadison.BiprodLinkColumn.component (and component_intertwines)",
+      "start_line": 37,
+      "end_line": 38,
+      "excerpt": "def component (v : Intertwiner N) : H \u2192L[\u2102] G :=\n  (inrL (H:=H) (G:=G)).adjoint.comp (v.val.adjoint.comp inlL)",
+      "problem": "`component` has no simp-normal-form lemma for its application, so every user has to unfold the definition and then rewrite the adjoints of `inlL`/`inrL` by hand. `component_intertwines` shows the cost: its `simpa only` unfolds `component` and then needs a long, order-sensitive list (`adjoint_inrL`, `WithLp.sndL_apply`, `inlL_apply`, `WithLp.ofLp_toLp`, `WithLp.snd`, `map_zero`, ...). `adjoint_inlL` and `adjoint_inrL` are plain lemmas, not simp lemmas. `compression_tendsto` has to `rw [adjoint_inlL]` and close with `rfl`.",
+      "proposed_change": "Add a lemma `component_apply (v : Intertwiner N) (x : H) : component N v x = (v.val.adjoint (inlL x)).ofLp.2`. Mark it `@[simp]` if `component` stays an opaque `def`, or use `@[simp] lemma` together with the `simp only [component]` unfolding. This puts `component N v x` in a single normal form that mentions `Space H G` coordinates, instead of an adjoint composition. `component_intertwines` can then drop `component`, `adjoint_inrL` and `WithLp.sndL_apply` from its simp set. Consider also making `adjoint_inlL`/`adjoint_inrL` simp lemmas in HilbertBiprodProjections.lean, since they rewrite an adjoint to a concrete projection map and cannot loop.",
+      "benefit": "Later proofs about columns (`column_square`, `component_intertwines`, the `HilbertModuleSchroederBernstein` uses) can be closed by `simp` instead of unfolding `component` and listing fragile lemma sets. The rewrite direction is also fixed: the abstract adjoint composite becomes a coordinate expression.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Commutator/BiprodLinkColumn.lean",
+          "declaration": "component_intertwines",
+          "excerpt": "simpa only [component,ContinuousLinearMap.comp_apply,adjoint_inrL,WithLp.sndL_apply,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Commutator/HilbertBiprodProjections.lean",
+          "declaration": "adjoint_inlL",
+          "excerpt": "lemma adjoint_inlL : (inlL (H:=H) (G:=G)).adjoint=WithLp.fstL 2 \u2102 H G := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Commutator/HilbertBiprod.lean",
+          "declaration": "inlL_apply",
+          "excerpt": "@[simp] lemma inlL_apply (x : H) : inlL (G:=G) x=WithLp.toLp 2 (x,0) := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "Kadison.BiprodLinkColumn.column_square",
+      "start_line": 74,
+      "end_line": 81,
+      "excerpt": "simp [compression,finiteProjection,ContinuousLinearMap.comp_apply]\n  exact Finset.sum_attach s",
+      "problem": "The proof relies on a non-terminal full `simp` that unfolds the definitions `compression` and `finiteProjection`. It must leave the goal in exactly the shape that the following `exact Finset.sum_attach ...` expects. There are no apply lemmas such as `compression_apply` or `finiteColumn_apply`, so the form of the goal depends on the whole default simp set. A change to the simp set elsewhere can break this step, and the intermediate normal form can't be read from the source.",
+      "proposed_change": "Add explicit apply lemmas, for example `compression_apply (s) (x : H) : compression N S s x = (inlL (H:=H) (G:=G)).adjoint (finiteProjection N right left S s (inlL x))`. Add `finiteColumn_apply` in the same way if it is needed. Rewrite with these using `simp only [...]` or `rw`, and finish with `Finset.sum_attach` or `simp [Finset.sum_attach]`. This way the unfold-then-simp happens in one stable lemma, not in each user's proof.",
+      "benefit": "The proof gets more robust and readable, and downstream files that unfold `compression` (InfiniteLinkColumn, BiprodLinkIntertwining, ...) get a stable rewrite interface instead of unfolding the definition and depending on the default simp set.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Commutator/BiprodLinkColumn.lean",
+          "declaration": "compression",
+          "excerpt": "(inlL (H:=H) (G:=G)).adjoint.comp ((finiteProjection N right left S s).comp inlL)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 17508,
+    "cache_read_input_tokens": 35502,
+    "output_tokens": 4270,
+    "output_tokens_details": {
+      "thinking_tokens": 1401
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17508,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3401,
+        "cache_read_input_tokens": 19267,
+        "cache_creation_input_tokens": 2254,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2254
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11629419999999999,
+  "duration_ms": 38545,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:13:47",
+  "unit": "file",
+  "source_sha256": "1790f1535cbbc0c8e2a67b90a7c0af8758b2affc692e938135184a6ff7c37db6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

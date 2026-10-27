@@ -1,0 +1,104 @@
+{
+  "id": "mathlib-file-0321",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked each simp, grind and gcongr attribute for direction, hypotheses and overlap with other simp lemmas. I compared the Set insert/inter/union lemmas with their Finset counterparts in Mathlib/Data/Finset/Lattice/Lemmas.lean. Most attributes look deliberate: the mem_singleton comment explains its missing simp, the `@[simp default + 1]` priority on disjoint_singleton_left, the aliases for singleton_inter_of_notMem. I did not run Lean, so I report no observed simp behaviour, only the inconsistency between the Set and Finset simp sets. I considered flagging `subset_singleton_iff`, which is simp and unfolds to a \u2200. I left it out because that looks like a design choice and I found no concrete use that it hurts.",
+  "findings": [
+    {
+      "declaration": "Set.insert_union",
+      "start_line": 109,
+      "end_line": 112,
+      "excerpt": "theorem insert_union : insert a s \u222a t = insert a (s \u222a t) := by grind",
+      "problem": "The simp set is asymmetric. `union_insert` (s \u222a insert a t = insert a (s \u222a t)) is `@[simp]`, and `singleton_union`/`union_singleton` are simp too. But `insert_union`, which pushes `insert` out of the left argument, is not simp. So `insert a s \u222a t` stays as it is, while `s \u222a insert a t` is rewritten to `insert a (s \u222a t)`. Terms like `insert a s \u222a insert b t` end up half-normalized, and the result depends on which side the insert sits. The Finset analogue `Finset.insert_union` is `@[simp, grind =]`, so Set and Finset also disagree. The rewrite terminates: it moves `insert` strictly outward and introduces no new union-over-insert redex.",
+      "proposed_change": "Mark `Set.insert_union` as `@[simp]`, matching `union_insert` and `Finset.insert_union`. Keep the statement and orientation unchanged. Then check downstream files for simp calls that relied on the old normal form.",
+      "benefit": "Unions with an inserted element normalize to the same form whichever side the `insert` is on. Set and Finset simp behaviour becomes consistent, and fewer manual `rw [insert_union]` steps are needed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Finset/Lattice/Lemmas.lean",
+          "declaration": "Finset.insert_union",
+          "excerpt": "theorem insert_union (a : \u03b1) (s t : Finset \u03b1) : insert a s \u222a t = insert a (s \u222a t) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Set/Insert.lean",
+          "declaration": "Set.union_insert",
+          "excerpt": "theorem union_insert : s \u222a insert a t = insert a (s \u222a t) := by grind"
+        }
+      ]
+    },
+    {
+      "declaration": "Set.inter_insert_of_mem / Set.insert_inter_of_mem / Set.inter_insert_of_notMem / Set.insert_inter_of_notMem",
+      "start_line": 360,
+      "end_line": 368,
+      "excerpt": "theorem inter_insert_of_notMem (h : a \u2209 s) : s \u2229 insert a t = s \u2229 t := by grind",
+      "problem": "None of the four conditional intersection/insert lemmas is simp. `singleton_inter_of_mem`, `inter_singleton_of_mem` and the notMem aliases are simp in the same file, and the Finset versions of all four are `@[simp]`. So `simp` can reduce `{a} \u2229 s` to `{a}` when `a \u2208 s`, but cannot reduce `s \u2229 insert a t` to `s \u2229 t` when `h : a \u2209 s` is in context. The singleton case, the Finset case and the general Set case therefore behave differently. All four rules are terminating and have hypotheses that simp's discharger can usually close from context.",
+      "proposed_change": "Add `@[simp]` to `inter_insert_of_mem`, `insert_inter_of_mem`, `inter_insert_of_notMem` and `insert_inter_of_notMem`, as in `Finset/Lattice/Lemmas.lean`. If a conflict with the `mem` rules turns up, make only the two `notMem` variants simp. Check for loops with `insert_inter_distrib`-style rules, which are not simp here.",
+      "benefit": "The Set simp set matches the Finset one and the neighbouring singleton lemmas. Goals with intersections against `insert` and a known membership fact simplify without manual `rw`, and generic code that moves between Set and Finset behaves consistently.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Finset/Lattice/Lemmas.lean",
+          "declaration": "Finset.inter_insert_of_notMem",
+          "excerpt": "theorem inter_insert_of_notMem {s\u2081 s\u2082 : Finset \u03b1} {a : \u03b1} (h : a \u2209 s\u2081) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Finset/Lattice/Lemmas.lean",
+          "declaration": "Finset.insert_inter_of_notMem",
+          "excerpt": "theorem insert_inter_of_notMem {s\u2081 s\u2082 : Finset \u03b1} {a : \u03b1} (h : a \u2209 s\u2082) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/Set/Insert.lean",
+          "declaration": "Set.inter_singleton_of_mem",
+          "excerpt": "@[simp] lemma inter_singleton_of_mem (ha : a \u2208 s) : s \u2229 {a} = {a} := by simpa"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 17788,
+    "cache_read_input_tokens": 37813,
+    "output_tokens": 6689,
+    "output_tokens_details": {
+      "thinking_tokens": 3828
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17788,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2650,
+        "cache_read_input_tokens": 20619,
+        "cache_creation_input_tokens": 1182,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1182
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1418353,
+  "duration_ms": 50131,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:35:53",
+  "unit": "file",
+  "source_sha256": "ddb126637f3f259d7bc0d448c902653cf237fe66eed740295d1935570a067d77",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

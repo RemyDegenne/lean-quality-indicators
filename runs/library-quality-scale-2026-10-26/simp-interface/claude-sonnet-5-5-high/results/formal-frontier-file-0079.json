@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0079",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file, the upstream GeneralLinearDeterminantSection definitions and simp lemmas (generalLinearDiagonalHom_apply, _det, generalLinearDiagonalUnit_apply), and the client test file AlgebraicGroupsTest/GeneralLinearDeterminantConjugation.lean. I found no loops or competing rules in the existing simp lemma `generalLinearDiagonalConjSL_toGL`. The findings are about missing simp interface for the new `generalLinearConjDiagonalUnit` and the entry formula. I did not run Lean, so I don't know whether the proposed lemmas would fire or compile. A coercion-level lemma for the entries may need care about the simp normal form.",
+  "findings": [
+    {
+      "declaration": "generalLinearConjDiagonalUnit",
+      "start_line": 64,
+      "end_line": 66,
+      "excerpt": "@[expose] def generalLinearConjDiagonalUnit (pivot : n) (unit : R\u02e3) (index : n) : R\u02e3 :=\n  if index = pivot then unit else 1",
+      "problem": "The new unit-valued diagonal function is public and appears in the statement of the main entry theorem, but it has no simp or equation lemmas. Every consumer, and the file's own proofs, must unfold it by name. The test file's `norm_num [generalLinearConjDiagonalUnit, ...]` does this, and so do `hdiag` and `hinv` in this file. The inverse behaviour, `conj unit\u207b\u00b9 index = (conj unit index)\u207b\u00b9`, is also reproved ad hoc by case-splitting.",
+      "proposed_change": "Add simp lemmas `generalLinearConjDiagonalUnit_self : generalLinearConjDiagonalUnit n pivot unit pivot = unit` and `generalLinearConjDiagonalUnit_of_ne (h : index \u2260 pivot) : ... = 1`. Add a lemma `generalLinearConjDiagonalUnit_inv : generalLinearConjDiagonalUnit n pivot unit\u207b\u00b9 index = (generalLinearConjDiagonalUnit n pivot unit index)\u207b\u00b9`, which would replace `hinv`. Optionally add `generalLinearConjDiagonalUnit_apply_coe` for the coerced `if` form. Clients can then use `simp` without unfolding a definition that is only a conditional.",
+      "benefit": "Concrete entry computations (e.g. `Fin 2` examples) can use ordinary simp and norm_num with `Fin` index facts. Downstream code no longer depends on the definition body. The private case splits in `hinv` and `hdiag` become reusable lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroupsTest/GeneralLinearDeterminantConjugation.lean",
+          "declaration": "columnPivotUpperEntry",
+          "excerpt": "norm_num [generalLinearConjDiagonalUnit, unitTwo, upperUnipotent,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/GeneralLinearDeterminantConjugation.lean",
+          "declaration": "generalLinearDiagonalConjSL_apply",
+          "excerpt": "by_cases hcol : col = pivot <;> simp [generalLinearConjDiagonalUnit, hcol]"
+        }
+      ]
+    },
+    {
+      "declaration": "generalLinearDiagonalConjSL_apply",
+      "start_line": 124,
+      "end_line": 128,
+      "excerpt": "theorem generalLinearDiagonalConjSL_apply (pivot : n) (unit : R\u02e3)\n    (matrix : Matrix.SpecialLinearGroup n R) (row col : n) :",
+      "problem": "This entry-wise formula is the canonical readback for `generalLinearDiagonalConjSL`, which is an opaque tactic-built `def`. It has no simp attribute. The only simp lemma is `generalLinearDiagonalConjSL_toGL`, which stays in `GeneralLinearGroup`. Simp therefore cannot compute matrix entries. Both client theorems need an explicit `rw [generalLinearDiagonalConjSL_apply]` before `norm_num`. The statement uses coerced units and `Units` inverse, so it has no division and no loop risk.",
+      "proposed_change": "Mark `generalLinearDiagonalConjSL_apply` with `@[simp]`, or add a simp variant, once the `generalLinearConjDiagonalUnit` simp lemmas above exist. Also add a simp lemma for the coerced matrix, `((generalLinearDiagonalConjSL n pivot unit matrix : Matrix.SpecialLinearGroup n R) : Matrix n n R) = ...`, if that form is needed. The rewrite should produce the explicit row-scale and column-inverse-scale normal form.",
+      "benefit": "Entry computations such as `generalLinearDiagonalConjSL (Fin 2) 1 unitTwo upperUnipotent 0 1` can be discharged by `simp` or `norm_num` directly. The explicit `rw` in the tests disappears, and the public interface no longer exposes only the GL-level readback.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroupsTest/GeneralLinearDeterminantConjugation.lean",
+          "declaration": "rowPivotUpperEntry",
+          "excerpt": "rw [generalLinearDiagonalConjSL_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/GeneralLinearDeterminantConjugation.lean",
+          "declaration": "generalLinearDiagonalConjSL_toGL",
+          "excerpt": "@[simp] theorem generalLinearDiagonalConjSL_toGL (pivot : n) (unit : R\u02e3)"
+        }
+      ]
+    },
+    {
+      "declaration": "generalLinearDiagonalConjSL_apply (local hdiag)",
+      "start_line": 131,
+      "end_line": 137,
+      "excerpt": "have hdiag (value : R\u02e3) :\n      ((generalLinearDiagonalHom n pivot value : Matrix.GeneralLinearGroup n R) :\n        Matrix n n R) =\n        Matrix.diagonal (fun index \u21a6 (generalLinearConjDiagonalUnit n pivot value index : R)) := by",
+      "problem": "The matrix-level description of `generalLinearDiagonalHom` as `Matrix.diagonal` of the new unit function is proved as a local `have`, so it cannot be used as a simp or rewrite lemma elsewhere. The existing simp lemma `generalLinearDiagonalHom_apply` only gives entrywise `if i = j then if i = pivot ...`, so simp cannot identify the matrix as a diagonal. Each consumer needs a case split plus `simp_all`, as here, which is fragile.",
+      "proposed_change": "Promote it to a top-level lemma `coe_generalLinearDiagonalHom : ((generalLinearDiagonalHom n pivot unit : Matrix.GeneralLinearGroup n R) : Matrix n n R) = Matrix.diagonal (fun i \u21a6 (generalLinearConjDiagonalUnit n pivot unit i : R))`. Choose whether it is `@[simp]` after checking that it does not compete with `generalLinearDiagonalHom_apply`. The diagonal normal form lets `Matrix.diagonal_mul` and `Matrix.mul_diagonal` fire. The `split_ifs <;> simp_all` step can then be removed.",
+      "benefit": "This gives one canonical coe form for the diagonal section, which composes with Mathlib's diagonal multiplication simp lemmas. It also removes the fragile `simp_all` step and the duplicated case analysis.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/GeneralLinearDeterminantSection.lean",
+          "declaration": "generalLinearDiagonalHom_apply",
+          "excerpt": "generalLinearDiagonalHom n pivot unit i j =\n      if i = j then (if i = pivot then (unit : R) else 1) else 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/GeneralLinearDeterminantConjugation.lean",
+          "declaration": "generalLinearDiagonalConjSL_apply",
+          "excerpt": "split_ifs <;> simp_all"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 13938,
+    "cache_read_input_tokens": 42385,
+    "output_tokens": 4668,
+    "output_tokens_details": {
+      "thinking_tokens": 814
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13938,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3155,
+        "cache_read_input_tokens": 16500,
+        "cache_creation_input_tokens": 1451,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1451
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10668649999999999,
+  "duration_ms": 41592,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T22:58:47",
+  "unit": "file",
+  "source_sha256": "3860c2131567ee0aec5d8206328b6c5af66f304bdb09a5e6ac09d623db27d6c7",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,115 @@
+{
+  "id": "formal-frontier-file-0357",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the simp-relevant sources it depends on: ComponentGroup.lean (the `_mk` simp lemma and the equivalence definition) and FiniteConstant.lean (`finiteConstantGroupSchemePoint`, its `_mul` simp lemma, `finiteConstantSigmaIso_hom_\u03b9`). A grep found no existing `finiteConstantGroupSchemePoint_one`. I did not find a credible simp loop or competing-rule problem. The existing `@[simp]` on `identityComponentIsoConnectedComponent_hom_\u03b9` looks fine. The findings are missing-lemma and missing-attribute issues, and I could not run Lean. The suggested attributes and lemmas are untested; the `_left` simp lemmas in particular depend on `Over.homMk_left` not already firing through the `def`.",
+  "findings": [
+    {
+      "declaration": "rationalComponentGroupEquivConnectedComponents_symm_point",
+      "start_line": 248,
+      "end_line": 256,
+      "excerpt": "lemma rationalComponentGroupEquivConnectedComponents_symm_point",
+      "problem": "This is the inverse companion of `rationalComponentGroupEquivConnectedComponents_mk`, which is `@[simp]` in ComponentGroup.lean. The `symm` form is not simp, so every use is a manual `rw`: lines 294, 509 and 652. At line 652 the caller first has to `rw [show c = e (e.symm c) by simp]` to expose the pattern. The normal form `e.symm (groupSchemePointComponent f x) = Quotient.mk'' x` is half of an existing simp pair, so `simp` currently handles one direction and not the other.",
+      "proposed_change": "Mark the lemma `@[simp]`. Its LHS is `e.symm (groupSchemePointComponent f x)` and its RHS is `Quotient.mk'' x`. The `_mk` lemma rewrites `e (Quotient.mk'' x)` to `groupSchemePointComponent f x`, so the two rules never feed each other and no cycle arises. Then replace the `rw [..._symm_point ...]` calls with `simp`. The detour through `show ... = e (e.symm ...) by simp` at line 652 can then be dropped.",
+      "benefit": "`simp` can normalise both directions of the equivalence on point classes. The component-label bookkeeping in `groupSchemePoint_comp_componentSchemeMap`, `connectedComponentOpen\u03b9_comp_componentSchemeMap` and the pullback proof becomes a single `simp`. Later files would also get the rule.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/ComponentGroup.lean",
+          "declaration": "rationalComponentGroupEquivConnectedComponents_mk",
+          "excerpt": "rationalComponentGroupEquivConnectedComponents f (Quotient.mk'' x) =\n      groupSchemePointComponent f x"
+        }
+      ]
+    },
+    {
+      "declaration": "identityComponent\u03b9_comp_componentSchemeMap (and the end of isPullback_identityComponent\u03b9_componentSchemeMap)",
+      "start_line": 571,
+      "end_line": 580,
+      "excerpt": "have hOne : finiteConstantGroupSchemePoint K (rationalComponentGroup f) One.one =",
+      "problem": "The canonical identity `finiteConstantGroupSchemePoint K \u0393 1 = \u03b7[(finiteConstantGroupScheme K \u0393).X]` is missing as a simp lemma. The sibling `finiteConstantGroupSchemePoint_mul` is simp, but its unit counterpart is not stated anywhere. The file therefore re-proves it ad hoc, by passing through `finiteConstantGroupSchemePointHom` and `map_one`, in two places: lines 576-580 and the final bullet of the pullback proof (about lines 659-662). Each time it is paired with `rfl` bridging lemmas, `hQ : Quotient.mk'' 1 = One.one` (lines 573-575, again at about line 596) and `h\u03b7 : \u03b7 = 1`. These force the `One.one` spelling and make `rw ... at h` fragile.",
+      "proposed_change": "Add `@[simp] lemma finiteConstantGroupSchemePoint_one (K \u0393) ... : finiteConstantGroupSchemePoint K \u0393 1 = \u03b7[(finiteConstantGroupScheme K \u0393).X]` next to `finiteConstantGroupSchemePoint_mul`, with the proof `map_one (finiteConstantGroupSchemePointHom K \u0393)`. Optionally also state the point-class fact as `Quotient.mk'' (1 : groupSchemePoints f) = 1` in the `1` spelling, so no `One.one` is needed. The proofs of `identityComponent\u03b9_comp_componentSchemeMap` and the last bullet of the pullback lemma can then be closed by `simpa using h` or by `simp`.",
+      "benefit": "The unit case matches the existing `_mul` simp rule, so rational points of the finite constant group scheme have a complete simp normal form. Users no longer rebuild the unit identity through `One.one` and `rfl` rewrites at each use.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/FiniteConstant.lean",
+          "declaration": "finiteConstantGroupSchemePoint_mul",
+          "excerpt": "finiteConstantGroupSchemePoint K \u0393 g * finiteConstantGroupSchemePoint K \u0393 h =\n      finiteConstantGroupSchemePoint K \u0393 (g * h)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/FiniteConstant.lean",
+          "declaration": "finiteConstantGroupSchemePointHom",
+          "excerpt": "toFun := finiteConstantGroupSchemePoint K \u0393"
+        }
+      ]
+    },
+    {
+      "declaration": "componentSchemeMap / connectedComponentOpen\u03b9Over (missing `.left` simp lemmas)",
+      "start_line": 151,
+      "end_line": 153,
+      "excerpt": "instance componentSchemeMap_flat : Flat (componentSchemeMap f).left := by\n  change Flat (componentSchemeMapLeft f)",
+      "problem": "`componentSchemeMap` and `connectedComponentOpen\u03b9Over` are defined with `Over.homMk` inside non-reducible `def`s, and no simp lemmas give their `.left`. The proofs repeatedly use `change` to unfold the `.left` by definitional unfolding. Examples are lines 152, 193 and 230 (`change Flat/Surjective/QuasiCompact (componentSchemeMapLeft f)`), line 263 (`change x.left \u226b componentSchemeMapLeft f = ...`), and the `change` at lines 681-682, 698-707 (`(connectedComponentOpen\u03b9Over f p.1).left` turned into `(G.connectedComponentOpen ..).\u03b9`). Because simp cannot see through the definitions, these goals are stuck. Each proof has to be coded around the unfolding.",
+      "proposed_change": "Add `@[simp] lemma componentSchemeMap_left : (componentSchemeMap f).left = componentSchemeMapLeft f := rfl` and `@[simp] lemma connectedComponentOpen\u03b9Over_left (a) : (connectedComponentOpen\u03b9Over f a).left = (G.connectedComponentOpen (groupSchemePointComponent f a)).\u03b9 := rfl`. A similar lemma for `connectedComponentOpenOver f a`'s `.left` would help too. The orientation goes from the bundled `Over` morphism to the concrete scheme map, so there is no loop. The `change` steps can then be replaced by `simp only [...]` or `rw`.",
+      "benefit": "`simp` and `rw` can see through the `Over` wrapper. Downstream uses of the component map, such as kernel and fibre statements, can then rewrite with `connectedComponentOpen_\u03b9_componentSchemeMapLeft` without manual `change`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/ComponentSchemeMap.lean",
+          "declaration": "componentSchemeMap",
+          "excerpt": "Over.homMk (componentSchemeMapLeft f) (componentSchemeMapLeft_over f)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/ComponentSchemeMap.lean",
+          "declaration": "connectedComponentOpen\u03b9Over",
+          "excerpt": "Over.homMk (G.connectedComponentOpen (groupSchemePointComponent f a)).\u03b9 rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 33380,
+    "cache_read_input_tokens": 156954,
+    "output_tokens": 7154,
+    "output_tokens_details": {
+      "thinking_tokens": 2245
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33380,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3399,
+        "cache_read_input_tokens": 36070,
+        "cache_creation_input_tokens": 1323,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1323
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2207794,
+  "duration_ms": 55099,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T02:00:28",
+  "unit": "file",
+  "source_sha256": "20d7f9db94303b92eea882937c75efbf7acc17c8d54bce28fb14d872ba2d3ea5",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

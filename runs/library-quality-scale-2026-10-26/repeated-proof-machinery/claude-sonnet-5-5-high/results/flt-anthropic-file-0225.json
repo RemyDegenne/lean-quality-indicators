@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0225",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and the Mathlib homologyIsCokernel API. Two repeated-proof patterns are reported: the cokernel-descent construction (used twice) and the four bilinearity obligations in cupZ. The `have := congrArg (fun \u03c6 => \u03c6.hom _)` unwrapping idiom appears in five places, but each use is a short routine unfolding, so I didn't report it separately. The rewritten code is untested, and the exact simp/rw steps in the proposed lemmas may need adjustment.",
+  "findings": [
+    {
+      "declaration": "cupZH / \u03c0_cupZH / cupHH / \u03c0_cupHH (with cond_right, cond_left)",
+      "start_line": 143,
+      "end_line": 193,
+      "excerpt": "(Limits.CokernelCofork.IsColimit.desc' ((inhomogeneousCochains A).homologyIsCokernel _ p rfl)",
+      "problem": "The same descent construction is written out twice. Each time, a map out of cocycles that kills boundaries is lifted through `homologyIsCokernel` using `CokernelCofork.IsColimit.desc'`. The `\u03c0_*` lemma is then proved by re-stating the whole `desc'` term inside `congrArg`, followed by the same `simp only [ModuleCat.hom_comp, LinearMap.comp_apply, Limits.Cofork.\u03c0_of\u03c0] at this; exact this`. The only differences are the complex (A or B), the degree, and the map. This pairs `cupZH` with `cupHH` and `\u03c0_cupZH` with `\u03c0_cupHH`, and the long `desc'` expressions have to be kept in sync by hand.",
+      "proposed_change": "Add one general helper, stated for any `A : Rep k G`, degree `n` and `M : ModuleCat k`. `descH A n (f : cocycles A n \u27f6 M) (hf : toCocycles A ((ComplexShape.up \u2115).prev n) n \u226b f = 0) : groupCohomology A n \u27f6 M := (Limits.CokernelCofork.IsColimit.desc' ((inhomogeneousCochains A).homologyIsCokernel _ n rfl) f hf).1`. Add its companion `descH_\u03c0 (z : cocycles A n) : (descH A n f hf).hom ((groupCohomology.\u03c0 A n).hom z) = f.hom z`. The proof of `descH_\u03c0` is the existing `congrArg \u2026 .2` followed by `simp only [...]` block, written once. Then `cupZH := descH B q (ModuleCat.ofHom (cupZ A B p q x)) (cond_right A B p q x)` and `cupHH := descH A p (ModuleCat.ofHom (cupZHlin A B p q)) (cond_left A B p q)`. Likewise `\u03c0_cupZH` and `\u03c0_cupHH` become one-line applications of `descH_\u03c0`, closed by `rfl` or `simpa` where needed. Check that the `cond_*` hypotheses match the `prev` form required by `hf`.",
+      "benefit": "The cokernel-descent argument and its `Cofork.\u03c0_of\u03c0` simp unwinding appear once instead of twice, and the two `\u03c0_*` lemmas shrink to one-line corollaries. A reader can see that both cup constructions are instances of one universal property. A change in the Mathlib API (e.g. `desc'` or `homologyIsCokernel`) needs one fix instead of two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_groupCohomology_exists_isGradedCupProduct.lean",
+          "declaration": "cupZH",
+          "excerpt": "(Limits.CokernelCofork.IsColimit.desc' ((inhomogeneousCochains B).homologyIsCokernel _ q rfl)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_groupCohomology_exists_isGradedCupProduct.lean",
+          "declaration": "\u03c0_cupHH",
+          "excerpt": "simp only [ModuleCat.hom_comp, LinearMap.comp_apply, Limits.Cofork.\u03c0_of\u03c0] at this"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Homology/ShortComplex/HomologicalComplex.lean",
+          "declaration": "HomologicalComplex.homologyIsCokernel",
+          "excerpt": "noncomputable def homologyIsCokernel (hi : c.prev j = i) [K.HasHomology j]"
+        }
+      ]
+    },
+    {
+      "declaration": "cupZ (four LinearMap.mk\u2082 obligations)",
+      "start_line": 70,
+      "end_line": 95,
+      "excerpt": "exact congrArg _ (iCocycles_injective _ _ (by",
+      "problem": "The four `mk\u2082` obligations (additivity and homogeneity in each variable) repeat one argument. Each one `show`s the goal with the long `(groupCohomology.\u03c0 (A \u2297 B) (p + q)).hom (zcup \u2026)` expression, rewrites with `\u2190 map_add` or `\u2190 map_smul`, and applies `congrArg _ (iCocycles_injective _ _ \u2026)`. It then checks equality of the underlying cochains by `rw [..., i_zcup, ...]; simp only [...]`. The real mathematical content is that `zcup` is bilinear, which is proved by injectivity of `iCocycles` and bilinearity of `cochainCup`. That content is mixed in with four copies of the \u03c0-wrapping boilerplate.",
+      "proposed_change": "First prove bilinearity of `zcup` separately: `zcup_add_left`, `zcup_smul_left`, `zcup_add_right`, `zcup_smul_right`. Each is `apply iCocycles_injective; rw [map_add (or map_smul), i_zcup, i_zcup, i_zcup]; simp only [map_add, LinearMap.add_apply]` (or the smul analogue), which is the inner `by` block that is already there. Alternatively, build `zcup` as a bilinear map by `LinearMap.mk\u2082` and compose it with `\u03c0`. The `cupZ` obligations then reduce to `by simp only [zcup_add_left, map_add]`, `by simp only [zcup_smul_left, map_smul]`, and the two right-variable analogues, with no `show` blocks. If a single helper is preferred, state it as: for `f : cocycles (A\u2297B) n \u2192\u2097 M`, `f (zcup \u2026 (x+x') y) = \u2026`.",
+      "benefit": "The bilinearity of the cocycle-level cup product becomes a set of named, reusable lemmas that are also usable elsewhere (e.g. in `cupZ_right_boundary`). The definition of `cupZ` becomes short and readable, and the four sets of repeated `show` statements disappear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_groupCohomology_exists_isGradedCupProduct.lean",
+          "declaration": "cupZ",
+          "excerpt": "rw [map_add, i_zcup, i_zcup, i_zcup]; simp only [map_add, LinearMap.add_apply])))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_groupCohomology_exists_isGradedCupProduct.lean",
+          "declaration": "cupZ",
+          "excerpt": "rw [map_smul, i_zcup, i_zcup]; simp only [map_smul])))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 12570,
+    "cache_read_input_tokens": 27537,
+    "output_tokens": 4379,
+    "output_tokens_details": {
+      "thinking_tokens": 999
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12570,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2698,
+        "cache_read_input_tokens": 12922,
+        "cache_creation_input_tokens": 3577,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3577
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0968357,
+  "duration_ms": 33027,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:33:41",
+  "unit": "file",
+  "source_sha256": "3428c478e8fea18dd2ffdf6aa5f663c65fae5c581cc0758ca9c37e70781b375f",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

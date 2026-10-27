@@ -1,0 +1,125 @@
+{
+  "id": "formal-frontier-file-0365",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the simp-relevant definitions in Mathlib's QuadraticAlgebra/Defs.lean and Basic.lean. `omega` is a plain `def` equal to `\u27e80, 1\u27e9`. `re_omega` and `im_omega` are simp lemmas. `algebraMap_eq` is not simp, and I found no simp lemma that folds `\u27e80,1\u27e9` back to `\u03c9` or `\u27e8s,0\u27e9` back to `algebraMap s`. I did not run Lean. I do not know the order in which simp tries overlapping lemmas, so the findings are about overlap and fragile normal forms, not observed failures. I found no rewrite cycles. I did not check downstream files for uses of these lemmas.",
+  "findings": [
+    {
+      "declaration": "QuadraticAlgebra.baseChangeEquiv_tmul / baseChangeEquiv_omega / baseChangeEquiv_tmul_one",
+      "start_line": 101,
+      "end_line": 131,
+      "excerpt": "baseChangeEquiv S a b (s \u2297\u209c[R] x) =\n      s \u2022 (QuadraticAlgebra.mk",
+      "problem": "The general simp lemma `baseChangeEquiv_tmul` has a LHS `baseChangeEquiv S a b (s \u2297\u209c x)` that also matches the two special cases `1 \u2297\u209c omega` and `s \u2297\u209c 1`. Take `1 \u2297\u209c omega` first. The general lemma rewrites it to `1 \u2022 mk (algebraMap R S \u03c9.re) (algebraMap R S \u03c9.im)`, which simp reduces to `mk 0 1`, or `1 \u2022 mk 0 1` if `one_smul` does not fire first. That is not syntactically `omega`, because `omega` is an opaque `def` for `\u27e80,1\u27e9`, and no simp lemma folds it back. The `s \u2297\u209c 1` case works the same way. The general lemma gives `s \u2022 mk 1 0`, while `baseChangeEquiv_tmul_one` gives `algebraMap S _ s`. These are two different normal forms for one expression, and which one you get depends on rule order. When the general lemma wins, `baseChangeEquiv_omega` and `baseChangeEquiv_tmul_one` never fire, and the result is stuck in the `mk 0 1` form.",
+      "proposed_change": "Make the special cases take precedence, for example `@[simp high]` on `baseChangeEquiv_omega` and `baseChangeEquiv_tmul_one`. Alternatively, drop `@[simp]` from the general `baseChangeEquiv_tmul` and keep it as an explicit rewrite. Another option is to add a simp lemma that folds `(\u27e80,1\u27e9 : QuadraticAlgebra _ a b)` to `omega`, plus one that turns `\u27e8s,0\u27e9` into `algebraMap _ _ s`. Then both routes reach the same normal form.",
+      "benefit": "The normal form of `baseChangeEquiv` on `1 \u2297\u209c \u03c9` and `s \u2297\u209c 1` no longer depends on the order in which simp tries overlapping rules. Downstream goals simplify to `\u03c9` and `algebraMap s` instead of `mk 0 1` and `s \u2022 mk 1 0`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/QuadraticAlgebra/Basic.lean",
+          "declaration": "QuadraticAlgebra.omega",
+          "excerpt": "def omega : QuadraticAlgebra R a b :=\n  \u27e80, 1\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/QuadraticAlgebra/Basic.lean",
+          "declaration": "QuadraticAlgebra.re_omega",
+          "excerpt": "theorem re_omega : (\u03c9 : QuadraticAlgebra R a b).re = 0 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/QuadraticAlgebra/Defs.lean",
+          "declaration": "QuadraticAlgebra.algebraMap_eq",
+          "excerpt": "theorem algebraMap_eq (r : R) : algebraMap R (QuadraticAlgebra R a b) r = \u27e8r, 0\u27e9 := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "QuadraticAlgebra.fractionRingEquivBaseChange_algebraMap / fractionRingEquivBaseChange_omega",
+      "start_line": 187,
+      "end_line": 214,
+      "excerpt": "fractionRingEquivBaseChange a b\n      (algebraMap (QuadraticAlgebra R a b)\n        (FractionRing (QuadraticAlgebra R a b)) x) =\n      QuadraticAlgebra.mk",
+      "problem": "`fractionRingEquivBaseChange_algebraMap` is a simp lemma for arbitrary `x`, so it also matches `x = omega`. Applied there, it gives `mk (algebraMap \u03c9.re) (algebraMap \u03c9.im)`, which simp reduces to `mk 0 1`. That is not syntactically `omega`. The specific simp lemma `fractionRingEquivBaseChange_omega` gives `omega`. The two rules compete, with no priority set, and give different normal forms. If the general lemma fires first, the specific one is dead and users see `\u27e80,1\u27e9`, which is not the intended presentation. `fractionRingEquivAdjoinRoot_omega` then has to be proved by `rw` and `change`, which suggests the simp interface is not robust.",
+      "proposed_change": "Mark `fractionRingEquivBaseChange_omega` as `@[simp high]` so it takes precedence over the general lemma. Alternatively, restate the `omega` case by `rw`, or add a simp lemma folding `\u27e80,1\u27e9` to `omega`. If you want `fractionRingEquivAdjoinRoot_omega` to be reachable by simp, it needs the same precedence over the general `fractionRingEquivBaseChange_algebraMap`.",
+      "benefit": "`simp` reaches a single normal form (`\u03c9`) for the image of the generator under the fraction-ring equivalences, and the specific `omega` lemmas are not shadowed by the generic coordinate lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/QuadraticAlgebra/Basic.lean",
+          "declaration": "QuadraticAlgebra.im_omega",
+          "excerpt": "theorem im_omega : (\u03c9 : QuadraticAlgebra R a b).im = 1 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/quadratic-algebras/QuadraticAlgebras/FractionRing.lean",
+          "declaration": "QuadraticAlgebra.fractionRingEquivAdjoinRoot_omega",
+          "excerpt": "rw [fractionRingEquivAdjoinRoot, AlgEquiv.trans_apply,\n    fractionRingEquivBaseChange_omega]"
+        }
+      ]
+    },
+    {
+      "declaration": "QuadraticAlgebra.fractionRingEquivAdjoinRoot_omega (missing algebraMap simp companion)",
+      "start_line": 228,
+      "end_line": 245,
+      "excerpt": "theorem fractionRingEquivAdjoinRoot_omega (a b : R) :\n    fractionRingEquivAdjoinRoot a b",
+      "problem": "The simp interface is uneven across the three equivalences. `fractionRingEquivTensor` and `fractionRingEquivBaseChange` both have a general `_algebraMap` simp lemma. `fractionRingEquivAdjoinRoot` has only the `omega` lemma, and there is no lemma for `fractionRingEquivAdjoinRoot a b (algebraMap _ _ x)`. A general element `x` mapped through the AdjoinRoot presentation therefore stalls after unfolding. Its `omega` lemma is stated for the `algebraMap` of `omega`, and its proof needs a manual `rw` and `change`. The `AlgEquiv.trans_apply` unfolding is not exposed to simp, because the def is not reducible.",
+      "proposed_change": "Add a lemma giving `fractionRingEquivAdjoinRoot a b (algebraMap _ _ x)` as `equivAdjoinRoot ... (mk (algebraMap x.re) (algebraMap x.im))`, or as the corresponding `algebraMap`/`AdjoinRoot.mk` expression. Mark it `@[simp]` only after fixing the precedence from the previous finding. Otherwise this lemma would also compete with `fractionRingEquivAdjoinRoot_omega` at `x = omega`.",
+      "benefit": "Users reaching the polynomial-quotient presentation get the same simp support as for the tensor and coordinate presentations. The `omega` lemma could then be proved by simp instead of `rw` plus `change`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/quadratic-algebras/QuadraticAlgebras/FractionRing.lean",
+          "declaration": "QuadraticAlgebra.fractionRingEquivBaseChange_algebraMap",
+          "excerpt": "theorem fractionRingEquivBaseChange_algebraMap"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/quadratic-algebras/QuadraticAlgebras/FractionRing.lean",
+          "declaration": "QuadraticAlgebra.fractionRingEquivTensor_algebraMap",
+          "excerpt": "theorem fractionRingEquivTensor_algebraMap"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 10410,
+    "cache_read_input_tokens": 77435,
+    "output_tokens": 7123,
+    "output_tokens_details": {
+      "thinking_tokens": 2272
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10410,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3706,
+        "cache_read_input_tokens": 16514,
+        "cache_creation_input_tokens": 4077,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4077
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1206375,
+  "duration_ms": 56923,
+  "turns": 9,
+  "attempts": 2,
+  "judged": "2026-10-27T02:07:45",
+  "unit": "file",
+  "source_sha256": "c8ef88d0cdc6c802bfca0bcae709fe488e3e7b50ae209166982f9ac4f8945713",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,99 @@
+{
+  "id": "flt-anthropic-file-0226",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I looked for repeated nontrivial reasoning and found the following. (a) The `etaMultiplier_T` and `etaMultiplier_neg_one` proofs share one reduction. (b) The `fin_cases` branches in `etaMultiplier_schreierGen` repeat a two-line pattern. (c) Several small repeats are too short to report: the `hw0` proof, the `hdet` extraction, the `h\u03b3 : \u03b3 \u2208 Gamma0 11` derivation from `hsym`, and the two `hq`/`hq11` blocks in `etaProductEleven_T_invariant`. (d) `deltaElevenFun_apply` and `solution` repeat a 3-line computation; I judged it too short to report. I did not compile anything, so the rewrites below are untested sketches. In particular, I did not check that each `rw` closes its goal exactly. The second finding is weaker, because the rubric discounts helpers that only absorb duplicated branches.",
+  "findings": [
+    {
+      "declaration": "etaMultiplier_T / etaMultiplier_neg_one",
+      "start_line": 297,
+      "end_line": 319,
+      "excerpt": "rw [hsmul, hden, etaProductEleven_T_invariant, one_zpow, one_mul, div_self]\n  exact etaProductEleven_ne_zero (by simp [UpperHalfPlane.coe_I])",
+      "problem": "Both theorems prove `etaMultiplier \u03b3 = 1` by the same reduction. They unfold `etaMultiplier` and `etaRatio` at `UpperHalfPlane.I` and rewrite the numerator `etaProductEleven (\u03b3 \u2022 I)` to `denom \u03b3 I ^ 2 * etaProductEleven I`. Then they close the goal with `div_self` and `etaProductEleven_ne_zero` at `I`. That last step is duplicated verbatim, including the `by simp [UpperHalfPlane.coe_I]` membership proof. In both proofs the only matrix-specific work is computing `\u03b3 \u2022 I` and `denom \u03b3 I`. The general fact is never stated: if the eta product transforms at `I` with factor `denom^2`, the multiplier is 1.",
+      "proposed_change": "Add one private lemma next to `etaMultiplier`:\n`lemma etaMultiplier_eq_one_of_apply_I {\u03b3 : SL(2, \u2124)} (h : etaProductEleven ((\u03b3 \u2022 UpperHalfPlane.I : \u210d) : \u2102) = denom \u03b3 UpperHalfPlane.I ^ (2 : \u2124) * etaProductEleven (UpperHalfPlane.I : \u2102)) : etaMultiplier \u03b3 = 1 := by rw [etaMultiplier, etaRatio, h]; exact div_self (etaRatio_den_ne_zero \u03b3 _)`.\nThe hypothesis `h` needs no Gamma0 assumption, since it is stated directly at the point `I`.\nThen `etaMultiplier_T` becomes: `etaMultiplier_eq_one_of_apply_I (by rw [hsmul, hden, etaProductEleven_T_invariant, one_zpow, one_mul])`, keeping the existing `hsmul` and `hden`.\nAnd `etaMultiplier_neg_one` becomes: `etaMultiplier_eq_one_of_apply_I (by rw [hsmul, hden, show ((-1 : \u2102) ^ (2 : \u2124)) = 1 by norm_num, one_mul])`, again keeping its `hsmul` and `hden`.\nNeither rewrite adds imports or hypotheses.",
+      "benefit": "The nonvanishing and `div_self` bookkeeping is stated once. Each of the two theorems then shows only its matrix-specific computation. Future special-point computations, such as other generators, can reuse the lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_gamma0_apply_eq_eta_mul_pow_twentyfour.lean",
+          "declaration": "etaMultiplier_neg_one",
+          "excerpt": "rw [show ((-1 : \u2102) ^ (2 : \u2124)) = 1 by norm_num, one_mul, div_self]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_gamma0_apply_eq_eta_mul_pow_twentyfour.lean",
+          "declaration": "etaRatio_den_ne_zero",
+          "excerpt": "denom \u03b3 \u03c4 ^ (2 : \u2124) * etaProductEleven (\u03c4 : \u2102) \u2260 0"
+        }
+      ]
+    },
+    {
+      "declaration": "etaMultiplier_schreierGen",
+      "start_line": 759,
+      "end_line": 792,
+      "excerpt": "refine eq_one_of_mul_left (schreierGen_mem _ _) T_mem_Gamma0 ?_ etaMultiplier_T\n        exact etaMultiplier_eq_one_of_apply_eq _ (by decide +kernel)",
+      "problem": "The `fin_cases k` block has nine branches that repeat one argument. A Schreier generator `g` is multiplied on the left or right by a power of `T` or `T\u207b\u00b9`, so the product has `entry(1,0) = 11 * entry(0,1)`. `etaMultiplier_eq_one_of_apply_eq` then gives multiplier 1 for the product. Finally `etaMultiplier_mul` transfers this back to `g`, via `eq_one_of_mul_left` or `eq_one_of_mul_right`. The branches differ only in which correcting matrix is used (`T`, `T\u207b\u00b9`, `T^2`, `(T^2)\u207b\u00b9`) and on which side. Each branch repeats the same two-line `refine`/`exact` combination, and the correction appears in the proof term three times (membership, multiplier, matrix).",
+      "proposed_change": "Add combined helpers that take the side-condition and the correction's multiplier, for example\n`lemma etaMultiplier_eq_one_of_left {g h : SL(2, \u2124)} (hg : g \u2208 Gamma0 11) (hh : h \u2208 Gamma0 11) (hh1 : etaMultiplier h = 1) (hsym : (h * g) 1 0 = 11 * (h * g) 0 1) : etaMultiplier g = 1 := eq_one_of_mul_left hg hh (etaMultiplier_eq_one_of_apply_eq _ hsym) hh1`,\nand a mirror lemma `etaMultiplier_eq_one_of_right` for `g * h`.\nEach branch is then `exact etaMultiplier_eq_one_of_left (schreierGen_mem _ _) T_mem_Gamma0 etaMultiplier_T (by decide +kernel)`, or the right-hand analogue. This removes the repeated `refine`/`exact` pair. The `fin_cases` block could then be reduced to a short list of `(correction, side)` choices. The helpers use only lemmas already in the file.",
+      "benefit": "Each case reads as one line stating which correction it uses. The shared mathematical step (a corrected element is symmetric, so its multiplier is 1, so the original's is 1) is stated once. This is a modest gain, because it mostly reorganizes the branches.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_gamma0_apply_eq_eta_mul_pow_twentyfour.lean",
+          "declaration": "eq_one_of_mul_right",
+          "excerpt": "(h1 : etaMultiplier (g * h) = 1) (h2 : etaMultiplier h = 1) : etaMultiplier g = 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_gamma0_apply_eq_eta_mul_pow_twentyfour.lean",
+          "declaration": "etaMultiplier_eq_one_of_apply_eq",
+          "excerpt": "theorem etaMultiplier_eq_one_of_apply_eq (\u03b3 : SL(2, \u2124)) (hsym : \u03b3 1 0 = 11 * \u03b3 0 1) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 31634,
+    "cache_read_input_tokens": 65844,
+    "output_tokens": 5651,
+    "output_tokens_details": {
+      "thinking_tokens": 2072
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31634,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3653,
+        "cache_read_input_tokens": 31934,
+        "cache_creation_input_tokens": 3629,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3629
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1896424,
+  "duration_ms": 41084,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T00:34:00",
+  "unit": "file",
+  "source_sha256": "7f93d6470c5f09840feabc29ba57782dd9c61d41d17323498ab4f569d96f8fcf",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,99 @@
+{
+  "id": "flt-anthropic-file-0315",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the line numbers with Read. I also grepped Mathlib's TensorProduct/Map.lean for `map_comp_rTensor`, `rTensor_comp_map` and their `lTensor` versions. These could shorten the intertwining step, but I did not confirm their exact statements. Nothing was compiled, so the proposed helper lemmas are sketches. The strongest finding is the two near-identical antipode axiom proofs. The `law_rTensor` and `law_lTensor` duplication is smaller and mirrors the Mathlib API's left/right split. Other repeats, such as the `Ideal.Quotient.algHom_ext; ext a; simp only ...` opening and the small `mk`-compatibility facts, are routine and I did not report them.",
+  "findings": [
+    {
+      "declaration": "HopfAlgebra.HopfIdealQuotient.hopfAlgebraQ (fields mul_antipode_rTensor_comul / mul_antipode_lTensor_comul)",
+      "start_line": 170,
+      "end_line": 215,
+      "excerpt": "have hmaps : (antipodeQ I hanti).toLinearMap.rTensor (A \u29f8 I) \u2218\u2097",
+      "problem": "The two Hopf antipode axioms are proved by two ~23-line blocks that are identical except for rTensor/lTensor. Each block does the same work: reduce to a representative via `mk_surjective`, rewrite `comulQ` as `map mk mk \u2218 comul`, push the quotient antipode through `map mk mk` using `antipodeQ_comp_mk_linear`, apply `mul'_comp_map_mk`, invoke the corresponding axiom on A, and finish with the same `simp` for the counit side. Any change to the quotient structure must be made twice, and a reader has to diff the blocks to see that only the side differs.",
+      "proposed_change": "Add one lemma in `HopfIdealQuotient`, e.g.\n`lemma antipode_law_aux (S : A \u2297[F] A \u2192\u2097[F] A \u2297[F] A) (S' : (A \u29f8 I) \u2297[F] (A \u29f8 I) \u2192\u2097[F] (A \u29f8 I) \u2297[F] (A \u29f8 I)) (hS : S' \u2218\u2097 TensorProduct.map mk.toLinearMap mk.toLinearMap = TensorProduct.map mk.toLinearMap mk.toLinearMap \u2218\u2097 S) (hA : \u2200 a : A, LinearMap.mul' F A (S (Coalgebra.comul a)) = algebraMap F A (Coalgebra.counit a)) : (LinearMap.mul' F (A \u29f8 I) \u2218\u2097 S' \u2218\u2097 (comulQ I hcomul).toLinearMap) = Algebra.linearMap F (A \u29f8 I) \u2218\u2097 (counitQ I hcounit).toLinearMap`.\nProof sketch: `LinearMap.ext`, `obtain \u27e8a, rfl\u27e9 := Ideal.Quotient.mk_surjective x`, rewrite with `comulQ_mk`, `algMap_apply`, then `\u2190 LinearMap.comp_apply` with `hS`, `mul'_comp_map_mk`, `hA a`, and the existing closing `simp`.\nUse in `hopfAlgebraQ`: `mul_antipode_rTensor_comul := antipode_law_aux I hcomul hcounit ((antipode).rTensor A) ((antipodeQ I hanti).toLinearMap.rTensor _) (by simp only [LinearMap.rTensor, \u2190 TensorProduct.map_comp, antipodeQ_comp_mk_linear, LinearMap.id_comp, LinearMap.comp_id]) (fun a => HopfAlgebra.mul_antipode_rTensor_comul_apply a)`, and the same with `lTensor` and `mul_antipode_lTensor_comul_apply`. Both uses are under the existing section hypotheses, with no new imports (Mathlib is already imported). `h1` and `hmaps` then reduce to the one-line intertwining argument at each call site.",
+      "benefit": "About 45 lines shrink to one ~15-line lemma plus two short field proofs. The repeated tensor-pushing and counit bookkeeping is stated and maintained once, and the left/right difference is isolated in the intertwining hypothesis.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_HopfAlgebra_exists_hopfAlgebra_bialgHom_surjective_ker_eq_of_hopfIdeal.lean",
+          "declaration": "hopfAlgebraQ, lTensor field",
+          "excerpt": "have hmaps : (antipodeQ I hanti).toLinearMap.lTensor (A \u29f8 I) \u2218\u2097"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_HopfAlgebra_exists_hopfAlgebra_bialgHom_surjective_ker_eq_of_hopfIdeal.lean",
+          "declaration": "hopfAlgebraQ, lTensor field",
+          "excerpt": "rw [h1, \u2190 LinearMap.comp_apply, mul'_comp_map_mk, LinearMap.comp_apply,"
+        }
+      ]
+    },
+    {
+      "declaration": "HopfAlgebra.HopfIdealQuotient.law_rTensor / law_lTensor",
+      "start_line": 78,
+      "end_line": 98,
+      "excerpt": "rw [h1, LinearMap.comp_apply, Coalgebra.rTensor_counit_comul, TensorProduct.map_tmul]",
+      "problem": "`law_rTensor` and `law_lTensor` repeat the same proof skeleton. Both use `Ideal.Quotient.algHom_ext; ext a; simp only [...]`, then `rw [\u2190 AlgHom.comp_apply, \u2190 map_comp, counitQ_comp_mk, AlgHom.id_comp, algMap_apply]`. Both then prove an `h1` factoring `map (counitAlgHom) mk` or `map mk (counitAlgHom)` through `rTensor`/`lTensor` of the counit, and finish with the corresponding Mathlib counit lemma plus `simp`. The `h1` factorizations are the non-trivial repeated part, and the argument is duplicated for the mirror case.",
+      "proposed_change": "Factor out the shared prefix as a lemma that reduces both laws to a statement about representatives. For example, prove once that `(map (counitQ) id).comp comulQ` and `(map id counitQ).comp comulQ` agree after composing with `mk` with `map (counitAlgHom) mk \u2218 comul` and `map mk (counitAlgHom) \u2218 comul`. Alternatively, state the two `h1` identities as separate named lemmas, `map_counitAlgHom_mk_eq_rTensor` and `map_mk_counitAlgHom_eq_lTensor`. Each proof would be `rw [LinearMap.rTensor, \u2190 TensorProduct.map_comp, ...]`, and `law_rTensor` and `law_lTensor` would shrink to the `algHom_ext` step plus a call to the lemma and `Coalgebra.rTensor_counit_comul` / `lTensor_counit_comul`. Both uses work under the same `hcomul`/`hcounit` variables.",
+      "benefit": "The two laws become short and visibly symmetric, and the shared counit factorization lemmas are reusable in the antipode proofs. The benefit is smaller than for the antipode fields because the left/right split follows Mathlib's own API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_HopfAlgebra_exists_hopfAlgebra_bialgHom_surjective_ker_eq_of_hopfIdeal.lean",
+          "declaration": "law_lTensor",
+          "excerpt": "rw [h1, LinearMap.comp_apply, Coalgebra.lTensor_counit_comul, TensorProduct.map_tmul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/LinearAlgebra/TensorProduct/Map.lean",
+          "declaration": "LinearMap.map_comp_rTensor",
+          "excerpt": "theorem map_comp_rTensor (f : M \u2192\u2097[R] P) (g : N \u2192\u2097[R] Q) (f' : S \u2192\u2097[R] M) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 17314,
+    "cache_read_input_tokens": 36784,
+    "output_tokens": 4611,
+    "output_tokens_details": {
+      "thinking_tokens": 723
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17314,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3474,
+        "cache_read_input_tokens": 19135,
+        "cache_creation_input_tokens": 2108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2108
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1190564,
+  "duration_ms": 30379,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:33:48",
+  "unit": "file",
+  "source_sha256": "65d72291b719eebc5890f868611410b1921d54f8e1af356a849af84fac8a88f3",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

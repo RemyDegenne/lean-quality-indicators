@@ -1,0 +1,104 @@
+{
+  "id": "mathlib-file-0231",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped Mathlib for downstream uses of SigmaHom, Sigma.incl, Sigma.desc (category-level) and Functor.sigma/natTrans.sigma. The only external use is ConnectedComponents.lean, which uses Sigma.incl, Sigma.desc and SigmaHom.mk. Nothing outside this file uses Functor.sigma or natTrans.sigma. I found no loops or competing rules. The simps-generated lemmas (desc_obj, incl_map, natIso_hom, mapId and mapComp hom_app/inv_app) look consistent. I could not run Lean, so I don't know whether simp's reducible unfolding already makes comp_def fire on `\u226b`, and I don't know the exact shape of the lemmas that simps generates. Both findings are therefore about interface quality, not observed failures.",
+  "findings": [
+    {
+      "declaration": "Sigma.SigmaHom.comp_def",
+      "start_line": 52,
+      "end_line": 54,
+      "excerpt": "lemma comp_def (i : I) (X Y Z : C i) (f : X \u27f6 Y) (g : Y \u27f6 Z) : comp (mk f) (mk g) = mk (f \u226b g) :=",
+      "problem": "The only simp lemma about morphism composition in the sigma category has its left-hand side in terms of the internal helper `SigmaHom.comp`. Users and the other lemmas in this file work with categorical composition `mk f \u226b mk g`, and `SigmaHom.comp` is only the implementation behind `CategoryStruct.comp`. Whether the lemma applies to `\u226b` depends on simp unfolding the instance reducibly. The orientation and head symbol are not the canonical one. There is also no companion simp lemma for the identity, such as `\ud835\udfd9 \u27e8i, X\u27e9 = mk (\ud835\udfd9 X)` (the helper `SigmaHom.id` is likewise not exposed). So `mk`-built morphisms have no stated normal form for `\ud835\udfd9` and `\u226b`.",
+      "proposed_change": "State the simp lemma in the user-facing form: `@[simp] lemma mk_comp_mk ... : mk f \u226b mk g = mk (f \u226b g) := rfl`. Optionally keep `comp_def` unannotated for the helper. Consider adding `@[simp] lemma id_mk (X : C i) : \ud835\udfd9 (\u27e8i, X\u27e9 : \u03a3 i, C i) = mk (\ud835\udfd9 X) := rfl` only if it is checked not to fight `Functor.map_id` or `incl_obj`. In that case the direction should be chosen so that `(incl i).map (\ud835\udfd9 X)` and `\ud835\udfd9 ((incl i).obj X)` reach one normal form.",
+      "benefit": "Simp goals about `mk f \u226b mk g` would reduce to `mk (f \u226b g)` without relying on reducible unfolding of the category instance. The simp set would then be phrased in the public `\u226b` / `\ud835\udfd9` vocabulary instead of the private helper `comp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/Sigma/Basic.lean",
+          "declaration": "Sigma.SigmaHom.instCategoryStruct (CategoryStruct instance)",
+          "excerpt": "comp f g := comp f g"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/Sigma/Basic.lean",
+          "declaration": "Sigma.SigmaHom.assoc",
+          "excerpt": "(f \u226b g) \u226b h = f \u226b g \u226b h"
+        }
+      ]
+    },
+    {
+      "declaration": "Sigma.Functor.sigma and Sigma.natTrans.sigma",
+      "start_line": 225,
+      "end_line": 246,
+      "excerpt": "  desc fun i => F i \u22d9 incl i",
+      "problem": "`Functor.sigma` and `natTrans.sigma` are plain `def`s with no simp lemmas. Every other construction in the file (`natTrans`, `desc`, `inclDesc`, `descUniq`, `map`, `natIso`, `mapId`, `mapComp`) has `@[simp]` or `@[simps]` lemmas for its components. A term such as `(Functor.sigma F).obj \u27e8i, X\u27e9` is therefore stuck for simp. `Functor.sigma F` is not reducible, so `desc_obj` and `desc_map_mk` do not see through it. The same holds for `(Functor.sigma F).map (SigmaHom.mk f)` and `(natTrans.sigma \u03b1).app \u27e8i, X\u27e9`. The expected normal forms are `\u27e8i, (F i).obj X\u27e9`, `SigmaHom.mk ((F i).map f)` and `SigmaHom.mk ((\u03b1 i).app X)`.",
+      "proposed_change": "Add simp lemmas in the style of `map_obj`, `map_map` and `natTrans_app`. For example: `@[simp] lemma Functor.sigma_obj (F) (i) (X : C i) : (Functor.sigma F).obj \u27e8i, X\u27e9 = \u27e8i, (F i).obj X\u27e9 := rfl`, `@[simp] lemma Functor.sigma_map ... (f : X \u27f6 Y) : (Functor.sigma F).map (SigmaHom.mk f) = SigmaHom.mk ((F i).map f) := rfl`, and `@[simp] lemma natTrans.sigma_app (\u03b1) (i) (X : C i) : (natTrans.sigma \u03b1).app \u27e8i, X\u27e9 = SigmaHom.mk ((\u03b1 i).app X) := rfl`. Alternatively use `@[simps]` and verify the generated statements.",
+      "benefit": "Users of the assembled functor and natural transformation get the same simp coverage as the rest of the file. Without it they must `unfold` or `dsimp [Functor.sigma, desc]` and then also handle the `incl_obj` / `Functor.comp_obj` residue by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/Sigma/Basic.lean",
+          "declaration": "Sigma.map_obj",
+          "excerpt": "lemma map_obj (j : J) (X : C (g j)) : (Sigma.map C g).obj \u27e8j, X\u27e9 = \u27e8g j, X\u27e9 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/Sigma/Basic.lean",
+          "declaration": "Sigma.natTrans_app",
+          "excerpt": "(natTrans h).app \u27e8i, X\u27e9 = (h i).app X"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/Sigma/Basic.lean",
+          "declaration": "Sigma.natTrans.sigma",
+          "excerpt": "app f := SigmaHom.mk ((\u03b1 f.1).app _)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 30273,
+    "cache_read_input_tokens": 90916,
+    "output_tokens": 7025,
+    "output_tokens_details": {
+      "thinking_tokens": 3701
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30273,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2538,
+        "cache_read_input_tokens": 30756,
+        "cache_creation_input_tokens": 3530,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3530
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.20045359999999998,
+  "duration_ms": 51953,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:35:54",
+  "unit": "file",
+  "source_sha256": "9f243e5451dce773cfe21f17627926d95654436e48672c6da4e4d9879a2afece",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

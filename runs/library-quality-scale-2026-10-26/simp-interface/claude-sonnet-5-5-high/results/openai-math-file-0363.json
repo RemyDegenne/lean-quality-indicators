@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0363",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, the definition and Parseval theorem of unitResidueFourier in ResidueFourierParseval.lean, and the downstream uses in SampledHistogram, ProjectedHistogram, ManuscriptHistogramFourier, HistogramAmplitudeBound, EndpointResiduePartition and HistogramCellCoefficients. I did not check for loops or competing simp rules, because the file has no @[simp] declarations at all. The findings concern the missing simp interface for unitResidueFourier and complexResidueMean. These are judgement calls about proof ergonomics, and I have not run Lean. The suggested lemma statements follow directly from the definitions, but I have not compiled them.",
+  "findings": [
+    {
+      "declaration": "OAI.JointDickman.unitResidueFourier_centered",
+      "start_line": 44,
+      "end_line": 48,
+      "excerpt": "unitResidueFourier v h-unitResidueFourier (fun _ => complexResidueMean v) h =\n      unitResidueFourier (fun r => v r-complexResidueMean v) h := by\n  simp only [unitResidueFourier,mul_sub,sum_sub_distrib]",
+      "problem": "The file has no basic linearity lemma for `unitResidueFourier`, such as one for `fun r => v r - w r`. Instead it proves one special case (`v` minus its mean) with a bespoke statement. Each caller that needs a difference of transforms unfolds the definition and uses `mul_sub, sum_sub_distrib`. The same pattern appears in `unitResidueFourier_projected_sub_contract` (`simpa only [complexResidueMean,sum_sub_distrib,sub_div,unitResidueFourier,sub_mul,mul_sub]`) and in `cellCoefficientFourier` (`simp only [cellCoefficientFourier,unitResidueFourier,mul_sub,sum_sub_distrib]`). Other callers do `unfold unitResidueFourier` and then manipulate sums by hand. A simp call that unfolds `unitResidueFourier` is a poor normal form here. It exposes the raw `\u2211 r, stdAddChar (h*\u2191r) * v r`, and the unfolded sum is no longer recognisable to `unitResidueFourier_projection_contract` or the Parseval lemma.",
+      "proposed_change": "Add general lemmas in ResidueFourierParseval.lean, or at the top of this file. For example `unitResidueFourier_sub (v w) h : unitResidueFourier (fun r => v r - w r) h = unitResidueFourier v h - unitResidueFourier w h`, and similarly an `_add` lemma and a lemma for `\u2211 i \u2208 J` (`unitResidueFourier_sum`). Mark the sub/add/sum lemmas `@[simp]`. They rewrite a transform of a combined function into combined transforms, which is a terminating, canonical direction, and the new lemmas do not compete with each other. Then `unitResidueFourier_centered` becomes `(unitResidueFourier_sub ..).symm` or a one-line simp, and the `simpa only [..., unitResidueFourier, ...]` and `unfold unitResidueFourier` calls in the callers can use the lemmas instead of the definition.",
+      "benefit": "Callers state and use linearity at the level of `unitResidueFourier` without unfolding it, so Parseval and projection-contract lemmas keep matching. The repeated `mul_sub, sum_sub_distrib` steps collapse into one reusable simp rule. The single-purpose `_centered` lemma becomes a corollary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Probability/SampledHistogram.lean",
+          "declaration": "OAI.JointDickman.unitResidueFourier_projected_sub_contract",
+          "excerpt": "simpa only [complexResidueMean,sum_sub_distrib,sub_div,unitResidueFourier,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Counting/HistogramCellCoefficients.lean",
+          "declaration": "cellCoefficientFourier (proof)",
+          "excerpt": "simp only [cellCoefficientFourier,unitResidueFourier,mul_sub,sum_sub_distrib]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Probability/ResidueFourierParseval.lean",
+          "declaration": "OAI.JointDickman.unitResidueFourier",
+          "excerpt": "\u2211 r : (ZMod q)\u02e3, ZMod.stdAddChar (h*(r : ZMod q))*v r"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.JointDickman.complexResidueMean",
+      "start_line": 10,
+      "end_line": 11,
+      "excerpt": "noncomputable def complexResidueMean {q : \u2115} [NeZero q] (v : (ZMod q)\u02e3 \u2192 \u2102) : \u2102 :=\n  (\u2211 r, v r)/(q.totient : \u2102)",
+      "problem": "`complexResidueMean` has no algebraic simp or unfolding lemmas, so every user unfolds it. It becomes a division by the totient, which then needs `sub_div` and `sum_sub_distrib`, or `sum_div` and `mul_sum`, depending on the case. Examples: `rw [complexResidueMean,...]` at line 22 of this file, `rw [complexResidueMean,manuscriptProjectedValue_eq_sum]` in ProjectedHistogram, and `simpa only [complexResidueMean,sum_sub_distrib,sub_div,...]` in SampledHistogram. The statement `unitResidueFourier_projected` also unfolds it and `ramanujanSum`, and `ring` closes the goal. The unfolded form loses the mean structure that `complexResidueMean_square_le` and the projection-contract theorem are stated in.",
+      "proposed_change": "Add `complexResidueMean_sub (v w) : complexResidueMean (fun r => v r - w r) = complexResidueMean v - complexResidueMean w` as a `@[simp]` lemma. Add `complexResidueMean_def` or an `_eq` lemma `complexResidueMean v = (\u2211 r, v r)/(q.totient : \u2102)` that is not simp but is used with `rw`. Optionally add `complexResidueMean_sum` for `\u2211 i \u2208 J`. Then `unitResidueFourier_projected_sub_contract` can be `simpa [unitResidueFourier_sub, complexResidueMean_sub] using unitResidueFourier_projection_contract (fun r => v r - w r)` without unfolding both definitions. Mean-of-sum steps like the `hmean` computation in ProjectedHistogram can likewise reuse the lemma.",
+      "benefit": "`complexResidueMean` stays an opaque notion of mean in downstream proofs. Its linearity is a one-step simp rewrite, and the `sub_div/sum_sub_distrib` unfolding scripts are no longer needed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Probability/ProjectedHistogram.lean",
+          "declaration": "hmean inside the approx-minus-projected Fourier identity",
+          "excerpt": "rw [complexResidueMean,manuscriptProjectedValue_eq_sum]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Probability/SampledHistogram.lean",
+          "declaration": "OAI.JointDickman.unitResidueFourier_projected_sub_contract",
+          "excerpt": "simpa only [complexResidueMean,sum_sub_distrib,sub_div,unitResidueFourier,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 18957,
+    "cache_read_input_tokens": 48989,
+    "output_tokens": 4508,
+    "output_tokens_details": {
+      "thinking_tokens": 795
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18957,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3126,
+        "cache_read_input_tokens": 18585,
+        "cache_creation_input_tokens": 4385,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4385
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1258229,
+  "duration_ms": 36580,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T02:04:51",
+  "unit": "file",
+  "source_sha256": "190ee552c3369c6f192ff75e3a533741bdf35193d7a9e0bf30a8b7d7de62adfc",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

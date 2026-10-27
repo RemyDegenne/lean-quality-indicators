@@ -1,0 +1,99 @@
+{
+  "id": "formal-frontier-file-0126",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked Mathlib's QuotientGroup.instT1Space and the closure/kernel API. I found two repeated-proof patterns worth reporting. The first is that `map` reproves `closedDifferenceSubgroup_le_ker`. The second is the four trivial-action and subsingleton `\u22a5` lemmas, which repeat the same two arguments. I did not report three smaller patterns: the `isQuotientMap_mk.continuous_iff` continuity blocks, the `mk_surjective` ext boilerplate, and the duplicated `ef` construction in `congr` and `congr_mk`. Each is too short or too routine to meet the rubric. I could not run Lean, so the proposed rewrites are untested sketches. The T1 instance for the quotient needs `IsClosed (N : Set G)` supplied via `haveI`, and I have not checked instance unification.",
+  "findings": [
+    {
+      "declaration": "PointwiseContinuousMulAction.map",
+      "start_line": 323,
+      "end_line": 342,
+      "excerpt": "apply (Subgroup.topologicalClosure_minimal \u03c1.differenceSubgroup ?_ ?_) hx",
+      "problem": "`map` redoes the argument already proved as `closedDifferenceSubgroup_le_ker`. That argument says: if `f` kills the generators, then `differenceSubgroup \u2264 ker f`. Because the kernel is closed, the closure is also contained in `ker f`. `map` reproves this by hand with `topologicalClosure_minimal`, a `comap` change, and a closed-preimage argument. The only reason is that the target `\u03c3.Coinvariants` is not declared T1. It is T1, because it is the quotient by the closed subgroup `\u03c3.closedDifferenceSubgroup`. Mathlib has `QuotientGroup.instT1Space [hN : IsClosed (N : Set G)]`. The `differenceSubgroup_le_ker` and `isClosed_topologicalClosure.preimage f.continuous` steps therefore appear twice in the file.",
+      "proposed_change": "Supply the closedness instance and reuse `lift`. Sketch:\n```\ndef map \u03c1 \u03c3 f hf : \u03c1.Coinvariants \u2192\u209c* \u03c3.Coinvariants :=\n  haveI : IsClosed (\u03c3.closedDifferenceSubgroup : Set B) :=\n    \u03c3.differenceSubgroup.isClosed_topologicalClosure\n  \u03c1.lift (\u03c3.coinvariantsMk.comp f) (fun g a \u21a6 by\n    change \u03c3.coinvariantsMk (f (\u03c1 g a * a\u207b\u00b9)) = 1\n    rw [_root_.map_mul, map_inv, hf g a, _root_.map_mul, map_inv, \u03c3.coinvariantsMk_action]\n    simp)\n```\nThe `KillsDifferences` computation is the one already inside the current proof. The `closedDifferenceSubgroup_le_ker` call inside `lift` supplies the closure step, applied to the T1 target `\u03c3.Coinvariants`. `map_mk` then follows from `\u03c1.lift_mk`, replacing `liftOfClosed_mk`. This uses `QuotientGroup.instT1Space`, which applies because `Coinvariants` is an abbrev for the quotient. Rewriting `map` removes the closure and kernel argument from `map` and keeps one proof of it.",
+      "benefit": "The file would have one proof that the closed relation subgroup lies in the kernel. `map` shrinks to its mathematical content, the equivariance computation. A future change to the closure convention would then touch one place, not two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/ClosedTopologicalCoinvariants.lean",
+          "declaration": "PointwiseContinuousMulAction.closedDifferenceSubgroup_le_ker",
+          "excerpt": "exact isClosed_singleton.preimage f.continuous"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Topology/Algebra/Group/Quotient.lean",
+          "declaration": "QuotientGroup.instT1Space",
+          "excerpt": "instance instT1Space [hN : IsClosed (N : Set G)] :"
+        }
+      ]
+    },
+    {
+      "declaration": "PointwiseContinuousMulAction.differenceSubgroup_trivial / differenceSubgroup_eq_bot_of_subsingleton / closedDifferenceSubgroup_trivial_of_t1 / closedDifferenceSubgroup_eq_bot_of_subsingleton",
+      "start_line": 463,
+      "end_line": 514,
+      "excerpt": "  \u00b7 rw [differenceSubgroup, Subgroup.closure_le]\n    rintro x \u27e8g, a, rfl\u27e9",
+      "problem": "The four `\u22a5` lemmas in `TrivialAction` repeat two arguments. `differenceSubgroup_trivial` (467) and `differenceSubgroup_eq_bot_of_subsingleton` (497) both unfold `differenceSubgroup`, apply `Subgroup.closure_le`, destructure a generator, and show it is `1`. That is exactly the proof of the existing `differenceSubgroup_le_ker`, specialised to the identity map, whose kernel is `\u22a5`. `closedDifferenceSubgroup_trivial_of_t1` (489) and `closedDifferenceSubgroup_eq_bot_of_subsingleton` (512) both close with the same `le_antisymm (Subgroup.topologicalClosure_minimal \u22a5 le_rfl isClosed_singleton) bot_le`. That is the T1 closure-of-bottom argument, and it is also `closedDifferenceSubgroup_le_ker` for the identity map.",
+      "proposed_change": "Add one hypothesis-driven lemma and two corollaries. Sketch:\n```\ntheorem differenceSubgroup_eq_bot_of_forall_apply_eq\n    (\u03c1 : PointwiseContinuousMulAction G A) (h : \u2200 g a, \u03c1 g a = a) :\n    \u03c1.differenceSubgroup = \u22a5 :=\n  le_bot_iff.mp (by\n    simpa using \u03c1.differenceSubgroup_le_ker (MonoidHom.id A) (fun g a \u21a6 by simp [h]))\n\ntheorem closedDifferenceSubgroup_eq_bot_of_forall_apply_eq [T1Space A]\n    (\u03c1) (h : \u2200 g a, \u03c1 g a = a) : \u03c1.closedDifferenceSubgroup = \u22a5 :=\n  le_bot_iff.mp (by\n    simpa using \u03c1.closedDifferenceSubgroup_le_ker (ContinuousMonoidHom.id A) (fun g a \u21a6 by simp [h]))\n```\nThe goals after `simpa` may need small adjustment. Then:\n- `differenceSubgroup_trivial` is the first lemma applied to `fun _ _ \u21a6 rfl`.\n- `differenceSubgroup_eq_bot_of_subsingleton` is the first lemma applied to `fun g a \u21a6 by rw [Subsingleton.elim g 1, map_one]`.\n- The two closed T1 lemmas follow the same way from the second.\n\nFor `closedDifferenceSubgroup_trivial` (non-T1), keep the existing one-line rewrite.",
+      "benefit": "The two-stage argument (generators die, so the closure dies) appears once, and each special case reduces to a one-line check that the action is pointwise trivial. This removes about 25 lines. It also makes explicit that the trivial and subsingleton cases are instances of one fact: an action with `\u03c1 g a = a` has no differences.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/ClosedTopologicalCoinvariants.lean",
+          "declaration": "PointwiseContinuousMulAction.differenceSubgroup_le_ker",
+          "excerpt": "rw [differenceSubgroup, Subgroup.closure_le]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/ClosedTopologicalCoinvariants.lean",
+          "declaration": "PointwiseContinuousMulAction.closedDifferenceSubgroup_eq_bot_of_subsingleton",
+          "excerpt": "(Subgroup.topologicalClosure_minimal \u22a5 le_rfl isClosed_singleton)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 23481,
+    "cache_read_input_tokens": 91516,
+    "output_tokens": 7658,
+    "output_tokens_details": {
+      "thinking_tokens": 3392
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23481,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3329,
+        "cache_read_input_tokens": 24500,
+        "cache_creation_input_tokens": 2910,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2910
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1796756,
+  "duration_ms": 52689,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:07:35",
+  "unit": "file",
+  "source_sha256": "0c2d5fa77e4b756ef47ba1b637dc9f0529f82d05723429ed963b716a37c99f1c",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

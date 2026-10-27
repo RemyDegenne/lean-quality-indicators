@@ -1,0 +1,114 @@
+{
+  "id": "openai-math-file-0135",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of Kernel.lean. I also read the related simp-relevant declarations in Grid.lean (`stage_apply_same`, `stage_apply_ne`, `uniform_apply`, `map_apply`, `sum_mass`, `binaryLayer`). The existing simp attributes mostly look sound: `pathBetween_zero/last/input/output`, `binaryBoundary_zero/last`, `binaryPath_zero/last` and `binaryLayer_apply_same` are all terminating, oriented sensibly and have no obvious competitors. The conditional lemmas `pathBetween_step` and `binaryLayer_apply_ne` are reasonably left non-simp because they have side conditions. I found no rewrite cycles. The two findings are missing apply/unfolding lemmas for wrapper definitions (`pathLine`/`binaryPathLine`, and `endpointWeight`). Each is shown by repeated manual `change` or `convert \u2026 congr!` steps in this file. I cannot run Lean, so I don't claim the proposed lemmas make those exact steps go through. I also noticed the many `convert \u2026 using 1 <;> congr!` steps next to the local `Classical.propDecidable` instance. That may be a decidable-instance mismatch, but I couldn't confirm the cause without Lean, so I didn't report it.",
+  "findings": [
+    {
+      "declaration": "CoordinateSweeps.Grid.pathLine / binaryPathLine (no unfolding/apply simp lemmas)",
+      "start_line": 53,
+      "end_line": 54,
+      "excerpt": "def pathLine (x y : G.Slot) (j : Fin G.b) : G.Line j :=",
+      "problem": "`pathLine` is a bare lambda wrapper over `pathBetween ... j.castSucc`, with no apply lemma and no folding lemma. `stage_apply_same` (simp) rewrites `G.stage \u03c9 j x j` to `\u03c9 j (fun k => x k) (x j)`. For `x = pathBetween x y j.castSucc` the argument of `\u03c9 j` is therefore the expanded lambda, not `G.pathLine x y j`, so simp cannot connect the two forms. The proofs bridge the gap by hand with `change` statements that spell out the lambda (lines 296 and 314). The same happens for `binaryPathLine`, whose `fun k => if k.val.val < j.val then y k else x k` is written out in `change` at lines 528 and 547. Since `binaryPathLine` is defined through `binaryPath`, the ite form the proofs `change` to only appears after unfolding both definitions.",
+      "proposed_change": "Add simp lemmas that give one canonical form. For example, `pathLine_apply : G.pathLine x y j k = G.pathBetween x y j.castSucc k := rfl`, and a folding lemma `(fun k : {k // k \u2260 j} => G.pathBetween x y j.castSucc k) = G.pathLine x y j := rfl`, orienting the fold so that `\u03c9 j (\u2026)` after `stage_apply_same` lands in `pathLine` form. Do the same for `binaryPathLine` (`binaryPathLine_apply : binaryPathLine x y j k = if k.val.val < j.val then y k else x k`, or its `binaryPath` form). Then the `change` steps at 296, 314, 528 and 547 can be replaced by `simpa [pathLine_apply, \u2026]` or `simp only`.",
+      "benefit": "The two direction proofs of `sweep_eq_iff_line_assignments` and `binarySweep_eq_iff_coins` no longer depend on brittle manual `change` of lambda terms. Downstream files that use `pathLine` can then normalize expressions with `simp` instead of unfolding by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Kernel.lean",
+          "declaration": "CoordinateSweeps.Grid.sweep_eq_iff_line_assignments",
+          "excerpt": "change (\u03c9 j (fun k => G.pathBetween x y j.castSucc k)) (x j) = y j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Kernel.lean",
+          "declaration": "CoordinateSweeps.Grid.sweep_eq_iff_line_assignments",
+          "excerpt": "change \u03c9 \u27e8t,htb\u27e9 (fun k => G.pathBetween x y \u27e8t,by omega\u27e9 k) (x \u27e8t,htb\u27e9) = y \u27e8t,htb\u27e9 at hi"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Kernel.lean",
+          "declaration": "CoordinateSweeps.binarySweep_eq_iff_coins",
+          "excerpt": "change Bool.xor (x j) (bits j (fun k => if k.val.val < j.val then y k else x k)) = y j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Grid.lean",
+          "declaration": "CoordinateSweeps.Grid.stage_apply_same",
+          "excerpt": "G.stage \u03c9 j x j = \u03c9 j (fun k => x k) (x j)"
+        }
+      ]
+    },
+    {
+      "declaration": "CoordinateSweeps.Grid.endpointWeight (no apply simp lemma)",
+      "start_line": 740,
+      "end_line": 740,
+      "excerpt": "def endpointWeight (p : G.Slot \u00d7 G.Slot) : \u211d := FiniteLaw.uniform _ p",
+      "problem": "`endpointWeight` is a plain def over `FiniteLaw.uniform`, and `FiniteLaw.uniform_apply` is `@[simp]`, but it can't fire because `endpointWeight` is not reducible and has no simp lemma of its own. `probability_path_vertex` and `probability_path_line` need to replace `G.endpointWeight p` by `(Fintype.card (G.Slot \u00d7 G.Slot) : \u211d)\u207b\u00b9` inside a sum over an ite. They do this through `convert hs using 1; congr!` (lines 758\u2013759 and 778\u2013779) instead of a rewrite. The identical `convert \u2026 congr!` pattern recurs in `probability_lineShares_le` and `probability_vertexShares_le`, which also pass through `endpointWeight`. This is opaque and fragile.",
+      "proposed_change": "Add `theorem endpointWeight_apply (p : G.Slot \u00d7 G.Slot) : G.endpointWeight p = (Fintype.card (G.Slot \u00d7 G.Slot) : \u211d)\u207b\u00b9 := rfl`. Mark it `@[simp]` (mirroring `uniform_apply`) or use it via `simp only [endpointWeight_apply]`. Then replace the `convert hs using 1; congr!` steps by `simp only [endpointWeight_apply]` followed by `exact hs`, or the equivalent. The rewrite direction is safe because the RHS contains no `endpointWeight`.",
+      "benefit": "The calc steps in `probability_path_vertex` and `probability_path_line` become transparent rewrites. Other users of `endpointWeight` get a canonical numeric normal form instead of having to unfold the def.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Grid.lean",
+          "declaration": "CoordinateSweeps.FiniteLaw.uniform_apply",
+          "excerpt": "@[simp] theorem uniform_apply [Nonempty \u03a9] (x : \u03a9) : uniform \u03a9 x ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Kernel.lean",
+          "declaration": "CoordinateSweeps.Grid.probability_path_vertex",
+          "excerpt": "convert hs using 1\n      congr!"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/CoordinateSweeps/Kernel.lean",
+          "declaration": "CoordinateSweeps.Grid.probability_path_line",
+          "excerpt": "convert hs using 1\n      congr!"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 52117,
+    "cache_read_input_tokens": 212761,
+    "output_tokens": 10734,
+    "output_tokens_details": {
+      "thinking_tokens": 6058
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 52117,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3587,
+        "cache_read_input_tokens": 51576,
+        "cache_creation_input_tokens": 4554,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4554
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3371081,
+  "duration_ms": 82066,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T23:10:01",
+  "unit": "file",
+  "source_sha256": "6dd1a59a644bf2e4590529eebc30e22b3e1d9ccc4ac6644a7ac05f634f9aeb80",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

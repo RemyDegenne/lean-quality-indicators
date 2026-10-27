@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0247",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the supporting simp lemmas in MultiWord.lean, WordScheduling.lean, SlotAssembly.lean, PiTensor.lean and SparseShear.lean. I also searched the FourierCircuit directory for other uses of the `simp [..., Word.weight]` pattern. I did not run Lean, so the replacement lemmas are untested suggestions. I considered making `RawPrice.tensor`, `directSum`, `power` and `reindex` simp lemmas. I rejected that because they carry `IsUnit` side conditions, and their uses are explicit `rw` calls with supplied unit proofs. The `@[simp]` lemmas on `Word.Pure` and `purePower` looked consistent. The two findings below are the strongest, and I am unsure how much of the long simp set at line 150 the proposed lemma would remove.",
+  "findings": [
+    {
+      "declaration": "ExactFourier.Packing.RawPrice.word_le / reindex_le / mul_le / tensor_le / directSum_le / embedded_le (uses of simp with Word.weight)",
+      "start_line": 57,
+      "end_line": 57,
+      "excerpt": "simpa [W,Word.weight] using hh",
+      "problem": "The simp set has no lemma computing the weight of a single `callWord`. `Word.weight_nil`, `weight_cons_call`, `weight_append`, `weight_embed` and `weight_reindex` are all simp lemmas, and `calls_callWord` and `matrix_callWord` exist for `callWord`. There is no `weight_callWord`. As a result, `simpa [W,Word.weight]` (also at lines 76, 129, 167 and 279, and in other files) unfolds the definition `Word.weight` into `(W.calls.map p).sum` and then relies on `calls_callWord` and `List.map` simp lemmas. This unfolding competes with the existing `Word.weight_append` rules, which are stated on `Word.weight`. It also needs `W`, `V` and `A` passed as let-unfolding arguments.",
+      "proposed_change": "Add next to `calls_callWord` in MultiWord.lean (or WordScheduling.lean) a lemma `@[simp] theorem Word.weight_callWord (p : \u03c4 \u2192 \u211d) (t : \u03c4) (e : D t \u21aa \u03b1) : (callWord (A := A) t e).weight p = p t`. It can be proved by `simp [Word.weight]` or `rfl`. Then replace `Word.weight` in these simp calls by `W`, `V`, `A` only, so `Word.weight` stays folded. Do the same for `monoWord` (weight 0) if needed.",
+      "benefit": "The call sites use only the folded `Word.weight` normal form, which already has the `weight_append` and `weight_embed` simp lemmas. Proofs no longer depend on how `Word.weight` is implemented. About six call sites in this file, and others in RawPositive.lean and FiniteSeparation.lean, shrink and become more robust.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/FourierCircuit/MultiWord.lean",
+          "declaration": "calls_callWord",
+          "excerpt": "(callWord (A := A) t e).calls=[t] := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/FourierCircuit/WordScheduling.lean",
+          "declaration": "Word.weight_append",
+          "excerpt": "(W++V).weight p=W.weight p+V.weight p := by simp [Word.weight]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/FourierCircuit/RawPositive.lean",
+          "declaration": "hweight in RawPositive",
+          "excerpt": "V.weight (fun _:Unit=>p.value M)=p.value M := by simp [V,Word.weight]"
+        }
+      ]
+    },
+    {
+      "declaration": "ExactFourier.Packing.RawPrice.tensor_ge",
+      "start_line": 150,
+      "end_line": 151,
+      "excerpt": "simp [pairPrice,q,speciesPrice,SpeciesDomain,D,A,W,Word.weight,callWord,Word.calls,Step.kind,BiDomain,biMatrix] at hh",
+      "problem": "The proof simplifies `hh` by unfolding twelve definitions, including the interface definitions `pairPrice`, `speciesPrice`, `SpeciesDomain`, `callWord`, `Word.calls` and `Step.kind`. It then needs the fragile `convert hh using 1 ; congr 1` to match the goal. This means the simp interface has no lemmas for `pairPrice` on a pair of `some` species or for the weight of a call word. The proof depends on the exact unfolded shape and cannot be reused for similar cases. The related `pairPrice_map` in ComparisonRename.lean also has to work through the cardinalities by hand.",
+      "proposed_change": "Add a lemma for the common case, for example `pairPrice_some_some (v : \u03c4 \u2192 \u211d) (s t : \u03c4) (h) : pairPrice (D := D) v \u27e8(some s, some t), h\u27e9 = Fintype.card (D t) * v s + Fintype.card (D s) * v t`, plus the `Word.weight_callWord` lemma from the previous finding. Then `rw` or `simp only [pairPrice_some_some, Word.weight_callWord]` replaces the twelve-definition unfold. The branch with `q.1.1 = some (some false)` and `q.1.2 = some (some true)` then reduces to `biMatrix`/`BiDomain` cardinality facts and no longer needs `convert ... congr 1`.",
+      "benefit": "This avoids the unwanted wholesale unfolding of definitions that have their own simp lemmas (`speciesWord_count` and `Word.weight_*`). The proof no longer depends on `convert`, and other proofs about `pairPrice` can use the same lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/FourierCircuit/SlotAssembly.lean",
+          "declaration": "pairPrice",
+          "excerpt": "Fintype.card (SpeciesDomain D s.1.2)*speciesPrice p s.1.1+"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/FourierCircuit/SlotAssembly.lean",
+          "declaration": "speciesPrice",
+          "excerpt": "abbrev speciesPrice (p : \u03c4\u2192\u211d) : Option \u03c4\u2192\u211d"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/FourierCircuit/MultiWord.lean",
+          "declaration": "calls_callWord",
+          "excerpt": "(callWord (A := A) t e).calls=[t] := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 35099,
+    "cache_read_input_tokens": 147994,
+    "output_tokens": 7089,
+    "output_tokens_details": {
+      "thinking_tokens": 2676
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35099,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3158,
+        "cache_read_input_tokens": 34280,
+        "cache_creation_input_tokens": 4832,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4832
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22610940000000002,
+  "duration_ms": 50781,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T00:40:33",
+  "unit": "file",
+  "source_sha256": "28b51ed9917ac73a5c33561a02fbb42f74734e200f765893584e1f007acf0c43",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

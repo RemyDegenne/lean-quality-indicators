@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0338",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the downstream user TorsionFree.lean (sq_square, square_free, torsionFree). I also grepped MetabelianGroup.lean for simp usage. I did not run Lean, so I make no claim that any simp call fails or loops. Both findings are about missing or weak simp coverage, inferred from how the lemmas are used. I considered `P.one` and judged its non-simp status reasonable: a simp lemma that rewrites `1` into an explicit pair would expand it unwantedly. The simp attribute on `mul` and the aesop rule-set annotations look intentional. I am unsure whether `@[simp] mul` fires on goals about `P` outside `open P`, because the Mul and Pow instances are scoped or stated on `K \u00d7 Q`.",
+  "findings": [
+    {
+      "declaration": "LeanPool.Polylean.P.mul",
+      "start_line": 182,
+      "end_line": 184,
+      "excerpt": "(k, q) * (k', q') = (k + action q k' + cocycle q q', q + q') := rfl",
+      "problem": "`mul` is the only simp lemma for the group `P`. Its right-hand side contains `action q k'` and `cocycle q q'`. `action` and `cocycle` are `@[reducible]` defs that carry only aesop `norm unfold` attributes, and `Q.e`, `Q.a`, `Q.b` and `Q.c` are plain `def`s. So after `simp [mul]` on concrete elements, the goal stays stuck on `action Q.a k'`, `cocycle Q.a Q.a` and `Q.a + Q.a`. Every consumer has to supply the unfolding by hand. TorsionFree.lean does `simp [P.sq, Q.e, action, cocycle]` and `simp [P.sq, Q.e, Q.a, K.x, action]`. It also rewrites `rw [show cocycle Q.a Q.a = K.x by rfl]` and calls `(P.mul ...).trans` explicitly instead of letting simp use `mul`. `kernel_pow` itself needs `simp [cocycle] <;> ring_nf`. The simp interface for `P` therefore stops halfway: it exposes the cocycle formula but gives no way to evaluate it.",
+      "proposed_change": "Add equation-style simp lemmas for concrete arguments. Examples are `action Q.e = .id \u2124 \u00d7 .id \u2124 \u00d7 .id \u2124` and one lemma per action case, restated pointwise as `action Q.a (x, y, z) = (x, -y, -z)`. For the cocycle, add `cocycle Q.a Q.a = K.x`, `cocycle Q.b Q.a = -K.x + K.y + -K.z`, and so on, plus a `cocycle Q.e _ = 0` and `cocycle _ Q.e = 0` pair. Add `Q.a + Q.a = Q.e` and the other Klein-group sums as simp lemmas, or at least a simp set for `Q.e`, `Q.a`, `Q.b` and `Q.c`. Optionally group them under a named simp set. Alternatively, mark `Q.e`, `Q.a`, `Q.b` and `Q.c` `@[simp]`/reducible-friendly. Then `simp [P.mul]` on explicit elements normalises to a pair of integer triples, and the `rw [show cocycle ... by rfl]` steps in `sq_square` are no longer needed.",
+      "benefit": "Computations in `P` become `simp` one-liners to a canonical coordinate form. Downstream proofs such as `sq_square` and `kernel_pow` stop repeating `simp [cocycle, action, Q.e, ...]` lists and `rw [show ... by rfl]` workarounds. Proofs also stop depending on which defs the caller remembered to unfold.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Polylean/UnitConjecture/TorsionFree.lean",
+          "declaration": "LeanPool.Polylean.sq_square",
+          "excerpt": "rw [show cocycle Q.a Q.a = K.x by rfl]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Polylean/UnitConjecture/TorsionFree.lean",
+          "declaration": "LeanPool.Polylean.sq_square",
+          "excerpt": "simp [P.sq, Q.e, Q.a, K.x, action]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Polylean/UnitConjecture/GardamGroup.lean",
+          "declaration": "LeanPool.Polylean.P.kernel_pow",
+          "excerpt": "\u00b7 ext <;> simp [cocycle] <;> ring_nf"
+        }
+      ]
+    },
+    {
+      "declaration": "LeanPool.Polylean.P.kernel_pow",
+      "start_line": 189,
+      "end_line": 210,
+      "excerpt": "theorem kernel_pow (k : K) (n : \u2115) : ((k, Q.e) : P) ^ n = (n \u2022 k, Q.e) := by",
+      "problem": "`kernel_pow` is the canonical normal form for powers of kernel elements, `(k, Q.e) ^ n = (n \u2022 k, Q.e)`. It has neither `@[simp]` nor an aesop attribute, even though its sibling lemmas `mul` and `one` are registered. Its only use is `erw [pow_two, sq_square, P.kernel_pow, ...]` in TorsionFree.lean, and `erw` is needed because of the non-standard power instance. The instance is the global `@[reducible] instance instPow : Pow (K \u00d7 Q) \u2115`, defined from `PGrp.toMonoid.npow` on the underlying type `K \u00d7 Q` rather than on `P`. The proof also has to `unfold HPow.hPow instHPow Pow.pow instPow` and `change` to the monoid `npow`. A bridge lemma `p ^ n = Monoid.npow n p` (or `pow_def`) is missing, so simp lemmas from `Monoid` such as `pow_succ`, `pow_zero` and `pow_two` cannot be used reliably on these powers. The zero case also relies on a bare `simp; rfl`.",
+      "proposed_change": "Make `kernel_pow` available to simp: add `@[simp]` and the `(rule_sets := [P])` attribute if it is wanted, and add a companion `P.pow_def : p ^ n = PGrp.toMonoid.npow n p := rfl` so the instance can be unfolded with one rewrite instead of `unfold`. Better, define the power on `P` through `Monoid.Pow P` (use `P`, not `K \u00d7 Q`, in the instance) so that `pow_succ`, `pow_zero` and `pow_two` apply directly. Then `kernel_pow` can be proved by `induction` with `pow_succ`, `mul` and `ih`, and used by `rw`/`simp` instead of `erw`.",
+      "benefit": "Kernel powers get a single canonical simp normal form. The proof drops the instance-unfolding boilerplate. The downstream `erw` can become a plain `rw`/`simp`. The pow instance stops competing with the standard `Monoid.Pow` simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Polylean/UnitConjecture/TorsionFree.lean",
+          "declaration": "LeanPool.Polylean.P.torsionFree",
+          "excerpt": "erw [pow_two, sq_square, P.kernel_pow, Prod.mk.injEq] at square_tor"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Polylean/UnitConjecture/GardamGroup.lean",
+          "declaration": "LeanPool.Polylean.P.instPow",
+          "excerpt": "instance instPow : Pow (K \u00d7 Q) \u2115 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Polylean/UnitConjecture/GardamGroup.lean",
+          "declaration": "LeanPool.Polylean.P.mul",
+          "excerpt": "@[aesop norm (rule_sets := [P]), simp]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 13280,
+    "cache_read_input_tokens": 36371,
+    "output_tokens": 6681,
+    "output_tokens_details": {
+      "thinking_tokens": 3123
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13280,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3905,
+        "cache_read_input_tokens": 14226,
+        "cache_creation_input_tokens": 3067,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3067
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1235831,
+  "duration_ms": 49053,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:39:29",
+  "unit": "file",
+  "source_sha256": "0aaaf3824b7799dfdab44a7d170a7c41c9eae1c23c6e11b2178cc0111107e0b9",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

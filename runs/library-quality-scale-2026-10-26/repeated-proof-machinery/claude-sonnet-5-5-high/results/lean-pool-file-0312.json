@@ -1,0 +1,125 @@
+{
+  "id": "lean-pool-file-0312",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read Continuation.lean (IsRegCarlsonContinuation and the identity theorem) and Deriv.lean, whose private helpers overlap with this file. I grepped the repository for the repeated patterns. I could not run Lean, so the proposed lemmas are untested sketches. The fit of `w i = 1` in sum_shift needs a `one_mul` adjustment, and I flagged that where it applies. I did not report the repeated `hG.1 _ (mem_univ _)).comp_of_eq (analyticAt_addDirichletUnit ..) rfl` expressions in `tangent`, because that is routine API composition.",
+  "findings": [
+    {
+      "declaration": "IsRegCarlsonContinuation.sum_shift and IsRegCarlsonContinuation.mul_arg",
+      "start_line": 144,
+      "end_line": 160,
+      "excerpt": "exact Finset.analyticAt_fun_sum _ fun i _ => analyticAt_const.mul",
+      "problem": "Both theorems run the same continuation argument. Each applies `analyticOnNhd_eq_of_eqOn_mvBetaConvergent` to two entire candidates. The entire side is a sum of `weight * proj i * G (addDirichletUnit c i)`, shown analytic with `Finset.analyticAt_fun_sum`, `proj.analyticAt`, `comp_of_eq` and `analyticAt_addDirichletUnit`. On the native domain, each rewrites with `eq_native`, applies a native shift identity, and closes with `Finset.sum_congr` plus `hG.eq_native (addDirichletUnit_mem_mvBetaConvergent hc i)`. sum_shift (lines 34\u201349) uses weight 1. mul_arg uses weight `z i`. Only the native identity and the constant weight differ. The analyticity block and the sum_congr/eq_native block are copied.",
+      "proposed_change": "Add a shared lemma. For `hG : IsRegCarlsonContinuation f z G`, `hH : AnalyticOnNhd \u2102 H Set.univ`, `w : \u03b9 \u2192 \u2102`, and `hnat : \u2200 c \u2208 mvBetaConvergent, H c = \u2211 i, w i * (c i * regCarlsonDirichletAverage (addDirichletUnit c i) z f)`, conclude `H = fun b => \u2211 i, w i * (b i * G (addDirichletUnit b i))`.\n\nProof sketch: apply `analyticOnNhd_eq_of_eqOn_mvBetaConvergent hH ?_ ?_`.\n- For analyticity, use `Finset.analyticAt_fun_sum` with `analyticAt_const.mul ((proj i).analyticAt c |>.mul ((hG.1 _ (mem_univ _)).comp_of_eq (analyticAt_addDirichletUnit i c) rfl))`.\n- On the native domain, rewrite with `hnat c hc`, then use `Finset.sum_congr rfl` and `hG.eq_native (addDirichletUnit_mem_mvBetaConvergent hc i)`.\n\nThen mul_arg becomes `congrFun (lemma hG hH.1 z (fun c hc => by rw [hH.eq_native hc]; exact regCarlsonDirichletAverage_mul_arg hc f hf)) b`. sum_shift uses `w := fun _ => 1` and `hG.1` as the analyticity hypothesis. Its `hnat` is `hG.eq_native hc` composed with `regCarlsonDirichletAverage_eq_sum_addDirichletUnit hc z f hf`, with `simp only [one_mul]` to fit the weight. Both hypotheses and imports are unchanged.",
+      "benefit": "The identity-theorem continuation and its analyticity bookkeeping are stated once. sum_shift and mul_arg each reduce to one native identity. A future shift-type relation (for example one with another weight) needs only its native identity and not another copy of the 10-line block.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Dirichlet/Average/ContinuedRelations.lean",
+          "declaration": "IsRegCarlsonContinuation.sum_shift",
+          "excerpt": "exact Finset.analyticAt_fun_sum _ fun i _ =>\n      ((ContinuousLinearMap.proj i : (\u03b9 \u2192 \u2102) \u2192L[\u2102] \u2102).analyticAt c).mul"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Dirichlet/Average/ContinuedRelations.lean",
+          "declaration": "IsRegCarlsonContinuation.mul_arg",
+          "excerpt": "rw [hH.eq_native hc, regCarlsonDirichletAverage_mul_arg hc f hf]"
+        }
+      ]
+    },
+    {
+      "declaration": "IsRegCarlsonContinuation.associated (hc, hdc)",
+      "start_line": 172,
+      "end_line": 179,
+      "excerpt": "(fun _ hu => convexHull_min hz h\u03a9conv (carlsonAffineForm_mem_convexHull z hu))",
+      "problem": "`hc` and `hdc` are the same argument applied to `f` and to `deriv f`. Each composes continuity with `continuous_carlsonAffineForm` and uses `convexHull_min` to show the affine form maps the simplex into `\u03a9`. The identical statement already exists in Deriv.lean as the private lemma `continuousOn_carlson_comp`, which is a lemma about arbitrary `ContinuousOn f \u03a9`. The same `convexHull_min hz h\u03a9conv (carlsonAffineForm_mem_convexHull z hu)` step is also copied in other files (Continuation.lean:144, JointContinuation.lean:59).",
+      "proposed_change": "Make `continuousOn_carlson_comp` public and move it to a file imported by both Deriv.lean and this file, for example next to `carlsonAffineForm_mem_convexHull`. Its statement is `(h\u03a9conv : Convex \u211d \u03a9) (hf : ContinuousOn f \u03a9) (hz : Set.range z \u2286 \u03a9) : ContinuousOn (fun u => f (carlsonAffineForm z u)) (Convexity.StdSimplex.coordinateSet \u211d \u03b9)`. Its proof is unchanged. In `associated`, replace the two `have`s by `have hc := continuousOn_carlson_comp h\u03a9conv hf.continuousOn hz` and `have hdc := continuousOn_carlson_comp h\u03a9conv hf.deriv.continuousOn hz`. Deriv.lean's `regCarlsonDirichletAverage_tangent` already uses this form, so it needs no change. Assuming the helper sits in a module that Continuation.lean imports, this file's imports are unaffected.",
+      "benefit": "This removes two 4-line copies in this file and a third lemma-level copy in Deriv.lean. The simplex-to-`\u03a9` reasoning has one proof, so the explicit type annotations that spill over lines 172\u2013173 and 176\u2013177 disappear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Dirichlet/Average/Deriv.lean",
+          "declaration": "continuousOn_carlson_comp",
+          "excerpt": "hf.comp (continuous_carlsonAffineForm z).continuousOn\n    (fun _ hu => convexHull_min hz h\u03a9conv (carlsonAffineForm_mem_convexHull z hu))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Dirichlet/Average/ContinuedRelations.lean",
+          "declaration": "IsRegCarlsonContinuation.associated",
+          "excerpt": "hf.deriv.continuousOn.comp (continuous_carlsonAffineForm z).continuousOn"
+        }
+      ]
+    },
+    {
+      "declaration": "analyticAt_addDirichletUnit and IsRegCarlsonContinuation.tangent_sub (shift-as-translation case splits)",
+      "start_line": 88,
+      "end_line": 98,
+      "excerpt": "by_cases hki : k = i <;> by_cases hkj : k = j <;>\n      simp_all [addDirichletUnit, sub_add_cancel]",
+      "problem": "Each of these lemmas proves facts about `addDirichletUnit` by unfolding it, taking `ext k`, and doing a `by_cases` split on `k = i`/`k = j`. `analyticAt_addDirichletUnit` proves `addDirichletUnit c i = c + Pi.single i 1` this way (lines 27\u201329). `tangent_sub` repeats the case split three times for `hi`, `hj` and `hij'`. The same translation lemma is separately proved as the private `addDirichletUnit_eq_add_single` in Deriv.lean, and `hs` there repeats the analyticity proof. So the translation characterization is proved at least four times in three places, and the inner arithmetic is redone pointwise each time.",
+      "proposed_change": "State `addDirichletUnit_eq_add_single (b : \u03b9 \u2192 \u2102) (i : \u03b9) : addDirichletUnit b i = b + Pi.single i 1` once as a public lemma in ParameterShift.lean, next to the definition. Its proof is the existing `ext k; by_cases hk : k = i <;> simp [addDirichletUnit, hk]`. Then:\n- `analyticAt_addDirichletUnit` becomes `by simp_rw [addDirichletUnit_eq_add_single]; exact analyticAt_id.add analyticAt_const`.\n- Deriv.lean's private lemma and `hs` are replaced by the public lemma and this `analyticAt_addDirichletUnit` (Deriv.lean would need to import this file or the lemma could move to ParameterShift.lean).\n- In `tangent_sub`, `hi`, `hj` and `hij'` become `by rw [addDirichletUnit_eq_add_single]; abel`. This is exactly the style Deriv.lean already uses for `hqi`/`hqj` (`simp [q, addDirichletUnit_eq_add_single]; abel`), so the three `ext`/`by_cases` blocks go away.",
+      "benefit": "The relationship between the `addDirichletUnit` definition and ordinary translation is proved once. The shift-composition facts in `tangent_sub` become short ring-style computations, with no 4-way `simp_all` split over `k = i`, `k = j`. The analyticity of shifts also has a single source.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Dirichlet/Average/Deriv.lean",
+          "declaration": "addDirichletUnit_eq_add_single",
+          "excerpt": "addDirichletUnit b i = b + Pi.single i 1 := by\n  ext k\n  by_cases h : k = i <;> simp [addDirichletUnit, h]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Dirichlet/Average/Deriv.lean",
+          "declaration": "regCarlsonDirichletAverage_tangent",
+          "excerpt": "simp [q, addDirichletUnit_eq_add_single]; abel"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Dirichlet/Average/ContinuedRelations.lean",
+          "declaration": "analyticAt_addDirichletUnit",
+          "excerpt": "have h (c : \u03b9 \u2192 \u2102) : addDirichletUnit c i = c + Pi.single i 1 := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 26451,
+    "cache_read_input_tokens": 123151,
+    "output_tokens": 8188,
+    "output_tokens_details": {
+      "thinking_tokens": 2074
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26451,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4208,
+        "cache_read_input_tokens": 27012,
+        "cache_creation_input_tokens": 3368,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3368
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.20002709999999996,
+  "duration_ms": 57796,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T01:33:16",
+  "unit": "file",
+  "source_sha256": "0eaf6534901261979d6e81e96600602e6e50bc9b73e1d0459b26dbf79ca9af8e",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

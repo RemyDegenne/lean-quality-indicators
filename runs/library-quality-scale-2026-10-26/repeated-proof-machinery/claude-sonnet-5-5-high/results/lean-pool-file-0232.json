@@ -1,0 +1,94 @@
+{
+  "id": "lean-pool-file-0232",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the candidates for repeated reasoning. I looked at the four lin_indicator_* lemmas, the measurability proofs, the lower-bound calculations and the final min-chain extraction in singular_annulus_bound_explicit. I reported only the two duplications that look substantial enough. The lin_indicator_* a.e. arguments and the min-chain extractions are short and routine, so I did not report them. I did not compile the proposed replacements. The `Measurable.ite` and `MeasurableSet.inter` replacements assume the set-builder conjunction unifies definitionally with `\u2229`, which is how the current proofs already use it.",
+  "findings": [
+    {
+      "declaration": "singular_annulus_f_lin_bound / singular_annulus_diff_pointwise_bound (third case)",
+      "start_line": 258,
+      "end_line": 264,
+      "excerpt": "calc \u03b5\u2082 / (2 * \u2016L\u2016)\n          < \u03b5\u2082 / \u2016L\u2016 := div_lt_div_of_pos_left h\u03b5\u2082_pos hL_pos (by linarith)\n        _ \u2264 |t - t\u2080| := by rw [div_le_iff\u2080 hL_pos, mul_comm]; exact le_of_lt hcond.1",
+      "problem": "The same argument occurs twice. From `\u03b5\u2082 < \u2016L\u2016 * |t - t\u2080|` it derives `\u03b5\u2082/(2\u2016L\u2016) < \u03b5\u2082/\u2016L\u2016 \u2264 |t - t\u2080|`, using `div_lt_div_of_pos_left`, `div_le_iff\u2080` and `mul_comm`. It then calls `inv_norm_le_of_half_lower` to bound the singular factor by `2\u2016L\u2016/\u03b5\u2082`. The block at lines 260-264 and the block at lines 462-471 (the `h\u03b3`-false, `hlin`-true case of `singular_annulus_diff_pointwise_bound`) differ only in the name of the hypothesis. The existing helper `inv_norm_le_of_half_lower` covers only the last step, so each caller still repeats the inequality chain.",
+      "proposed_change": "Add one private lemma next to `inv_norm_le_of_half_lower`:\n`private lemma inv_norm_le_of_lin_annulus {t\u2080 L \u03b5\u2082 t : \u211d} (hL_pos : 0 < \u2016L\u2016) (h\u03b5\u2082_pos : 0 < \u03b5\u2082) (h : \u03b5\u2082 < \u2016L\u2016 * |t - t\u2080|) : \u2016(\u2191(t - t\u2080) : \u2102)\u207b\u00b9\u2016 \u2264 2 * \u2016L\u2016 / \u03b5\u2082`.\nThe proof is the existing calc (`\u03b5\u2082/(2\u2016L\u2016) < \u03b5\u2082/\u2016L\u2016 \u2264 |t-t\u2080|`) followed by `inv_norm_le_of_half_lower hL_pos h\u03b5\u2082_pos hlo.le`. (`L : \u2102` is the right type, as in the existing helper.)\nThe rewritten uses are:\n- In `singular_annulus_f_lin_bound`, the first branch becomes `rw [ite_eq_left hcond]; exact inv_norm_le_of_lin_annulus hL_pos h\u03b5\u2082_pos hcond.1`.\n- In `singular_annulus_diff_pointwise_bound`, case 3 becomes `simp only [h\u03b3, hlin, \u2193reduceIte, zero_sub, norm_neg]; exact inv_norm_le_of_lin_annulus hL_pos h\u03b5\u2082_pos hlin.1`.\nThe hypotheses are the same as before: `hL_pos`, `h\u03b5\u2082_pos`, and the first component of the annulus condition. No new imports are needed.",
+      "benefit": "The inequality chain is stated and proved once, and both proofs shrink to a single call. A future change to the constant 2 or to the threshold only has to be made in one lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/PVInfrastructure/SingularAnnulus.lean",
+          "declaration": "singular_annulus_diff_pointwise_bound",
+          "excerpt": "calc \u03b5\u2082 / (2 * \u2016L\u2016) < \u03b5\u2082 / \u2016L\u2016 :=\n              div_lt_div_of_pos_left h\u03b5\u2082_pos\n                hL_pos (by linarith)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/PVInfrastructure/SingularAnnulus.lean",
+          "declaration": "inv_norm_le_of_half_lower",
+          "excerpt": "(h_lo : \u03b5\u2082 / (2 * \u2016L\u2016) \u2264 |t - t\u2080|) :\n    \u2016(\u2191(t - t\u2080) : \u2102)\u207b\u00b9\u2016 \u2264 2 * \u2016L\u2016 / \u03b5\u2082"
+        }
+      ]
+    },
+    {
+      "declaration": "singular_annulus_symmDiff_measurableSet / singular_annulus_f_lin_measurable",
+      "start_line": 98,
+      "end_line": 103,
+      "excerpt": "\u00b7 exact (isOpen_lt continuous_const (continuous_const.mul\n        (continuous_abs.comp (continuous_id.sub continuous_const)))).measurableSet\n    \u00b7 exact (isClosed_le (continuous_const.mul\n        (continuous_abs.comp (continuous_id.sub continuous_const)))\n        continuous_const).measurableSet",
+      "problem": "The proof that `{t | \u03b5\u2082 < \u2016L\u2016 * |t - t\u2080|}` and `{t | \u2016L\u2016 * |t - t\u2080| \u2264 \u03b5\u2081}` are measurable is written out twice, with the same continuity terms. It appears at lines 98-103 inside `singular_annulus_symmDiff_measurableSet` and again at lines 244-249 inside `singular_annulus_f_lin_measurable`. Both proofs rebuild the continuity of `t \u21a6 \u2016L\u2016 * |t - t\u2080|` and then apply `isOpen_lt` and `isClosed_le`.",
+      "proposed_change": "Add `private lemma measurableSet_lin_annulus (t\u2080 : \u211d) (L : \u2102) (\u03b5\u2081 \u03b5\u2082 : \u211d) : MeasurableSet {t : \u211d | \u03b5\u2082 < \u2016L\u2016 * |t - t\u2080| \u2227 \u2016L\u2016 * |t - t\u2080| \u2264 \u03b5\u2081}`.\nProve it with `MeasurableSet.inter` and the two existing `isOpen_lt` / `isClosed_le` terms.\nThe rewritten uses are:\n- In `singular_annulus_f_lin_measurable`: `exact Measurable.ite (measurableSet_lin_annulus t\u2080 L \u03b5\u2081 \u03b5\u2082) (...inv...) measurable_const`.\n- In `singular_annulus_symmDiff_measurableSet`, the second branch becomes `exact measurableSet_Icc.inter (h_abs.inter (measurableSet_lin_annulus t\u2080 L \u03b5\u2081 \u03b5\u2082))`.\nBoth uses have the same hypotheses as before, because the lemma needs none.",
+      "benefit": "The continuity and measurability argument is written once, which removes about 12 lines of dense term-mode code. A reader can see that both statements concern the same linear annulus set.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanModularForms/GeneralizedResidueTheory/PVInfrastructure/SingularAnnulus.lean",
+          "declaration": "singular_annulus_f_lin_measurable",
+          "excerpt": "\u00b7 exact (isOpen_lt continuous_const (continuous_const.mul\n        (continuous_abs.comp (continuous_id.sub continuous_const)))).measurableSet"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 28442,
+    "cache_read_input_tokens": 89170,
+    "output_tokens": 5605,
+    "output_tokens_details": {
+      "thinking_tokens": 1601
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28442,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3589,
+        "cache_read_input_tokens": 29308,
+        "cache_creation_input_tokens": 3063,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3063
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.178751,
+  "duration_ms": 35999,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:35:57",
+  "unit": "file",
+  "source_sha256": "9729932149ac120a512679408562ebb814a51a0f71e2acfefd64b4fe916e7417",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,120 @@
+{
+  "id": "openai-math-file-0310",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the downstream uses in USTPosteriorResponse.lean. I grepped for uses of finiteTilt and observationField across the repo, and for @[simp] conventions in the SpanningForest directory. The directory uses @[simp] freely for small API lemmas, but this file has none. I did not run Lean, so the findings are about the interface and not about observed simp behaviour. Each suggested simp lemma is a conditional or ground rewrite that cannot loop. I did not flag finiteTilt_empty_eq_zero_field, because its right-hand side contains a variable S that does not occur on the left, so it is unsuitable as a simp lemma. I also did not flag finiteTilt_response (WeightedTreeResponse.lean line 61 declares a theorem of the same name), because that is outside this rubric.",
+  "findings": [
+    {
+      "declaration": "finiteTilt_of_mem / finiteTilt_of_not_mem (and the downstream uses of `simp only [finiteTilt, dite_eq_right he, ...]`)",
+      "start_line": 18,
+      "end_line": 26,
+      "excerpt": "lemma finiteTilt_of_not_mem (K : FiniteSubgraphCode) (S : Finset (\u2115 \u00d7 \u2115))\n    (t : \u211d) (y : (\u2115 \u00d7 \u2115) \u2192 \u211d) (e : \u2115 \u00d7 \u2115) (he : e \u2209 K.2) :\n    finiteTilt K S t y e = 0 := by\n  simp [finiteTilt, he]",
+      "problem": "finiteTilt is a dite on `e \u2208 K.2`. The two canonical unfolding lemmas, finiteTilt_of_mem and finiteTilt_of_not_mem, are not tagged @[simp]. Simp therefore has no way to evaluate `finiteTilt K S t y e` when membership is known. Every proof has to unfold the definition by hand: `simp only [finiteTilt, dite_eq_right he, sub_self, abs_zero]` at lines 50, 101 and 117, `simp [finiteTilt, he]` in the two lemmas themselves, and `unfold finiteTilt` at line 63. Downstream, USTPosteriorResponse uses explicit `rw [finiteTilt_of_mem K _ 0 _ e.1 he, ...]`. Unfolding exposes the raw `dite`, which is not the intended normal form. The lemma in the \u2209 case already exists, yet the file does not use it in the simp calls at lines 50, 101 and 117.",
+      "proposed_change": "Mark both lemmas @[simp]. They are conditional rewrites whose side goals `e \u2208 K.2` and `e \u2209 K.2` are discharged from hypotheses. The right-hand sides do not contain finiteTilt, so there is no loop. Then replace `simp only [finiteTilt, dite_eq_right he, sub_self, abs_zero]` at lines 50, 101 and 117 with `simp only [finiteTilt_of_not_mem K S _ _ e he, sub_self, abs_zero]`, or with a plain `simp [he]`. Do the same for the `dite_eq_left` call at line 48. Keep `finiteTilt` itself unfolded only inside these two lemmas.",
+      "benefit": "Callers get the canonical forms `inclusion K (observationField ..) \u27e8e, he\u27e9` and `0` from `simp [he]`, with no manual dite unfolding. The proofs stop depending on the internal `dite` representation, so changing the definition of finiteTilt would not break them.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SpanningForest/USTFiniteTilt.lean",
+          "declaration": "finiteTilt_response",
+          "excerpt": "simp only [finiteTilt, dite_eq_right he, sub_self, abs_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SpanningForest/USTPosteriorResponse.lean",
+          "declaration": "finiteTiltMean_eq_finiteTilt",
+          "excerpt": "rw [finiteTilt_of_not_mem K _ 0 _ e.1 he]"
+        }
+      ]
+    },
+    {
+      "declaration": "observationField (missing apply/ite simp lemmas)",
+      "start_line": 10,
+      "end_line": 12,
+      "excerpt": "fun e => if e.1 \u2208 S then y e.1 - t / 2 else 0",
+      "problem": "observationField has no simp API. There is no `observationField_apply`, and no `_of_mem` / `_of_not_mem` lemmas for `e.1 \u2208 S`. Callers unfold the definition and then rewrite the resulting `ite`: lines 99\u2013100 and 115\u2013116 use `simpa only [observationField, ite_eq_left hf, sub_sub_sub_cancel_right]` and `simpa only [observationField, ite_eq_right hf, sub_self, abs_zero]`. Line 123 and line 128 use `simp [observationField]`. USTPosteriorResponse line 40 uses `simp only [observationField, zero_div, sub_zero, indicator]`. The unfolded body `if e.1 \u2208 S then y e.1 - t/2 else 0` leaks out and is the only way to evaluate the field. The same `ite` handling is duplicated in finiteTilt_response_of_response and finiteTilt_response.",
+      "proposed_change": "Add simp lemmas `observationField_of_mem (h : e.1 \u2208 S) : observationField K S t y e = y e.1 - t / 2` and `observationField_of_not_mem (h : e.1 \u2209 S) : observationField K S t y e = 0`, both tagged @[simp] and both proved by `simp [observationField, h]`. Optionally add `observationField_apply`, kept non-simp, for the ite form. The coordinate-bound steps at lines 99\u2013100 and 115\u2013116 then become `simp [observationField, hf]`-free calls such as `simpa [observationField_of_mem, hf] using hy f.1 hf`. Likewise the `simp only [observationField, ...]` in USTPosteriorResponse can go through these lemmas.",
+      "benefit": "Simp gets a stable interface instead of an unfolded definition. The two duplicated `by_cases hf` blocks in the response proofs shrink, and later files no longer depend on how observationField is implemented.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SpanningForest/USTFiniteTilt.lean",
+          "declaration": "finiteTilt_response",
+          "excerpt": "simpa only [observationField, ite_eq_left hf, sub_sub_sub_cancel_right] using hy f.1 hf"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SpanningForest/USTPosteriorResponse.lean",
+          "declaration": "finiteEnergy_eq_observationField",
+          "excerpt": "simp only [observationField, zero_div, sub_zero, indicator]"
+        }
+      ]
+    },
+    {
+      "declaration": "observationField_zero / observationField_empty",
+      "start_line": 120,
+      "end_line": 128,
+      "excerpt": "lemma observationField_empty (K : FiniteSubgraphCode) (t : \u211d)\n    (y : (\u2115 \u00d7 \u2115) \u2192 \u211d) : observationField K \u2205 t y = 0 := by",
+      "problem": "These two ground rewrite rules evaluate observationField to `0` when S = \u2205 or when t = 0 and y = 0. The target `0` is the canonical form, and the left-hand sides are strictly more complex, so they are natural simp lemmas. They are not tagged @[simp]. Their own proofs and the later use at line 133 go through the `simp [observationField]` unfolding or an explicit `simp only [finiteTilt, observationField_empty, observationField_zero]`. Any other `simp` call that meets `observationField K \u2205 t y` or `observationField K S 0 0` must again unfold the definition into an `ite` instead of reaching `0`. Line 138 also needs `rw [..., observationField_zero, ...]` by hand.",
+      "proposed_change": "Mark observationField_zero and observationField_empty @[simp]. There is no loop risk, because the right-hand side `0` is a constant and the rules do not overlap on a non-trivial term. Since y is a function and `0 : (\u2115 \u00d7 \u2115) \u2192 \u211d` is a literal, the pattern is syntactically stable. Then finiteTilt_empty_eq_zero_field can be proved by `simp [finiteTilt]`, and the `rw` at lines 138\u2013139 can be dropped in favour of `simp`.",
+      "benefit": "The degenerate cases (no observed edges, and zero time with zero data) normalize to the zero field automatically. Users reasoning about the unobserved or zero-tilt case do not have to remember these lemma names or unfold observationField.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SpanningForest/USTFiniteTilt.lean",
+          "declaration": "finiteTilt_empty_eq_zero_field",
+          "excerpt": "simp only [finiteTilt, observationField_empty, observationField_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Probability/SpanningForest/USTFiniteTilt.lean",
+          "declaration": "finiteTilt_zero_eq_ustCylinder_of_mem",
+          "excerpt": "rw [finiteTilt_of_mem K S 0 0 e.1 he, observationField_zero,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 20400,
+    "cache_read_input_tokens": 73505,
+    "output_tokens": 6134,
+    "output_tokens_details": {
+      "thinking_tokens": 1715
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20400,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3702,
+        "cache_read_input_tokens": 20529,
+        "cache_creation_input_tokens": 3884,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3884
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1503105,
+  "duration_ms": 44281,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T01:32:17",
+  "unit": "file",
+  "source_sha256": "3233dec88cc5f7a5d0f1d9eb93e8a52a2c17912b0b763a4d87ce55954faebbd9",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

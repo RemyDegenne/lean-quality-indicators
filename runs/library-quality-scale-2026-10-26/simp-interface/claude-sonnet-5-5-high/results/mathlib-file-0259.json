@@ -1,0 +1,115 @@
+{
+  "id": "mathlib-file-0259",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I checked each @[simp] lemma against its neighbours, and checked Lean's simp permutation-lemma test (`isPerm` in SimpTheorems.lean). I searched the Mathlib sources for uses of `coeff_toLaurent` and `T_mul`; both occur only in this file. I did not run Lean, so the loop in finding 1 is inferred from the source and not observed. Other simp annotations looked reasonable: `T_pow`, `T_zero`, `single_eq_C_mul_T`, `mk'_eq`, `toLaurent_*`. `leftInverse_trunc_toLaurent` is a simp lemma stated as a `LeftInverse` Prop. It is mostly redundant with `trunc_toLaurent`, and I did not report it.",
+  "findings": [
+    {
+      "declaration": "LaurentPolynomial.T_mul",
+      "start_line": 279,
+      "end_line": 281,
+      "excerpt": "theorem T_mul (n : \u2124) (f : R[T;T\u207b\u00b9]) : T n * f = f * T n :=",
+      "problem": "`T_mul` is a simp commutation lemma, but Lean does not treat it as a permutation lemma, so its rewrites are not ordered. Lean's `isPerm` compares `T n` with the variable `f` and falls through to `s == t`, which is false. The rule therefore rewrites any `T n * f` unconditionally. When `f` is itself some `T m`, as in `T a * T b`, `T_mul` gives `T b * T a`. That term matches `T ?n * ?f` again with `f := T a`, giving `T a * T b`, so the rewrite can cycle. `T_add` is not simp, so nothing normalises products of two monomials. For `C r * T n` the rule is also unneeded, since `T n * C r` is the only direction that fires. The stated goal of `T` on the right is only partly achieved.",
+      "proposed_change": "Remove `@[simp]` from `T_mul`. If T-on-the-right normalisation is wanted, add narrower simp lemmas that cannot cycle: for example, move `T n` past `C r` or past a non-`T` term, and combine `T m * T n` into `T (m + n)` (the `T_add` direction `T m * T n = T (m + n)`) so that products of `T`s have one normal form. Otherwise call `T_mul` explicitly with `rw`.",
+      "benefit": "This removes a credible simp cycle on products of monomials. It also gives users one canonical form for such products, `T (m+n)`, which fits the existing `mul_T_assoc`.",
+      "evidence": [
+        {
+          "path": "/home/kim/.elan/toolchains/leanprover--lean4---v4.36.0-rc1/src/lean/Lean/Meta/Tactic/Simp/SimpTheorems.lean",
+          "declaration": "isPerm",
+          "excerpt": "| s@(.mvar ..), t@(.mvar ..) => isDefEq s t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Polynomial/Laurent.lean",
+          "declaration": "LaurentPolynomial.mul_T_assoc",
+          "excerpt": "theorem mul_T_assoc (f : R[T;T\u207b\u00b9]) (m n : \u2124) : f * T m * T n = f * T (m + n) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "LaurentPolynomial.coeff_toLaurent",
+      "start_line": 387,
+      "end_line": 388,
+      "excerpt": "@[simp] lemma coeff_toLaurent (f : R[X]) :\n    f.toLaurent.coeff = f.toFinsupp.coeff.mapDomain Nat.castEmbedding := rfl",
+      "problem": "This simp lemma rewrites `(toLaurent f).coeff` into `f.toFinsupp.coeff.mapDomain Nat.castEmbedding`. That exposes the `toFinsupp` implementation of `Polynomial`, which the file's own notes say is meant to be shielded. It also contradicts the policy stated for `toLaurent_apply`, which is deliberately not simp because the `toFinsupp.mapDomain` form is unhelpful. After this rewrite, goals about `(toLaurent f).coeff n` no longer relate to `Polynomial.coeff`. A user would want `(toLaurent f).coeff (n : \u2115) = f.coeff n`.",
+      "proposed_change": "Drop `@[simp]` from `coeff_toLaurent`. Add simp lemmas that state the coefficient in terms of `Polynomial.coeff`, for example `(toLaurent f).coeff (n : \u2115) = f.coeff n` and a vanishing lemma for negative indices. Where the unfolded form is needed, as in `support_coeff_toLaurent`, use `simp [coeff_toLaurent]` explicitly.",
+      "benefit": "Simp then keeps coefficient goals in `Polynomial.coeff` terms and does not leak `toFinsupp`. The simp behaviour of `toLaurent` becomes consistent with `toLaurent_apply`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Polynomial/Laurent.lean",
+          "declaration": "Polynomial.toLaurent_apply",
+          "excerpt": "/-- This is not a simp lemma, as it is usually preferable to use the lemmas about `C` and `X`\ninstead. -/"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Polynomial/Laurent.lean",
+          "declaration": "LaurentPolynomial.support_coeff_toLaurent",
+          "excerpt": "simp [-Nat.castEmbedding_apply, Polynomial.support]"
+        }
+      ]
+    },
+    {
+      "declaration": "LaurentPolynomial.eval\u2082_C_mul_T",
+      "start_line": 569,
+      "end_line": 571,
+      "excerpt": "theorem eval\u2082_C_mul_T (r : R) (n : \u2124) : eval\u2082 f x (C r * T n) = f r * (x ^ n).val := by\n  simp",
+      "problem": "The proof is just `simp`, so the simp set already derives this rewrite from `map_mul`, `eval\u2082_C` and `eval\u2082_T`. Marking it simp adds a second rule at the same root, `eval\u2082 f x (C r * T n)`, which competes with `map_mul`. Both give the same result, so this is redundant noise and not a conflict.",
+      "proposed_change": "Remove `@[simp]` from `eval\u2082_C_mul_T`. Keep it as a plain lemma if a named statement is useful, since simp already normalises this term via `eval\u2082_C` and `eval\u2082_T`.",
+      "benefit": "This gives a smaller simp set with a single route to the normal form. The non-simp companions `eval\u2082_C_mul_T_n` and `eval\u2082_C_mul_T_neg_n` are already treated this way.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Polynomial/Laurent.lean",
+          "declaration": "LaurentPolynomial.eval\u2082_T",
+          "excerpt": "theorem eval\u2082_T (n : \u2124) : eval\u2082 f x (T n) = (x ^ n).val := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 30457,
+    "cache_read_input_tokens": 86013,
+    "output_tokens": 9204,
+    "output_tokens_details": {
+      "thinking_tokens": 5543
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30457,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2619,
+        "cache_read_input_tokens": 32924,
+        "cache_creation_input_tokens": 1546,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1546
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2224853,
+  "duration_ms": 64413,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:44:18",
+  "unit": "file",
+  "source_sha256": "97024ee0ef8fa7e3f027576807c1cc31024c69d073510edbcffd43167ffc35f9",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

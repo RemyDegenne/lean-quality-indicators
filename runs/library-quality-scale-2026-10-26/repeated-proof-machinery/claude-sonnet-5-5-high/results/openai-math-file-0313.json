@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0313",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Clipping and QuadraticCost dependencies (the LinearOuter and QuadraticOuter definitions). The linear and quadratic head/outer-head scaffolding is parallel, but those copies are over different types (LinearBlock and QuadraticBlock). A shared lemma there would need a new abstraction, so I did not report it. I report two findings where the repeated reasoning is purely real-number reasoning and could be shared with little or no new infrastructure. I could not compile anything, so the proposed rewrites are sketches and untested. The lemma name scalar_tail_four is new and invented by me. The first finding's lemma must be placed before `namespace CostHeads`, or in the ScalarConsequences section moved earlier. The `norm_nonneg` facts needed for the rewrites are available at both call sites. The short midpoint_sq blocks (lines 106\u2013110, 182\u2013186, 357\u2013359) repeat an nlinarith square-root step. I judged that too short and routine to report.",
+  "findings": [
+    {
+      "declaration": "BoundedTreePotentials.CostHeads.linearOuter_tail_four / quadraticOuter_tail_four",
+      "start_line": 118,
+      "end_line": 128,
+      "excerpt": "  have hd : 0 \u2264 R^2-\u2016x\u2016^2 := by nlinarith [sq_nonneg \u2016y-linearOuterHead A.nodes A.initial y\u2016]\n  have hs := Real.sq_sqrt hd\n  have hsn := Real.sqrt_nonneg (R^2-\u2016x\u2016^2)",
+      "problem": "The two proofs are line-for-line the same argument with `linearOuterHead` swapped for `quadraticOuterHead` (the quadratic copy is at lines 194\u2013204). Neither uses anything about the space beyond three facts. These are the midpoint inequality `r^2+t^2/16 \u2264 ((a+b)/2)^2`, the bounds `a,b \u2264 R`, and non-negativity of the norms. The derivation is the same in both: bound the average by R (`hb`), get `0 \u2264 R^2-r^2`, then compare `t` with `4*sqrt(R^2-r^2)` via `sq_sqrt` and nlinarith. This is genuine scalar reasoning, copied twice. Further tail-style facts (e.g. `quadratic_tail_seven/eight/nine`) are built on top of the copied statement.",
+      "proposed_change": "Add one scalar lemma before `namespace CostHeads` (or move the ScalarConsequences section up). The hypotheses are `0 \u2264 r`, `0 \u2264 t`, `0 \u2264 a`, `0 \u2264 b`, `a \u2264 R`, `b \u2264 R` and `h : r^2+t^2/16 \u2264 ((a+b)/2)^2`. The conclusion is `t \u2264 4*Real.sqrt (R^2-r^2)`. Proof sketch: `scalar_avg_sq_le` gives `((a+b)/2)^2 \u2264 R^2`, so `r^2+t^2/16 \u2264 R^2`. Hence `0 \u2264 R^2-r^2` and `t^2 \u2264 16*(R^2-r^2) = (4*sqrt(R^2-r^2))^2`. Conclude with `sq_le_sq\u2080` or `abs_le_of_sq_le_sq`. `scalar_avg_sq_le` is already in the file and would be reused. Then `linearOuter_tail_four` becomes `scalar_tail_four (norm_nonneg _) (norm_nonneg _) (norm_nonneg _) (norm_nonneg _) hp hm (linearOuter_midpoint_sq A.nodes A.initial x y hx)`, and `quadraticOuter_tail_four` is the same with the quadratic midpoint lemma. Each application has `r := \u2016x\u2016`, `t := \u2016y - head y\u2016`, `a := \u2016x+y\u2016`, `b := \u2016x-y\u2016`.",
+      "benefit": "This removes about 20 lines of nlinarith-heavy duplicated reasoning. The 4\u00b7sqrt tail argument is stated and maintained once, so a change to the constant or to the proof strategy cannot make the linear and quadratic versions drift apart. Each outer theorem becomes a one-line application whose hypotheses show it depends only on the midpoint inequality.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/TreePotential/TailEstimates.lean",
+          "declaration": "BoundedTreePotentials.CostHeads.quadraticOuter_tail_four",
+          "excerpt": "  have hd : 0 \u2264 R^2-\u2016x\u2016^2 := by nlinarith [sq_nonneg \u2016y-quadraticOuterHead A.nodes A.initial y\u2016]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/TreePotential/TailEstimates.lean",
+          "declaration": "BoundedTreePotentials.scalar_avg_sq_le",
+          "excerpt": "lemma scalar_avg_sq_le {p q R : \u211d} (hp0 : 0 \u2264 p) (hq0 : 0 \u2264 q)"
+        }
+      ]
+    },
+    {
+      "declaration": "BoundedTreePotentials.BlockCalculus.linear_positive_unit (duplicates the proof of scalar_positive_scaled)",
+      "start_line": 376,
+      "end_line": 396,
+      "excerpt": "  have hgap : (linearBlockCost n y)^2 \u2264 32*(1-linearBlockCost n x) := by",
+      "problem": "`linear_positive_unit` is the \u03b2 = 1 case of `scalar_positive_scaled`, yet it redoes that lemma's proof inline. The repeated pieces are the derivation of `r \u2264 \u03b2` (`hr1`), the numeric bound `32 \u2264 (6*(\u221a2+1))^2`, the estimate `s^2 \u2264 32*\u03b2*(\u03b2-r)` (`hgap`), and the multiplication by that constant. It adds only a final square-root step. The scalar lemma is a few lines above, in the same file, and is already used by the sibling theorem `linear_positive_scaled`. The inline version states the hypotheses in terms of `linearBlockCost n \u2026` terms, which makes it long and hard to review. It also repeats the `hav`/`change \u2026 ^2 \u2264 (1:\u211d)^2` setup that `linear_bottom_up_tail` (lines 403\u2013404) writes out again.",
+      "proposed_change": "Rewrite the proof as follows. (1) Take `he := linear_block_midpoint_sq hD x y hx` with `rw [hy, sub_zero] at he`, and `hav := scalar_avg_sq_le \u2026 hp hm` as now. Then `h1 : r^2+s^2/16 \u2264 1^2 := he.trans hav`. (2) Use `(scalar_positive_scaled (linearCost_nonneg _ _) (linearCost_nonneg _ _) zero_le_one h1).1`, which gives `s^2 \u2264 (6*(\u221a2+1))^2*1*(1-r)`. (3) Derive `r \u2264 1` from `h1` as one nlinarith or `sq_le_sq\u2080` line, as `scalar_positive_scaled` does internally. (4) Finish with `Real.sqrt_mul_self` / `Real.sqrt_le_sqrt` or `sq_le_sq\u2080` to turn `s^2 \u2264 C^2*(1-r)` into `s \u2264 C*sqrt(1-r)`. Optionally add a scalar lemma `scalar_positive_unit : 0 \u2264 r \u2192 0 \u2264 s \u2192 r^2+s^2/16 \u2264 1 \u2192 s \u2264 6*(\u221a2+1)*\u221a(1-r)`, proved once from `scalar_positive_scaled`. Both `linear_positive_unit` and `linear_bottom_up_tail` could then call it with a shared `hav` setup.",
+      "benefit": "The 32-versus-(6(\u221a2+1))\u00b2 estimate and the gap inequality then live in one place. `linear_positive_unit` shrinks from about 20 lines of unfolded `linearBlockCost` nlinarith calls to a short application plus a square-root step. A reader can see that the unit-ball statement is just the \u03b2 = 1 specialisation of the scaled one. Any change to the constant touches only `scalar_positive_scaled`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/TreePotential/TailEstimates.lean",
+          "declaration": "BoundedTreePotentials.scalar_positive_scaled",
+          "excerpt": "  have hh : s^2 \u2264 32*(\u03b2*(\u03b2-r)) := by nlinarith [sq_nonneg (\u03b2-r)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/TreePotential/TailEstimates.lean",
+          "declaration": "BoundedTreePotentials.BlockCalculus.linear_positive_scaled",
+          "excerpt": "  apply scalar_positive_scaled (linearCost_nonneg _ _) (linearCost_nonneg _ _)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 35477,
+    "cache_read_input_tokens": 52810,
+    "output_tokens": 7151,
+    "output_tokens_details": {
+      "thinking_tokens": 3437
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35477,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5231,
+        "cache_read_input_tokens": 26025,
+        "cache_creation_input_tokens": 13381,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 13381
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.218711,
+  "duration_ms": 52610,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T01:33:31",
+  "unit": "file",
+  "source_sha256": "e601974adf59d77b17def9375bfcc55465358708f2725b57043553cbe71e132d",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

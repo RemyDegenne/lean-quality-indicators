@@ -1,0 +1,125 @@
+{
+  "id": "formal-frontier-file-0101",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and the PrimeSpectrum/Reconstruction sources it relies on. Confirmed that the prime-ideal pullback construction and the order-isomorphism proof are each written twice (private copy + inline copy, tied together by `rfl` bridge lemmas). Also found a third repeated block, \"compact open \u21d2 basicOpen of a principal ideal\", in two proofs here and in Reconstruction.lean. I did not compile any rewrites. The proposed `comapIdeal`-based definition should unify by `rfl` with existing uses, since the bridge lemmas are `rfl` today. Whether `private` helpers can be used in a public `@[expose]` def under the module system is a small uncertainty; the helpers can be made non-private.",
+  "findings": [
+    {
+      "declaration": "spectrumComap (duplicating comapIdeal and comapIdeal_isPrime)",
+      "start_line": 41,
+      "end_line": 102,
+      "excerpt": "private theorem spectrumComap_eq_privateConstruction",
+      "problem": "The pullback ideal construction (nonempty via map_bot, directed via map_sup, lower via monotonicity) and the primeness proof (isProper via map_top, of_mem_or_mem via map_inf) are written out in full twice. First they appear as `comapIdeal` / `comapIdeal_isPrime`. Then they appear again verbatim inside the body of `spectrumComap`. The two copies are only tied together by the `rfl` lemma `spectrumComap_eq_privateConstruction`, which exists solely to witness the duplication and has no mathematical content. Any change to the pullback proof must be made in both places.",
+      "proposed_change": "Define `spectrumComap f := fun P \u21a6 \u27e8comapIdeal f P.1, comapIdeal_isPrime f P.1 P.2\u27e9`. Make the two helpers non-private if the module/expose system requires it, since the def is `@[expose]`. Then delete the inline ideal and primeness block (lines 73\u201395) and the `rfl` bridge `spectrumComap_eq_privateConstruction`. All later lemmas (`spectrumComap_preimage_basicOpen_principal`, `spectrumComap_id`, `spectrumComap_comp`) are stated about `spectrumComap` and are `rfl`-based or membership-based, so they are unchanged.",
+      "benefit": "Removes about 30 lines of duplicated nontrivial proof and a vacuous bridge lemma. There is one place to maintain the pullback-prime argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Functoriality.lean",
+          "declaration": "comapIdeal_isPrime",
+          "excerpt": "apply Order.Ideal.IsPrime.of_mem_or_mem"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Functoriality.lean",
+          "declaration": "spectrumComap",
+          "excerpt": "exact P.2.mem_or_mem hab"
+        }
+      ]
+    },
+    {
+      "declaration": "compactOpenOrderIso (duplicating principalCompactOpenEmbedding and principalCompactOpen_surjective)",
+      "start_line": 144,
+      "end_line": 192,
+      "excerpt": "private theorem compactOpenOrderIso_eq_privateConstruction",
+      "problem": "The order-embedding proof (`basicOpen_subset_iff`, `principal_le_iff`, `mem_principal`) and the surjectivity proof (open \u21d2 basicOpen I, compact \u21d2 I principal) are stated as private declarations `principalCompactOpenEmbedding` and `principalCompactOpen_surjective`. They are then pasted again as `let` bindings inside `compactOpenOrderIso`. A `rfl` bridge lemma exists only to record that the copies agree.",
+      "proposed_change": "Define `compactOpenOrderIso := OrderIso.ofSurjective principalCompactOpenEmbedding principalCompactOpen_surjective`. Delete the two `let` blocks (lines 170\u2013186) and `compactOpenOrderIso_eq_privateConstruction`. `compactOpenOrderIso_apply` stays `rfl`, because `OrderIso.ofSurjective` applied to `a` reduces to `principalCompactOpen a`, exactly as it does now.",
+      "benefit": "Eliminates a duplicated 17-line surjectivity proof and a duplicated embedding proof. The public definition becomes a one-line description of its construction, and the bridge lemma disappears.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Functoriality.lean",
+          "declaration": "principalCompactOpen_surjective",
+          "excerpt": "obtain \u27e8a, rfl\u27e9 := isCompact_basicOpen_iff I |>.mp hICompact"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Functoriality.lean",
+          "declaration": "compactOpenOrderIso",
+          "excerpt": "OrderIso.ofSurjective embedding surjective"
+        }
+      ]
+    },
+    {
+      "declaration": "isSpectralMap_spectrumComap / principalCompactOpen_surjective (shared 'compact open is a principal basic open' reasoning)",
+      "start_line": 126,
+      "end_line": 134,
+      "excerpt": "obtain \u27e8a, rfl\u27e9 := isCompact_basicOpen_iff I |>.mp hICompact",
+      "problem": "Both `isSpectralMap_spectrumComap` and `principalCompactOpen_surjective` run the same argument. Take an open compact set `s`; choose an ideal `I` with `basicOpen I = s` via `isOpen_iff_exists_basicOpen`; transport compactness along the equality; apply `isCompact_basicOpen_iff` to get `I = principal a`. The same chain also appears in the inline copy in `compactOpenOrderIso` and in `Reconstruction.lean` (around line 90). Each use re-derives the same fact.",
+      "proposed_change": "Add one lemma next to `isCompact_basicOpen_iff`: `theorem exists_principal_eq_of_isCompact_of_isOpen {s : Set (PrimeIdealSpectrum A)} (ho : IsOpen s) (hc : IsCompact s) : \u2203 a : A, basicOpen (Order.Ideal.principal a) = s`. Proof: obtain `\u27e8I, hI\u27e9 := (isOpen_iff_exists_basicOpen s).mp ho`, `subst hI`, `obtain \u27e8a, rfl\u27e9 := (isCompact_basicOpen_iff I).mp hc`, `exact \u27e8a, rfl\u27e9`. Then in `isSpectralMap_spectrumComap`, after `intro s hsOpen hsCompact`, do `obtain \u27e8a, rfl\u27e9 := exists_principal_eq_of_isCompact_of_isOpen hsOpen hsCompact`, `rw [spectrumComap_preimage_basicOpen_principal]`, and `exact isCompact_basicOpen_principal (f a)` (or the existing `isCompact_basicOpen_iff _ |>.mpr \u27e8f a, rfl\u27e9`). In the surjectivity proof, do `obtain \u27e8a, ha\u27e9 := exists_principal_eq_of_isCompact_of_isOpen U.isOpen U.isCompact`, then `exact \u27e8a, TopologicalSpace.CompactOpens.ext ha\u27e9`. The same helper can replace the chain in `Reconstruction.lean`.",
+      "benefit": "Each caller shrinks from about 6 lines to 2\u20133, the open-and-compact characterization is stated once, and it can be reused across files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Functoriality.lean",
+          "declaration": "principalCompactOpen_surjective",
+          "excerpt": "have hICompact : IsCompact (basicOpen I) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/Reconstruction.lean",
+          "declaration": "spaceToSpectrum (isSpectralMap proof)",
+          "excerpt": "have hICompact : IsCompact (basicOpen I) := by rwa [hIs]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/spectral-stone-duality/SpectralStoneDuality/PrimeSpectrum.lean",
+          "declaration": "isCompact_basicOpen_iff",
+          "excerpt": "IsCompact (basicOpen I) \u2194 \u2203 a : A, I = Order.Ideal.principal a"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 14496,
+    "cache_read_input_tokens": 26529,
+    "output_tokens": 4039,
+    "output_tokens_details": {
+      "thinking_tokens": 451
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14496,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3225,
+        "cache_read_input_tokens": 13457,
+        "cache_creation_input_tokens": 4968,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4968
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1010389,
+  "duration_ms": 28974,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:02:14",
+  "unit": "file",
+  "source_sha256": "4addfb9e1c3b99cc469393c418979ce5e2494cc5b6aab582c79cd7b91ecf34fd",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

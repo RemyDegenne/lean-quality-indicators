@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0337",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, with a close look at lines 120\u2013260. I did not read the imported CircleFourier file or the files defining xDerivative, yDerivative and seam_geodesic_generator, so the proposed lemma statements are untested sketches that I could not compile. The other pairs (the two RotationalCR.projection branches hx/hy, and the AddCircle action proofs) are shorter or less cleanly duplicated, so I did not report them.",
+  "findings": [
+    {
+      "declaration": "TriangularBilliards.seam_rotated_generators (local facts `ex` and `ey`)",
+      "start_line": 224,
+      "end_line": 257,
+      "excerpt": "    apply Lp.ext\n    filter_upwards [hxf.coeFn_toLp,\n      Lp.coeFn_sub ((a : \u2102).re \u2022 (angularCircleAction Q).act \u03b8 (hx.toLp _))",
+      "problem": "`ex` and `ey` are two ~15-line proofs with the same structure. Each does `Lp.ext`, then `filter_upwards` over the same eight a.e. facts (toLp coercion, Lp.coeFn_sub/add, two Lp.coeFn_smul, two angularCircleAction_coe, two quasi-measure-preserving transports of coeFn_toLp), then `rw [h0,\u2026,h5]`, then `change`, then `rw [h6, h7, x/yDerivative_rotate]`. Only sub/add, the coefficient pair and the final pointwise rotate lemma differ. The a.e. bookkeeping is the mathematical content here, and it is written out twice. It is also fragile, since a change to the h-numbering must be made in both copies.",
+      "proposed_change": "Prove the identification once, in a form that avoids a.e. reasoning. First prove a rotation-transport lemma: for hg : MemLp g 2 (doubleMeasure Q), `(angularCircleAction Q).act \u03b8 (hg.toLp g) = (hg.comp_measurePreserving (measurePreserving_doubleRotate Q \u03b8.toCircle)).toLp (g \u2218 doubleRotate \u03b8.toCircle)`. This is the existing `circleAction_toLp`, so it is already available. Then state one lemma along the lines of `rotate_combo_toLp (Q) (\u03b8) (p q : \u2102) (hx hy) (hc : MemLp (p \u2022 (xDerivative f \u2218 doubleRotate a) + q \u2022 (yDerivative f \u2218 doubleRotate a)) 2 _) : hc.toLp _ = p \u2022 act \u03b8 (hx.toLp _) + q \u2022 act \u03b8 (hy.toLp _)`. Prove it by rewriting with `circleAction_toLp` and then `MemLp.toLp_add` and `MemLp.toLp_const_smul` (or one `Lp.ext` with a single `filter_upwards`). Take the subtraction case as `q := -im`. Both `ex` and `ey` then follow from this lemma and `funext (xDerivative_rotate a f)` / `funext (yDerivative_rotate a f)`, in a couple of lines each.",
+      "benefit": "This removes about 30 lines of duplicated, hard-to-read a.e. bookkeeping and gives the identification a named statement. `seam_rotated_generators` is then reduced to applying the two seam generator lemmas and rewriting, which is easier to maintain and review.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/TriangleBilliards/CovariantGenerators.lean",
+          "declaration": "TriangularBilliards.circleAction_toLp",
+          "excerpt": "(angularCircleAction Q).act \u03b8 (hf.toLp f) =\n      (hf.comp_measurePreserving (measurePreserving_doubleRotate Q \u03b8.toCircle)).toLp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/TriangleBilliards/CovariantGenerators.lean",
+          "declaration": "TriangularBilliards.rotate_x_memLp",
+          "excerpt": "funext (xDerivative_rotate a f)"
+        }
+      ]
+    },
+    {
+      "declaration": "TriangularBilliards.rotated_velocity_decompose / rotated_transverse_decompose (and the paired xDerivative_rotate/yDerivative_rotate, rotate_x_memLp/rotate_y_memLp)",
+      "start_line": 124,
+      "end_line": 145,
+      "excerpt": "  have ha := Circle.normSq_coe a\n  by_cases hb : b = 0 <;>\n    simp only [hb, ite_eq_left, ite_false, transverseVelocity, Circle.coe_mul,",
+      "problem": "The two lemmas have byte-identical proofs: the same `by_cases hb` chain, the same `simp only` list, `apply Complex.ext`, a global `simp \u2026 at *`, and the same two-term `nlinarith` hint using the circle relation. Only the statement differs. This is a rotation-matrix identity (the vector v is recovered from the rotated vector and its transverse), proved by case analysis plus nonlinear arithmetic, and it is written twice. Downstream, `xDerivative_rotate`/`yDerivative_rotate` and `rotate_x_memLp`/`rotate_y_memLp` also repeat their shared skeleton: change to `fderiv`, rewrite with the decomposition, `map_*`/`map_smul`, `rfl`, and `MemLp.comp_measurePreserving` + `const_smul` + `sub`/`add`. The `simp \u2026 at *` and `nlinarith` calls are brittle, so a fix to one proof has to be repeated in the other.",
+      "proposed_change": "Factor out the algebra once. Introduce `w := ((if b = 0 then a else a\u207b\u00b9) * v : Circle)` and prove a single lemma that gives the transverse-of-rotated formula, e.g. `transverseVelocity w b = (-a.im) \u2022 v' + a.re \u2022 transverseVelocity v b`-style, or a lemma stating that `(v, transverseVelocity v b)` is obtained from `(w, transverseVelocity w b)` by the rotation matrix of `a`. Then derive the second identity by one `linear_combination` or by rewriting the first. This needs only one `by_cases` and one `nlinarith` block. For the MemLp lemmas, state a single `rotate_comb_memLp` for `p \u2022 (xDerivative f \u2218 doubleRotate a) + q \u2022 (yDerivative f \u2218 doubleRotate a)` and obtain both lemmas by specialising `q` to `-im` and `p`/`q` to `im`/`re`. The same lemma serves the combination lemma proposed for `ex`/`ey` above.",
+      "benefit": "The rotation algebra and its nlinarith certificate are written once, and the x/y asymmetry is limited to the choice of coefficients. This shortens the file, removes copy-paste risk and makes the covariance computation easier to follow.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/TriangleBilliards/CovariantGenerators.lean",
+          "declaration": "TriangularBilliards.rotated_transverse_decompose",
+          "excerpt": "nlinarith [congrArg (fun t : \u211d => t * (v : \u2102).re) ha,\n      congrArg (fun t : \u211d => t * (v : \u2102).im) ha]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Dynamics/TriangleBilliards/CovariantGenerators.lean",
+          "declaration": "TriangularBilliards.rotate_y_memLp",
+          "excerpt": "exact ((hx.comp_measurePreserving (measurePreserving_doubleRotate Q a)).const_smul _).add"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 19102,
+    "cache_read_input_tokens": 21740,
+    "output_tokens": 3480,
+    "output_tokens_details": {
+      "thinking_tokens": 522
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19102,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3133,
+        "cache_read_input_tokens": 17811,
+        "cache_creation_input_tokens": 5220,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5220
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11338999999999999,
+  "duration_ms": 26133,
+  "turns": 3,
+  "attempts": 1,
+  "judged": "2026-10-27T01:38:50",
+  "unit": "file",
+  "source_sha256": "5ee08bf773dd22b52b138a668dbc642529f136857a3902f21c3ec32f1288dfb1",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

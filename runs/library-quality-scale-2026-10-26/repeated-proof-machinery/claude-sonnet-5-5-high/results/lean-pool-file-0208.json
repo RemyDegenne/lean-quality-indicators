@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0208",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I compared the two continuity-on-[0,a] proofs, which both extend a function across 0. I also compared the two a.e. cpow-merging proofs (regIncompleteMellin_pow and regIncompleteMellin_mul_pow). I checked Mathlib for the T1 lemma continuousWithinAt_sdiff_singleton. I did not compile any replacement. regIncompleteMellin_mul_pow would have to be moved before regIncompleteMellin_pow, and it depends only on the Gamma file. The other repeated shapes (setIntegral_congr_fun plus simp, Taylor-sum rewriting) are short or routine, so I did not report them.",
+  "findings": [
+    {
+      "declaration": "Complex.continuousOn_mellinSlope and Complex.continuousOn_mellinPeanoRemainder",
+      "start_line": 81,
+      "end_line": 113,
+      "excerpt": "    have hnhds : \ud835\udcdd[Icc (0 : \u211d) a \\ {0}] t = \ud835\udcdd[Icc 0 a] t := by",
+      "problem": "Both continuity proofs (lines 59\u2013113 and 212\u2013298) repeat the same topological argument. At 0, they prove a punctured-neighbourhood limit, then rebuild `insert 0 (Icc 0 a \\ {0}) = Icc 0 a` and apply `continuousWithinAt_insert_self`. At t \u2260 0, they prove continuity on `Icc 0 a \\ {0}`, transport it with `EqOn`, and show `\ud835\udcdd[Icc 0 a \\ {0}] t = \ud835\udcdd[Icc 0 a] t` by hand. Only the analytic inputs differ: the slope limit and the Taylor remainder limit. The `hinsert`, `hnhds` and final `change`/`rw` boilerplate is copied verbatim in both places. The proofs are therefore long and hard to read.",
+      "proposed_change": "Add one helper. `theorem continuousOn_Icc_of_continuousOn_sdiff {a : \u211d} (ha : 0 \u2264 a) {E} [TopologicalSpace E] {f : \u211d \u2192 E} (hc : ContinuousOn f (Icc 0 a \\ {0})) (hlim : Tendsto f (\ud835\udcdd[Icc 0 a \\ {0}] 0) (\ud835\udcdd (f 0))) : ContinuousOn f (Icc 0 a)`.\n\nProof sketch. Take `t \u2208 Icc 0 a`. If `t = 0`, use `hinsert` and `continuousWithinAt_insert_self.2 hlim`. Otherwise `continuousWithinAt_sdiff_singleton.1 (hc t \u27e8ht, ht0\u27e9)`, where `ht0 : t \u2260 0`. That Mathlib lemma already says `ContinuousWithinAt f (s \\ {y}) x \u2194 ContinuousWithinAt f s x`, so `hnhds` is not needed at all.\n\nRewrite continuousOn_mellinSlope as `continuousOn_Icc_of_continuousOn_sdiff ha.le (hcont.congr hEq) hlim'`, keeping its existing `hcont`, `hEq` and `hlim'`. Rewrite continuousOn_mellinPeanoRemainder as `continuousOn_Icc_of_continuousOn_sdiff ha.le (hcont.congr hEq) hlim'`, again keeping its existing `hcont`, `hEq` and `hlim'`. The hypotheses are exactly those the two proofs already establish, and the imports are unchanged. The helper needs `0 \u2264 a` (the callers have `0 < a`), and the Mathlib lemma needs only `T1Space \u211d`.",
+      "benefit": "This removes about 30 duplicated lines (`hinsert`, `hnhds`, the case split and the `change`/`rw` steps). Each continuity proof then states only its own analysis, namely the slope limit or the Taylor `o(x^N)` limit. A future fix to the extension argument is made once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Pochhammer/IncompleteMellin.lean",
+          "declaration": "Complex.continuousOn_mellinPeanoRemainder",
+          "excerpt": "    have hnhds : \ud835\udcdd[Icc (0 : \u211d) a \\ {0}] t = \ud835\udcdd[Icc 0 a] t := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Topology/Separation/Basic.lean",
+          "declaration": "continuousWithinAt_sdiff_singleton",
+          "excerpt": "ContinuousWithinAt f (s \\ {y}) x \u2194 ContinuousWithinAt f s x"
+        }
+      ]
+    },
+    {
+      "declaration": "Complex.regIncompleteMellin_pow (duplicates Complex.regIncompleteMellin_mul_pow)",
+      "start_line": 159,
+      "end_line": 182,
+      "excerpt": "  have hfun : (fun t : \u211d => (t : \u2102) ^ (\u03b1 - 1) * (t : \u2102) ^ k) =\u1d50[volume.restrict (Icc 0 a)]",
+      "problem": "`regIncompleteMellin_pow` is the case K = 1 of `regIncompleteMellin_mul_pow` (lines 404\u2013419), but it is proved from scratch. Both proofs build the same a.e. fact that `t \u2260 0` on `Icc 0 a`. Both rewrite `\u2190 cpow_natCast, \u2190 cpow_add _ _ hne` to merge `t^(\u03b1-1) * t^k` into `t^(\u03b1+k-1)`. Both then use `one_div_Gamma_eq_ascPochhammer_mul_one_div_Gamma_add_nat`. `regIncompleteMellin_pow` then redoes the Gamma bookkeeping by hand (`h\u0393id`, `hinv`, `grind`). That bookkeeping is the work `regIncompleteMellin_const` already does for a constant integrand.",
+      "proposed_change": "Move `regIncompleteMellin_mul_pow` (which has no extra hypotheses) above `regIncompleteMellin_pow`. Then prove the monomial lemma by reduction:\n\n`have h := regIncompleteMellin_mul_pow (\u03b1 := \u03b1) (a := a) (K := fun _ => (1 : \u2102)) k`\n`have hc := regIncompleteMellin_const h\u03b1k ha (1 : \u2102)`\n`simp only [mul_one] at h`, so that `h : regIncompleteMellin \u03b1 a (fun t => (t:\u2102)^k) = (ascPochhammer \u2102 k).eval \u03b1 * regIncompleteMellin (\u03b1+k) a (fun _ => 1)`.\n`rw [h, hc]; ring`\n\nHere `h\u03b1k : 0 < (\u03b1 + k).re` is the existing first `have` of the proof, and the target's `ha : 0 < a` is used unchanged. `regIncompleteMellin_const` requires exactly `0 < (\u03b1+k).re` and `0 < a`, so the hypotheses match. The hypotheses and imports of `regIncompleteMellin_pow` are unchanged. The final `ring` step may need small adjustment, for example in the form of `(\u03b1 + k + 1)`.",
+      "benefit": "This deletes the second a.e. cpow-merging block (`hfun`, `ht0`, `h\u0393id`, `hinv` and the `grind` step). The cpow-shift and Gamma-recurrence reasoning then lives in a single lemma. `regIncompleteMellin_pow` becomes a short corollary of `regIncompleteMellin_mul_pow` and `regIncompleteMellin_const`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Pochhammer/IncompleteMellin.lean",
+          "declaration": "Complex.regIncompleteMellin_mul_pow",
+          "excerpt": "    rw [\u2190 mul_assoc, \u2190 cpow_natCast, \u2190 cpow_add _ _ hne]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CarlsonFunctions/Pochhammer/IncompleteMellin.lean",
+          "declaration": "Complex.regIncompleteMellin_const",
+          "excerpt": "theorem regIncompleteMellin_const {\u03b1 : \u2102} {a : \u211d} (h\u03b1 : 0 < \u03b1.re) (ha : 0 < a) (c : \u2102) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 33552,
+    "cache_read_input_tokens": 88059,
+    "output_tokens": 5558,
+    "output_tokens_details": {
+      "thinking_tokens": 1502
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33552,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3894,
+        "cache_read_input_tokens": 32260,
+        "cache_creation_input_tokens": 5221,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5221
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1986099,
+  "duration_ms": 38093,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:23:47",
+  "unit": "file",
+  "source_sha256": "049ce3202bb48cae847380856f5ef4cfc3a7b5906687ee69291500c542b4142d",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

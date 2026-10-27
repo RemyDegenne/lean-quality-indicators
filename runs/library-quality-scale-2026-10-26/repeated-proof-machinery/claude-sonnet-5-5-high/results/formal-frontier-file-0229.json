@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0229",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the helper lemmas it depends on (ordinalMap_tail, homotopyMap_ordinal_generator, ordinal_homotopyMap_generator, polynomialPolyRing_hom_ext). I compared the proof skeletons of the face and degeneracy compatibility theorems. Two repeated patterns survived: the cutoff-transport skeleton in ordinalMap_tail_face and ordinalMap_tail_degeneracy, and the three-part skeleton shared by the four commutation theorems (face_before, face_after, degeneracy_before, degeneracy_after). face_middle, face_zero and face_last share the same skeleton but have different shapes, so I left them out. I could not run Lean, so the proposed lemmas and their instantiations are sketches that have not been compiled. The hcut arithmetic differs per theorem and would stay. The exact elaboration of the type ascriptions (the `Fin` casts in the \u03b1s) may need small adjustment.",
+  "findings": [
+    {
+      "declaration": "homotopyMap_face_before / homotopyMap_face_after / homotopyMap_degeneracy_before / homotopyMap_degeneracy_after",
+      "start_line": 252,
+      "end_line": 358,
+      "excerpt": "rw [homotopyMap_ordinal_generator, ordinal_homotopyMap_generator,",
+      "problem": "Four theorems prove an equation of the shape (ordinalMap \u03b1).comp (homotopyMap _ i) = (homotopyMap _ j).comp (ordinalMap \u03b2), and each repeats the same three-part argument. Each applies polynomialPolyRing_hom_ext, closes the constant part with `intro r; simp`, and handles the X part by the same `simp only [RingHom.comp_apply, homotopyMap_X, map_mul, ordinalMap_coefficient, ordinalMap_tail_*]` followed by a cutoff equation and `rw [hcut]`. They finish the generator part with `rw [homotopyMap_ordinal_generator, ordinal_homotopyMap_generator, <simplicial identity>]`. Only the cutoff arithmetic and the simplicial identity differ. The proof architecture (check the constant, X and generator cases against hom_ext) is therefore repeated four times. Any change to homotopyMap_X or to how the generator part is discharged has to be made in each copy.",
+      "proposed_change": "Add one lemma that reduces such commutation statements to two hypotheses. In outline:\n\ntheorem homotopyMap_comm_of_cutoff {K N : \u2115} (i : Fin (N+1)) (j : Fin (K+1))\n    (\u03b1 : SimplexCategory.mk (K+1) \u27f6 SimplexCategory.mk (N+1))\n    (\u03b2 : SimplexCategory.mk K \u27f6 SimplexCategory.mk N)\n    (hsimp : \u03b1 \u226b SimplexCategory.\u03c3 i = SimplexCategory.\u03c3 j \u226b \u03b2)\n    (hcut : ordinalMap (R := Polynomial R) \u03b1 (tail (N+1) (i.val+1)) = tail (K+1) (j.val+1)) :\n    (ordinalMap (R := Polynomial R) \u03b1).comp (homotopyMap N i) =\n      (homotopyMap K j).comp (ordinalMap \u03b2)\n\nProof sketch: apply polynomialPolyRing_hom_ext. The constant case is `simp`. The X case is `simp only [RingHom.comp_apply, homotopyMap_X, map_mul, ordinalMap_coefficient]; rw [hcut]`. The generator case is `rw [homotopyMap_ordinal_generator, ordinal_homotopyMap_generator, hsimp]`.\n\nThen face_before becomes `homotopyMap_comm_of_cutoff _ _ _ _ (SimplexCategory.\u03b4_comp_\u03c3_of_le hij) (by rw [ordinalMap_tail_face]; congr 1; <existing hcut proof>)`. The other three are handled the same way: degeneracy_before uses `SimplexCategory.\u03c3_comp_\u03c3 hij` and `ordinalMap_tail_degeneracy`, degeneracy_after uses `(SimplexCategory.\u03c3_comp_\u03c3 hji).symm`, and face_after uses `SimplexCategory.\u03b4_comp_\u03c3_of_gt hji`. Each theorem keeps only its own `omega` cutoff computation and the name of its simplicial identity.",
+      "benefit": "The hom_ext skeleton and the use of the two generator lemmas live in one place with a stated interface (a simplicial identity plus a tail-cutoff equation). Each remaining theorem shows only what is specific to it, namely the cutoff arithmetic and the identity. A future change to the homotopyMap_X shape or to the generator lemmas is made once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/simplicial-rings/SimplicialRings/CentralPolynomialSimplex/Homotopy.lean",
+          "declaration": "homotopyMap_degeneracy_before",
+          "excerpt": "SimplexCategory.\u03c3_comp_\u03c3 hij]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/simplicial-rings/SimplicialRings/CentralPolynomialSimplex/Homotopy.lean",
+          "declaration": "homotopyMap_face_after",
+          "excerpt": "SimplexCategory.\u03b4_comp_\u03c3_of_gt hji]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/simplicial-rings/SimplicialRings/CentralPolynomialSimplex/Homotopy.lean",
+          "declaration": "homotopyMap_face_before",
+          "excerpt": "SimplexCategory.\u03b4_comp_\u03c3_of_le hij]"
+        }
+      ]
+    },
+    {
+      "declaration": "ordinalMap_tail_face / ordinalMap_tail_degeneracy",
+      "start_line": 71,
+      "end_line": 100,
+      "excerpt": "  simp only [cutoff]",
+      "problem": "Both theorems have the same proof skeleton: `rw [ordinalMap_tail]; simp only [tail]; apply Finset.sum_congr rfl; intro k _; have cutoff : q \u2264 (\u03b1.toOrderHom k).val \u2194 q' \u2264 k.val := ...; simp only [cutoff]`. The only real content is the `cutoff` iff, and the surrounding reduction of an `ordinalMap` of a tail to a tail with a different cutoff is duplicated. A third kind of map would copy it again.",
+      "proposed_change": "State a lemma that isolates the reduction, with `cutoff` as a hypothesis:\n\ntheorem ordinalMap_tail_of_cutoff {m n : \u2115} (alpha : SimplexCategory.mk m \u27f6 SimplexCategory.mk n) (q q' : \u2115)\n    (h : \u2200 k : Fin (m+1), q \u2264 (alpha.toOrderHom k).val \u2194 q' \u2264 k.val) :\n    ordinalMap (R := R) alpha (tail n q) = tail m q'\n\nProof: `rw [ordinalMap_tail]; simp only [tail]; exact Finset.sum_congr rfl (fun k _ => by simp only [h k])`.\n\nThen ordinalMap_tail_face is `ordinalMap_tail_of_cutoff _ _ _ (fun k => by <existing succAbove cutoff proof>)`, and ordinalMap_tail_degeneracy is the same with its predAbove proof. The unused-in-isolation `ordinalMap_tail` statement could also be stated using this form.",
+      "benefit": "The tail-pullback argument appears once. Each face and degeneracy lemma reduces to the order-theoretic cutoff fact it actually proves, which makes the two statements easier to read and compare.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/simplicial-rings/SimplicialRings/CentralPolynomialSimplex/Homotopy.lean",
+          "declaration": "ordinalMap_tail_degeneracy",
+          "excerpt": "change q \u2264 (Fin.predAbove i k).val \u2194 _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/simplicial-rings/SimplicialRings/CentralPolynomialSimplex/Homotopy.lean",
+          "declaration": "ordinalMap_tail_face",
+          "excerpt": "change q \u2264 (Fin.succAbove i k).val \u2194 _"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 14817,
+    "cache_read_input_tokens": 18160,
+    "output_tokens": 6065,
+    "output_tokens_details": {
+      "thinking_tokens": 2556
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14817,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3307,
+        "cache_read_input_tokens": 14231,
+        "cache_creation_input_tokens": 4515,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4515
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.12174200000000002,
+  "duration_ms": 40243,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T00:35:00",
+  "unit": "file",
+  "source_sha256": "169c769976b035d14871b33e1aff2a97771b9bfdc25bd25b4651abe3fadaf8d7",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,88 @@
+{
+  "id": "mathlib-file-0251",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and grepped Mathlib for existing support/formPerm lemmas. Mathlib/GroupTheory/Perm/List.lean has support_formPerm_of_nodup, whose side condition is `\u2200 x, l \u2260 [x]`. It has no length-based variant (grep for `two_le_length` found nothing relevant), and I found no other file that already proves one. The `rintro _ rfl; simp` side goal is short, but it is repeated four times in this file. Nothing else qualified: the two symmetric branches in `nodup_toList` and the `toCycle` lemmas are not repeated enough to justify a helper. I could not compile the proposed lemma, so the rewrites are untested sketches.",
+  "findings": [
+    {
+      "declaration": "List.cycleType_formPerm / Cycle.support_formPerm / List.toList_formPerm_nontrivial / Equiv.Perm.isoCycle (right_inv)",
+      "start_line": 105,
+      "end_line": 108,
+      "excerpt": "rw [support_formPerm_of_nodup _ hl, card_toFinset, dedup_eq_self.mpr hl]\n    \u00b7 simp\n    \u00b7 intro x h\n      simp [h] at hn",
+      "problem": "Four proofs in this file need `support (formPerm l) = l.toFinset` for a nodup list with `2 \u2264 l.length`. Each one calls `support_formPerm_of_nodup` and then discharges the side goal `\u2200 x, l \u2260 [x]` by hand, using a different ad-hoc script each time. The sites are lines 105-108 (`intro x h; simp [h] at hn`), 157-159 (`rintro _ rfl; simpa [Nat.succ_le_succ_iff] using ...`), 315-317 (`rintro _ rfl; simp at hl`) and 426-429 (`rintro _ rfl; simp at hl`). The length-to-nonsingleton reasoning is repeated and the proofs are cluttered with side-goal bullets. `existsUnique_cycle` also redoes a version of it with `formPerm_eq_one_iff`.",
+      "proposed_change": "Add one lemma in the `List` namespace, next to `isCycle_formPerm`, with a `[Fintype \u03b1]` variable:\n\n```lean\ntheorem support_formPerm_of_two_le_length [Fintype \u03b1] (hl : Nodup l) (hn : 2 \u2264 l.length) :\n    support (formPerm l) = l.toFinset :=\n  support_formPerm_of_nodup _ hl (by rintro _ rfl; simp at hn)\n```\n\nThe proof is just the existing side-goal script. Then rewrite the four uses:\n\n- `cycleType_formPerm`: after `rw [cycleType_eq ...]` and `simp only [map, Function.comp_apply]`, use `rw [support_formPerm_of_two_le_length hl hn, card_toFinset, dedup_eq_self.mpr hl]; simp`. The `intro x h; simp [h] at hn` bullet is deleted. The lemma is applied to `l.attach`, using the already-rewritten `hl` and `hn`.\n- `Cycle.support_formPerm`: `obtain \u27e8s\u27e9 := s; exact List.support_formPerm_of_two_le_length h (length_nontrivial hn)`.\n- `toList_formPerm_nontrivial`: `have hs := support_formPerm_of_two_le_length hn hl`.\n- `isoCycle.right_inv`: `rw [\u2190 mem_support, support_formPerm_of_two_le_length hn hl]; simpa using hx`, with the trailing `rintro _ rfl; simp at hl` bullet removed.\n\nThe lemma's hypotheses, `Nodup l` and `2 \u2264 l.length`, are exactly what each site already has. In `Cycle.support_formPerm` the length comes from `length_nontrivial hn`, which gives `2 \u2264 s.length`.",
+      "benefit": "The length-to-nonsingleton argument is proved once with a stable hypothesis form (`2 \u2264 length`) that matches how `isCycle_formPerm` and `toList_formPerm_nontrivial` are stated. Four proofs lose their side-goal bullets and become straight rewrites. Future changes to `support_formPerm_of_nodup`'s side condition need one fix instead of four.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/List.lean",
+          "declaration": "List.support_formPerm_of_nodup",
+          "excerpt": "theorem support_formPerm_of_nodup [Fintype \u03b1] (l : List \u03b1) (h : Nodup l) (h' : \u2200 x : \u03b1, l \u2260 [x]) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/Cycle/Concrete.lean",
+          "declaration": "Cycle.support_formPerm",
+          "excerpt": "refine support_formPerm_of_nodup s h ?_\n  rintro _ rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/Cycle/Concrete.lean",
+          "declaration": "Equiv.Perm.toList_formPerm_nontrivial",
+          "excerpt": "refine support_formPerm_of_nodup _ hn ?_\n    rintro _ rfl\n    simp at hl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/Perm/Cycle/Concrete.lean",
+          "declaration": "Equiv.Perm.isoCycle",
+          "excerpt": "\u00b7 rw [\u2190 mem_support, support_formPerm_of_nodup _ hn]\n      \u00b7 simpa using hx\n      \u00b7 rintro _ rfl\n        simp at hl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 16417,
+    "cache_read_input_tokens": 39049,
+    "output_tokens": 4000,
+    "output_tokens_details": {
+      "thinking_tokens": 1375
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16417,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2151,
+        "cache_read_input_tokens": 18812,
+        "cache_creation_input_tokens": 1534,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1534
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10958490000000001,
+  "duration_ms": 27095,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T00:41:15",
+  "unit": "file",
+  "source_sha256": "6200ceb8b52352ca6a22344c500b492571c819b5a4b77d9d7e86403c9a3dd492",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

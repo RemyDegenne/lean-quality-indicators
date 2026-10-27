@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0181",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and grepped the graded-rings library for uses of reindex, toComponent(s), zeroRingHom, mem_component_iff and mem_subring_iff. Only `inclusion_of` and `zeroRingEquiv_apply` are simp lemmas. The file's own proofs work around the missing `of`/apply lemmas with `change`, `rfl` and `simp only [def]`. I did not run Lean, so I make no claim about simp behaviour or that the proposed lemmas compile. I did not recommend simp on `mem_component_iff` or `mem_subring_iff`, because the benefit there is unclear.",
+  "findings": [
+    {
+      "declaration": "reindex",
+      "start_line": 146,
+      "end_line": 147,
+      "excerpt": "DirectSum.toAddMonoid fun j => DirectSum.of (fun i : \u2115 => \ud835\udcae i) (n * j)",
+      "problem": "`reindex` is a plain def with no `reindex_of` evaluation lemma, although `inclusion` has one (`inclusion_of`, tagged simp). Users must unfold the definition. `reindex_injective` does this with `simp only [reindex, DirectSum.toAddMonoid_of]`. `decompose_inclusion` uses an explicit `change` that writes out the `toAddMonoid` body. The simp normal form of `reindex \ud835\udcae n (of _ j a)` is therefore not exposed, and `decompose_inclusion` has no simp-friendly route.",
+      "proposed_change": "Add `@[simp] theorem reindex_of (n j : \u2115) (a : \ud835\udcae (n * j)) : reindex \ud835\udcae n (DirectSum.of (fun k : \u2115 => \ud835\udcae (n * k)) j a) = DirectSum.of (fun i : \u2115 => \ud835\udcae i) (n * j) a := DirectSum.toAddMonoid_of _ _ _`. Then use `simp [reindex_of]` or `rw [reindex_of]` in `decompose_inclusion` and `reindex_injective` instead of unfolding `reindex` and using `change`. Keep `reindex` itself unfolded only by explicit request.",
+      "benefit": "The `of` case of `decompose_inclusion` could close with `simp [inclusion_of, reindex_of]`. `reindex_injective` would no longer unfold the definition. Downstream users get the same simp interface as for `inclusion`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/Veronese.lean",
+          "declaration": "inclusion_of",
+          "excerpt": "@[simp] theorem inclusion_of (n j : \u2115) (a : \ud835\udcae (n * j)) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/Veronese.lean",
+          "declaration": "reindex_injective",
+          "excerpt": "simp only [reindex, DirectSum.toAddMonoid_of]"
+        }
+      ]
+    },
+    {
+      "declaration": "toComponent / toComponents",
+      "start_line": 78,
+      "end_line": 86,
+      "excerpt": "def toComponent (n j : \u2115) : \ud835\udcae (n * j) \u2192+ component \ud835\udcae n j where",
+      "problem": "`toComponent` and `toComponents` have no simp lemmas: no `toComponent_apply`/`coe_toComponent` and no `toComponents_of`. As a result `toComponents_left` and `toComponents_right` depend on repeated `change` steps. These restate `DirectSum.map` and the `.val` of `toComponent` by hand, and finish with `rfl`. The coercion `((toComponent \ud835\udcae n j a : component \ud835\udcae n j) : VeroneseRing \ud835\udcae n)` has no canonical normal form (`of j a`) that simp can reach.",
+      "proposed_change": "Add `@[simp] theorem coe_toComponent (n j) (a : \ud835\udcae (n * j)) : ((toComponent \ud835\udcae n j a : component \ud835\udcae n j) : VeroneseRing \ud835\udcae n) = DirectSum.of (fun k : \u2115 => \ud835\udcae (n * k)) j a := rfl`. Also add `@[simp] theorem toComponents_of (n j) (a : \ud835\udcae (n * j)) : toComponents \ud835\udcae n (DirectSum.of _ j a) = DirectSum.of (fun k : \u2115 => component \ud835\udcae n k) j (toComponent \ud835\udcae n j a) := DirectSum.map_of _ _ _`. Rewrite the `of` cases of the two inverse proofs with these lemmas and `DirectSum.coeAddMonoidHom_of`.",
+      "benefit": "The `of` branches of `toComponents_left` and `toComponents_right` shrink to rewrites or simp calls, with no `change ... rfl` blocks. The `decompose'` data of `instGradedRing` becomes computable by simp for clients.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/Veronese.lean",
+          "declaration": "toComponents_left",
+          "excerpt": "change ((toComponent \ud835\udcae n j) a).val = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/Veronese.lean",
+          "declaration": "toComponents_right",
+          "excerpt": "change DirectSum.of (fun k : \u2115 => component \ud835\udcae n k) j ((toComponent \ud835\udcae n j) b) = _"
+        }
+      ]
+    },
+    {
+      "declaration": "zeroRingHom",
+      "start_line": 194,
+      "end_line": 201,
+      "excerpt": "def zeroRingHom (n : \u2115) : component \ud835\udcae n 0 \u2192+* \ud835\udcae 0 where",
+      "problem": "The only simp lemma for the degree-zero maps is `zeroRingEquiv_apply`. It is stated for the equivalence, which depends on `hn`. `zeroRingHom` has no apply lemma, so `(zeroRingHom \ud835\udcae n a : S)` has no simp normal form. `zeroRingEquiv` is defined through `RingEquiv.ofBijective (zeroRingHom ..)`, and the simp lemma is closed by `rfl` through that unfolding. A `zeroRingHom` apply lemma in the same form is what `zeroRingEquiv_apply` implicitly relies on, and users working with the hom without the `0 < n` hypothesis cannot use it.",
+      "proposed_change": "Add `@[simp] theorem coe_zeroRingHom (n : \u2115) (a : component \ud835\udcae n 0) : ((zeroRingHom \ud835\udcae n a : \ud835\udcae 0) : S) = inclusion \ud835\udcae n a := rfl`. Then state `zeroRingEquiv_apply` as a corollary (or keep it) so that both views normalize to `inclusion \ud835\udcae n a`.",
+      "benefit": "Both the hom and the equivalence reduce to the same normal form `inclusion \ud835\udcae n \u2191a`. The hom no longer needs a `hn` hypothesis just to be simplified.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/Veronese.lean",
+          "declaration": "zeroRingEquiv_apply",
+          "excerpt": "((zeroRingEquiv \ud835\udcae n hn a : \ud835\udcae 0) : S) = inclusion \ud835\udcae n a := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/graded-rings/GradedRings/Veronese.lean",
+          "declaration": "zeroRingEquiv",
+          "excerpt": "RingEquiv.ofBijective (zeroRingHom \ud835\udcae n) \u27e8by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 12413,
+    "cache_read_input_tokens": 41508,
+    "output_tokens": 4150,
+    "output_tokens_details": {
+      "thinking_tokens": 796
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12413,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2816,
+        "cache_read_input_tokens": 14838,
+        "cache_creation_input_tokens": 1588,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1588
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.09531880000000001,
+  "duration_ms": 44013,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T23:18:21",
+  "unit": "file",
+  "source_sha256": "ffd4ccb66d03fff950ab9c6d386a52df8c310d00ab30700c319cf9d6b56a6ff8",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

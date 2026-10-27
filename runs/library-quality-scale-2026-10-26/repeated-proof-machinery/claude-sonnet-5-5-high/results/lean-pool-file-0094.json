@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0094",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read EnstrophyRegularityFacts.lean, the import list of EllipticBoundsApply.lean, and grepped the CIVAxisymmetric directory for related duplicated patterns. I did not read the bodies of integral_cutoff_sq_spatialPartial_le or integral_cutoff_sq_spatialSecondPartial_le, so the signature I assumed for hubd' comes from the call sites. I could not compile anything. The import change is probably free, because EnstrophyRegularityFacts imports only EnstrophyBalanceTerms, which the target already reaches through EllipticBoundsApply. I did not check whether EllipticBoundsSecond already imports EnstrophyRegularityFacts. The `max` and `mul_le_mul_of_nonneg_right` step in the third theorem is routine and I did not flag it. The second finding is the weaker one, because the repeated block is short.",
+  "findings": [
+    {
+      "declaration": "CIV.exists_C_cutoff_sq_spatialPartial_and_spatialSecondPartial_le_of_multiPartial_le (hYpos / hMpos)",
+      "start_line": 117,
+      "end_line": 130,
+      "excerpt": "rw [cutoffEnstrophy_eq_integral_sq_curlVec]\n      exact integral_nonneg fun x => mul_nonneg (sq_nonneg _) (Finset.sum_nonneg fun i _ =>\n        sq_nonneg _)",
+      "problem": "The proof re-derives, inline and twice, the nonnegativity of `cutoffEnstrophy` and `cutoffEnstrophyDissipation`. Each derivation unfolds the integral and combines `integral_nonneg`, `mul_nonneg`, `sq_nonneg` and `Finset.sum_nonneg`. The same two facts are already public lemmas, `CIV.cutoffEnstrophy_nonneg` and `CIV.cutoffEnstrophyDissipation_nonneg`, proved by essentially these blocks. So the same argument now exists in four places, and the file never imports the lemma file.",
+      "proposed_change": "Add `public import LeanPool.CIVAxisymmetric.Closure.EnstrophyRegularityFacts`. Then replace the bodies of hYpos and hMpos with `fun t => by linarith only [cutoffEnstrophy_nonneg \u03c7 u t]` and `fun t => by linarith only [cutoffEnstrophyDissipation_nonneg \u03c7 u t]`. Both lemmas are stated for arbitrary `\u03c7 u t`, so no extra hypotheses are needed. The `rw [cutoffEnstrophy_eq_integral_sq_curlVec]` and `rw [cutoffEnstrophyDissipation_eq_integral_sq_fderiv_curlVec]` steps become unnecessary.",
+      "benefit": "This removes about 14 lines of duplicated integral-positivity reasoning. The nonnegativity argument then lives in one place, so a change to the definitions of `cutoffEnstrophy` or its dissipation has to be fixed only there. The third theorem then reads as pure constant combination.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Closure/EnstrophyRegularityFacts.lean",
+          "declaration": "CIV.cutoffEnstrophy_nonneg",
+          "excerpt": "theorem cutoffEnstrophy_nonneg (\u03c7 : Vec3 \u2192 \u211d) (u : ParabolicPoint \u2192 Vec3) (t : \u211d) :\n    0 \u2264 cutoffEnstrophy \u03c7 u t := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Closure/EnstrophyRegularityFacts.lean",
+          "declaration": "CIV.cutoffEnstrophyDissipation_nonneg",
+          "excerpt": "theorem cutoffEnstrophyDissipation_nonneg (\u03c7 : Vec3 \u2192 \u211d) (u : ParabolicPoint \u2192 Vec3) (t : \u211d) :\n    0 \u2264 cutoffEnstrophyDissipation \u03c7 u t := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Closure/ClosureEnstrophyDecayConcrete.lean",
+          "declaration": "CIV (use of the existing lemmas)",
+          "excerpt": "(fun t ht => cutoffEnstrophyDissipation_nonneg \u03c7 u t)"
+        }
+      ]
+    },
+    {
+      "declaration": "CIV.integral_cutoff_sq_spatialPartial_le_of_multiPartial_le and CIV.integral_cutoff_sq_spatialSecondPartial_le_of_multiPartial_le (hubd')",
+      "start_line": 54,
+      "end_line": 58,
+      "excerpt": "have h\u03b10 : ((fun _ : Fin 3 => (0 : \u2115)) 0 + (fun _ : Fin 3 => (0 : \u2115)) 1\n        + (fun _ : Fin 3 => (0 : \u2115)) 2 \u2264 2) := by norm_num\n    simpa [multiPartial] using hbound x (hAsub hx).1 (hAsub hx).2 t ht i (fun _ => 0) h\u03b10",
+      "problem": "Both theorems have the same statement of `hbound` and `hAsub`. Both rebuild the same order-0 velocity bound `hubd'`, using the same `h\u03b10` side goal and the same `simpa [multiPartial]` step. The two blocks are character-for-character identical. The second theorem also has `hubd2'`, which only repackages `hbound` with `(hAsub hx).1` and `.2`. Any future change, such as a different order bound or a change to `multiPartial` unfolding, must be made in each copy.",
+      "proposed_change": "Add a private lemma `velocity_bound_of_multiPartial_le` with the same implicit arguments as the theorems. Its hypotheses are `hAsub` and `hbound`, and its conclusion is `\u2200 x \u2208 A, \u2200 t \u2208 Ioo t\u2080 0, \u2200 i, |u (x, t) i| \u2264 Mu`. The proof is the block above. Add a companion lemma that gives the order-\u22642 version as `fun x hx t ht i \u03b1 h\u03b1 => hbound x (hAsub hx).1 (hAsub hx).2 t ht i \u03b1 h\u03b1`. Then the first theorem ends with `exact integral_cutoff_sq_spatialPartial_le hsol h\u03c7 h\u03c7s h\u03c1U h\u03c11 ht\u2080 hAcl h\u03c7A (velocity_bound_of_multiPartial_le hAsub hbound) integral_cutoff_sq_fderiv_le`. The second does the same with both lemmas, followed by `integral_cutoff_sq_fderiv_fderiv_le integral_sq_fderiv_fderiv_smul_le`.",
+      "benefit": "The reduction from the annulus `multiPartial` bound to the `hubd`/`hubd2` hypotheses is stated and proved once. The two main theorems become one-line applications. It also names the bridging step that the module docstring describes only in prose.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Closure/EllipticBoundsAnnulusBound.lean",
+          "declaration": "CIV.integral_cutoff_sq_spatialSecondPartial_le_of_multiPartial_le",
+          "excerpt": "simpa [multiPartial] using hbound x (hAsub hx).1 (hAsub hx).2 t ht i (fun _ => 0) h\u03b10"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Closure/EllipticBoundsAnnulusBound.lean",
+          "declaration": "CIV.integral_cutoff_sq_spatialSecondPartial_le_of_multiPartial_le",
+          "excerpt": "exact hbound x (hAsub hx).1 (hAsub hx).2 t ht i \u03b1 h\u03b1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 12551,
+    "cache_read_input_tokens": 41653,
+    "output_tokens": 5043,
+    "output_tokens_details": {
+      "thinking_tokens": 839
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12551,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3070,
+        "cache_read_input_tokens": 15424,
+        "cache_creation_input_tokens": 1056,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1056
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1048153,
+  "duration_ms": 35105,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:01:08",
+  "unit": "file",
+  "source_sha256": "4e0c65f11883554174780247e1019c2932439bb31f52ca324417125f723b7946",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

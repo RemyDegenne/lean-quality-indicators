@@ -1,0 +1,104 @@
+{
+  "id": "mathlib-file-0110",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole of Basic.lean and grepped the ContinuedFractions directory for uses of IntFractPair.of, mapFr, coeFn and coe_to_intFractPair. I also read the relevant parts of Translations.lean and TerminatesIffRat.lean. The only simp lemma in the target is coe_to_intFractPair, and it looks fine: it is rfl, the coercion is tagged @[coe], and the rewrite direction is canonical. The two findings concern missing projection lemmas for `of` and `mapFr`. As evidence, downstream proofs unfold the definitions by name (`simp [IntFractPair.of]`, a local `attribute [local simp] IntFractPair.mapFr`). I did not run Lean. Whether adding these lemmas would change any downstream simp call set is unchecked, and I did not search for a name clash with existing lemmas.",
+  "findings": [
+    {
+      "declaration": "GenContFract.IntFractPair.of",
+      "start_line": 125,
+      "end_line": 126,
+      "excerpt": "protected def of (v : K) : IntFractPair K :=\n  \u27e8\u230av\u230b, Int.fract v\u27e9",
+      "problem": "`IntFractPair.of` is the basic constructor of the whole development, but the file has no simp lemmas for its components, such as `(IntFractPair.of v).b = \u230av\u230b` and `(IntFractPair.of v).fr = Int.fract v`. Downstream proofs therefore unfold the definition by name, for example `simp [IntFractPair.of]` and `simp only [IntFractPair.of, Int.fract_intCast]`. They even re-prove the fr-projection fact locally as `have H : (IntFractPair.of v).fr = Int.fract v := by simp [IntFractPair.of]`. Unfolding by name exposes the pair literal `\u27e8\u230av\u230b, Int.fract v\u27e9` and does not give the canonical form `\u230av\u230b` and `Int.fract v` directly. It also forces every caller to decide whether to unfold.",
+      "proposed_change": "Generate projection lemmas for `of`, either by tagging the definition `@[simps]` or by writing `@[simp] theorem of_b (v : K) : (IntFractPair.of v).b = \u230av\u230b := rfl` and `@[simp] theorem of_fr (v : K) : (IntFractPair.of v).fr = Int.fract v := rfl`. Callers can then use `simp` instead of `simp [IntFractPair.of]`. The `have H` at Translations.lean:129 becomes a plain `simp`/`rfl`. The definition should stay non-reducible and non-simp, so `of` does not unfold in general.",
+      "benefit": "The normal form of `(of v).b` and `(of v).fr` is stated once and fires automatically. The many ad hoc `simp [IntFractPair.of]` calls in Translations, CorrectnessTerminating and TerminatesIffRat get shorter and more predictable. They also stop depending on the internal pair representation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/ContinuedFractions/Computation/Translations.lean",
+          "declaration": "GenContFract.IntFractPair.stream_succ",
+          "excerpt": "have H : (IntFractPair.of v).fr = Int.fract v := by simp [IntFractPair.of]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/ContinuedFractions/Computation/TerminatesIffRat.lean",
+          "declaration": "GenContFract.IntFractPair.coe_of_rat_eq",
+          "excerpt": "simp [IntFractPair.of, v_eq_q]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/ContinuedFractions/Computation/CorrectnessTerminating.lean",
+          "declaration": "GenContFract.compExactValue_correctness_of_stream_eq_some",
+          "excerpt": "simpa [compExactValue, IntFractPair.of, fract_eq_zero]"
+        }
+      ]
+    },
+    {
+      "declaration": "GenContFract.IntFractPair.mapFr",
+      "start_line": 95,
+      "end_line": 96,
+      "excerpt": "def mapFr {\u03b2 : Type*} (f : K \u2192 \u03b2) (gp : IntFractPair K) : IntFractPair \u03b2 :=\n  \u27e8gp.b, f gp.fr\u27e9",
+      "problem": "`mapFr` has no simp lemmas for its projections (`(mapFr f gp).b = gp.b`, `(mapFr f gp).fr = f gp.fr`) or for `mapFr f (mk b fr)`. `coeFn` is defined from `mapFr (\u2191)` and the simp lemma `coe_to_intFractPair` is proved by `rfl`, so `mapFr` and the coercion have no common simp-normal form. TerminatesIffRat therefore has to add `attribute [local simp] Pair.map IntFractPair.mapFr`, which makes simp unfold `mapFr` into a structure literal. A global lemma like `mapFr_mk` would make the interface independent of that unfolding.",
+      "proposed_change": "Add `@[simp] theorem mapFr_b`, `@[simp] theorem mapFr_fr` and `@[simp] theorem mapFr_mk (f : K \u2192 \u03b2) (b : \u2124) (fr : K) : mapFr f \u27e8b, fr\u27e9 = \u27e8b, f fr\u27e9 := rfl`. Alternatively, tag the definition `@[simps]`. Then drop the local `attribute [local simp] ... IntFractPair.mapFr` in TerminatesIffRat.",
+      "benefit": "Simp can compute with `mapFr` and with the coercion `coeFn` (which unfolds to `mapFr (\u2191)`) without a file-local attribute that unfolds the definition. The unfolding stays behind explicit projection lemmas, as `Pair.map` could also do.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/ContinuedFractions/Computation/TerminatesIffRat.lean",
+          "declaration": "attribute [local simp] (top of section)",
+          "excerpt": "attribute [local simp] Pair.map IntFractPair.mapFr"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/ContinuedFractions/Computation/Basic.lean",
+          "declaration": "GenContFract.IntFractPair.coeFn",
+          "excerpt": "def coeFn : IntFractPair K \u2192 IntFractPair \u03b2 := mapFr (\u2191)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 10808,
+    "cache_read_input_tokens": 73821,
+    "output_tokens": 4271,
+    "output_tokens_details": {
+      "thinking_tokens": 803
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10808,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2489,
+        "cache_read_input_tokens": 18512,
+        "cache_creation_input_tokens": 730,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 730
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.09334809999999999,
+  "duration_ms": 41873,
+  "turns": 8,
+  "attempts": 2,
+  "judged": "2026-10-26T23:05:10",
+  "unit": "file",
+  "source_sha256": "e9ea31f51caf81b63111f6dc728ffc76b635a8eec84b8c3888ecec82c3a44bc1",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

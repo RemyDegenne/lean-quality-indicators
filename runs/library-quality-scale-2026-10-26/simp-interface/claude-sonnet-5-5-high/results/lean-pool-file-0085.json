@@ -1,0 +1,136 @@
+{
+  "id": "lean-pool-file-0085",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and grepped the directory for uses of the small helper lemmas. Checked Mathlib's Function.update simp lemmas (update_self, update_of_ne are @[simp]). Did not run Lean, so the proposed replacements are untested. The remaining simp-related uncertainty is whether the proposed @[simp] additions have downstream effects. Only this file in the BeyondBethe directory refers to these lemmas.",
+  "findings": [
+    {
+      "declaration": "emptyColumnMate_apply",
+      "start_line": 933,
+      "end_line": 934,
+      "excerpt": "theorem emptyColumnMate_apply (n : \u2115) (j : Fin n) :\n    emptyColumnMate n j = none := rfl",
+      "problem": "The canonical evaluation lemma for `emptyColumnMate` is not tagged `@[simp]`, and it is stated at the very end of the file, unused. Every earlier proof that evaluates the table instead unfolds the definition (`simp [emptyColumnMate]`, `simp [RowUnmatched, emptyColumnMate]`). Unfolding is not a stable simp interface: if the definition changes, each call site breaks. It also means `emptyColumnMate n j` is not normalized to `none` for downstream users who do not unfold it.",
+      "proposed_change": "Move `emptyColumnMate_apply` directly after `def emptyColumnMate` and mark it `@[simp]`. Change the call sites at lines 59 and 63 to `simp [emptyColumnMate_apply]`, or plain `simp`. The `@[simp]` form is safe: the LHS is a function application with a head constant, the RHS is the constructor `none`, and there is no loop.",
+      "benefit": "`emptyColumnMate n j` normalizes to `none` without unfolding the definition. Proofs no longer depend on the definition's body.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/KuhnMatching.lean",
+          "declaration": "emptyColumnMate_support",
+          "excerpt": "constructor <;> simp [emptyColumnMate]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/KuhnMatching.lean",
+          "declaration": "rowUnmatched_emptyColumnMate",
+          "excerpt": "simp [RowUnmatched, emptyColumnMate]"
+        }
+      ]
+    },
+    {
+      "declaration": "IsSupportColumnMate.update_none / update_some / matchesRow_update_none_iff / matchesRow_update_some_iff (pattern)",
+      "start_line": 74,
+      "end_line": 114,
+      "excerpt": "exact h.support (by simpa [Function.update, hcol] using hj)",
+      "problem": "The proofs about `Function.update` repeatedly use `simp [Function.update, h]`. This unfolds the definition into its `dite` form instead of using the canonical simp lemmas `Function.update_self` and `Function.update_of_ne`, which Mathlib already tags `@[simp]`. The pattern appears at lines 74, 83\u201384, 98, 106, 111, 113\u2013114, 130, 142, 164, 171, 401, 416, 419 and 596. It sits alongside `by_cases` plus `subst` blocks that duplicate the same case split, which shows that the simp interface for table updates is not being used.",
+      "proposed_change": "Use the simp-normal-form lemmas: replace `simpa [Function.update, hcol] using hj` with `simpa [Function.update_of_ne hcol] using hj`, or just `simpa [hcol] using hj` once `hcol : j \u2260 col` is in context. Likewise use `simp [hcne]` for the `mateRec c` and `mate c` steps. Where the hypothesis is `\u00ac j = col`, `Function.update_of_ne` also needs `j \u2260 col`, which is the same term. This also lets many `by_cases` and `subst` blocks collapse to `simp` calls with `Function.update_self`.",
+      "benefit": "Proofs use the library's canonical rewrite rules, not definitional unfolding. They are shorter, and they are less likely to break if the representation of `Function.update` or of `ColumnMate` changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Logic/Function/Basic.lean",
+          "declaration": "Function.update_of_ne",
+          "excerpt": "theorem update_of_ne {a a' : \u03b1} (h : a \u2260 a') (v : \u03b2 a') (f : \u2200 a, \u03b2 a) : update f a' v a = f a :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/KuhnMatching.lean",
+          "declaration": "matchesRow_update_none_iff",
+          "excerpt": "simpa [Function.update, hjne] using hj"
+        }
+      ]
+    },
+    {
+      "declaration": "rowUnmatched_iff_not_matchesRow",
+      "start_line": 51,
+      "end_line": 54,
+      "excerpt": "theorem rowUnmatched_iff_not_matchesRow {n : \u2115}\n    (mate : ColumnMate n) (row : Fin n) :\n    RowUnmatched mate row \u2194 \u00acMatchesRow mate row := by",
+      "problem": "`RowUnmatched` and `MatchesRow` are two definitions that are exactly negations of each other, and the only bridge is this iff lemma. It is not a simp lemma, and the definitions are not reducible. As a result, every use is a manual `rw [rowUnmatched_iff_not_matchesRow]` or an `(rowUnmatched_iff_not_matchesRow mate r).mp ...` application (lines 149, 475, 480, 767, 771, 819, 823). The statement also has no canonical normal form: a goal can be stated in terms of either predicate. The proofs of `kuhnBuild_of_hasPerfectMatching` and `kuhnBuild_support` repeat the same `htailUnmatched` block.",
+      "proposed_change": "Tag `rowUnmatched_iff_not_matchesRow` with `@[simp]`, so that `RowUnmatched` normalizes to `\u00acMatchesRow`. Alternatively, define `RowUnmatched mate row := \u00acMatchesRow mate row` and drop the bridge lemma. Either choice gives one canonical form for the `matchesRow_update_*_iff` rewrites to act on.",
+      "benefit": "`simp` and `rw` have a single normal form. This removes the repeated manual conversions in the later proofs, and the two `htailUnmatched` blocks can share a lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/KuhnMatching.lean",
+          "declaration": "kuhnSearch_success",
+          "excerpt": "exact (rowUnmatched_iff_not_matchesRow mate row).mp hunmatched hroot.1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/KuhnMatching.lean",
+          "declaration": "kuhnBuild_support",
+          "excerpt": "rw [rowUnmatched_iff_not_matchesRow]"
+        }
+      ]
+    },
+    {
+      "declaration": "kuhnAugment_zero",
+      "start_line": 936,
+      "end_line": 940,
+      "excerpt": "kuhnAugment A 0 row seen mate = \u27e8none, seen\u27e9 := by\n  simp [kuhnAugment, kuhnSearch]",
+      "problem": "This unfolding lemma, which is the canonical rewrite for `kuhnAugment A 0 ...`, is stated last, is unused, and is not tagged `@[simp]`. Its proof also unfolds `kuhnAugment` and `kuhnSearch` rather than using a named equation. Other proofs in the file need the same zero-fuel case and use `rw [kuhnSearch.eq_def]` or `fun_induction` case splits instead. Related facts are likewise unannotated: the `kuhnSearch` equations, and `matchedRowDecision_eq_true_iff` (line 839), which every use applies manually through `.mp` or `.mpr`.",
+      "proposed_change": "Move `kuhnAugment_zero` next to `def kuhnAugment` and tag it `@[simp]`. Its LHS has a literal `0` fuel, so it cannot loop. Add `@[simp]` to `matchedRowDecision_eq_true_iff`, so that `matchedRowDecision mate row = true` normalizes to `MatchesRow mate row`. This replaces the explicit `(matchedRowDecision_eq_true_iff _ _).mp` and `.mpr` calls at lines 920 and 924.",
+      "benefit": "Callers get the zero-fuel result and the Bool-to-Prop translation from `simp`. The decision-procedure proofs lose their manual rewriting.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/KuhnMatching.lean",
+          "declaration": "kuhnSupportMatchingDecision_eq_true_iff",
+          "excerpt": "exact (matchedRowDecision_eq_true_iff _ _).mp hrow"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 22850,
+    "cache_read_input_tokens": 78897,
+    "output_tokens": 4556,
+    "output_tokens_details": {
+      "thinking_tokens": 510
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22850,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3355,
+        "cache_read_input_tokens": 26007,
+        "cache_creation_input_tokens": 856,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 856
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1448657,
+  "duration_ms": 34127,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T22:59:44",
+  "unit": "file",
+  "source_sha256": "5c710ba971ee1e8d36506b386c69160a73faeb611283696b14e25344294fd97f",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,120 @@
+{
+  "id": "flt-anthropic-file-0280",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "partial",
+  "review_notes": "I read the helper lemmas and definitions (lines 1\u2013170, 405\u2013510, 1675\u20131720, the F8_skeleton region around 2360\u20132440 and 2660\u20132670) and grepped the rest of the file for rewrite and simp usage. I also checked related simp lemmas in Definitions/ (RelativeGroupLawBaseChange, Fibre, X1HeckeModule, X1PrimitiveSpecialization, RelativeGroupLawKernel). I did not read every line of the repeated multi-hundred-line hypothesis blocks or the long F8_skeleton body. I could not run Lean, so none of the proposed changes is compiled.\n\nConsidered and rejected: tagging `baseChange_one_coe_comp_fst` or `baseChange_one_coe_comp_snd` as simp. `RelativeGroupLaw.baseChange_one` is already simp, so their left-hand sides would be rewritten before those lemmas could fire. They are fine as `rw` lemmas.",
+  "findings": [
+    {
+      "declaration": "normFreeEltOf / normFreeElt (and the two ad-hoc unfoldings in comp_phi_normFreeEltOf and F8_skeleton.token)",
+      "start_line": 413,
+      "end_line": 417,
+      "excerpt": "noncomputable def normFreeEltOf (S : Finset \u2115) : ModularCurve.HeckeAlgOne :=\n  MvPolynomial.C (S.card : \u2124) - \u2211 d \u2208 S, ModularCurve.diamondGen d",
+      "problem": "The definitions have no action lemma, and no `normFreeElt M p = normFreeEltOf (normFreeRepsAt M p)` unfolding lemma. Every consumer that needs `normFreeEltOf S \u2022 a` unfolds the definition inside `simp only [normFreeEltOf, sub_smul, Finset.sum_smul, heckeModuleOneBar_C_smul]` (line 477). `F8_skeleton.token` repeats it as `rw [normFreeElt, normFreeEltOf, sub_smul, Finset.sum_smul, heckeModuleOneBar_C_smul, ...]` (line 2372). The same four-step expansion is therefore duplicated, and callers must pass the raw definition names to simp or rw. The result is that `normFreeElt (M * p) p \u2022 a` can only be handled by unfolding the definition, so the normal form depends on which proof expands it.",
+      "proposed_change": "Add one lemma next to the definitions, for example `normFreeEltOf_smul (N) (S) (a : JOne N) : (letI := ModularCurve.heckeModuleOneBar N; normFreeEltOf S \u2022 a) = (S.card : \u2124) \u2022 a - \u2211 d \u2208 S, ModularCurve.diamondGen d \u2022 a`. Add `normFreeElt_def : normFreeElt M p = normFreeEltOf (ModularCurve.normFreeRepsAt M p) := rfl`. Use the first lemma for `hlin` and for the first step of `token`. Consider making it `@[simp]`, since the right-hand side is built only from existing simp-normal pieces (`zsmul`, `Finset.sum`, `diamondGen \u2022`) and the left-hand side's head `normFreeEltOf` is not a simp unfolding target.",
+      "benefit": "Callers stop unfolding the definition, and the two duplicated rewrite chains collapse into one lemma. Later steps (`heckeModuleOneBar_diamondGen_smul`, `normFreeEnd_apply`, which is already simp) can then be applied from one canonical form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_ModularCurve_X1PrimitiveSpecialization.lean",
+          "declaration": "ModularCurve.normFreeEnd_apply",
+          "excerpt": "theorem normFreeEnd_apply (S : Finset \u2115) (x : JOne M) :\n    normFreeEnd M S x = S.card \u2022 x - \u2211 d \u2208 S, diamondOneBar M d x :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_ModularCurve_X1HeckeModule.lean",
+          "declaration": "ModularCurve.heckeModuleOneBar_C_smul",
+          "excerpt": "theorem heckeModuleOneBar_C_smul (a : \u2124) (x : JOne M) :\n    (letI := heckeModuleOneBar M; (MvPolynomial.C a : HeckeAlgOne) \u2022 x) = a \u2022 x"
+        }
+      ]
+    },
+    {
+      "declaration": "castPt_castPt, castPt_mul, castPt_comp (castPt simp family)",
+      "start_line": 152,
+      "end_line": 166,
+      "excerpt": "theorem castPt_castPt {B T X : Scheme.{0}} {t t' : T \u27f6 B} {f : X \u27f6 B} (h : t = t') (x : SchemeHomOver t f) :\n    castPt h.symm (castPt h x) = x := Subtype.ext rfl",
+      "problem": "Only the projection lemma `castPt_coe` is tagged `@[scoped simp]`. The lemmas that eliminate or push through casts are plain theorems: `castPt_castPt` (cancels a round trip), `castPt_mul` and `castPt_comp` (move the cast outward). They are consumed only by hand-written `rw`. In `eqv`, `left_inv` is closed by `simp only [...]` followed by `exact Subtype.ext rfl`, and `right_inv` needs `show ... ; rw [castPt_castPt, ...]`. `eqv_symm_comp` also uses `show ... ; rw [..., castPt_comp]`. The simp interface is therefore half-populated: simp can see through `.1` of a cast but cannot cancel a cast or commute it with `mul` or `comp`.",
+      "proposed_change": "Tag `castPt_castPt` with `@[scoped simp]`; its left-hand side is a strictly smaller term, so there is no cycle. Also tag `castPt_comp` and `castPt_mul`, oriented as they are (cast pulled outward to a single outermost `castPt`). Add the matching `castPt_castPt'` for the `h` and `h.symm` order, or a `castPt_rfl : castPt rfl x = x` lemma. Then `left_inv` and `right_inv` can be `simp`-closed.",
+      "benefit": "The cast-transport proofs in `exists_abelianSubvariety_genericFibre_of_endomorphisms` (`left_inv`, `right_inv`, `map_mul'`, `eqv_symm_comp`) lose their `show` and `rw` boilerplate. The `castPt` cluster then has a normal form (at most one outermost `castPt`) that works in the same way as the already-simp `castPt_coe`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_XOneP_exists_isClosedImmersion_isProper_smooth_normFreePart_of_representsRelSubPic_twoChartModel_x1_mul.lean",
+          "declaration": "exists_abelianSubvariety_genericFibre_of_endomorphisms (eqv)",
+          "excerpt": "show RelativeGroupLaw.baseChangePointOfBase _ (castPt hT.symm (castPt hT _)) = w\n        rw [castPt_castPt, RelativeGroupLaw.baseChangePointOfBase_toBase]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_XOneP_exists_isClosedImmersion_isProper_smooth_normFreePart_of_representsRelSubPic_twoChartModel_x1_mul.lean",
+          "declaration": "castPt_coe",
+          "excerpt": "@[scoped simp] theorem castPt_coe"
+        }
+      ]
+    },
+    {
+      "declaration": "F8c_nsmul_val / F8c_schemeHomOverComp_idPoint vs. hschemeNsmul in F8_skeleton",
+      "start_line": 1680,
+      "end_line": 1692,
+      "excerpt": "theorem F8c_nsmul_val {T : Scheme.{u}} (t : T \u27f6 Spec (CommRingCat.of R)) (n : \u2115)\n    (x : SchemeHomOver t f) :\n    (L.nsmul t n x).1 = x.1 \u226b L.schemeNsmul n := by",
+      "problem": "`(L.nsmul t n x).1 = x.1 \u226b L.schemeNsmul n` is the canonical rewrite that turns `nsmul` on points into composition with the scheme-level multiplication-by-n map. It is buried in a section as an untagged, `F8c_`-prefixed lemma, and it is not stated next to `schemeNsmul`. `F8_skeleton` therefore re-derives the same fact inline as `hschemeNsmul` (lines 2424\u20132431), including a private copy of `F8c_schemeHomOverComp_idPoint` (`hw := Subtype.ext (Category.comp_id _)`). The simp interface for `schemeNsmul` and `nsmul` is missing, so downstream code cannot reach the composition normal form. Instead, `rw [hschemeNsmul ..., hgpow, \u2190 hz, \u2190 h\u03b9pow]` is hand-orchestrated (line 2472).",
+      "proposed_change": "Move `F8c_schemeHomOverComp_idPoint` and `F8c_nsmul_val` into the RelativeGroupLaw API (Definitions/Def_GoodReductionJacobian_RelativeGroupLawKernel.lean, next to `schemeNsmul`). Drop the `F8c_` prefix, tag `F8c_nsmul_val` `@[simp]` (it is a coe-projection lemma with a strictly different head, `schemeNsmul` is not simp, so there is no loop), and drop the `u`-universe restriction. Replace `hschemeNsmul` by `(RelativeGroupLaw.nsmul_val LN _ n w).symm`.",
+      "benefit": "This removes a duplicated proof and gives users one oriented lemma for `(nsmul ...).1`, so the composition normal form becomes available to simp. It also avoids the private `hw` copy in the 2400-line `F8_skeleton`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_XOneP_exists_isClosedImmersion_isProper_smooth_normFreePart_of_representsRelSubPic_twoChartModel_x1_mul.lean",
+          "declaration": "F8_skeleton.hschemeNsmul",
+          "excerpt": "w.1 \u226b LN.schemeNsmul n = (LN.nsmul _ n w).1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_GoodReductionJacobian_RelativeGroupLawKernel.lean",
+          "declaration": "GoodReductionJacobian.RelativeGroupLaw.schemeNsmul_over",
+          "excerpt": "theorem schemeNsmul_over (G : RelativeGroupLaw R f) (n : \u2115) :\n    G.schemeNsmul n \u226b f = f :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 184653,
+    "cache_read_input_tokens": 893759,
+    "output_tokens": 11942,
+    "output_tokens_details": {
+      "thinking_tokens": 5519
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 184653,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4119,
+        "cache_read_input_tokens": 185462,
+        "cache_creation_input_tokens": 3204,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3204
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.9474319,
+  "duration_ms": 92540,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T00:57:03",
+  "unit": "file",
+  "source_sha256": "ebd23c16c4fa34c593cbcc81a0a079d974102d1b00fb3ce086b1edd942cb8f35",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

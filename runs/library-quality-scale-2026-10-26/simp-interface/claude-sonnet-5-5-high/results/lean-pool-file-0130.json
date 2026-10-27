@@ -1,0 +1,125 @@
+{
+  "id": "lean-pool-file-0130",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the related simp lemmas in Spacetime/Euclidean.lean, Spacetime/TimeTranslation.lean and Covariance/Momentum.lean. The file has almost no simp attributes of its own, so the findings concern missing canonical simp lemmas and rewrites that are proved locally instead. I did not run Lean. The claims about simp behaviour are inferred from the existing simp sets, not observed. I did not recommend simp annotations for the identities that look simple but are not used as rewrite rules.",
+  "findings": [
+    {
+      "declaration": "LinearIsometry_inv_one",
+      "start_line": 117,
+      "end_line": 119,
+      "excerpt": "lemma LinearIsometry_inv_one : LinearIsometry.inv (1 : O4) = 1 := by",
+      "problem": "The simp set in Euclidean.lean already contains `@[simp] inv_R`, `@[simp] inv_t`, `one_comp` and `comp_inv`. Together these push `(1 : E)\u207b\u00b9` or `euclideanPullback` of the identity to `LinearIsometry.inv (1 : O4)`. Nothing in the simp set simplifies that term. The missing normalization lemma is declared here as a plain, misnamed (outside the `LinearIsometry` namespace) lemma. It is not tagged `@[simp]`, so the use at line 220 has to cite it by hand in `simp only [QFT.inv_R, QFT.inv_t, LinearIsometry_inv_one, LinearIsometry.one_apply]`. Plain `simp` therefore leaves the term `LinearIsometry.inv 1` stuck wherever it appears in other files.",
+      "proposed_change": "Move the lemma into `namespace LinearIsometry` in Spacetime/Euclidean.lean, next to `one_comp` and `comp_inv`. Name it `inv_one` and mark it `@[simp]`. Its proof is the existing one: `comp_inv 1` plus `one_comp`. The orientation is a safe normal form, because it rewrites a compound term to the atom `1`. No other simp lemma has the left-hand side `LinearIsometry.inv 1`, so there is no competing rule. After the move, the `h_transl_eq` proof can use `simp` or the shorter `simp only [QFT.inv_R, QFT.inv_t, LinearIsometry.inv_one, LinearIsometry.one_apply]`.",
+      "benefit": "Simp-based proofs about the inverse of the identity Euclidean motion normalize automatically. This removes a hand-cited lemma and a stuck `LinearIsometry.inv 1` term. The lemma is also found in the namespace where users look for it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/Spacetime/Euclidean.lean",
+          "declaration": "QFT.inv_R / inv_t / LinearIsometry.comp_inv",
+          "excerpt": "@[simp] lemma inv_R (g : E) : (g\u207b\u00b9).R = LinearIsometry.inv g.R := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Clustering.lean",
+          "declaration": "GFF_OS4_from_small_decay_real (h_transl_eq)",
+          "excerpt": "simp only [QFT.inv_R, QFT.inv_t, LinearIsometry_inv_one, LinearIsometry.one_apply]"
+        }
+      ]
+    },
+    {
+      "declaration": "freeCovariance_eq_kernel",
+      "start_line": 547,
+      "end_line": 557,
+      "excerpt": "lemma freeCovariance_eq_kernel (m : \u211d) (x y : SpaceTime) :\n    freeCovariance m x y = freeCovarianceKernel m (x - y) := by",
+      "problem": "The rewrite `freeCovariance m x y = freeCovarianceKernel m (x - y)` is used as the canonical form for every kernel integral. It is not a simp lemma and is not available early. Its proof is re-done as an anonymous local `have h_transl_inv` at line 392, inside `schwartz_cross_covariance_decay_real`, which comes before the lemma in the file. A third copy appears in Covariance/Momentum.lean (line 1870). Each copy unfolds three definitions and then runs `simp only [zero_sub, norm_neg]`. The lemma is applied only by an explicit `rw` (line 573) or `simp_rw [..., h_transl_inv, ...]` (line 397). Callers therefore do not share one rewrite rule, and the unfolding approach exposes the Bessel expression instead of the kernel.",
+      "proposed_change": "Put `freeCovariance_eq_kernel` where `freeCovarianceKernel` is defined, in Covariance/Momentum.lean before line 1623. Make it public API there. Replace the three local copies with it, for example `simp_rw [SchwartzMap.translate_apply, freeCovariance_eq_kernel, toComplex_apply]` at line 397. If the project wants a uniform normal form for kernel integrals, mark it `@[simp]`. It is safe because the right-hand side is a folded definition application, so it does not loop. It would only fire on `freeCovariance`, and the only competing unfold rules require an explicit `unfold` or `simp only [freeCovariance, ...]`.",
+      "benefit": "One canonical rewrite replaces three copies of the same unfolding proof. Proofs about kernel integrals stay in terms of `freeCovarianceKernel` and no longer expose `freeCovarianceBessel`. Later files no longer need to re-derive the identity.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Clustering.lean",
+          "declaration": "schwartz_cross_covariance_decay_real (local h_transl_inv)",
+          "excerpt": "have h_transl_inv : \u2200 x y, freeCovariance m x y = freeCovarianceKernel m (x - y) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/Covariance/Momentum.lean",
+          "declaration": "local h_transl_inv in the convolution/Fourier proof",
+          "excerpt": "have h_transl_inv : \u2200 x y, freeCovariance m x y = freeCovarianceKernel m (x - y) := by"
+        }
+      ]
+    },
+    {
+      "declaration": "timeShiftConst_norm / timeTranslationSchwartz\u2102_at_point / timeShift_eq_add / timeTranslationSchwartz\u2102_neg_eq_sub",
+      "start_line": 518,
+      "end_line": 544,
+      "excerpt": "lemma timeShift_eq_add (s : \u211d) (y : SpaceTime) :\n    TimeTranslation.timeShift s y = y + TimeTranslation.timeShiftConst s := by\n  exact TimeTranslation.timeShift_eq_add_const s y",
+      "problem": "The time-translation rewrite rules are a hand-assembled chain with no simp interface. `timeShift_eq_add` is only a restatement of the existing `TimeTranslation.timeShift_eq_add_const`, so there are two names for one rule. `timeTranslationSchwartz\u2102_at_point` is `rfl` and is not tagged `@[simp]`, although a `timeTranslationSchwartz\u2102_apply` lemma already exists in the TimeTranslation module. The norm identity `\u2016timeShiftConst s\u2016 = |s|` and the `(-s)` form `timeTranslationSchwartz\u2102_neg_eq_sub` are lemmas that are not tagged `@[simp]`. Every use is an explicit `rw` chain, for example `rw [timeTranslationSchwartz\u2102_at_point, timeShift_eq_add]` at line 539 and `rwa [timeShiftConst_norm, abs_of_nonneg ht]` at line 645. The `timeTranslationSchwartz\u2102_neg_eq_sub` proof also drops to a coordinatewise `ext i; split_ifs; ring`, because `timeShiftConst (-s) = -timeShiftConst s` is not available as a rewrite rule.",
+      "proposed_change": "Delete the duplicate wrapper `timeShift_eq_add` and cite `TimeTranslation.timeShift_eq_add_const` directly. In TimeTranslation.lean, state `timeShiftConst_neg : timeShiftConst (-s) = -timeShiftConst s` and `timeShiftConst_norm`. Mark them `@[simp]`, as they are directional and terminating. Also mark `timeTranslationSchwartz\u2102_neg_eq_sub` `@[simp]` there, so that `timeTranslationSchwartz\u2102 (-s) g y` normalizes to `g (y - timeShiftConst s)` without a manual `rw` chain. Do not add `timeShift_eq_add_const` itself to the simp set unless it is checked against the existing `timeTranslationSchwartz_apply` rules, which might conflict with it.",
+      "benefit": "The time-translation argument of the proof reduces to `simp` plus the decay bound, instead of a stack of anonymous rewrite lemmas. One name is kept per identity, and the sign-flip and norm computations are reusable by later OS4 files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/Spacetime/TimeTranslation.lean",
+          "declaration": "TimeTranslation.timeShift_eq_add_const",
+          "excerpt": "lemma timeShift_eq_add_const (s : \u211d) (u : SpaceTime) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Clustering.lean",
+          "declaration": "timeTranslationSchwartz\u2102_neg_eq_sub",
+          "excerpt": "rw [timeTranslationSchwartz\u2102_at_point, timeShift_eq_add]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/OS/OS4Clustering.lean",
+          "declaration": "gaussianFreeField_satisfies_OS4_PolynomialClustering",
+          "excerpt": "rwa [timeShiftConst_norm, abs_of_nonneg ht] at h_norm_bound"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 30635,
+    "cache_read_input_tokens": 92641,
+    "output_tokens": 5384,
+    "output_tokens_details": {
+      "thinking_tokens": 643
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30635,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3739,
+        "cache_read_input_tokens": 33569,
+        "cache_creation_input_tokens": 1079,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1079
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1856601,
+  "duration_ms": 40486,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:08:13",
+  "unit": "file",
+  "source_sha256": "04b68cdc8e17afebca4731ef8abde5202bab5ddd87c883dd8932ae9c85f7f1c9",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

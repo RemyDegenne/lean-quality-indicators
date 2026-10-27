@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0075",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and checked its uses (BaseEulerSign, BaseEulerGuards, BaseEulerState, TransversePacketTimeData, etc.) and SmoothTimeField.derivativeField_eq. Findings are about how the simp set interacts, from reading the declarations. I did not run Lean, so I make no claim about exact simp behaviour or priorities. Rewriting of `inverse.field`/`frame.field` by the simp lemmas is by reading only. Other simp lemmas (first_apply, second_apply, curvature_apply) looked reasonable.",
+  "findings": [
+    {
+      "declaration": "EulerParentPacketFrames.Parent.inverse_apply (with frame_apply, strain_apply; versus inverse_left / inverse_right / inverse_initial)",
+      "start_line": 105,
+      "end_line": 110,
+      "excerpt": "@[simp] theorem inverse_apply (t : Icc (0 : \u211d) G.T) (x : Space) :\n    G.inverse.field t x = adjugate (G.frame.field t x) := rfl",
+      "problem": "The simp set unfolds the abstract `G.inverse.field t x` to `adjugate (G.frame.field t x)`, and `frame_apply` (also simp) then expands `G.frame.field t x` to `id + fderiv \u211d (G.displacement.field t) (G.ell \u2022 x)`. This expansion competes with the file's own algebraic interface. The statements `inverse_left`, `inverse_right`, `inverse_initial` and `strain_equation` have LHS patterns `G.inverse.field t x (G.frame.field t x v)`. Once the two simp lemmas fire first, those patterns no longer match, so they could not be tagged `@[simp]` and are not usable by simp. Downstream code accordingly never uses simp here. It does manual `rw [G.strain_apply, comp_apply, G.inverse_initial]` (BaseEulerSign, BaseEulerGuards). `inverse_apply` and `strain_apply` are also tagged simp even though their RHS (an adjugate of the full frame, or a `comp` of the unfolded pieces) is not a better normal form. The adjugate is only meaningful together with `frame_det`, which simp cannot supply.",
+      "proposed_change": "Drop `@[simp]` from `inverse_apply` (and probably `strain_apply`) and keep them as plain `rw` unfolding lemmas. Keep `frame_apply`, `first_apply` and `second_apply`, whose RHS is the intended canonical `fderiv` form. Then add `inverse_left`, `inverse_right` and `inverse_initial` as simp lemmas. Their LHS (`G.inverse.field t x (G.frame.field t x v)`) is then not preempted by `inverse_apply`/`frame_apply`, and neither of those lemmas needs priority tweaks. If `inverse_apply` stays simp, `inverse_left`/`inverse_right` should carry `(priority := high)` and be checked to fire before the unfolding.",
+      "benefit": "`simp` could then discharge `G.inverse.field t x (G.frame.field t x v) = v` and the `strain`/`second` rewrites directly. Downstream proofs would not need long chains of explicit `rw [G.strain_apply, comp_apply, G.inverse_initial, ...]`. Goals would also not blow up into `adjugate (id + fderiv ...)` terms that the determinant hypothesis cannot reduce.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/BaseEulerSign.lean",
+          "declaration": "source_numerator_pos (preceding rewrite chain)",
+          "excerpt": "G.strain_apply, comp_apply, G.inverse_initial]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/BaseEulerGuards.lean",
+          "declaration": "initial-strain rewrite",
+          "excerpt": "rw [G.strain_apply,comp_apply,G.inverse_initial,G.initialStrain_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/ParentPacketFrames.lean",
+          "declaration": "EulerParentPacketFrames.Parent.strain_equation",
+          "excerpt": "rw [G.strain_apply,comp_apply,G.inverse_left]"
+        }
+      ]
+    },
+    {
+      "declaration": "EulerParentPacketFrames.Parent.frame_initial / initialStrain_apply",
+      "start_line": 139,
+      "end_line": 168,
+      "excerpt": "@[simp] theorem initialStrain_apply (x : Space) :\n    G.initialStrain.field x = G.first.field G.zeroTime x := rfl",
+      "problem": "`frame_initial` (and `inverse_initial`) state the normal form at time `G.zeroTime`, but they are not simp lemmas. Any simp call sees `G.frame.field G.zeroTime x` and rewrites it with the existing simp lemma `frame_apply` into `id + fderiv \u211d (G.displacement.field G.zeroTime) (G.ell \u2022 x)`. Nothing then reduces that, because `initial` is stated for `\u27e80,le_rfl,T_pos.le\u27e9`, not for `G.zeroTime`, and `zeroTime` is a def that simp does not unfold. Likewise `initialStrain_apply` yields `G.first.field G.zeroTime x`, which `first_apply` expands to `fderiv \u211d (G.velocity.field G.zeroTime) (G.ell \u2022 x)`, a form that has lost the connection to the initial strain. So the evaluation-at-zero API is left to manual `rw`. Callers use `change ...; rw [G.frame_initial, id_apply]` (BaseEulerSign) and `rw [Parent.initialStrain_apply, Parent.first_apply]` (BaseEulerState).",
+      "proposed_change": "Make `frame_initial` and `inverse_initial` `@[simp]`, with higher priority than `frame_apply` and `inverse_apply` (or restrict those to `t` not syntactically `zeroTime`). `inverse_initial` is stated with an explicit `v`, which suits simp. Optionally add a `@[simp]` lemma `zeroTime_val : (G.zeroTime : \u211d) = 0`. Keep the `@[simp] initialStrain_apply` only if `first_apply` unfolding at zero is the intended normal form. Otherwise state it in terms of the initial frame.",
+      "benefit": "Goals evaluated at `zeroTime` would simplify to the identity frame and inverse (and the strain to `first \u2218 id`) in one `simp` call. Currently those cases need a hand-written `change`/`rw` sequence, and a bare `simp` can leave an opaque `fderiv` expression at zero time.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/BaseEulerSign.lean",
+          "declaration": "source_frame_initial",
+          "excerpt": "rw [G.frame_initial,id_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/BaseEulerState.lean",
+          "declaration": "initial strain rewrite",
+          "excerpt": "rw [Parent.initialStrain_apply,Parent.first_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/ParentPacketFrames.lean",
+          "declaration": "EulerParentPacketFrames.Parent.frame_apply",
+          "excerpt": "@[simp] theorem frame_apply (t : Icc (0 : \u211d) G.T) (x : Space) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 17386,
+    "cache_read_input_tokens": 49484,
+    "output_tokens": 5017,
+    "output_tokens_details": {
+      "thinking_tokens": 1177
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17386,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2906,
+        "cache_read_input_tokens": 20035,
+        "cache_creation_input_tokens": 1364,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1364
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.12467840000000002,
+  "duration_ms": 34605,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T22:58:02",
+  "unit": "file",
+  "source_sha256": "58e2e0371a31d9362e574cd9d76c3f2d89eebc683ab0f99daa9733167da2c64f",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

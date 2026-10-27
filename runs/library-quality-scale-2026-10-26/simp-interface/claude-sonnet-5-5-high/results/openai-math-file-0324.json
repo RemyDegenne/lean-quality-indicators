@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0324",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all 62 lines and the uses of primeUnitRangedCoefficient in WordRootRange, PrimeWordPairBound and GroupedCoprimeCoefficient. I also read the definitions of expandedPrimeValues, expandedPrimeNatValues and expandedPrimeNatValues_cast, and the places that re-prove the same pointwise cast fact. The file has no @[simp] attributes of its own, and I found no loop or competing-rule risk in it. The two findings are about missing simp-normal-form lemmas. I could not run Lean, so neither suggested lemma is tested. The orientation and whether each lemma is safe as @[simp] still need checking. In particular, the `expandedPrimeNatValues_cast` replacement should be stated pointwise, because its current lambda-shaped left-hand side is a poor simp pattern. The second finding is lower confidence, because adding simp lemmas for a definition with a hypothesis-laden `if` is a judgement call.",
+  "findings": [
+    {
+      "declaration": "Ostmann.WordFourierParameters.primeUnitRangedCoefficient_nat",
+      "start_line": 48,
+      "end_line": 49,
+      "excerpt": "cases i <;>\n        simp only [expandedPrimeValues, expandedPrimeNatValues, Int.cast_natCast, Int.cast_one, Nat.cast_one]",
+      "problem": "The cast compatibility between `expandedPrimeNatValues` and `expandedPrimeValues` has no simp interface. The definitions are matches on `.inl`/`.inr`, and no `_inl`/`_inr` simp lemmas exist. The only cast lemma, `expandedPrimeNatValues_cast`, is stated as an equality of lambdas and is not a simp lemma. So this proof does a manual `cases i` followed by an unfolding `simp only`. The same `funext k; cases k <;> rfl` is repeated in at least WordPrimeCheckBound and FixedPivotPrimeChecks. Line 55 also uses `rw [\u2190 expandedPrimeNatValues_cast]`, which goes in the opposite direction from the form used at line 49.",
+      "proposed_change": "Next to the definitions in ExpandedWordPairBound.lean and GroupedScheduleCoefficient.lean, add simp lemmas `expandedPrimeValues_inl`, `expandedPrimeValues_inr`, `expandedPrimeNatValues_inl` and `expandedPrimeNatValues_inr`. Also add a pointwise, simp-usable form of the cast lemma: `((expandedPrimeNatValues n x i : \u2115) : \u2124) = expandedPrimeValues n (fun j => (x j : \u2124)) i`. Its normal form pushes the cast into the `expandedPrimeValues` side. Then the `by intro i; ...` side goal at lines 48-49 can be closed by `simp` or by that pointwise lemma. The `funext; cases <;> rfl` repetitions elsewhere can be dropped.",
+      "benefit": "Readers no longer have to case-split on `ExpandedScheduledVariable` by hand to move casts across these two value functions. The three or more copies of the same proof collapse into one lemma. The simp normal form for casts of these value functions becomes a single, predictable direction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/GroupedScheduleCoefficient.lean",
+          "declaration": "expandedPrimeNatValues_cast",
+          "excerpt": "(fun i => (expandedPrimeNatValues n x i : \u2124)) =\n      expandedPrimeValues n (fun i => (x i : \u2124)) := by\n  funext i\n  cases i <;> rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/WordPrimeCheckBound.lean",
+          "declaration": "word_prime_check_bound (repeated manual cast proof)",
+          "excerpt": "funext k\n        cases k <;> rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/ExpandedWordPairBound.lean",
+          "declaration": "expandedPrimeValues",
+          "excerpt": "| .inl v => x v\n  | .inr _ => 1"
+        }
+      ]
+    },
+    {
+      "declaration": "Ostmann.WordFourierParameters.primeUnitRangedCoefficient",
+      "start_line": 12,
+      "end_line": 20,
+      "excerpt": "if \u2200 g \u2208 C.checks template t ht .prime,\n      g.Holds (expandedPrimeValues n (fun i => (x i : \u2124))) x then",
+      "problem": "The definition is a bare `if` with no characterizing simp lemmas, such as one for when the checks hold or fail. Every consumer unfolds it. Inside this file, `unfold primeUnitRangedCoefficient` is followed by `simp only [he]` and `split_ifs`. Downstream, `unfold ...primeUnitRangedCoefficient` is followed by `split_ifs <;> simp_all`, and `simp only [primeUnitRangedCoefficient, unitRangedCoefficient, ...]` is followed by `split_ifs <;> simp_all`. The only clean rewrite, `primeUnitRangedCoefficient_nat`, is applied only with a manual `rw`. It is not usable as a simp rule: it introduces `ValidAt`, whose own simp status is unclear. Its right-hand side contains the left-hand side's `unitRangedCoefficient`, so it would unfold the structure.",
+      "proposed_change": "Add two conditional equation lemmas, for example `primeUnitRangedCoefficient_of_checks (h : \u2200 g \u2208 C.checks template t ht .prime, g.Holds \u2026) : \u2026 = p.unitRangedCoefficient \u2026` and `primeUnitRangedCoefficient_of_not_checks (h : \u00ac \u2026) : \u2026 = 0`. Put the more useful one, or both, in the simp set with the hypothesis as a side goal. Alternatively, keep `primeUnitRangedCoefficient` irreducible-by-convention and use these lemmas in place of the `unfold` plus `split_ifs <;> simp_all` pattern. Do not tag `primeUnitRangedCoefficient_nat` as @[simp].",
+      "benefit": "Downstream proofs such as `primeUnitRangedCoefficient_prependRoot` and `PrimeWordPairBound` could rewrite under the hypothesis instead of unfolding and case-splitting. The brittle `simp_all` after `split_ifs` would be unnecessary. This also gives one named place where the `if` is eliminated.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/WordRootRange.lean",
+          "declaration": "WordFourierParameters.primeUnitRangedCoefficient_prependRoot",
+          "excerpt": "simp only [primeUnitRangedCoefficient, unitRangedCoefficient, rangedCoefficient,\n    WordRangeDecoration.prependRoot_formulas, List.forall_mem_cons]\n  split_ifs <;> simp_all"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/PrimeWordPairBound.lean",
+          "declaration": "prime word pair bound (local `he`)",
+          "excerpt": "unfold WordFourierParameters.primeUnitRangedCoefficient\n    simp only [W, f, f', a]\n    split_ifs <;> simp_all"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/GroupedCoprimeCoefficient.lean",
+          "declaration": "groupedCoprimeFourierWeight_coefficient",
+          "excerpt": "rw [p.primeUnitRangedCoefficient_nat]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 25665,
+    "cache_read_input_tokens": 106871,
+    "output_tokens": 6370,
+    "output_tokens_details": {
+      "thinking_tokens": 1946
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25665,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3751,
+        "cache_read_input_tokens": 27010,
+        "cache_creation_input_tokens": 2668,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2668
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17707109999999998,
+  "duration_ms": 44239,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T01:36:29",
+  "unit": "file",
+  "source_sha256": "e5b5dbbeccbd0d027a2158111ff68ea078d7993913f1ecb34fc5ddbc4b75b1c2",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

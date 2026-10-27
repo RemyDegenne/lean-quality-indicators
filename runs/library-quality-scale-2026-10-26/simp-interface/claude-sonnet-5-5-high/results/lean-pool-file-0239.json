@@ -1,0 +1,115 @@
+{
+  "id": "lean-pool-file-0239",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked how its new definitions (symmetrize, openCube, formMatrix, periodicExtR, periodicMatrixExt) are used here and in Compact/Main.lean. The file declares no simp lemmas or attributes. I found no competing rules, wrong orientations or loops. The findings are about missing canonical entry and membership lemmas for the new definitions. Each definition is unfolded by name inside `simp [...]` calls, both in this file and downstream. I did not run Lean, so I can't say how well the proposed lemmas would work as simp lemmas. The `periodicExtR` and `periodicMatrixExt` unfoldings are weaker cases, so I left them out.",
+  "findings": [
+    {
+      "declaration": "symmetrize",
+      "start_line": 166,
+      "end_line": 167,
+      "excerpt": "def symmetrize (A : Matrix (Fin N) (Fin N) \u211d) : Matrix (Fin N) (Fin N) \u211d :=\n  (1 / 2 : \u211d) \u2022 (A + A\u1d40)",
+      "problem": "`symmetrize` has no canonical simp lemma for its entries or transpose. Every proof about it unfolds the definition by name, with `simp [symmetrize, ...]` at lines 173 and 187, and `rw [symmetrize, ...]` in `symmetrize_eq_self`. Unfolding exposes `(1/2) \u2022 (A + A\u1d40)`, so simp then needs `transpose_add`, `add_comm` and a manual `ring` to reach the entrywise form `(A i j + A j i)/2`. The same entrywise statement is restated by hand in `quadForm_symmetrize` (the `h` have) and in `contDiff_symmetrize` (the `change` to `(1/2) * (A i j + A j i)`).",
+      "proposed_change": "Add `@[simp] theorem symmetrize_apply (A) (i j) : symmetrize A i j = (A i j + A j i) / 2`, or with `(1/2) * (...)` to match the file's usage. Add `@[simp] theorem transpose_symmetrize (A) : (symmetrize A)\u1d40 = symmetrize A`, or `symmetrize_isSymm.eq`. Stating `symmetrize_eq_self` as a simp lemma with hypothesis `hA : A.IsSymm` is also possible. The existing proofs can then use these lemmas instead of unfolding `symmetrize`.",
+      "benefit": "Proofs about `symmetrize` work with a stable entrywise normal form instead of the internal `(1/2) \u2022 (A + A\u1d40)` encoding. The proofs of `symmetrize_isSymm`, `quadForm_symmetrize` and `contDiff_symmetrize` get shorter and no longer depend on how the definition is written.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Compact/Periodization.lean",
+          "declaration": "quadForm_symmetrize",
+          "excerpt": "simp [symmetrize, Matrix.transpose_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Compact/Periodization.lean",
+          "declaration": "symmetrize_isSymm",
+          "excerpt": "simp [symmetrize, Matrix.transpose_add, add_comm]"
+        }
+      ]
+    },
+    {
+      "declaration": "openCube",
+      "start_line": 205,
+      "end_line": 205,
+      "excerpt": "def openCube (N : \u2115) : Set (Fin N \u2192 \u211d) := {x | \u2200 j, |x j| < Real.pi}",
+      "problem": "There is no membership lemma such as `mem_openCube`. Downstream code unfolds the definition inside simp, for example `simp [openCube, Set.mem_iInter]` in `isOpen_openCube`. Simp then has to push set-builder membership through the unfolded definition. In this file, `periodicExtR_eq_self_of_mem` and `periodicMatrixExt_eq_of_mem` state hypotheses as `x \u2208 openCube N` but state closed-cube membership as a bare `\u2200 j, |x j| \u2264 Real.pi`, so the two cube notions have no common simp-friendly interface.",
+      "proposed_change": "Add `@[simp] theorem mem_openCube {x : Fin N \u2192 \u211d} : x \u2208 openCube N \u2194 \u2200 j, |x j| < Real.pi := Iff.rfl`. `openCube` can then stay a plain def that is not unfolded elsewhere.",
+      "benefit": "Callers rewrite membership with one canonical lemma, so proofs such as `isOpen_openCube` no longer unfold the definition. If the definition of `openCube` changes later, only this lemma needs updating.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Compact/Main.lean",
+          "declaration": "isOpen_openCube",
+          "excerpt": "ext x; simp [openCube, Set.mem_iInter]"
+        }
+      ]
+    },
+    {
+      "declaration": "formMatrix",
+      "start_line": 334,
+      "end_line": 336,
+      "excerpt": "Matrix.of fun i j => B (EuclideanSpace.single i 1) (EuclideanSpace.single j 1)",
+      "problem": "`formMatrix` has no entry lemma `formMatrix B i j = B (single i 1) (single j 1)`. The lemma named `formMatrix_apply` is the bilinear evaluation `B a b = a \u2b1d\u1d65 (formMatrix B).mulVec b`. It is not simp-suitable as stated, and it is only used for `rw`. Entry-level reasoning therefore unfolds the definition inside simp, in `formMatrix_posDef` (`simp [formMatrix, Matrix.transpose_apply, hsymm]`) and in Main.lean's `hmsymm`, which has the same simp call. `contDiff_formMatrix` uses a `change` to the unfolded form.",
+      "proposed_change": "Add `@[simp] theorem formMatrix_entry (B) (i j) : formMatrix B i j = B (EuclideanSpace.single i 1) (EuclideanSpace.single j 1) := rfl`. Optionally add a simp lemma for `(formMatrix B)\u1d40` under a symmetry hypothesis. Rename the evaluation lemma or document that it is a `rw`-only lemma, so the name `formMatrix_apply` does not suggest an entry simp lemma.",
+      "benefit": "Callers get a canonical entry rewrite without `simp [formMatrix]`. This also removes the ambiguity of the name `formMatrix_apply`, which currently names a non-simp evaluation identity.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Compact/Main.lean",
+          "declaration": "hmsymm (inside the compact Nash proof)",
+          "excerpt": "simp [formMatrix, Matrix.transpose_apply, hG\u2083symm x]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Compact/Periodization.lean",
+          "declaration": "formMatrix_posDef",
+          "excerpt": "simp [formMatrix, Matrix.transpose_apply, hsymm]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 17046,
+    "cache_read_input_tokens": 75234,
+    "output_tokens": 4558,
+    "output_tokens_details": {
+      "thinking_tokens": 1044
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17046,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2864,
+        "cache_read_input_tokens": 19664,
+        "cache_creation_input_tokens": 1395,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1395
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1213074,
+  "duration_ms": 33006,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:37:58",
+  "unit": "file",
+  "source_sha256": "381a45c61ea2a9d515b6636b85e05a75fed0dde1efb2ae38aa59d749a4870666",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

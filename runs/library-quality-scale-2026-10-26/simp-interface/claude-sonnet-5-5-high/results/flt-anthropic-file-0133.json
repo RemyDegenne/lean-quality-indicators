@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0133",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file with a focus on simp attributes and on the rewrite forms the proofs use. I also checked Mathlib's SL_slash, SL_smul_slash, ModularForm.coe_mul and one_coe_eq_one, and HahnSeries.C_mul_eq_smul. Only two declarations carry simp attributes here: the scoped coe_diamondSlash and coe_listProd. The proofs use almost no bare `simp`. The two findings are therefore about which normal form the interface offers, and they rest on the rewrites the proofs actually perform. I did not run Lean. I did not look for loops or simp failures. Two points are uncertain. First, whether the scoped simp lemmas fire in any downstream file that opens the namespace. Second, whether other files in the P2M/Sol directory (they declare similarly named lemmas) would be affected by an orientation change.",
+  "findings": [
+    {
+      "declaration": "X1DiamondGalois.coe_diamondSlash (with coe_diamondSlash_SL)",
+      "start_line": 130,
+      "end_line": 137,
+      "excerpt": "@[scoped simp] theorem coe_diamondSlash [NeZero M] (\u03b3 : SL(2, \u2124)) (h\u03b3 : \u03b3 \u2208 Gamma0 M)",
+      "problem": "The scoped simp lemma rewrites `\u21d1(diamondSlash \u03b3 h\u03b3 f)` to a slash by the GL-cast `(\u03b3 : GL (Fin 2) \u211d)`. Every later use goes through the non-simp `coe_diamondSlash_SL`, whose right-hand side is the SL(2,\u2124) slash. That form is what `ModularForm.mul_slash_SL2`, `ModularForm.SL_smul_slash`, `slash_listProd`, `slash_eq_of_apply_eq` and `qC_slash_ne_zero` expect. Mathlib's `SL_slash` is not a simp lemma, so nothing converts the GL form back. Plain `simp` therefore produces a form that the rest of the interface cannot consume. The proofs show this: after `rw [coe_diamondSlash_SL]` they repeat `simp only [coe_diamondSlash_SL]` (lines 838, 842, 860), and `coe_diamondSlash` is only ever used inside the proof of `coe_diamondSlash_SL`.",
+      "proposed_change": "Move the `@[simp]` attribute (scoped if wanted) from `coe_diamondSlash` to `coe_diamondSlash_SL`, and leave the GL-cast version as a plain lemma used only to prove it. The simp normal form of `\u21d1(diamondSlash \u03b3 h\u03b3 f)` then matches the SL slash lemmas used throughout. The ad hoc `simp only [coe_diamondSlash_SL]` calls can become `simp`, or stay as they are.",
+      "benefit": "`simp` goals containing `diamondSlash` land in the SL-slash form the other slash and `qC` lemmas expect. That avoids silently producing GL-cast slashes that need a second manual rewrite. A reader also sees one canonical form instead of two competing statements, only one of which is simp.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/NumberTheory/ModularForms/SlashActions.lean",
+          "declaration": "ModularForm.SL_slash",
+          "excerpt": "theorem SL_slash (\u03b3 : SL(2, \u2124)) : f \u2223[k] \u03b3 = f \u2223[k] (\u03b3 : GL (Fin 2) \u211d) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_exists_monoidHom_diamondAut_mem_x1x0FunctionFieldC_iff.lean",
+          "declaration": "X1DiamondGalois.smul_mul_prod_slash_eq",
+          "excerpt": "simp only [coe_diamondSlash_SL]"
+        }
+      ]
+    },
+    {
+      "declaration": "X1DiamondGalois.qC_smul (versus qC_gg and repeated \u2190 HahnSeries.C_mul_eq_smul rewrites)",
+      "start_line": 42,
+      "end_line": 45,
+      "excerpt": "theorem qC_smul {a : \u2124} (c : \u2102) (f : ModularForm \u0393\u2081(M) a) : qC (\u21d1(c \u2022 f)) = c \u2022 qC \u21d1f := by",
+      "problem": "The simp-style lemma `qC_smul` gives the scalar action form `c \u2022 qC f`. Almost every downstream step then needs the multiplicative form `HahnSeries.C c * _`. That form is needed to use `mul_ne_zero`, `mul_div_mul_left` and `ring`, and it is the form `qC_gg` states. The proofs keep switching between the two forms by hand with `\u2190 HahnSeries.C_mul_eq_smul` or `HahnSeries.C_mul_eq_smul`, at lines 483, 490\u2013491, 526, 819, 847, 873 and 924. `C_mul_eq_smul` is not simp in Mathlib, so there is no canonical form: `qC_smul` and `qC_gg` produce different normal forms for the same quantity.",
+      "proposed_change": "Add a companion lemma `qC_smul_C : qC (\u21d1(c \u2022 f)) = HahnSeries.C c * qC \u21d1f`, proved from `qC_smul` and `C_mul_eq_smul`. Use it as the standard rewrite where the multiplicative form is needed, for example in `exists_apply_generator_eq`, `diamondAut_mul`, `qC_gg` and `smul_mul_prod_slash_eq`. Then drop the paired `\u2190 HahnSeries.C_mul_eq_smul` steps. Alternatively, state `qC_smul` itself in the C-mul form.",
+      "benefit": "One canonical form for scalar multiples of q-expansions removes about eight manual form-switching rewrites. It also makes the `mul_div_mul_left` and `ring` steps more robust, because the rewrite no longer depends on how many `\u2190 C_mul_eq_smul` occurrences happen to match.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_exists_monoidHom_diamondAut_mem_x1x0FunctionFieldC_iff.lean",
+          "declaration": "X1DiamondGalois.qC_gg",
+          "excerpt": "rw [this, qC_smul, coe_diamondSlash_SL, HahnSeries.C_mul_eq_smul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_exists_monoidHom_diamondAut_mem_x1x0FunctionFieldC_iff.lean",
+          "declaration": "X1DiamondGalois.diamondAut_mul",
+          "excerpt": "rw [e1, e2, \u2190 HahnSeries.C_mul_eq_smul, \u2190 HahnSeries.C_mul_eq_smul,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/HahnSeries/Multiplication.lean",
+          "declaration": "HahnSeries.C_mul_eq_smul",
+          "excerpt": "theorem C_mul_eq_smul {r : R} {x : R\u27e6\u0393\u27e7} : C r * x = r \u2022 x :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 48811,
+    "cache_read_input_tokens": 191216,
+    "output_tokens": 6366,
+    "output_tokens_details": {
+      "thinking_tokens": 2327
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 48811,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2689,
+        "cache_read_input_tokens": 51707,
+        "cache_creation_input_tokens": 1117,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1117
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2780456,
+  "duration_ms": 46284,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:08:55",
+  "unit": "file",
+  "source_sha256": "fcef90cd6482fc42ab22d33e7762a0c863b2a58d226fb275e013fd452fd8cb1b",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

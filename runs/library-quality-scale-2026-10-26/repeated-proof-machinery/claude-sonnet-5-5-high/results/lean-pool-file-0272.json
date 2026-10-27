@@ -1,0 +1,88 @@
+{
+  "id": "lean-pool-file-0272",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I checked `mixedOperator_contDiff` and `mixedOperator_bound` against the near-identical `mixedCoefficient_contDiff` and `mixedCoefficient_bound` in `LpCylinderRegularCoefficient.lean`, and I read the helper `SmoothCoefficientPath.norm_iteratedFDeriv_translation_le`. I also grepped for other uses of these lemmas. The `mixedOperator_*` lemmas have no other uses in LeanPool. `mixedCoefficient_*` is used in `LpCylinderRegularSobolev.lean` and `LpCylinderRegularForward.lean`. The `RegularCoefficient` file imports this file publicly, so a shared lemma can live here. The Lean code in this review is a proposal and I did not compile it. Instance elaboration, in particular the cached local instances and the `omit [CompleteSpace V]` mismatch between the two files, is uncertain until it is compiled. I also grepped the same `Finset.prod_le_one\u2080` / `norm_fst_le` pattern across the Euler directory. Hits in other files (`BaseEulerState`, `CoefficientPathSmooth`, `CylinderDirichletSobolev`, `LpCylinderRectangularRegularity`) are outside this file, and I did not inspect them as additional repeats. Other lemmas in the file are single-use or short.",
+  "findings": [
+    {
+      "declaration": "EulerLpCylinderCoefficients.mixedOperator_bound (with mixedOperator_contDiff)",
+      "start_line": 176,
+      "end_line": 196,
+      "excerpt": "have hright := (congrArg norm ((ContinuousLinearMap.fst \u211d Space \u211d).iteratedFDeriv_comp_right",
+      "problem": "`mixedOperator_bound` repeats the proof of `mixedCoefficient_bound` in `LpCylinderRegularCoefficient.lean`, which imports this file. Both proofs first bound the iterated derivative of `f \u2218 fst` by composing with a norm-\u2264-1 projection. They do this with `iteratedFDeriv_comp_right`, `norm_compContinuousLinearMap_le`, `mul_le_of_le_one_right` and `Finset.prod_le_one\u2080` applied to `norm_fst_le`. Both then bound the derivative of `liftedOperatorPathMap \u2218 \u2026` with `norm_iteratedFDeriv_comp_left` and `liftedOperatorPathMap_norm`. They differ only in how the bound on `iteratedFDeriv n (translateCoefficientPath _) a` is supplied. This file's version takes `SmoothCoefficientPath` data and `hC`; the other file's takes smoothness `hB` and a pointwise bound `hb`. `mixedOperator_contDiff` likewise repeats `mixedCoefficient_contDiff`. This is the same nontrivial two-step chain-rule/norm argument in two places. A fix to either proof, such as a change in the norm lemmas, would have to be made twice.",
+      "proposed_change": "Put the general statement, with its proof, in this file just before `mixedOperator_contDiff`, and delete the proof from `LpCylinderRegularCoefficient.lean`. The sketch uses the same arguments as the existing `mixedCoefficient_*` lemmas, in the same order (`period S hS T B hB n C hb a`), so downstream callers keep working through the import:\n\n```lean\nomit [CompleteSpace V] in\ntheorem mixedCoefficient_contDiff (B : C(Icc (0 : \u211d) T, Space \u2192\u1d47 V \u2192L[\u211d] V))\n    (hB : ContDiff \u211d \u221e (translateCoefficientPath B)) :\n    ContDiff \u211d \u221e (fun a : LiftTangent => liftedOperatorPath period S hS T\n      (translateCoefficientPath B a.1)) :=\n  (hB.comp (ContinuousLinearMap.fst \u211d Space \u211d).contDiff).continuousLinearMap_comp\n    (liftedOperatorPathMap (V := V) period S hS T)\n\nomit [CompleteSpace V] in\ntheorem mixedCoefficient_bound (B : C(Icc (0 : \u211d) T, Space \u2192\u1d47 V \u2192L[\u211d] V))\n    (hB : ContDiff \u211d \u221e (translateCoefficientPath B)) (n : \u2115) (C : \u211d)\n    (hb : \u2200 a, \u2016iteratedFDeriv \u211d n (translateCoefficientPath B) a\u2016 \u2264 C) (a : LiftTangent) :\n    \u2016iteratedFDeriv \u211d n (fun b : LiftTangent => liftedOperatorPath period S hS T\n      (translateCoefficientPath B b.1)) a\u2016 \u2264 C := by\n  -- body of the existing proof in LpCylinderRegularCoefficient.lean (lines 88\u201399)\n```\n\nThe proof is: (1) `\u2016D^n (f \u2218 fst) a\u2016 \u2264 \u2016D^n f (fst a)\u2016` because `\u2016fst\u2016 \u2264 1`; (2) `\u2016D^n (\u03a6 \u2218 g) a\u2016 \u2264 \u2016\u03a6\u2016 * \u2016D^n g a\u2016` with `\u2016\u03a6\u2016 \u2264 1`. The two target lemmas then become one-line corollaries:\n\n```lean\ntheorem mixedOperator_contDiff (B : SmoothCoefficientPath (Icc (0 : \u211d) T) (V \u2192L[\u211d] V)) :\n    ContDiff \u211d \u221e (fun a : LiftTangent => liftedOperatorPath period S hS T\n      (translateCoefficientPath B.field a.1)) :=\n  mixedCoefficient_contDiff period S hS T B.field B.translation_contDiff\n\ntheorem mixedOperator_bound (B : SmoothCoefficientPath (Icc (0 : \u211d) T) (V \u2192L[\u211d] V))\n    (n : \u2115) (C : \u211d) (hC : 0 \u2264 C)\n    (hb : \u2200 t x, \u2016iteratedFDeriv \u211d n (B.field t : Space \u2192 V \u2192L[\u211d] V) x\u2016 \u2264 C)\n    (a : LiftTangent) :\n    \u2016iteratedFDeriv \u211d n (fun b : LiftTangent => liftedOperatorPath period S hS T\n      (translateCoefficientPath B.field b.1)) a\u2016 \u2264 C :=\n  mixedCoefficient_bound period S hS T B.field B.translation_contDiff n C\n    (fun a => B.norm_iteratedFDeriv_translation_le n C hC hb a) a\n```\n\nThe hypotheses match what the original proof used: `hf := B.translation_contDiff`, and the pointwise bound `B.norm_iteratedFDeriv_translation_le n C hC hb a.1`, which is given at the point `fst a`. `hC` is only needed in that helper. The `RegularCoefficient` file's statement uses no `CompleteSpace V`, so the `omit` is consistent. If the `mixedOperator_*` names have no other users, they could be dropped in favour of the general lemmas.",
+      "benefit": "The chain-rule/operator-norm argument is proved once, and the smooth-path versions become two-line corollaries that show the real content: the smooth path supplies `hB` and `hb`. The general lemma needs less than the SmoothCoefficientPath version; for example it does not need `hC`. Maintenance and review effort drop, and the two near-identical statements cannot drift apart.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/LpCylinderRegularCoefficient.lean",
+          "declaration": "EulerLpCylinderCoefficients.mixedCoefficient_bound",
+          "excerpt": "rw [(ContinuousLinearMap.fst \u211d Space \u211d).iteratedFDeriv_comp_right hB a (by simp)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/LpCylinderRegularCoefficient.lean",
+          "declaration": "EulerLpCylinderCoefficients.mixedCoefficient_contDiff",
+          "excerpt": "(hB.comp (ContinuousLinearMap.fst \u211d Space \u211d).contDiff).continuousLinearMap_comp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MeanCoefficientPathJets.lean",
+          "declaration": "EulerMeanCoefficients.SmoothCoefficientPath.norm_iteratedFDeriv_translation_le",
+          "excerpt": "\u2016iteratedFDeriv \u211d n (translateCoefficientPath A.field) a\u2016 \u2264 C"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/LpCylinderRegularCoefficient.lean",
+          "declaration": "import of the target file",
+          "excerpt": "public import LeanPool.NavierStokesAndEuler.Euler.LpCylinderCoefficients"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 15940,
+    "cache_read_input_tokens": 138305,
+    "output_tokens": 6661,
+    "output_tokens_details": {
+      "thinking_tokens": 1491
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15940,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3401,
+        "cache_read_input_tokens": 24862,
+        "cache_creation_input_tokens": 2151,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2151
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14423249999999999,
+  "duration_ms": 45912,
+  "turns": 12,
+  "attempts": 2,
+  "judged": "2026-10-27T00:53:50",
+  "unit": "file",
+  "source_sha256": "ce51db1bec712f756f30780d24cb62720841f003c09509ab462486094bdb375d",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

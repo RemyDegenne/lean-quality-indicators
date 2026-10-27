@@ -1,0 +1,94 @@
+{
+  "id": "mathlib-file-0204",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and Holder.lean's integrable_of_bilin_of_bdd_left. I looked at the helper chain (simpleFunc, bound, ae-bound, general), the flip wrappers, and the smul/mul specializations. The flip, smul and mul wrappers are thin and I did not flag them. I flagged two repeated patterns: re-proving that the condExp of B f \u03bc[g|m] is itself (twice, inside condExp_stronglyMeasurable_bilin_of_bound), and the AE-to-strongly-measurable representative reduction (duplicated in two theorems). I could not run Lean, so the proposed helpers are untested. The second is weaker because its repeated steps are short; the first is the stronger case. I did not check whether a finite-measure instance or a bare SigmaFinite (\u03bc.trim hm) assumption is the better choice for the first helper.",
+  "findings": [
+    {
+      "declaration": "MeasureTheory.condExp_stronglyMeasurable_bilin_of_bound",
+      "start_line": 100,
+      "end_line": 133,
+      "excerpt": "Continuous.comp_stronglyMeasurable (g := (fun z : F \u00d7 E \u21a6 B z.1 z.2)) (by fun_prop)",
+      "problem": "The proof shows twice that the conditional expectation of `B h \u03bc[g|m]` equals `B h \u03bc[g|m]` for a bounded m-strongly-measurable `h`. First `h = f` (lines 100-105, via `this`). Then `h = fs n` (lines 126-133, via `nth_rw 2 [condExp_of_stronglyMeasurable hm]`). Each time it rebuilds the same chain: measurability of `B h \u03bc[g|m]` through `Continuous.comp_stronglyMeasurable ... (\u2026 .prodMk stronglyMeasurable_condExp)`, then `integrable_of_bilin_of_bdd_left c \u2026 integrable_condExp`, then `condExp_of_stronglyMeasurable`. The `nth_rw 2` call is also fragile.",
+      "proposed_change": "Add a private lemma before `condExp_stronglyMeasurable_bilin_of_bound`:\n`lemma condExp_bilin_condExp_of_bound [CompleteSpace E] (hm : m \u2264 m\u03a9) [IsFiniteMeasure \u03bc] {f : \u03a9 \u2192 F} {g : \u03a9 \u2192 E} (hf : StronglyMeasurable[m] f) (c : \u211d) (hf_bound : \u2200\u1d50 \u03c9 \u2202\u03bc, \u2016f \u03c9\u2016 \u2264 c) : \u03bc[fun \u03c9 \u21a6 B (f \u03c9) (\u03bc[g | m] \u03c9) | m] = fun \u03c9 \u21a6 B (f \u03c9) (\u03bc[g | m] \u03c9)`.\nProof: `condExp_of_stronglyMeasurable hm (Continuous.comp_stronglyMeasurable (g := fun z : F \u00d7 E \u21a6 B z.1 z.2) (by fun_prop) (hf.prodMk stronglyMeasurable_condExp)) (B.integrable_of_bilin_of_bdd_left c (hf.mono hm).aestronglyMeasurable hf_bound integrable_condExp)`.\nThen `this` at line 100 becomes `condExp_bilin_condExp_of_bound B hm hf c hf_bound`. The last bullet becomes `(condExp_stronglyMeasurable_simpleFunc_bilin B hm _ hg).trans (EventuallyEq.of_eq (condExp_bilin_condExp_of_bound B hm (fs n).stronglyMeasurable c (ae_of_all _ <| hfs_bound n)).symm)`. The same lemma could also supply the integrability facts at lines 113-115, which repeat the `integrable_of_bilin_of_bdd_left \u2026 integrable_condExp` pattern.",
+      "benefit": "The measurability, integrability and idempotence argument appears once with a named statement. The main proof no longer has the 8-line duplicate block or the positional `nth_rw 2`. Any later change, for example to the hypotheses of `condExp_of_stronglyMeasurable`, is made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/MeasureTheory/Function/ConditionalExpectation/PullOut.lean",
+          "declaration": "MeasureTheory.condExp_stronglyMeasurable_bilin_of_bound (second occurrence)",
+          "excerpt": "((fs n).stronglyMeasurable.prodMk stronglyMeasurable_condExp)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/MeasureTheory/Function/Holder.lean",
+          "declaration": "ContinuousLinearMap.integrable_of_bilin_of_bdd_left",
+          "excerpt": "theorem integrable_of_bilin_of_bdd_left {f : \u03b1 \u2192 E} {g : \u03b1 \u2192 F} (C : \u211d)"
+        }
+      ]
+    },
+    {
+      "declaration": "MeasureTheory.condExp_aestronglyMeasurable_bilin_of_bound and MeasureTheory.condExp_bilin_of_aestronglyMeasurable_left",
+      "start_line": 135,
+      "end_line": 212,
+      "excerpt": "_ =\u1d50[\u03bc] \u03bc[fun \u03c9 \u21a6 B (hf.mk f \u03c9) (g \u03c9) | m] := by\n    apply condExp_congr_ae\n    filter_upwards [hf.ae_eq_mk] with a ha using by rw [ha]",
+      "problem": "Both theorems extend a strongly-measurable result to an a.e.-strongly-measurable `f` with the same three-step `calc`. Step 1 replaces `f` by `hf.mk f` inside the condExp via `condExp_congr_ae`. Step 2 applies the strongly-measurable theorem to `hf.mk f` and transfers its hypotheses along `hf.ae_eq_mk`. Step 3 replaces `hf.mk f` by `f` on the right-hand side. Steps 1 and 3 are copied almost verbatim, and `f` is rewritten along `hf.ae_eq_mk` four times in total.",
+      "proposed_change": "Add a congruence lemma: `lemma condExp_bilin_congr_left_iff {f f' : \u03a9 \u2192 F} {g : \u03a9 \u2192 E} (h : f =\u1d50[\u03bc] f') : (\u03bc[fun \u03c9 \u21a6 B (f \u03c9) (g \u03c9) | m] =\u1d50[\u03bc] fun \u03c9 \u21a6 B (f \u03c9) (\u03bc[g | m] \u03c9)) \u2194 (\u03bc[fun \u03c9 \u21a6 B (f' \u03c9) (g \u03c9) | m] =\u1d50[\u03bc] fun \u03c9 \u21a6 B (f' \u03c9) (\u03bc[g | m] \u03c9))`.\nProof sketch: use `condExp_congr_ae` on the left sides and `filter_upwards [h]` plus `rw` on the right sides, then `EventuallyEq.congr` or `eventuallyEq_congr`.\nBoth theorems then become `(condExp_bilin_congr_left_iff B hf.ae_eq_mk).2 (<strongly measurable theorem for hf.mk f>)`. The first supplies the bound by `filter_upwards [hf_bound, hf.ae_eq_mk]`. The second supplies integrability by `(integrable_congr \u2026).mp hfg`.",
+      "benefit": "The two proofs shrink to the one step that differs, namely which strongly measurable theorem is invoked and how its hypotheses are transferred. The ae-congruence bookkeeping is stated once, and a future variant, such as an a.e. version of the right-hand pull-out, can reuse it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/MeasureTheory/Function/ConditionalExpectation/PullOut.lean",
+          "declaration": "MeasureTheory.condExp_bilin_of_aestronglyMeasurable_left",
+          "excerpt": "  _ =\u1d50[\u03bc] \u03bc[fun \u03c9 \u21a6 B (hf.mk f \u03c9) (g \u03c9) | m] := by\n    apply condExp_congr_ae\n    filter_upwards [hf.ae_eq_mk] with a ha using by rw [ha]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 18687,
+    "cache_read_input_tokens": 36910,
+    "output_tokens": 6766,
+    "output_tokens_details": {
+      "thinking_tokens": 3339
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18687,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4067,
+        "cache_read_input_tokens": 19601,
+        "cache_creation_input_tokens": 3015,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3015
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.146111,
+  "duration_ms": 48117,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T00:23:15",
+  "unit": "file",
+  "source_sha256": "8646ad86f61437941f0ed707acb95d61fa08fac2095e5777884f4d3da121a3d0",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

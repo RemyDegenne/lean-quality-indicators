@@ -1,0 +1,125 @@
+{
+  "id": "openai-math-file-0133",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the places its statements are used. I checked the Ostmann definition of PrimitiveComplexCharacter.gammaInverse and the sibling file CharacterGammaContour.lean, which repeats the same proof patterns. I also checked Mathlib's DirichletCharacter.gammaFactor and its Even/Odd unfolding lemmas. I found no @[simp] attributes in this file and no rewrite cycle. The findings below are about missing or unused simp-friendly interface lemmas and about fragile bare simp calls. I could not run Lean, so I make no claim about observed simp behaviour. Every suggested replacement is untested and would need to be compiled.",
+  "findings": [
+    {
+      "declaration": "OAI.Ostmann.characterGamma_logarithmic_half_strip",
+      "start_line": 49,
+      "end_line": 59,
+      "excerpt": "funext (fun u => by simp [DirichletCharacter.gammaFactor, he])]",
+      "problem": "The proof rewrites `gammaFactor \u03c7.character` to `Gamma\u211d` or to `Gamma\u211d \u2218 (\u00b7 + 1)` by calling `simp` with the definition itself unfolded (`simp [DirichletCharacter.gammaFactor, he]`) under a `funext`. `gammaFactor` is a classical `if \u03c7.Even then \u2026 else \u2026`, so this unfolds the definition and relies on simp's `if` handling with a hand-supplied hypothesis. Mathlib already provides the intended canonical rewrite rules, `DirichletCharacter.Even.gammaFactor_def` and `Odd.gammaFactor_def`. They state `gammaFactor \u03c7 s = Gamma\u211d s` and `gammaFactor \u03c7 s = Gamma\u211d (s + 1)` and are meant to be used instead of unfolding. The same unfolding is copied in CharacterGammaContour.lean (lines 49 and 52) for the same case split. In the odd branch the proof also has to restate the function-level `Gamma\u211d \u2218 fun u => u + 1` just to apply `logDeriv_comp`.",
+      "proposed_change": "Do not unfold `gammaFactor`. Use `he.gammaFactor_def` in the even branch, with `funext`/`Even.gammaFactor_def` giving `gammaFactor \u03c7.character = Gamma\u211d`. In the odd branch convert `he : \u00ac \u03c7.character.Even` to `Odd` and use `Odd.gammaFactor_def`. Better, add one local lemma such as `PrimitiveComplexCharacter.logDeriv_gammaFactor_even/odd`, or a single lemma that gives `logDeriv (gammaFactor \u03c7.character) s` as `logDeriv Gamma\u211d s` or `logDeriv Gamma\u211d (s+1)`. Then this file and CharacterGammaContour.lean can share it instead of each redoing `funext \u2026 simp [gammaFactor, _]`.",
+      "benefit": "Callers use one named rewrite instead of unfolding a classical `ite` through `simp` in several files. The two parity branches have a single normal form, `Gamma\u211d s` or `Gamma\u211d (s+1)`, and the case split is no longer duplicated.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/NumberTheory/LSeries/DirichletContinuation.lean",
+          "declaration": "DirichletCharacter.Even.gammaFactor_def",
+          "excerpt": "gammaFactor \u03c7 s = Gamma\u211d s := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/NumberTheory/LSeries/DirichletContinuation.lean",
+          "declaration": "DirichletCharacter.Odd.gammaFactor_def",
+          "excerpt": "gammaFactor \u03c7 s = Gamma\u211d (s + 1) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/ZeroDensity/CharacterGammaContour.lean",
+          "declaration": "OAI.Ostmann.characterGamma_contour_bound",
+          "excerpt": "funext (fun u => by simp [DirichletCharacter.gammaFactor, hc])]"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.Ostmann.characterGammaInverse_logarithmic_half_strip",
+      "start_line": 67,
+      "end_line": 71,
+      "excerpt": "rw [show \u03c7.gammaInverse = (fun x => (DirichletCharacter.gammaFactor \u03c7.character x)\u207b\u00b9) from rfl]",
+      "problem": "`PrimitiveComplexCharacter.gammaInverse` is a plain `def` with no unfolding or `logDeriv` simp lemma. Each user therefore has to re-derive `logDeriv \u03c7.gammaInverse s = -logDeriv (gammaFactor \u03c7.character) s`. The proof uses a `show \u2026 from rfl` rewrite, then `logDeriv_fun_zpow` with exponent `-1`, then a `simpa only` list of cast lemmas `[zpow_neg_one, Int.cast_neg, Int.cast_one, neg_one_mul]`. The same proof is copied verbatim in CharacterGammaContour.lean (lines 65\u201368). Other files bypass the definition with `unfold gammaInverse \u2026` or `simp only [gammaInverse, \u2026]` (CharacterContourZeros, CharacterCompletedDivergence), so there is no canonical form for expressions containing `gammaInverse`.",
+      "proposed_change": "In CharacterFunctionalEquation.lean, next to the definition, add `theorem PrimitiveComplexCharacter.gammaInverse_apply (\u03c7) (s) : \u03c7.gammaInverse s = (DirichletCharacter.gammaFactor \u03c7.character s)\u207b\u00b9 := rfl`. Add `theorem PrimitiveComplexCharacter.logDeriv_gammaInverse (\u03c7) (s) (h : DifferentiableAt \u2102 (DirichletCharacter.gammaFactor \u03c7.character) s) : logDeriv \u03c7.gammaInverse s = -logDeriv (DirichletCharacter.gammaFactor \u03c7.character) s`. The second lemma needs a differentiability hypothesis, so it is better applied with `rw` than tagged `@[simp]`. The `_apply` lemma could be `@[simp]` only if nothing relies on `gammaInverse` staying folded. This file's `hi` step and the one in CharacterGammaContour.lean would then become `rw [\u03c7.logDeriv_gammaInverse s h, norm_neg]`.",
+      "benefit": "The `logDeriv` of the inverse Gamma factor gets one canonical, reusable rewrite. Two copies of a four-lemma cast-cleanup `simpa only` list go away. Downstream proofs can rewrite `gammaInverse` with a lemma instead of `rfl`-`show`, `unfold` or ad hoc `simp only [gammaInverse, \u2026]`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/ZeroDensity/CharacterGammaContour.lean",
+          "declaration": "OAI.Ostmann.characterGammaInverse_contour_bound",
+          "excerpt": "simpa only [zpow_neg_one, Int.cast_neg, Int.cast_one, neg_one_mul] using he"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Characters/CharacterFunctionalEquation.lean",
+          "declaration": "OAI.Ostmann.PrimitiveComplexCharacter.gammaInverse",
+          "excerpt": "fun s => (DirichletCharacter.gammaFactor \u03c7.character s)\u207b\u00b9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/ZeroDensity/DensityKernelStrip.lean",
+          "declaration": "(use site)",
+          "excerpt": "(by simp only [PrimitiveComplexCharacter.gammaInverse, he, inv_zero])"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.Ostmann.characterGamma_logarithmic_half_strip",
+      "start_line": 57,
+      "end_line": 59,
+      "excerpt": "simpa using hb (s + 1) (by simp; linarith) (by simp; linarith)",
+      "problem": "In the odd branch the real-part side conditions are discharged with bare `simp; linarith`. Line 57 does the same with `(by simp; linarith)`. The goals are `1/2 \u2264 (s+1).re` and `(s+1).re \u2264 3`, whose normal form after `simp` (`add_re`, `one_re`) is what `linarith` depends on. The closing `simpa using` also uses full `simp` to match the `logDeriv_comp` output (`logDeriv Gamma\u211d (s+1) * deriv (\u00b7+1) s`) to `hb (s+1)`. This relies on whatever the global simp set does with `deriv_add_const`, `deriv_id''` and `mul_one`. The sibling file that does the same step spells these out with `simpa only [deriv_add_const, deriv_id'', mul_one, ha]` (CharacterGammaGrowthSequence line 62), which shows the intended rewrite set.",
+      "proposed_change": "Factor out one fact, `(s + 1).re = s.re + 1`, by `simp only [add_re, one_re]` or `Complex.add_re`/`Complex.one_re`. Use it for the three side conditions. Replace the final `simpa using` with `simpa only [deriv_add_const, deriv_id'', mul_one] using hb (s+1) \u2026`, or state a lemma on `logDeriv (fun u => Gamma\u211d (u+1)) s`.",
+      "benefit": "Proofs no longer depend on the shape of the full simp set. A change to simp lemmas for `Complex.re` or `logDeriv` cannot silently break the `simp; linarith` steps. The remaining rewrite set is explicit and matches the style used elsewhere in the project.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/ZeroDensity/CharacterGammaGrowthSequence.lean",
+          "declaration": "(deriv computation)",
+          "excerpt": "simpa only [deriv_add_const, deriv_id'', mul_one, ha] using gammaReal_logDeriv_double_nat n"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 21462,
+    "cache_read_input_tokens": 77411,
+    "output_tokens": 7066,
+    "output_tokens_details": {
+      "thinking_tokens": 1896
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21462,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5541,
+        "cache_read_input_tokens": 24482,
+        "cache_creation_input_tokens": 993,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 993
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1642691,
+  "duration_ms": 49912,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:09:00",
+  "unit": "file",
+  "source_sha256": "a4a8135deca659fb787055a67301855fb14564f2be70d30b2e71693e1d5da3e0",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

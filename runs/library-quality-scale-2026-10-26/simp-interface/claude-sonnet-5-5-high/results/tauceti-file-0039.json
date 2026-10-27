@@ -1,0 +1,115 @@
+{
+  "id": "tauceti-file-0039",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related unblocked files (Unblocked/Chain.lean and Unblocked/Complex.lean). I also checked the uses of the simp-tagged lemmas and Mathlib's ChainComplex.of_X and of_d. I did not run Lean, so every claim about simp behaviour comes from reading the statements. The other simp lemma, coe_gradedSimplyBlockedSpecialization, is a standard coercion lemma. coe_gradedSimplyBlockedDifferential is also a standard coercion lemma. I found no cycle or competing-rule problem for either. Two findings are about simp lemmas that unfold membership in a submodule or insert eqToHom. The third is that the simp lemma gradedSimplyBlockedComplex_X is probably redundant with Mathlib's ChainComplex.of_X, and I am unsure of that, since I did not check how simp handles `(of X d sq).X m` with an applied `.X`. The remaining uncertainty is that the Hat membership lemma mirrors the Minus one, so it may be a deliberate project-wide convention.",
+  "findings": [
+    {
+      "declaration": "TauCeti.OddComponentGridDiagram.mem_bigradedChainHatPiece",
+      "start_line": 64,
+      "end_line": 90,
+      "excerpt": "@[simp]\ntheorem mem_bigradedChainHatPiece {R : Type*} [CommSemiring R] {i : Fin n}",
+      "problem": "The `@[simp]` attribute makes simp unfold every `c \u2208 G.bigradedChainHatPiece R i g` into a `\u2200 x, \u2200 e \u2208 (c x).support, \u2026` statement. That statement uses the raw expression `G.bidegree x - (2 * (e.degree : \u2124), (e.degree : \u2124)) = g`. It does not use the `monomialBidegree` normal form that the Minus analogue `mem_bigradedChainMinusPiece` is stated in. Once simp has unfolded membership, the closure lemmas in this file can no longer fire as simp lemmas. Those lemmas are `simplyBlockedDifferential_mem_bigradedChainHatPiece`, `X_smul_mem_bigradedChainHatPiece`, `single_monomial_mem_bigradedChainHatPiece` and `simplyBlockedSpecialization_mem_bigradedChainHatPiece`. Membership goals that those lemmas would close directly get expanded into a support quantifier. `gradedSimplyBlockedDifferential` has to rely on `simpa using` to push both the goal and the hypothesis through the same expansion. The Hat statement and the Minus statement also differ in form, so a membership fact for Hat and one for Minus normalise differently, and the proofs need a manual `Prod.ext_iff`/`monomialBidegree_fst` conversion.",
+      "proposed_change": "Remove `@[simp]` from `mem_bigradedChainHatPiece` and keep it as an explicit `rw`/`.mp` characterization. All visible uses already call it by name (`rw [mem_bigradedChainHatPiece]`, `.mp hc`). Alternatively, state it with the same `G.monomialBidegree`-style predicate as `mem_bigradedChainMinusPiece`. One way is to add a `monomialBidegree` of the included monomial, so that the Hat and Minus characterizations are uniform and fewer `simpa only [Prod.ext_iff, \u2026]` conversions are needed. If an unfolding simp lemma is wanted, tag it only after the closure lemmas are made simp lemmas that fire first, for example by proving the closure lemmas as `@[simp]` membership facts.",
+      "benefit": "Membership in the graded pieces stays at the level of the submodule API. Simp can then use the closure lemmas and `Submodule.add_mem`-style rules instead of unfolding to support quantifiers. The Hat and Minus normal forms become uniform, so proofs about specialization need fewer manual bidegree conversions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/KnotTheory/Grid/Grading/Unblocked/Chain.lean",
+          "declaration": "TauCeti.OddComponentGridDiagram.mem_bigradedChainMinusPiece",
+          "excerpt": "\u2200 x : GridState n, \u2200 e \u2208 (c x).support, G.monomialBidegree x e = g"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/KnotTheory/Grid/SmallGrid/SimplyBlocked/Differential.lean",
+          "declaration": "TauCeti.GridDiagram.twoByTwoSimplyBlockedCycle_mem_bigradedChainHatPiece",
+          "excerpt": "rw [OddComponentGridDiagram.mem_bigradedChainHatPiece]"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.OddComponentGridDiagram.gradedSimplyBlockedComplex_d",
+      "start_line": 263,
+      "end_line": 272,
+      "excerpt": "eqToHom (G.gradedSimplyBlockedComplex_X R i a (m + 1)) \u226b\n        ModuleCat.ofHom (G.gradedSimplyBlockedDifferential R i a m) \u226b",
+      "problem": "The `@[simp]` lemma rewrites the small term `(complex).d (m+1) m` into a three-factor composite sandwiched between two `eqToHom` morphisms. Simp cannot remove these `eqToHom`s. The proof obligations are `(complex).X (m+1) = ModuleCat.of \u2026` and the like. They are not syntactically reflexive, so `eqToHom_refl` does not apply. Every simp call that touches the differential of this complex therefore gets a larger term, with the `eqToHom` casts as hypotheses of the rewrite. The visible uses never rely on simp: `gradedSimplyBlockedSpecializationMap` uses `rw [gradedUnblockedComplex_d, gradedSimplyBlockedComplex_d]`. After that rewrite they need a manual `cancel_epi`/`cancel_mono` and `eqToHom_trans_assoc` clean-up. The sibling `gradedSimplyBlockedSpecializationMap_f` has the same shape.",
+      "proposed_change": "Drop `@[simp]` from `gradedSimplyBlockedComplex_d` and keep it for `rw`. Better, add a lemma about the underlying linear maps, such as a `ModuleCat.Hom`-level statement that `((complex).d (m+1) m).hom c` coerces to `G.1.simplyBlockedDifferential R i c`. Make that the simp lemma, since it expands to a normal form (the total differential) that the existing `coe_gradedSimplyBlockedDifferential` and `coe_gradedSimplyBlockedSpecialization` lemmas can continue.",
+      "benefit": "Simp does not introduce `eqToHom` casts that it cannot cancel. Chain-map and homology computations reduce to the coercion normal form, where the existing coe lemmas apply, instead of to nested categorical composites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/KnotTheory/Grid/Grading/Unblocked/Complex.lean",
+          "declaration": "TauCeti.OddComponentGridDiagram.gradedSimplyBlockedSpecializationMap",
+          "excerpt": "rw [gradedUnblockedComplex_d, gradedSimplyBlockedComplex_d]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/KnotTheory/Grid/Grading/Unblocked/Complex.lean",
+          "declaration": "TauCeti.OddComponentGridDiagram.gradedSimplyBlockedSpecializationMap",
+          "excerpt": "simp only [Category.assoc, eqToHom_trans_assoc, eqToHom_refl, Category.id_comp,"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.OddComponentGridDiagram.gradedSimplyBlockedComplex_X",
+      "start_line": 257,
+      "end_line": 261,
+      "excerpt": "@[simp]\ntheorem gradedSimplyBlockedComplex_X (i : Fin n) (a m : \u2124) :",
+      "problem": "This is a `(rfl)` `@[simp]` lemma whose left side is `(ChainComplex.of \u2026).X m` with the complex unfolded by its definition. Because `gradedSimplyBlockedComplex` is a non-reducible `def`, simp can only fire the lemma if it sees `G.gradedSimplyBlockedComplex R i a`. The lemma is therefore genuinely needed to expose the object. It is also the source of the `eqToHom` proof terms in the previous finding. The identification is purely definitional, so simp rewrites the object to `ModuleCat.of \u2026`. At the same time the `eqToHom` arguments of `gradedSimplyBlockedComplex_d` still mention `.X`, so after simp the object in a morphism type and the `eqToHom` proof can disagree syntactically.",
+      "proposed_change": "Keep the lemma for rewriting objects, but avoid pairing it with a simp `_d` lemma that mentions it inside `eqToHom`. If `gradedSimplyBlockedComplex` were declared `@[reducible]` or an `abbrev`, the `_X` identification would be by `rfl` and the `eqToHom` casts would disappear. Otherwise, state the differential facts only at the `.hom` level, as in the previous finding.",
+      "benefit": "Objects and morphisms of the graded complex are rewritten consistently. This removes the need for the `eqToHom` bookkeeping used in the downstream chain-map construction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/KnotTheory/Grid/Grading/Unblocked/Complex.lean",
+          "declaration": "TauCeti.OddComponentGridDiagram.gradedSimplyBlockedSpecializationMap",
+          "excerpt": "eqToHom (G.gradedSimplyBlockedComplex_X R i a m).symm)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 21069,
+    "cache_read_input_tokens": 116239,
+    "output_tokens": 7396,
+    "output_tokens_details": {
+      "thinking_tokens": 1886
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21069,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3626,
+        "cache_read_input_tokens": 24264,
+        "cache_creation_input_tokens": 818,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 818
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.16988789999999998,
+  "duration_ms": 57341,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:10",
+  "unit": "file",
+  "source_sha256": "a9f65bc4db1c22f17b9f0943a4ffe8af97d8c5e2a0547a1c09b5d2ab4421c276",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

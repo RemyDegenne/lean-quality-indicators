@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0031",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the files that use it in the projective-modules library, including FiniteProjectiveSmallness.lean, K0.lean and the test clients. I did not run Lean, so the findings below are interface-design judgments, not observed simp failures. I did not check whether Mathlib already has a simp lemma that reduces `(ofHom f).hom.hom` for the `FullSubcategory` ConcreteCategory instance. The `obj_carrier` finding rests on reasoning about reducible unfolding and is the least certain of the three. The closure instances (`IsClosedUnderIsomorphisms`, `ContainsZero`, and the binary and finite product instances) have no simp-interface issues I could identify.",
+  "findings": [
+    {
+      "declaration": "ModuleCat.FiniteProjective.homLinearEquiv",
+      "start_line": 94,
+      "end_line": 97,
+      "excerpt": "def homLinearEquiv (X Y : FiniteProjective.{uR, uM} R) :\n    (X \u27f6 Y) \u2243 (X \u2192\u2097[R] Y) :=\n  InducedCategory.homEquiv.trans ModuleCat.homEquiv",
+      "problem": "`homLinearEquiv` is a plain `def` with no simp lemmas, so a term like `homLinearEquiv R X Y f` has no canonical simp normal form. The file defines no lemma saying it equals `f.hom.hom`, which is the form `hom_ext` uses, and none for `.symm`. Downstream code works around this. FiniteProjectiveSmallness.lean adds `@[simp]` lemmas such as `isoToLinearEquiv_apply`, whose right-hand side `homLinearEquiv R X Y e.hom x` is the opaque form with nothing further to rewrite it. It also proves many separate `rfl` lemmas about specific isomorphisms. The test in FiniteProjectiveSmallnessClient.lean has to supply `reprULiftIso_hom_apply` by hand. K0.lean applies `homLinearEquiv ... .symm 0`, `.prod`, and so on, with no simp support.",
+      "proposed_change": "In this file, right after the definition, add `@[simp] theorem homLinearEquiv_apply (f : X \u27f6 Y) : homLinearEquiv R X Y f = f.hom.hom := rfl`. Add a matching lemma for `(homLinearEquiv R X Y).symm g`, stating that it is the morphism built from `g`. Optionally add compositional lemmas. The normal form is then `f.hom.hom`, which agrees with `hom_ext`. The downstream `rfl` lemmas such as `isoOfLinearEquiv_hom` could then be restated in that form, or dropped where the generic lemma covers them.",
+      "benefit": "Users reach one canonical representation, `f.hom.hom`. Statements that pass through the equivalence reduce under `simp` without per-object helper lemmas. The downstream files keep fewer ad-hoc simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/Category/FiniteProjectiveSmallness.lean",
+          "declaration": "ModuleCat.FiniteProjective.isoToLinearEquiv_apply",
+          "excerpt": "isoToLinearEquiv e x = homLinearEquiv R X Y e.hom x := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/Category/FiniteProjectiveSmallness.lean",
+          "declaration": "ModuleCat.FiniteProjective.isoOfLinearEquiv_hom",
+          "excerpt": "homLinearEquiv R X Y (isoOfLinearEquiv e).hom = e.toLinearMap := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/KTheory/K0.lean",
+          "declaration": "K0 construction using homLinearEquiv",
+          "excerpt": "(fun X \u21a6 (ModuleCat.FiniteProjective.homLinearEquiv R\u1d50\u1d52\u1d56 X _).symm 0)"
+        }
+      ]
+    },
+    {
+      "declaration": "ModuleCat.FiniteProjective.ofHom",
+      "start_line": 79,
+      "end_line": 85,
+      "excerpt": "abbrev ofHom {M N : Type uM} [AddCommGroup M] [Module R M]",
+      "problem": "`ofHom` is an `abbrev` over `ConcreteCategory.ofHom`, and the file has no simp lemma giving its underlying linear map, `(ofHom R f).hom.hom = f`. The file's own `hom_ext` is stated in terms of `f.hom.hom`, so this is the form users need. Existing clients cannot use simp for this. One test unfolds the abbreviation inside `simp only [leftUnitMap, FiniteProjective.ofHom, ConcreteCategory.hom_ofHom, ...]`. Another proves `(ofHom R (LinearMap.fst R R R)).hom.hom = LinearMap.fst R R R` by hand with `ConcreteCategory.hom_ofHom` and explicit `(C := ...) (X := ...) (Y := ...)` arguments.",
+      "proposed_change": "Add `@[simp] theorem ofHom_hom_hom (f : M \u2192\u2097[R] N) : (ofHom R f).hom.hom = f := rfl`, with the same typeclass arguments as `ofHom`. Optionally add `ofHom_id` and `ofHom_comp` for the normal form `ofHom` of a linear map. The tests would then no longer need to unfold the abbreviation or pass explicit category arguments.",
+      "benefit": "This gives one canonical simp lemma for the most common computation, extracting the linear map from a bundled morphism. Users avoid unfolding the abbreviation by name in `simp only` calls, and avoid the elaboration-heavy explicit-argument proofs shown in the tests.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/tests/ProjectiveModulesTests/ProjectiveKernelCategoryClient.lean",
+          "declaration": "hfst in the example",
+          "excerpt": "ConcreteCategory.hom_ofHom (C := ModuleCat.FiniteProjective R)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/tests/ProjectiveModulesTests/RightFiniteProjectiveExtensionClient.lean",
+          "declaration": "proof using leftUnitMap",
+          "excerpt": "simp only [leftUnitMap, FiniteProjective.ofHom, ConcreteCategory.hom_ofHom,"
+        }
+      ]
+    },
+    {
+      "declaration": "ModuleCat.FiniteProjective.obj_carrier",
+      "start_line": 60,
+      "end_line": 61,
+      "excerpt": "theorem obj_carrier (M : FiniteProjective.{uR, uM} R) : M.obj.carrier = M.carrier := rfl",
+      "problem": "`carrier` is marked `@[reducible]` and is defined as `M.obj`, which the `CoeSort` instance then coerces to a type. So `M.carrier` unfolds reducibly to `M.obj.carrier`, and the simp lemma's two sides are reducibly defeq. A simp lemma whose sides differ only by a reducible unfolding does no real normalisation. If the discrimination tree sees through the reducible `carrier`, the right-hand side matches the left-hand side again. I could not verify this without running Lean. If it works as intended, it only flips between two spellings of the same reducible term. In both cases it does not give a stable normal form.",
+      "proposed_change": "Make the intent explicit by choosing one of two options. (a) Drop `@[reducible]` on `carrier`, so `obj_carrier` is a genuine normalisation from the `ModuleCat` carrier to the `FiniteProjective` coercion, and keep it as a `simp`/`dsimp` lemma. (b) Keep `carrier` reducible and remove `@[simp]` from `obj_carrier`, since the reducible definition already makes the two forms interchangeable.",
+      "benefit": "This removes a simp rule that either does nothing or may rewrite repeatedly between equal terms. Users get a predictable displayed form (`\u21a5M` versus `M.obj.carrier`) from a single orientation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/Category/FiniteProjective.lean",
+          "declaration": "ModuleCat.FiniteProjective.carrier",
+          "excerpt": "@[reducible]\ndef carrier (M : FiniteProjective.{uR, uM} R) : Type uM := M.obj"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 24467,
+    "cache_read_input_tokens": 104072,
+    "output_tokens": 7784,
+    "output_tokens_details": {
+      "thinking_tokens": 3215
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24467,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3172,
+        "cache_read_input_tokens": 24967,
+        "cache_creation_input_tokens": 3513,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3513
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1861432,
+  "duration_ms": 58824,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T22:50:15",
+  "unit": "file",
+  "source_sha256": "35f819a200b3636658503e969fccfe708502c367b9ef6497a8559a049b18c983",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

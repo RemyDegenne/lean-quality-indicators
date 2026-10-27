@@ -1,0 +1,141 @@
+{
+  "id": "formal-frontier-file-0118",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the full target file and checked downstream uses in Kernel.lean, ExponentParametrization.lean and the ToricIdealsTest files. Without running Lean, I make no claims about observed simp behaviour, loops or failures. The findings are about missing normalising lemmas and likely rule overlap. I did not find a credible rewrite cycle. Remaining uncertainty: the exact order in which simp tries overlapping rules (phi_w versus phi_coordinate) is unverified.",
+  "findings": [
+    {
+      "declaration": "parameterValues / theta_X / phi_coordinate",
+      "start_line": 150,
+      "end_line": 183,
+      "excerpt": "def parameterValues : Fin 4 \u2192 ParameterPolynomial A := ![W A, W A * T A, Y A, Y A * T A]",
+      "problem": "The simp set rewrites `theta A (X i)` and `phi A (coordinate A i)` to `parameterValues A i`. No simp lemma evaluates `parameterValues A 0..3`, and `parameterValues` is a plain `def`. The normal form `parameterValues A 2` is therefore stuck unless the caller adds `parameterValues` to the simp set. The file and its clients already do this: the phi_w..phi_z proofs, `simp [parameterValues]` in SplitQuadricExamples, and several `simp only [..., parameterValues, Matrix.cons_val_zero', Matrix.cons_val_succ', ...]` calls in chartBackward_comp_chartForward. A separate `rfl` is needed after each.",
+      "proposed_change": "Add canonical evaluation lemmas, for example `@[simp] theorem parameterValues_zero : parameterValues A 0 = W A := rfl`, and similarly for indices 1, 2, 3. They would give `W A * T A`, `Y A` and `Y A * T A` for the other three. Prove phi_w..phi_z from them. The chart proofs can then drop `parameterValues` and the `Matrix.cons_val_*'` lemmas, and `simp [parameterValues]` in clients becomes plain `simp`.",
+      "benefit": "`phi`/`theta` applied to literal coordinates normalise fully to `W, Y, T` expressions with plain `simp`. Proofs stop unfolding the definition and listing `Matrix.cons_val_*'` lemmas by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdealsTest/SplitQuadricExamples.lean",
+          "declaration": "mapDomain_generator_product",
+          "excerpt": "simp [parameterValues]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/SplitQuadric/Basic.lean",
+          "declaration": "phi_w",
+          "excerpt": "@[simp] theorem phi_w : phi A (w A) = W A := by simp [w, parameterValues]"
+        }
+      ]
+    },
+    {
+      "declaration": "phi_coordinate / phi_w / phi_x / phi_y / phi_z",
+      "start_line": 181,
+      "end_line": 188,
+      "excerpt": "@[simp] theorem phi_w : phi A (w A) = W A := by simp [w, parameterValues]",
+      "problem": "`w, x, y, z` are `abbrev`s for `coordinate A 0..3`, so `phi A (w A)` is reducibly `phi A (coordinate A 0)`. This term matches both the generic simp rule `phi_coordinate` (to the stuck `parameterValues A 0`) and the specific `phi_w`. Both rules are simp lemmas, so they compete. Only one of them gives the intended `W A` without extra unfolding. Which one fires first is not guaranteed by the statements. The same overlap holds for `lift_coordinate` on `lift ... (w A)`. The file has to call `phi_w, phi_x, ...` explicitly in `simp only` lists, which suggests the default simp set is not relied on.",
+      "proposed_change": "Remove the overlap by making the generic rule produce the final form. Add `@[simp]` evaluation lemmas for `parameterValues A 0..3`, as in the previous finding, so that `phi_coordinate` followed by those lemmas reaches `W A` and the overlap is harmless. Then either drop the separate `phi_w..phi_z` simp attributes, keeping them as plain lemmas, or keep them as corollaries.",
+      "benefit": "This gives one confluent route to `W A`, `W A * T A`, `Y A` and `Y A * T A`. It avoids dependence on rule-selection order and leaves fewer overlapping simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/SplitQuadric/Basic.lean",
+          "declaration": "phi_coordinate",
+          "excerpt": "theorem phi_coordinate (i : Fin 4) : phi A (coordinate A i) = parameterValues A i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/SplitQuadric/Basic.lean",
+          "declaration": "w",
+          "excerpt": "abbrev w : CoordinateRing A := coordinate A 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdealsTest/SplitQuadricExamples.lean",
+          "declaration": "private theorem using phi_w, phi_z, phi_x, phi_y",
+          "excerpt": "simp only [map_mul, phi_w, phi_z, phi_x, phi_y]"
+        }
+      ]
+    },
+    {
+      "declaration": "chartForward_algebraMap / chartBackward_algebraMap",
+      "start_line": 254,
+      "end_line": 267,
+      "excerpt": "theorem chartForward_algebraMap (q : CoordinateRing A) :\n    chartForward A LQ LB (algebraMap (CoordinateRing A) LQ q) =\n      algebraMap (ParameterPolynomial A) LB (phi A q) := by",
+      "problem": "These are the computation rules for `chartForward` and `chartBackward` on localization images, but neither is `@[simp]`. The simp lemmas `chartEquiv_apply` and `chartEquiv_symm_apply` rewrite `chartEquiv` to `chartForward`/`chartBackward`. A `simp` call on `chartEquiv A LQ LB (algebraMap _ _ q)` then ends at `chartForward A LQ LB (algebraMap _ _ q)`, with no simp lemma to continue. Every use lists the rules by hand: the three `simp only` blocks in the inverse proofs, `chartEquiv_generators`, `chartEquiv_inverse_generators`, and `rw` in SplitQuadricRootClient. By contrast, the sibling rules `inversePolynomial_W/Y/T`, `phi_w`, `phi_x`, `phi_y` and `phi_z` are simp. They are therefore reachable only after the manual rewrites.",
+      "proposed_change": "Mark `chartForward_algebraMap` and `chartBackward_algebraMap` as `@[simp]`. Their left sides are headed by `chartForward`/`chartBackward` applied to `algebraMap`, and their right sides are a localization map applied to `phi`/`inversePolynomial`. The right sides do not mention the left-hand head, so they terminate. Then `chartEquiv_generators` and `chartEquiv_inverse_generators` can be closed by `simp`.",
+      "benefit": "Computing the chart equivalence on generators becomes a plain `simp` call that continues through `chartEquiv_apply` to `phi_*` and `inversePolynomial_*`. The long `simp only` lists in the chart proofs get shorter. Clients no longer need to `rw` by name.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdealsTest/SplitQuadricRootClient.lean",
+          "declaration": "root client proof",
+          "excerpt": "rw [chartEquiv_apply, chartForward_algebraMap]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/SplitQuadric/Basic.lean",
+          "declaration": "chartEquiv_apply",
+          "excerpt": "theorem chartEquiv_apply (q : LQ) : chartEquiv A LQ LB q = chartForward A LQ LB q := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "chartEquiv_generators",
+      "start_line": 356,
+      "end_line": 368,
+      "excerpt": "algebraMap (ParameterPolynomial A) LB (W A * T A) \u2227",
+      "problem": "The generator equations are stated in a form that is not simp-normal. The right sides `algebraMap _ LB (W A * T A)` and `algebraMap _ LB (Y A * T A)` expand by `map_mul`. The lemma also bundles four facts in a conjunction, so it cannot serve as a simp rewrite rule. A caller who wants `simp` to compute `chartEquiv` on `x` or `z` cannot use it and must unpack the conjunction and then fix up the `map_mul` form.",
+      "proposed_change": "If these are intended as simp rules, state the four equations as separate `@[simp]` lemmas, for example `chartEquiv_w`. Put the right side in expanded form `algebraMap _ LB (W A) * algebraMap _ LB (T A)` for `x` and `z`. Likewise split `chartEquiv_inverse_generators` into three separate lemmas. Alternatively make the chartForward_algebraMap and phi_* rules simp, as in the previous finding, and delete the conjunction lemmas.",
+      "benefit": "The rules become usable by `simp`, and the right sides are in the form simp will produce anyway. Nobody needs to destructure `And` to get at one generator.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/toric-ideals/ToricIdeals/SplitQuadric/Basic.lean",
+          "declaration": "chartEquiv_generators",
+          "excerpt": "refine \u27e8?_, ?_, ?_, ?_\u27e9 <;>\n    simp only [chartEquiv_apply, chartForward_algebraMap, phi_w, phi_x, phi_y, phi_z]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 19601,
+    "cache_read_input_tokens": 80136,
+    "output_tokens": 7714,
+    "output_tokens_details": {
+      "thinking_tokens": 3067
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19601,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3701,
+        "cache_read_input_tokens": 21513,
+        "cache_creation_input_tokens": 2101,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2101
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.16357760000000002,
+  "duration_ms": 64095,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:06:16",
+  "unit": "file",
+  "source_sha256": "8c8a99b1a976cf49451e6447131c5d77ee73ce204c69dbd2f1dd87ca01b817df",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0112",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read PlanarConjugacy.lean (box, box_image, separated_image, mem_box_of_mem) and the geometricInstruction_{source,target}_{bounds,separation} lemmas in FiniteGeometry.lean. The strongest repeated machinery is the source/target pairs of bounds and separation proofs, where each pair differs by a single lemma name. I rejected the source/target positivity and factor lemmas as thin one-line wrappers. I also rejected the repeated hdigits blocks in step_realized and point_observer_iff because they are short and live in different types (\u211a vs \u211d). I could not run Lean. The `change` steps could probably be dropped in the proposed term-mode uses, since `instruction` unfolds definitionally, but I haven't confirmed that. If it fails, keep a single `show` in each caller.",
+  "findings": [
+    {
+      "declaration": "instruction_source_separation / instruction_target_separation",
+      "start_line": 93,
+      "end_line": 113,
+      "excerpt": "rw [\u2190 PlanarConjugacy.box_image (compression_pos M hM) (by norm_num),\n    \u2190 PlanarConjugacy.box_image (compression_pos M hM) (by norm_num)]",
+      "problem": "The two theorems repeat the same argument. Each does `change` to two boxes, rewrites both carriers back to images under the coordinate map with `box_image`, then applies `separated_image`. Only the geometric lemma differs (source vs target). The statement \"a conjugating box map preserves positive separation of box carriers\" is general, but it is proved inline twice with the same rewrite pairs and positivity side conditions.",
+      "proposed_change": "Add a lemma to PlanarConjugacy.lean: `theorem box_separated {a b \u03b5 c : \u211a} (h\u03b5 : 0 < \u03b5) (hc : 0 < c) {R S : RationalBox 2} (h : PositivelySeparated R.carrier S.carrier) : PositivelySeparated (box a b \u03b5 c R).carrier (box a b \u03b5 c S).carrier := by rw [\u2190 box_image h\u03b5 hc, \u2190 box_image h\u03b5 hc]; exact separated_image h\u03b5 hc h`. Then each theorem becomes the term `PlanarConjugacy.box_separated (compression_pos M hM) (by norm_num) (geometricInstruction_source_separation M hM hne)`, and the target version uses `geometricInstruction_target_separation`. The hypotheses are the same as before: `compression_pos` and `0 < 11/32`. `instruction` unfolds definitionally to a `box`, so the `change` is only needed if elaboration doesn't unify directly.",
+      "benefit": "This removes the duplicated rewrite scaffolding and the `change` with eight underscores. The lemma sits next to `box_image` and `separated_image`, where it can be found and reused. Any later change to how box carriers are related to the map is made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Flow/PlanarConjugacy.lean",
+          "declaration": "PlanarConjugacy.box_image",
+          "excerpt": "map a b \u03b5 c '' R.carrier = (box a b \u03b5 c R).carrier"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Flow/PlanarConjugacy.lean",
+          "declaration": "PlanarConjugacy.separated_image",
+          "excerpt": "PositivelySeparated (map a b \u03b5 c '' S) (map a b \u03b5 c '' T)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Programs/FiniteGeometry.lean",
+          "declaration": "geometricInstruction_target_separation",
+          "excerpt": "PositivelySeparated (geometricInstruction M hM b).target.carrier"
+        }
+      ]
+    },
+    {
+      "declaration": "instruction_source_bounds / instruction_target_bounds",
+      "start_line": 153,
+      "end_line": 171,
+      "excerpt": "obtain \u27e8y, hy, rfl\u27e9 := hx\n  exact coordinateMap_bounds M hM",
+      "problem": "The two theorems have identical statements apart from the name and `source`/`target`. Their proofs are also identical: `change` to a box carrier, rewrite with `box_image`, destructure the preimage point, and apply `coordinateMap_bounds` to the geometric bound lemma. Only `geometricInstruction_source_bounds` vs `geometricInstruction_target_bounds` differs.",
+      "proposed_change": "Add a lemma in this file, before the two theorems: `theorem box_carrier_bounds (M : Alternating.Machine) (hM : M.WellFormed) {R : RationalBox 2} (hR : \u2200 y \u2208 R.carrier, (1/8 : \u211d) \u2264 y 0 \u2227 y 0 \u2264 13/16 \u2227 (1/4 : \u211d) \u2264 y 1 \u2227 y 1 \u2264 1/2) {x : Plane} (hx : x \u2208 (PlanarConjugacy.box (shift M hM) (43/128) (compression M hM) (11/32) R).carrier) : |x 0 - 1/4| \u2264 (compression M hM : \u211d)/8 \u2227 (5/128 : \u211d) \u2264 x 1 \u2227 x 1 \u2264 19/64`. Its proof is the current body: `rw [\u2190 PlanarConjugacy.box_image (compression_pos M hM) (by norm_num)] at hx; obtain \u27e8y, hy, rfl\u27e9 := hx; exact coordinateMap_bounds M hM (hR y hy)`. Then `instruction_source_bounds M hM b hx := box_carrier_bounds M hM (fun _ hy => geometricInstruction_source_bounds M hM b hy) hx`, and the target version is analogous with `geometricInstruction_target_bounds`. `coordinateMap` is by definition `PlanarConjugacy.map` with these parameters.",
+      "benefit": "The preimage-extraction argument is written once. The source and target theorems become one-line applications that show the only difference between them. This also keeps them from drifting apart if the bound constants change.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Programs/FiniteGeometry.lean",
+          "declaration": "geometricInstruction_source_bounds",
+          "excerpt": "(hx : x \u2208 (geometricInstruction M hM b).source.carrier) :\n    (1 / 8 : \u211d) \u2264 x 0 \u2227 x 0 \u2264 13 / 16 \u2227 (1 / 4 : \u211d) \u2264 x 1 \u2227 x 1 \u2264 1 / 2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Programs/FiniteGeometry.lean",
+          "declaration": "geometricInstruction_target_bounds",
+          "excerpt": "(hx : x \u2208 (geometricInstruction M hM b).target.carrier) :\n    (1 / 8 : \u211d) \u2264 x 0 \u2227 x 0 \u2264 13 / 16 \u2227 (1 / 4 : \u211d) \u2264 x 1 \u2227 x 1 \u2264 1 / 2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/NavierStokes/ForcedComputation/Flow/PlanarRecorder.lean",
+          "declaration": "instruction_target_bounds",
+          "excerpt": "exact coordinateMap_bounds M hM (geometricInstruction_target_bounds M hM b hy)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 16431,
+    "cache_read_input_tokens": 37979,
+    "output_tokens": 4237,
+    "output_tokens_details": {
+      "thinking_tokens": 915
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16431,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3388,
+        "cache_read_input_tokens": 17778,
+        "cache_creation_input_tokens": 2582,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2582
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1119039,
+  "duration_ms": 28866,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:04:30",
+  "unit": "file",
+  "source_sha256": "9c9d7533578fc397977b76522643ff4970f2c579e0eab5b29cff1ad29878ada9",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,83 @@
+{
+  "id": "lean-pool-file-0294",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and compared it with sibling files that use the same slice-wise Serrin mollifier: PartV/SerrinSpaceTimeMollify.lean (serrinSM_tendsto_prod, the private serrin_eLpNorm_rpow_eq, serrinRadius) and LPS/CrossEndpointPairingSlice.lean (private lps_eLpNorm_mollify_le). The target contains only one main theorem and a small helper, so there is no repetition inside it. The repetition is between the target and these files. I did not check whether every other use of the Young bound in the repo (about 25 files) has the same shape. I only judged the three listed above to be near-identical. The proposed lemma statements have not been compiled. The import direction is fine because the target already imports SerrinSpaceTimeMollify, so a lemma placed there is visible.",
+  "findings": [
+    {
+      "declaration": "ESS.lps_mollify_mixed_norm_tendsto (slice domination and convergence inside the dominated-convergence call)",
+      "start_line": 110,
+      "end_line": 151,
+      "excerpt": "have htri : N n t \u2264 2 *\n          eLpNorm (fun x : Vec3 => f (x,t)) (ENNReal.ofReal q) volume := by",
+      "problem": "The domination bullet (lines 110-136) re-proves the same slice-level estimate that `serrinSM_tendsto_prod` proves for a space-time field in SerrinSpaceTimeMollify.lean, lines 176-198. In both places the proof uses the Young contraction `young_convolution_nonneg_integral_one_of_aemeasurable` with the same 8-argument mollifier boilerplate, then `simpa [CKN.mollify, CKN.mollifier]`, then `eLpNorm_sub_le` and `two_mul; gcongr`, to get `\u2016mollify g - g\u2016_q \u2264 2\u2016g\u2016_q`. The convergence bullet (lines 139-151) repeats the other half of that proof (SerrinSpaceTimeMollify.lean, lines 208-222). Both call `tendsto_eLpNorm_sub_zero_mollify` and then compose with `ENNReal.continuous_rpow_const` after rewriting `0 = 0 ^ r`. The contraction step is also proved a third time as the private `lps_eLpNorm_mollify_le` in CrossEndpointPairingSlice.lean, lines 56-67. There is no shared public lemma, so the contraction/triangle argument exists in three copies and the convergence/rpow argument in two. Any change to the mollifier API (kernel, radius or Young statement) has to be repeated in every copy.",
+      "proposed_change": "In SerrinSpaceTimeMollify.lean, after `serrinSM` and before `serrinSM_tendsto_prod`, add two public slice lemmas. For `q : \u211d\u22650\u221e` with `1 \u2264 q` and `q \u2260 \u22a4`, they would read:\n\n1. `serrin_eLpNorm_mollify_le (hq) (hqtop) {g : Vec3 \u2192 \u211d} (hg : AEStronglyMeasurable g volume) (n : \u2115) : eLpNorm (CKN.mollify g (serrinRadius n) (serrinRadius_pos n)) q volume \u2264 eLpNorm g q volume`. The proof is the existing body of `lps_eLpNorm_mollify_le`. The private copy in CrossEndpointPairingSlice.lean can then be deleted.\n2. `serrin_eLpNorm_mollify_sub_le (hq) (hqtop) (hg : AEStronglyMeasurable g volume) (hm : AEStronglyMeasurable (CKN.mollify g (serrinRadius n) (serrinRadius_pos n)) volume) (n) : eLpNorm (fun x => CKN.mollify g (serrinRadius n) (serrinRadius_pos n) x - g x) q volume \u2264 2 * eLpNorm g q volume`. The proof is `eLpNorm_sub_le hq` followed by lemma 1 and `two_mul; gcongr`.\n\nOptionally add a corollary that raises both sides to the power `r` with `ENNReal.rpow_le_rpow` and `ENNReal.mul_rpow_of_nonneg`. Its statement would be `eLpNorm (fun x => mollify g \u2026 x - g x) q volume ^ r \u2264 2 ^ r * eLpNorm g q volume ^ r`.\n\nRewritten use in the target (domination bullet, lines 110-136): after `filter_upwards [hfSlice] with t ht`, set `hsm := (hsmSliceAE-style measurability of serrinSM f n (\u00b7,t))`. This is already needed for `hEq`, so extract it once as a `have`. Then `calc N n t ^ p \u2264 (2 * eLpNorm (fun x => f (x,t)) _ volume) ^ p := ENNReal.rpow_le_rpow (serrin_eLpNorm_mollify_sub_le (ENNReal.one_le_ofReal.mpr hq) hqtop ht.aestronglyMeasurable hsm n) (by positivity)`, and then keep the existing `_ = 2 ^ p * \u2026 := ENNReal.mul_rpow_of_nonneg \u2026` step. This removes the `hmol`, `hmol'` and `htri` blocks.\n\nRewritten use in `serrinSM_tendsto_prod` (lines 176-205): the same lemma replaces `hmol`, `htri` and the `gcongr`/`simpa` step, with `p` in place of `ENNReal.ofReal q`.\n\nFor the convergence half, add `serrin_tendsto_eLpNorm_rpow (hq) (hqtop) (hg : MemLp g q volume) (hr : 0 < r) : Tendsto (fun n => eLpNorm (fun x => mollify g (serrinRadius n) (serrinRadius_pos n) x - g x) q volume ^ r) atTop (\ud835\udcdd 0)`. Its proof is `tendsto_eLpNorm_sub_zero_mollify`, then `(ENNReal.continuous_rpow_const.tendsto 0).comp`, then `ENNReal.zero_rpow_of_pos`. Both the target (lines 140-151) and SerrinSpaceTimeMollify.lean (lines 209-222) then close their third DCT bullet with one application of it.",
+      "benefit": "The Young-contraction, triangle and rpow-continuity argument is written once and named. The main theorem's DCT hypotheses then read as the three facts they are: bounded by `2^p \u2016f\u2016^p`, integrable bound, and pointwise convergence. The 7-line mollifier-hypothesis block no longer appears in the target. A later change to `CKN.mollifier` or the Young lemma needs one edit rather than three. The mixed-norm and space-time `L^p` theorems visibly use the same slice estimates.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/PartV/SerrinSpaceTimeMollify.lean",
+          "declaration": "ESS.serrinSM_tendsto_prod",
+          "excerpt": "have htri : eLpNorm (fun x => h n (x, \u03c4)) p volume \u2264\n          2 * eLpNorm (fun x => g (x, \u03c4)) p volume := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/PartV/SerrinSpaceTimeMollify.lean",
+          "declaration": "ESS.serrinSM_tendsto_prod",
+          "excerpt": "exact (ENNReal.continuous_rpow_const.tendsto 0).comp hc"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/LPS/CrossEndpointPairingSlice.lean",
+          "declaration": "ESS.lps_eLpNorm_mollify_le",
+          "excerpt": "eLpNorm (CKN.mollify g (serrinRadius n) (serrinRadius_pos n)) p volume \u2264\n      eLpNorm g p volume"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 28509,
+    "cache_read_input_tokens": 123724,
+    "output_tokens": 6455,
+    "output_tokens_details": {
+      "thinking_tokens": 1773
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28509,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2963,
+        "cache_read_input_tokens": 30190,
+        "cache_creation_input_tokens": 2248,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2248
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1909864,
+  "duration_ms": 56630,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T01:16:11",
+  "unit": "file",
+  "source_sha256": "0cbe904a2f71d0bdf24b816170f64a3a137430ef74dd0b941050a3be37456dc5",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

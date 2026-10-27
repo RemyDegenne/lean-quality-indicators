@@ -1,0 +1,99 @@
+{
+  "id": "flt-anthropic-file-0369",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Mathlib HomogeneousLocalization simp API for Away.mk, Away.val_mk and Away.map_mk. I also checked the PointChart definitions xOverZ, yOverZ and zChart\u03b9. The file has no @[simp] attributes of its own. I looked for local lemmas that are really simp interface for awayCongr, scal and Away.mk, and for rewriting that is brittle at the use sites. I did not run Lean, so the suggested simp-tagging is untested. In particular, whether simp can use awayCongr_mk once hs' is removed is unchecked. I found no rewrite cycle or competing simp rules. Both findings are modest, and the second is mainly about readability.",
+  "findings": [
+    {
+      "declaration": "D2Aux.awayCongr_mk (with awayCongr)",
+      "start_line": 33,
+      "end_line": 36,
+      "excerpt": "awayCongr \ud835\udc9c e (Away.mk \ud835\udc9c hs n x hx) = Away.mk \ud835\udc9c hs' n x hx",
+      "problem": "awayCongr is an opaque, tactic-defined equivalence (`subst e; exact RingEquiv.refl _`), so its only computation rule is this lemma. It is not tagged @[simp]. The extra hypothesis `hs'` does not occur in the left-hand side, so as stated the lemma could not be used by simp even if it were tagged. The only use site, `hmapi` (lines 216\u2013222), therefore has to rewrite by hand: `rw [RingHom.comp_apply, Away.map_mk, RingEquiv.toRingHom_eq_coe, RingEquiv.coe_toRingHom, awayCongr_mk _ e (\u03c6.2 hZ) hZ']`. Mathlib's analogous `Away.map_mk` is @[simp] and builds its proof argument from the data (`map_mem g hf`). The same gap shows in `away\u03b9_eq_specMap_awayCongr_comp`, which needs an ad hoc `have : (awayCongr \ud835\udc9c (rfl : s = s)).toRingHom = RingHom.id _ := rfl` because no simp lemma says that awayCongr along a reflexive equality is the identity.",
+      "proposed_change": "State the lemma so that it fits simp. Drop `hs'` and produce the proof on the right-hand side from `e \u25b8 hs` (or `by subst e; exact hs`), then tag it @[simp] like `Away.map_mk`. Add a companion lemma saying that awayCongr along `rfl` is `RingEquiv.refl _`, together with its coe/toRingHom form, and use it in away\u03b9_eq_specMap_awayCongr_comp. Then `hmapi` should reduce to something like `simp [RingHom.comp_apply]`, since `Away.map_mk` is already @[simp]. If a `hs'`-carrying version is still needed, keep it under a separate name.",
+      "benefit": "The bookkeeping equivalence awayCongr becomes transparent to simp next to Away.map_mk and Away.val_mk. The hand-written rw chain with its coercion-unfolding lemmas can then be replaced by one simp call, and later chart computations would not need to repeat the proof-term plumbing.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/GradedAlgebra/HomogeneousLocalization.lean",
+          "declaration": "HomogeneousLocalization.Away.map_mk",
+          "excerpt": "Away.map g f (.mk \ud835\udc9c hf n x hx) = .mk \u212c (map_mem g hf) n (g x) (map_mem g hx)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassCurve_DrinfeldGlobal_isSectionThrough_act_of_isSectionTransport.lean",
+          "declaration": "D2Aux.isSectionThrough_act (hmapi)",
+          "excerpt": "rw [RingHom.comp_apply, Away.map_mk, RingEquiv.toRingHom_eq_coe, RingEquiv.coe_toRingHom,"
+        }
+      ]
+    },
+    {
+      "declaration": "D2Aux.cls_C_mem, awayMk_X, awayMk_Y (statements using `0 \u2022 1` / `1 \u2022 1`)",
+      "start_line": 60,
+      "end_line": 65,
+      "excerpt": "cls W (MvPolynomial.C a) \u2208 projModelGradingCR W (0 \u2022 1) := by",
+      "problem": "The statement of cls_C_mem is written with the grading index `0 \u2022 1`, which is not in simp normal form (simp reduces it to `0`). The proof has to normalise first with a non-terminal `simp at h__af` and then `exact h__af`. The same index shape recurs as `projModelGradingCR W (1 \u2022 1)` in the hypotheses of awayMk_X and awayMk_Y (lines 93 and 106) and in hmapi (line 216). Any `simp` or `simpa` that touches these hypotheses changes them to `projModelGradingCR W 0` or `W 1`, so they no longer match syntactically. This is also why `fromZeroRingHom_eq_mk` needs `by simpa using r.2`. For cls_C_mem there is no reason to expose `0 \u2022 1`.",
+      "proposed_change": "State cls_C_mem at the normal form `projModelGradingCR W 0`. The `Away.mk` call site accepts it up to definitional unfolding of `0 \u2022 1`, and `scal` can pass the proof as `cls_C_mem W a`, or `by simpa using \u2026` if needed. Replace the bare `simp at h__af; exact h__af` by `simpa using h__af`. Where `Away.mk` forces the `n \u2022 d` shape (awayMk_X, awayMk_Y), keep it only in the binder type and avoid restating it elsewhere.",
+      "benefit": "The lemma statements use the same normal form that simp produces, so downstream `simpa`/`simp` steps do not mismatch on `0 \u2022 1` versus `0`. The proof no longer has a non-terminal `simp`, which is fragile under changes to the simp set.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassCurve_DrinfeldGlobal_isSectionThrough_act_of_isSectionTransport.lean",
+          "declaration": "D2Aux.fromZeroRingHom_eq_mk",
+          "excerpt": "Away.mk \ud835\udc9c hs 0 (r : R) (by simpa using r.2)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/GradedAlgebra/HomogeneousLocalization.lean",
+          "declaration": "HomogeneousLocalization.Away.mk",
+          "excerpt": "(hx : x \u2208 \ud835\udc9c (n \u2022 d)) : Away \ud835\udc9c f :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 22514,
+    "cache_read_input_tokens": 57280,
+    "output_tokens": 7119,
+    "output_tokens_details": {
+      "thinking_tokens": 3539
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22514,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2526,
+        "cache_read_input_tokens": 22067,
+        "cache_creation_input_tokens": 4460,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4460
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.16699,
+  "duration_ms": 70280,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T02:10:00",
+  "unit": "file",
+  "source_sha256": "5de7dd0cfd0a9137b08662682e6de8a664d05c767d6b2a7e24e0737bf68d2d7f",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

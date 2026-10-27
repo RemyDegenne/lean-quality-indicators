@@ -1,0 +1,120 @@
+{
+  "id": "mathlib-file-0176",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and concentrated on its simp, fun_prop and continuity attributes. I checked the nearby Homeomorph/Defs `coe_toEquiv` lemma and searched Mathlib for existing coercion lemmas and uses of the associativity and four-way-commutativity homeomorphisms. Most simp annotations here look fine, for example `continuous_prodMk` and `map_fst_nhds`. The gaps I found are in the Homeomorph section: the simp lemmas for several homeomorphisms are stated through `toEquiv`, which is not the normal form simp reaches for coerced function applications. I did not run Lean, so I did not test whether these gaps cause simp failures in practice. Whether a missing lemma matters also depends on how the unfolding behaves in practice, and `rfl`-based goals may still close without it.",
+  "findings": [
+    {
+      "declaration": "Homeomorph.prodAssoc_toEquiv / Homeomorph.prodProdProdComm / Homeomorph.sumAssoc_toEquiv / Homeomorph.sumSumSumComm_toEquiv",
+      "start_line": 705,
+      "end_line": 705,
+      "excerpt": "lemma prodAssoc_toEquiv : (prodAssoc X Y Z).toEquiv = Equiv.prodAssoc X Y Z := rfl",
+      "problem": "For `prodAssoc`, `sumAssoc`, `prodProdProdComm` and `sumSumSumComm`, the simp lemmas are only stated for the bare `.toEquiv` (`prodAssoc_toEquiv`, `sumAssoc_toEquiv`, `sumSumSumComm_toEquiv`). `prodProdProdComm` has no coercion or `toEquiv` lemma at all, only `_symm`. The simp normal form of a homeomorphism applied to a point is `\u21d1h` (`Homeomorph.coe_toEquiv` rewrites `\u21d1h.toEquiv` to `\u21d1h`). A goal such as `Homeomorph.prodAssoc X Y Z ((a, b), c) = (a, b, c)`, or `\u21d1(Homeomorph.prodAssoc ..) = ...`, therefore has no simp lemma to unfold it. The siblings `prodComm`/`sumComm` (`coe_prodComm`, `coe_sumComm`) and `punitProd` (`coe_punitProd`) do have coercion lemmas, so the interface is inconsistent. Outside this file the `prodAssoc` and `prodProdProdComm` homeomorphisms are only used through `comp_continuous_iff'` and `isEmbedding`, which may be why the gap went unnoticed.",
+      "proposed_change": "Add `@[simp]` coercion lemmas in the same style as `coe_prodComm`, for example `theorem coe_prodAssoc : \u21d1(prodAssoc X Y Z) = Equiv.prodAssoc X Y Z := rfl`, and likewise `coe_prodProdProdComm`, `coe_sumAssoc` and `coe_sumSumSumComm`. Alternatively mark the definitions `@[simps! -fullyApplied apply]`, as `prodPUnit` does. Add symm companions where they are missing, for example for `prodAssoc` and `sumAssoc`.",
+      "benefit": "Simp can unfold applications of these homeomorphisms to the underlying `Equiv` and then to explicit tuples or `Sum` terms. This makes the interface uniform across the `Homeomorph` section.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Homeomorph/Defs.lean",
+          "declaration": "Homeomorph.coe_toEquiv",
+          "excerpt": "theorem coe_toEquiv (h : X \u2243\u209c Y) : \u21d1h.toEquiv = h :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Constructions/SumProd.lean",
+          "declaration": "Homeomorph.coe_prodComm",
+          "excerpt": "theorem coe_prodComm : \u21d1(prodComm X Y) = Prod.swap :="
+        }
+      ]
+    },
+    {
+      "declaration": "Homeomorph.coe_emptySum",
+      "start_line": 959,
+      "end_line": 959,
+      "excerpt": "@[simp] theorem coe_emptySum [IsEmpty Y] : (emptySum X Y).toEquiv = Equiv.emptySum Y X := rfl",
+      "problem": "The name `coe_emptySum` suggests a statement about the function coercion, but the statement is about `.toEquiv`, so it is really an `emptySum_toEquiv` lemma. No lemma describes `\u21d1(emptySum X Y)`, and `emptySum` has no `simps`-generated lemmas, unlike `sumEmpty` (`@[simps! -fullyApplied apply]`). Simp therefore cannot compute `Homeomorph.emptySum X Y (Sum.inr x)`. The neighbouring `coe_sumComm`, `coe_punitProd` and `coe_prodComm` do state the coercion form.",
+      "proposed_change": "Rename the existing lemma to `emptySum_toEquiv`, or keep it only as a toEquiv simp lemma. Add `@[simp] theorem coe_emptySum [IsEmpty Y] : \u21d1(emptySum X Y) = Equiv.emptySum Y X := rfl`, or put `@[simps! -fullyApplied apply]` on `emptySum`. The new `coe_emptySum` should match the naming used by `coe_sumComm`.",
+      "benefit": "The simp set can reduce `emptySum` applications to `Sum.elim`/`Sum.inr` terms, as it can for `sumEmpty`, and the name matches what the lemma states.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Constructions/SumProd.lean",
+          "declaration": "Homeomorph.sumEmpty",
+          "excerpt": "@[simps! -fullyApplied apply]\ndef sumEmpty [IsEmpty Y] : X \u2295 Y \u2243\u209c X where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Constructions/SumProd.lean",
+          "declaration": "Homeomorph.coe_sumComm",
+          "excerpt": "theorem coe_sumComm : \u21d1(sumComm X Y) = Sum.swap :="
+        }
+      ]
+    },
+    {
+      "declaration": "Homeomorph.sumCongr / Homeomorph.prodCongr",
+      "start_line": 892,
+      "end_line": 893,
+      "excerpt": "def sumCongr (h\u2081 : X \u2243\u209c X') (h\u2082 : Y \u2243\u209c Y') : X \u2295 Y \u2243\u209c X' \u2295 Y' where\n  toEquiv := h\u2081.toEquiv.sumCongr h\u2082.toEquiv",
+      "problem": "The simp interfaces of `prodCongr` and `sumCongr` are asymmetric. `sumCongr` has `sumCongr_symm`, `sumCongr_refl` and `sumCongr_trans`, but no coercion lemma such as `\u21d1(sumCongr h\u2081 h\u2082) = Sum.map h\u2081 h\u2082`. `prodCongr` has `prodCongr_symm` and `coe_prodCongr` (to `Prod.map`), but no `prodCongr_refl` or `prodCongr_trans`. A simp call on `(prodCongr (.refl X) (.refl Y))` or on `(prodCongr h\u2081 h\u2082).trans (prodCongr h\u2083 h\u2084)` therefore does not normalize, while the corresponding `sumCongr` terms do. I found no such lemma elsewhere in Mathlib's Topology directory. The file's own comment says it presents the product and sum cases in parallel.",
+      "proposed_change": "Add `@[simp] theorem coe_sumCongr : \u21d1(sumCongr h\u2081 h\u2082) = Sum.map h\u2081 h\u2082 := rfl`, and add `@[simp] prodCongr_refl : prodCongr (.refl X) (.refl Y) = .refl (X \u00d7 Y)` and `@[simp] prodCongr_trans` with the same shape as `sumCongr_trans`. The proofs would probably be the same `ext`/`rfl` pattern used for `sumCongr_refl`; I have not checked this.",
+      "benefit": "Composites and identities of product and sum homeomorphisms simplify the same way in both constructions. Applications of `sumCongr` also reduce to `Sum.map`, matching `Prod.map` for `prodCongr`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Constructions/SumProd.lean",
+          "declaration": "Homeomorph.sumCongr_refl",
+          "excerpt": "theorem sumCongr_refl : sumCongr (.refl X) (.refl Y) = .refl (X \u2295 Y) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Constructions/SumProd.lean",
+          "declaration": "Homeomorph.coe_prodCongr",
+          "excerpt": "theorem coe_prodCongr (h\u2081 : X \u2243\u209c X') (h\u2082 : Y \u2243\u209c Y') : \u21d1(h\u2081.prodCongr h\u2082) = Prod.map h\u2081 h\u2082 :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 39051,
+    "cache_read_input_tokens": 267975,
+    "output_tokens": 8373,
+    "output_tokens_details": {
+      "thinking_tokens": 2633
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 39051,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3733,
+        "cache_read_input_tokens": 41746,
+        "cache_creation_input_tokens": 1318,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1318
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2667635,
+  "duration_ms": 61121,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T23:17:37",
+  "unit": "file",
+  "source_sha256": "3c50d5c1f4fe87946536f0c9cf5c2b3beb2aa4f51cdeb092d9e1190f6c36c392",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

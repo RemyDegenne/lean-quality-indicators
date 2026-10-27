@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0323",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and every use of its declarations across the repo (WeightedCoordinateExtraction, ReindexedFastCoefficientSection, FirstCoefficientLatticeCoordinates, NiltestBasepointNormalization). I grepped Mathlib's ToLin.lean and the rest of Mathlib for simp lemmas about `equivFun` or `toMatrix` of a reindexed basis. I found only toMatrix_reindexRange and Basis.reindex_apply / repr_reindex_apply, so the file's lemmas don't duplicate anything. I did not run Lean. The suggested simp attributes and generalizations are untested, and I have not checked whether other simp lemmas would conflict with them. The other declarations (realDenominatorGrid_comp and the sorted_basis_* lemmas) are plain implications or membership facts, and I made no simp recommendation for them.",
+  "findings": [
+    {
+      "declaration": "Erdos3.basis_reindex_equivFun",
+      "start_line": 12,
+      "end_line": 17,
+      "excerpt": "(b.reindex e.symm).equivFun x = fun i => b.equivFun x (e i)",
+      "problem": "This is a canonical normalizing rewrite. It pushes `reindex` out of the coordinate map, and the right-hand side is strictly simpler. It is not tagged `@[simp]`, and Mathlib has no simp lemma for `(b.reindex e).equivFun`. Every use therefore has to name it by hand, as in `rw [..., basis_reindex_equivFun]` and `simpa only [basis_reindex_equivFun] using ...`. The statement is also fixed to the shape `b.reindex e.symm` with `e : Equiv.Perm \u03b9`. As a simp lemma it would not fire on `b.reindex e`, nor on a reindex along a general `\u03b9 \u2243 \u03ba`. The sibling lemma `basis_reindex_equivFun_symm` in NiltestBasepointNormalization is stated for `e : \u03b9 \u2243 \u03ba` and is also not simp, so the two forms are inconsistent.",
+      "proposed_change": "State the lemma for general `e : \u03b9 \u2243 \u03ba` in the canonical form `(b.reindex e).equivFun x = fun i => b.equivFun x (e.symm i)`. Tag it `@[simp]`. Keep the current `e.symm` statement as a corollary if needed, or let `Equiv.symm_symm` handle it. Consider doing the same for `equivFun.symm` in NiltestBasepointNormalization, so that `simp` can normalize reindexed coordinates without a named lemma.",
+      "benefit": "Callers such as `reindexCoordinateSection_right_inverse` and `exists_reindexed_fast_coefficient_section` could use plain `simp` instead of hand-listing the lemma. The rule would also fire on any `b.reindex e` goal, not only the `e.symm` form. The orientation is safe because `reindex` is removed and the right-hand side is smaller.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/ReindexedFastCoefficientSection.lean",
+          "declaration": "reindexCoordinateSection_right_inverse",
+          "excerpt": "rw [LinearEquiv.apply_symm_apply, basis_reindex_equivFun]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Estimates/ReindexedFastCoefficientSection.lean",
+          "declaration": "exists_reindexed_fast_coefficient_section",
+          "excerpt": "simpa only [basis_reindex_equivFun] using hproj' x hx (perm i)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Nilpotent/NiltestBasepointNormalization.lean",
+          "declaration": "basis_reindex_equivFun_symm",
+          "excerpt": "(b.reindex e).equivFun.symm x = b.equivFun.symm (fun i => x (e i))"
+        }
+      ]
+    },
+    {
+      "declaration": "Erdos3.basis_reindex_toMatrix",
+      "start_line": 19,
+      "end_line": 25,
+      "excerpt": "LinearMap.toMatrix (b.reindex e.symm) (b.reindex e.symm) f i j =\n      LinearMap.toMatrix b b f (e i) (e j)",
+      "problem": "This entry-wise formula for `toMatrix` in a reindexed basis is the natural simp normal form. The LHS has a `reindex`, the RHS is in the original basis, and the rewrite terminates. It is not a simp lemma, so the three `sorted_basis_*` proofs and `WeightedCoordinateExtraction` call it explicitly with `rw`. It is also restricted to `e : Equiv.Perm \u03b9` and to the `e.symm` form, so a `b.reindex e` with a general equivalence would not match. It is also stated only for the same reindexed basis on both sides, so a simp lemma for the `toMatrix` of a reindexed domain or codomain alone would need a separate statement.",
+      "proposed_change": "Generalize to `e : \u03b9 \u2243 \u03ba` and state it as `LinearMap.toMatrix (b.reindex e) (b.reindex e) f i j = LinearMap.toMatrix b b f (e.symm i) (e.symm j)`. Tag it `@[simp]`. Keep the current `e.symm` form as a corollary only if downstream code needs it. The `sorted_basis_*` proofs could then start with `simp only [basis_reindex_toMatrix]`, or plain `simp`.",
+      "benefit": "Matrix entries of reindexed bases get one canonical form. Downstream goals, for example in `exists_lattice_ready_firstCoefficient_basis`, would reduce to `toMatrix b b` entries by `simp` without the caller knowing the lemma name. The change also removes the arbitrary `Perm`/`e.symm` restriction from the rewrite rule.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Linear/SortedBasisTriangular.lean",
+          "declaration": "sorted_basis_diagonal_one",
+          "excerpt": "rw [basis_reindex_toMatrix, hf _ _ le_rfl, Matrix.one_apply_eq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/Geometry/WeightedCoordinateExtraction.lean",
+          "declaration": "(use site)",
+          "excerpt": "exact basis_reindex_toMatrix b e f.toLinearMap i j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/LinearAlgebra/Matrix/ToLin.lean",
+          "declaration": "LinearMap.toMatrix_reindexRange",
+          "excerpt": "theorem LinearMap.toMatrix_reindexRange"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 17603,
+    "cache_read_input_tokens": 51596,
+    "output_tokens": 4594,
+    "output_tokens_details": {
+      "thinking_tokens": 860
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17603,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3071,
+        "cache_read_input_tokens": 20447,
+        "cache_creation_input_tokens": 1169,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1169
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1215276,
+  "duration_ms": 37555,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:36:09",
+  "unit": "file",
+  "source_sha256": "71ebfa92d773f9b416d6966992b84697a7e6bad26c227538b6c50071c18299ba",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

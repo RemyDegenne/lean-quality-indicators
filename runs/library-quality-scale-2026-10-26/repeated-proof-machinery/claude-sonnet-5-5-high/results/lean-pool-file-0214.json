@@ -1,0 +1,83 @@
+{
+  "id": "lean-pool-file-0214",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file (one theorem, montgomeryTaylor) and searched the ZetaZeros directory for uses of extremalTest_eq_zero / integral_extremalTest. Read Reduction.lean (first ~110 lines) and Zeta/Mass.lean. Found the same \"interval integral over [-1/2,1/2] equals the full-line integral because the integrand vanishes where 1/2 < |x|\" block three times: twice in Reduction.lean and once in the target's `hmass`. Mass.lean does a related reduction in a different style; I did not count it, because Mass.lean does not import TestFunction/Reduction. Mathlib's `intervalIntegral.integral_eq_integral_of_support_subset` needs `support \u2286 Ioc a b`. That does not fit here, because the extremal test function is nonzero at -1/2, so the support is the closed interval. The proposed helper therefore keeps the Icc/Ioc rewrite. I did not compile the proposal. Small details to check: where `hf` is applied, `extremalTest_eq_zero` should be used with the `zero_mul`/`mul_zero` simplification, and the integrand needs to be unified with `f`.",
+  "findings": [
+    {
+      "declaration": "ZetaZeros.montgomeryTaylor (inner `hmass`)",
+      "start_line": 60,
+      "end_line": 73,
+      "excerpt": "\u2190 MeasureTheory.integral_Icc_eq_integral_Ioc,",
+      "problem": "`hmass` re-proves, inline, the fact that an integral over [-1/2,1/2] equals the full-line integral for an integrand supported on [-1/2,1/2]. The same block appears again in Reduction.lean: `extremalSelfConv_eq_interval` (lines 30-40) and `step1_selfconv0` (lines 53-63). In each copy the proof does the following: (1) `integral_of_le`; (2) `\u2190 integral_Icc_eq_integral_Ioc`; (3) `setIntegral_eq_integral_of_forall_compl_eq_zero`; (4) `not_and_or` on `x \u2209 Icc`, then `lt_abs` with a two-way `rcases`/`push Not`/`linarith`, to get `1/2 < |x|`; (5) `extremalTest_eq_zero`. Step 4 is the nontrivial part, and it is copied three times, differing only in the final `zero_mul`/`mul_zero`. A fix to one copy has to be made in all of them.",
+      "proposed_change": "Add one public lemma next to `extremalTest_eq_zero` (in TestFunction.lean) or at the top of Reduction.lean:\n\nlemma intervalIntegral_half_eq_integral {f : \u211d \u2192 \u211d} (hf : \u2200 x, 1 / 2 < |x| \u2192 f x = 0) :\n    \u222b x in (-(1:\u211d)/2)..(1/2), f x = \u222b x, f x := by\n  rw [intervalIntegral.integral_of_le (by norm_num : (-(1:\u211d)/2) \u2264 1/2),\n    \u2190 MeasureTheory.integral_Icc_eq_integral_Ioc,\n    MeasureTheory.setIntegral_eq_integral_of_forall_compl_eq_zero]\n  intro x hx\n  rw [Set.mem_Icc, not_and_or] at hx\n  apply hf\n  rw [lt_abs]\n  rcases hx with h | h\n  \u00b7 right; push Not at h; linarith\n  \u00b7 left; push Not at h; linarith\n\nUses, under the actual hypotheses:\n- Target: `hmass := by rw [intervalIntegral_half_eq_integral (fun x hx => extremalTest_eq_zero hx), integral_extremalTest]`. The import is already available, because Basic imports both Reduction and TestFunction.\n- `extremalSelfConv_eq_interval`: after `rw [extremalSelfConv]`, use `(intervalIntegral_half_eq_integral (f := fun t => extremalTest t * extremalTest (\u03b1 - t)) (fun x hx => by simp [extremalTest_eq_zero hx])).symm`.\n- `step1_selfconv0`: after `rw [extremalSelfConv, hev]`, use `(intervalIntegral_half_eq_integral (f := fun t => extremalTest t * extremalTest t) (fun x hx => by simp [extremalTest_eq_zero hx])).symm`.\nThe lemma assumes the closed-interval support, so it is not subsumed by Mathlib's `intervalIntegral.integral_eq_integral_of_support_subset`, which needs `support \u2286 Ioc a b`.",
+      "benefit": "The 12-line `hmass` proof becomes a two-step rewrite. The two Reduction lemmas each lose about 8 lines of identical case analysis. The support-to-line-integral reasoning lives in one place with a clear name and statement, so a reader sees the idea immediately and later changes (for example to the interval) touch one proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ZetaZeros/MontgomeryTaylor/Reduction.lean",
+          "declaration": "ZetaZeros.extremalSelfConv_eq_interval",
+          "excerpt": "rw [Set.mem_Icc, not_and_or] at hx\n  have hxout : 1 / 2 < |x| := by\n    rw [lt_abs]\n    rcases hx with h | h\n    \u00b7 right; push Not at h; linarith\n    \u00b7 left; push Not at h; linarith\n  rw [extremalTest_eq_zero hxout, zero_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ZetaZeros/MontgomeryTaylor/Reduction.lean",
+          "declaration": "ZetaZeros.step1_selfconv0",
+          "excerpt": "rw [Set.mem_Icc, not_and_or] at hx\n  have hxout : 1 / 2 < |x| := by\n    rw [lt_abs]\n    rcases hx with h | h\n    \u00b7 right; push Not at h; linarith\n    \u00b7 left; push Not at h; linarith\n  rw [extremalTest_eq_zero hxout, mul_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ZetaZeros/MontgomeryTaylor/TestFunction.lean",
+          "declaration": "ZetaZeros.extremalTest_eq_zero",
+          "excerpt": "lemma extremalTest_eq_zero {x : \u211d} (hx : 1 / 2 < |x|) : extremalTest x = 0"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 10151,
+    "cache_read_input_tokens": 31156,
+    "output_tokens": 4667,
+    "output_tokens_details": {
+      "thinking_tokens": 1490
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10151,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3604,
+        "cache_read_input_tokens": 12694,
+        "cache_creation_input_tokens": 1386,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1386
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0904056,
+  "duration_ms": 32780,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:30:27",
+  "unit": "file",
+  "source_sha256": "4c6e4476d227de606a46a308b74dd3620f447b3fde734f7f2f03a203226de28c",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

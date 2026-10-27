@@ -1,0 +1,104 @@
+{
+  "id": "tauceti-file-0109",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Mathlib simp lemmas it relies on (`map_\u0394`, `map_c\u2084`, `map_b\u2082`, and so on, all `@[simp]`, and `baseChange`, which is a plain `def` with no simp lemmas). I also checked how the file's simp lemmas and instances are used downstream (`MinimalModel/WorkedExamples/Reduced.lean`, `MordellWeil/WorkedExamples/Curve37a1.lean`). I did not find a loop, competing rules or unwanted expansion. The two findings are modest and are about the shape of the interface. I could not run Lean, so I did not test whether the bare `simp` rewrites below actually fire.",
+  "findings": [
+    {
+      "declaration": "TauCeti.WorkedExamples.\u0394_curve11a2",
+      "start_line": 48,
+      "end_line": 51,
+      "excerpt": "theorem \u0394_curve11a2 : curve11a2.\u0394 = -11 ^ 5 := by",
+      "problem": "The lemma is `@[simp]`, but its right-hand side `-11 ^ 5` is not in simp normal form. In \u2124 the arithmetic simprocs `Int.reducePow` and `Int.reduceNeg` would turn it into `-161051`. So a bare `simp` that uses this lemma ends with `-161051`, not the stated `-11 ^ 5`. Downstream proofs only get `-11 ^ 5` by using `rw [\u0394_curve11a2]`. The sibling `minimalDiscriminantIdeal_curve11a2` is also `@[simp]` with `11 ^ 5` on the right-hand side. The simp set therefore gives one answer and the `rw` proofs another. Neither the docstring nor the attribute says which form is canonical.",
+      "proposed_change": "Choose one canonical form and make the attribute match it. Option A: keep `-11 ^ 5` (it is meaningful, since 11 is the prime) and make the lemma non-simp, or add a comment that it is meant for `rw`. Option B: add a separate simp-normal lemma `\u0394_curve11a2 : curve11a2.\u0394 = -161051` for simp use, and keep the factored form as a non-simp `\u0394_curve11a2_eq_neg_pow`. In both cases `minimalDiscriminantIdeal_curve11a2` (`Ideal.span {11 ^ 5}`) should follow the same convention.",
+      "benefit": "Readers and callers can predict what `simp` produces for `curve11a2.\u0394`. They no longer need a mix of `rw [\u0394_curve11a2]` and `simp` that gives different expressions, and the `@[simp]` attribute is no longer paired with a right-hand side that simp itself rewrites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/AlgebraicGeometry/EllipticCurve/MinimalModel/WorkedExamples/Reduced.lean",
+          "declaration": "TauCeti.WorkedExamples.minimalDiscriminantIdeal_curve11a2",
+          "excerpt": "minimalDiscriminantIdeal \u2124 (curve11a2.baseChange \u211a) = Ideal.span {11 ^ 5} := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/AlgebraicGeometry/EllipticCurve/MinimalModel/WorkedExamples/Reduced.lean",
+          "declaration": "TauCeti.WorkedExamples.isReducedMinimal_curve11a2",
+          "excerpt": "rw [\u0394_curve11a2, c\u2084_curve11a2, Int.isCoprime_iff_gcd_eq_one]"
+        }
+      ]
+    },
+    {
+      "declaration": "instance : (curve11a2.baseChange \u211a).IsElliptic (and the curve37a1 analogue)",
+      "start_line": 58,
+      "end_line": 61,
+      "excerpt": "rw [isElliptic_iff, WeierstrassCurve.baseChange, map_\u0394, \u0394_curve11a2]",
+      "problem": "The `@[simp]` lemmas `\u0394_curve11a2`, `c\u2084_curve11a2`, `\u0394_curve37a1` and `c\u2084_curve37a1` are stated only for the integral model `curve.\u0394`. Every use on the rational curve `curve.baseChange \u211a` needs the manual unfolding step `WeierstrassCurve.baseChange` followed by `map_\u0394`, which Mathlib leaves as a plain `def` with no simp lemmas. The file does this in both instances. Other files repeat the pattern, either as `rw [isElliptic_iff, WeierstrassCurve.baseChange, map_\u0394, \u0394_\u2026]` or as `by simp [baseChange]` (Reduced.lean lines 117 and 142). The simp interface for the main objects of the file, `curve.baseChange \u211a`, is therefore incomplete: `simp` cannot evaluate `(curve11a2.baseChange \u211a).\u0394` or `.c\u2084` without a caller-supplied unfolding lemma.",
+      "proposed_change": "Add simp lemmas on the base-changed curves, for example `@[simp] theorem \u0394_baseChange_curve11a2 : (curve11a2.baseChange \u211a).\u0394 = -11 ^ 5` and the matching `c\u2084` lemma, and the same for 37a1. Prove each from `map_\u0394`/`map_c\u2084` and the existing integral lemma by `rw [WeierstrassCurve.baseChange, map_\u0394, \u0394_curve11a2]; norm_num` (or `simp [WeierstrassCurve.baseChange]`). Then the instances can be proved with `rw [isElliptic_iff, \u0394_baseChange_curve11a2]; norm_num`. Callers in Reduced.lean and Curve37a1.lean would no longer need `simp [baseChange]`. Whether the `-11 ^ 5` form is kept should follow the decision in the first finding.",
+      "benefit": "The two instances and the downstream proofs avoid unfolding `baseChange` by hand, and the one-line unfolding is stated once next to the curve definitions. Bare `simp` can then handle `(curve.baseChange \u211a).\u0394` and `.c\u2084`, which are the quantities the other worked-example files actually use.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/AlgebraicGeometry/EllipticCurve/MinimalModel/WorkedExamples/Reduced.lean",
+          "declaration": "TauCeti.WorkedExamples.isReducedMinimal_curve11a2",
+          "excerpt": "\u27e8isGlobalMinimal_baseChange_of_isCoprime (O := \u2124) curve11a2 ?_, by simp [baseChange]\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/AlgebraicGeometry/EllipticCurve/Weierstrass.lean",
+          "declaration": "WeierstrassCurve.baseChange",
+          "excerpt": "def baseChange [Algebra R A] : WeierstrassCurve A :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/AlgebraicGeometry/EllipticCurve/MordellWeil/WorkedExamples/X3SubXAddOne/Basic.lean",
+          "declaration": "instance IsElliptic (curveX3SubXAddOne.baseChange \u211a)",
+          "excerpt": "rw [isElliptic_iff, WeierstrassCurve.baseChange, map_\u0394, \u0394_curveX3SubXAddOne]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 26694,
+    "cache_read_input_tokens": 43816,
+    "output_tokens": 6217,
+    "output_tokens_details": {
+      "thinking_tokens": 2372
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26694,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3895,
+        "cache_read_input_tokens": 19381,
+        "cache_creation_input_tokens": 11326,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 11326
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1733436,
+  "duration_ms": 50993,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:04:12",
+  "unit": "file",
+  "source_sha256": "9e529917270d803422c17e0c02170de2b396ed2f9e7a497ee889cd85e137b44f",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

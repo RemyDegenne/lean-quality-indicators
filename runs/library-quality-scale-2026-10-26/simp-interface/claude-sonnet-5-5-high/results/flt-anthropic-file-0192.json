@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0192",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped the sl2M, conjAdj_apply and bridge-lemma uses. I did not read the p2m_export or p2m_reactivate macros, so I don't know what they do to simp sets or visibility. I have not run Lean. The findings are about missing simp lemmas and rewrite-bridging, not about observed simp failures. I found no simp-loop risk. The one scoped simp lemma, conjAdj_apply, unfolds a definition to a normal form that matches endToMatrix_twAd, so I did not flag it.",
+  "findings": [
+    {
+      "declaration": "WCOTGlueBCore.sl2M (private def, no simp interface)",
+      "start_line": 226,
+      "end_line": 226,
+      "excerpt": "private def _root_.WCOTGlueBCore.sl2M (s t u : R) : Matrix (Fin 2) (Fin 2) R := Matrix.of ![![s, t], ![u, -s]]",
+      "problem": "sl2M is the main matrix family in the file. It has no simp lemmas: no entry lemmas, no scalar-multiple lemma and no square-zero or product lemma. Every proof therefore unfolds it with `simp [sl2M]` after a case split on entries (`ext i j; fin_cases i <;> fin_cases j <;> simp [sl2M, ...]`). The same inline facts are reproved many times. `sl2M 0 t 0 = t \u2022 sl2M 0 1 0` is proved as `hE` and `hsE` in conjAdj_sl2M_eq. It is proved again as `sl2M_smul_eq`, which sits much later (line 763), so earlier proofs cannot use it. `sl2M 0 t 0 * sl2M 0 t 0 = 0` is reproved as `hE2` at least twice. Proofs depend on unfolding the definition instead of on a stable simp normal form.",
+      "proposed_change": "Next to the definition, add simp lemmas such as `sl2M_apply_zero_zero`, `sl2M_apply_zero_one`, `sl2M_apply_one_zero` and `sl2M_apply_one_one` (entries `s`, `t`, `u`, `-s`), and a `sl2M_mul_sl2M` lemma. Move `sl2M_smul_eq` up beside the definition, in the direction `sl2M 0 b 0 = b \u2022 sl2M 0 1 0` or its reverse, whichever the callers need. Prove `hE` and `hsE` in conjAdj_sl2M_eq and `hE2` (lines 600 and 835) from these lemmas. The `fin_cases ... simp [sl2M]` calls can then mostly become plain `simp`.",
+      "benefit": "The entries of `sl2M` simplify in one canonical way, and repeated one-off identities get a single named lemma. Proofs stop depending on how `sl2M` is defined, which also helps with the duplicated copies of the definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_GaloisRepAdic_conj_mul_conj_eq_pow_of_isUnipotentOnInertiaAt.lean",
+          "declaration": "WCOTGlueBCore.conjAdj_sl2M_eq",
+          "excerpt": "have hsE : sl2M 0 s 0 = s \u2022 sl2M (0 : R) 1 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_GaloisRepAdic_conj_mul_conj_eq_pow_of_isUnipotentOnInertiaAt.lean",
+          "declaration": "COTGlue.sl2M_smul_eq",
+          "excerpt": "theorem sl2M_smul_eq {R : Type} [CommRing R] (b : R) : sl2M (0 : R) b 0 = b \u2022 sl2M 0 1 0 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_GaloisRepAdic_conj_mul_conj_eq_pow_of_isUnipotentOnInertiaAt.lean",
+          "declaration": "COTGlue.frob_tame_rel",
+          "excerpt": "have hE2 : sl2M (0 : \ud835\udcaa) 1 0 * sl2M 0 1 0 = 0 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "WCOTGlueBFinal.sl2M_B6_eq / sl2M_adapt_eq (bridges between duplicate sl2M definitions)",
+      "start_line": 577,
+      "end_line": 579,
+      "excerpt": "theorem sl2M_B6_eq (s t u : R) : WCOTDevB6.sl2M s t u = sl2M s t u := rfl",
+      "problem": "The file defines `sl2M` three times with the same body, as private defs in WCOTGlueBCore, WCOTDevB6 and WCOTGlueBAdapt. The two bridge lemmas are `rfl` equations that are not simp lemmas and are not applied by simp. Callers must use manual `rw [sl2M_B6_eq]`, `rw [\u2190 sl2M_B6_eq, \u2190 key, hT1]` and `rw [WCOTGlueBFinal.sl2M_adapt_eq] at hconj`, and must keep track of which copy a term uses. `simp [sl2M]` unfolds only the copy that is in scope. Facts about one copy, such as the `simp [sl2M]` entry computations, do not transfer to the others. The `\u2190` rewrites also run in the direction that reintroduces the duplicate copy. Terms are therefore not kept in one normal form.",
+      "proposed_change": "Remove `WCOTDevB6.sl2M` and `WCOTGlueBAdapt.sl2M`. Reuse the single `WCOTGlueBCore.sl2M`, either by opening it or by moving the lemmas that use the copies, `eq_line_of_unipotent_mul` and `exists_conj_eq_sl2M`, into that namespace. This makes `sl2M_B6_eq`, `sl2M_adapt_eq` and the `rw` calls at lines 594, 597, 646, 809, 824 and 828 unnecessary. If the copies must stay, mark the bridge lemmas `@[simp]` oriented toward `WCOTGlueBCore.sl2M`. They are `rfl` and fit that orientation, and they would cause no loop.",
+      "benefit": "There is one canonical `sl2M`, so the simp lemmas proposed in the first finding apply everywhere. The manual conversions between copies disappear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_GaloisRepAdic_conj_mul_conj_eq_pow_of_isUnipotentOnInertiaAt.lean",
+          "declaration": "WCOTDevB6.sl2M",
+          "excerpt": "private def _root_.WCOTDevB6.sl2M (s t u : R) : Matrix (Fin 2) (Fin 2) R := Matrix.of ![![s, t], ![u, -s]]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_GaloisRepAdic_conj_mul_conj_eq_pow_of_isUnipotentOnInertiaAt.lean",
+          "declaration": "WCOTGlueBAdapt.sl2M",
+          "excerpt": "private def _root_.WCOTGlueBAdapt.sl2M (s t u : R) : Matrix (Fin 2) (Fin 2) R := Matrix.of ![![s, t], ![u, -s]]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_GaloisRepAdic_conj_mul_conj_eq_pow_of_isUnipotentOnInertiaAt.lean",
+          "declaration": "COTGlue.frob_tame_rel",
+          "excerpt": "rw [\u2190 sl2M_smul_eq, \u2190 WCOTGlueBFinal.sl2M_B6_eq, \u2190 key, hT1]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 32179,
+    "cache_read_input_tokens": 36859,
+    "output_tokens": 5094,
+    "output_tokens_details": {
+      "thinking_tokens": 1936
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32179,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3624,
+        "cache_read_input_tokens": 32846,
+        "cache_creation_input_tokens": 3346,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3346
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1833499,
+  "duration_ms": 34347,
+  "turns": 3,
+  "attempts": 1,
+  "judged": "2026-10-26T23:20:27",
+  "unit": "file",
+  "source_sha256": "3c1705f7222ed63d095f23486dfe879e8862da2b5a6fec59df7392d7aed49e49",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

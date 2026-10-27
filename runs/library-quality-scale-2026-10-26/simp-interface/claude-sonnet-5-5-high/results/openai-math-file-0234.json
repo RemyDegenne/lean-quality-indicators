@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0234",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of ExactRounding.lean. I also read the `indicator` definition in WeightedRounding.lean, FiniteLaws.lean (`expect`, `prob`), and NegativeStars.lean (`sum_indicator`). I grepped the KMedian directory for other places that unfold `indicator` or that use `change` to convert between `prob` and `expect`. I did not run Lean. The proposed lemmas are untested, and the claims about `simp` behaviour are inferred from the sources. I found nothing in the file suggesting a simp loop or competing rules; the issues are missing simp/bridge lemmas.",
+  "findings": [
+    {
+      "declaration": "MetricKMedian.WeightedRounding.exact_law (hbit and hcard steps)",
+      "start_line": 36,
+      "end_line": 43,
+      "excerpt": "rcases hint \u03c9 h\u03c9 i with h | h <;> simp only [indicator,S,mem_filter,mem_univ,true_and,h] <;> norm_num",
+      "problem": "`indicator` is a bare `if i \u2208 S then 1 else 0` definition with no simp-facing API. There is no `indicator_of_mem`, `indicator_of_notMem` or `indicator_filter` lemma, and no `sum_indicator` at the definition site. Every client therefore unfolds the definition, which exposes the raw `ite`. Here the unfold is followed by a `<;> norm_num` cleanup (line 38) and a hand-rolled `sum_boole`/`filter_univ_mem` simp (line 43). The same unfolding appears in WeightedRounding.lean line 211, ExceptionalStar.lean lines 75 and 79, and NegativeStars.lean line 15. The sum lemma `sum_indicator` is stated in NegativeStars.lean, which imports ExceptionalStar, so this file cannot use it. Line 43 re-proves it, with the same simp set, inside the `he` calc step.",
+      "proposed_change": "In WeightedRounding.lean, next to `def indicator`, add `@[simp] theorem indicator_of_mem (h : i \u2208 S) : indicator S i = 1`, `@[simp] theorem indicator_of_notMem (h : i \u2209 S) : indicator S i = 0`, and `theorem sum_indicator (S : Finset I) : \u2211 i, indicator S i = S.card`. The last is moved from NegativeStars.lean. Optionally also add `indicator_filter_eq : indicator (univ.filter p) i = if p i then 1 else 0`. Then hbit becomes a case split that rewrites with these lemmas, and the `calc` step at line 43 becomes `sum_indicator (S \u03c9)`.",
+      "benefit": "Callers get one canonical normal form (the value 1 or 0 once membership is known) instead of repeating ad hoc unfold-and-`norm_num` simp sets. The cardinality identity is stated once, upstream of every user, instead of being duplicated. Proofs also stop depending on the internal `ite` encoding.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedian/Rounding/WeightedRounding.lean",
+          "declaration": "MetricKMedian.WeightedRounding.indicator",
+          "excerpt": "noncomputable def indicator (S : Finset I) (i : I) : \u211d := if i \u2208 S then 1 else 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedian/Probability/NegativeStars.lean",
+          "declaration": "MetricKMedian.Preparation.sum_indicator",
+          "excerpt": "simp only [indicator, sum_boole, filter_univ_mem]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedian/Rounding/WeightedRounding.lean",
+          "declaration": "MetricKMedian.WeightedRounding.last_fraction",
+          "excerpt": "simp only [indicator, select, Finset.mem_filter, Finset.mem_univ, true_and]"
+        }
+      ]
+    },
+    {
+      "declaration": "MetricKMedian.WeightedRounding.exact_law (marginal goal)",
+      "start_line": 50,
+      "end_line": 53,
+      "excerpt": "change (\u03bc.map S).expect (fun A => indicator A i)=p i",
+      "problem": "The theorem states the marginal as `\u03bc.prob (fun S => i \u2208 S)`, but the proof needs `expect` of `indicator`. There is no lemma connecting the two, because `prob` is defined as `expect (fun \u03c9 => if E \u03c9 then 1 else 0)` and `indicator` as `if i \u2208 S then 1 else 0`. The proof bridges them with a `change`, which depends on definitional unfolding of both and cannot be used by `simp` or `rw`. The same `change` appears in PreparationOuter.lean line 140 and PreparationDeficits.lean line 43.",
+      "proposed_change": "Add a lemma such as `theorem prob_mem_eq_expect_indicator (\u03bc : FiniteLaw (Finset I)) (i : I) : \u03bc.prob (fun S => i \u2208 S) = \u03bc.expect (fun S => indicator S i) := rfl`. Mark it @[simp] only if `expect (indicator ..)` is chosen as the canonical form. Alternatively, state the `exact_law`/`last_fraction` marginal conclusions with `expect indicator`. Then `change` is replaced by `rw [prob_mem_eq_expect_indicator]` or a `simp only` call. In the second branch of the refine, this also lets `expect_map` fire on the rewritten goal without `change`.",
+      "benefit": "Marginal statements get a single canonical form, and the `prob`/`indicator` bridge is a named, reusable rewrite rule. Clients no longer repeat `change` lines that depend on how the two definitions unfold.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedian/Probability/FiniteLaws.lean",
+          "declaration": "MetricKMedian.FiniteLaw.prob",
+          "excerpt": "\u03bc.expect (fun \u03c9 => if E \u03c9 then 1 else 0)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedian/Preparation/PreparationOuter.lean",
+          "declaration": "change in the preparation outer proof",
+          "excerpt": "change \u03bc.expect (fun \u03c9 => indicator (S \u03c9 e) t)=p e at hprob"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 26021,
+    "cache_read_input_tokens": 122210,
+    "output_tokens": 7168,
+    "output_tokens_details": {
+      "thinking_tokens": 972
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26021,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2389,
+        "cache_read_input_tokens": 28093,
+        "cache_creation_input_tokens": 1941,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1941
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.188013,
+  "duration_ms": 50734,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T00:36:52",
+  "unit": "file",
+  "source_sha256": "bec44efef98e289048f34e5042b861e1d1c23b3e2ad4226b4b4f6a82204d2a32",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

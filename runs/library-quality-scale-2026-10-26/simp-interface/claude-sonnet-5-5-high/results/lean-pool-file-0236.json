@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0236",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions of gradChiTilde, chiGradG, gradG and gradMatrix. I grepped the AnomalousDiffusion tree for places that unfold these definitions. I could not run Lean, so I make no claim about how the simplifier behaves. I did not check whether a Matrix.mulVec_apply-style lemma for Fin 2 already exists in Mathlib. The remaining uncertainty is whether the proposed simp lemmas would loop or clash with existing simp sets. The proposals are plain unfoldings of non-recursive definitions, so a loop looks unlikely.",
+  "findings": [
+    {
+      "declaration": "frozen_ansatz_diffusion_flux_decomposition (hselected step)",
+      "start_line": 79,
+      "end_line": 82,
+      "excerpt": "simpa [S, S\u2080, chiGradG, Matrix.mulVec, dotProduct, Fin.sum_univ_two,",
+      "problem": "The `hselected` step handles the 2\u00d72 component expansion with an ad hoc simp set. It unfolds `chiGradG`, `gradG`, `Matrix.mulVec`, `dotProduct`, `Matrix.vecHead` and `Matrix.vecTail`, and adds `Fin.sum_univ_two` and `mul_add`. No component-level simp lemmas exist for `chiGradG` or for `gradMatrix`/`gradG` entries. `chiGradG` is a bare `fun i => \u2211 j, \u2026` definition, and `gradG` is `Matrix.of fun i j => spaceGrad \u2026`. So every user has to unfold these and re-derive the entries through low-level `Matrix.of` and `vecHead` simp forms. The same `chiGradG` unfolding is repeated by hand elsewhere, for example in `tf_chiGradG_eq` and `sa_chiGradG_eq_hessian`.",
+      "proposed_change": "Next to the definitions in Terms.lean, add `@[simp]` component lemmas such as `chiGradG_apply : chiGradG I h\u03a6 m \u03ba T k t x i = \u2211 j, I.chiTilde h\u03a6 m \u03ba k t x j * gradG I h\u03a6 m T (lIdx \u03b2 I.\u039b m k) t x i j`. Add `gradG_apply` and `gradMatrix_apply` in the same way, giving `gradMatrix \u03a7 x i j = spaceGrad (fun y => \u03a7 y j) x i`. Then this call becomes `simpa [S, S\u2080, Matrix.mulVec, dotProduct, Fin.sum_univ_two, \u2026]` without unfolding the project definitions, and other files can reuse the same lemmas.",
+      "benefit": "Callers get a stable, intentional normal form for entries of these matrices and vectors. They no longer rely on unfolding definitions, which is fragile if a definition changes, and the long simp list shrinks.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section5/Terms.lean",
+          "declaration": "chiGradG",
+          "excerpt": "fun i => \u2211 j : Fin 2,\n    I.chiTilde h\u03a6 m \u03bam k t x j * gradG I h\u03a6 m T (lIdx \u03b2 I.\u039b m k) t x i j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section5/Terms.lean",
+          "declaration": "gradG",
+          "excerpt": "Matrix.of fun i j => spaceGrad (fun y => G I h\u03a6 m T l t y j) x i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section5/Contracts/TermFluxesJoint.lean",
+          "declaration": "tf_chiGradG_eq",
+          "excerpt": "simp only [chiGradG, tfChiW, Ingredients.chiTilde, Ingredients.chiMK, Pi.smul_apply,"
+        }
+      ]
+    },
+    {
+      "declaration": "gradChiTilde (used in hlocal and hcore)",
+      "start_line": 90,
+      "end_line": 90,
+      "excerpt": "simpa [gradChiTilde] using congrFun",
+      "problem": "`gradChiTilde` is a plain abbreviation for `gradMatrix (I.chiTilde \u2026) x`. There is no simp or equation lemma for it, so the proof passes `gradChiTilde` as a simp argument. This happens at line 90 and again at line 131. The same ad hoc unfolding appears in `ResidualPointwiseConstructor.lean` (`simpa [correctorFlux, gradChiTilde, l]`) and in `CorrectorDiffusionExpansion.lean` (`dsimp [correctorFlux, gradChiTilde, \u2026]`). Statements in this file mix `gradChiTilde` and `gradMatrix (I.chiTilde \u2026)`. The `hvec` and `hcore` steps use `gradMatrix`, while `hlocal` uses `gradChiTilde`. As a result, every bridge between the two forms needs a manual `simpa [gradChiTilde]`.",
+      "proposed_change": "Choose one normal form and record it. Either make `gradChiTilde` reducible (`abbrev`), or add `@[simp] theorem gradChiTilde_eq : gradChiTilde I h\u03a6 m \u03bam k t x = gradMatrix (I.chiTilde h\u03a6 m \u03bam k t) x := rfl`, with the `gradMatrix` form as the canonical target. Then drop the explicit `gradChiTilde` arguments from the `simpa` calls here and in the files listed above.",
+      "benefit": "Terms with `gradChiTilde` and terms with `gradMatrix (I.chiTilde \u2026)` normalize to the same expression automatically. This removes repeated `simpa [gradChiTilde]` bridging in the downstream corrector and flux files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section5/Terms.lean",
+          "declaration": "gradChiTilde",
+          "excerpt": "  gradMatrix (I.chiTilde h\u03a6 m \u03bam k t) x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section5/ResidualPointwiseConstructor.lean",
+          "declaration": "(proof using gradChiTilde)",
+          "excerpt": "simpa [correctorFlux, gradChiTilde, l] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section5/SelectedDiffusionFlux.lean",
+          "declaration": "frozen_ansatz_diffusion_flux_decomposition",
+          "excerpt": "simpa [gradChiTilde] using congrArg"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 12769,
+    "cache_read_input_tokens": 23996,
+    "output_tokens": 3437,
+    "output_tokens_details": {
+      "thinking_tokens": 510
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12769,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2866,
+        "cache_read_input_tokens": 11435,
+        "cache_creation_input_tokens": 5347,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5347
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.08785760000000001,
+  "duration_ms": 22988,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T00:37:00",
+  "unit": "file",
+  "source_sha256": "673caf62ba69ac23e0414ba177aa1014ec510d46094c6286cb61542911c7972b",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

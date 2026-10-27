@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0340",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related uses. I grepped for OrientationSign.sign uses (this file and FunSmul.lean) and for `simp [Space]` across the Geometry tree. I also checked Space.lean and Model.lean in TamingCompatibility for an existing finrank lemma and found none. Real.sign is not a replacement for the local sign, because Real.sign 0 = 0 while this sign 0 = -1. I did not run Lean, so I don't claim that the proposed lemmas compile or how they would behave. The remaining declarations, such as volumeSquare_contDiffOn and density_basis, use simp in the normal way, and I found no loops or competing rules.",
+  "findings": [
+    {
+      "declaration": "OAI.TamingCompatibility.OrientationSign.sign (with abs_mul_div, locally_constant)",
+      "start_line": 29,
+      "end_line": 49,
+      "excerpt": "def sign (t : \u211d) : \u211d := if 0 < t then 1 else -1",
+      "problem": "`sign` is a bare `if` definition with no rewriting lemmas. Every proof about it unfolds the definition and then matches the branch by hand, for example `rw [abs_of_pos h,sign,ite_eq_left h]` and `simp only [sign,ite_eq_left h,ite_eq_left hy]`. The unfolded `ite` leaks into proofs, and `simp` can't normalise `sign t` under a hypothesis `0 < t` or `t < 0`. Real.sign cannot be used instead, because `Real.sign 0 = 0` but this `sign 0 = -1`. So there is no existing simp coverage for this local function.",
+      "proposed_change": "Add `lemma sign_of_pos {t : \u211d} (h : 0 < t) : sign t = 1` and `lemma sign_of_neg {t : \u211d} (h : t < 0) : sign t = -1`. Mark both `@[simp]`. The hypotheses are discharged from context and the right-hand sides are literals, so there is no loop risk. Rewrite `abs_mul_div` and `locally_constant` as `rw [abs_of_pos h, sign_of_pos h]` and `simp [sign_of_pos h, sign_of_pos hy]`. Add a `sign_eq_ite` unfolding lemma only if one is wanted. Callers in FunSmul.lean can then treat `sign` as opaque.",
+      "benefit": "Proofs stop unfolding `sign` and stop depending on the `ite_eq_left` and `ite_eq_right` branch lemmas. `simp` handles `sign (f y)` once the sign of `f y` is known. Downstream users such as FunSmul.lean get a stable interface instead of the `if` implementation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/TamingCompatibility/DifferentialForms/Sign.lean",
+          "declaration": "OAI.TamingCompatibility.OrientationSign.locally_constant",
+          "excerpt": "simp only [sign,ite_eq_right h,ite_eq_right (not_lt_of_ge hy.le)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/TamingCompatibility/DifferentialForms/Sign.lean",
+          "declaration": "OAI.TamingCompatibility.OrientationSign.abs_mul_div",
+          "excerpt": "rw [abs_of_pos h,sign,ite_eq_left h]"
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.TamingCompatibility.ManifoldTop.basisIndex (and the `by simp [Space]` side goals in volumeForm_ne_zero and abs_coordinateVolume)",
+      "start_line": 91,
+      "end_line": 91,
+      "excerpt": "def basisIndex : Fin (Module.finrank \u211d Space) \u2243 Fin 4 := finCongr (by simp [Space])",
+      "problem": "The fact `Module.finrank \u211d Space = 4` is not a named simp lemma. Each use reproves it with `by simp [Space]`, which unfolds the `abbrev` by hand. Line 91 here is one case. Lines 131 and 205 in this file are two more: `(by simp [Space])` passed to `VolumeNormalization.volume_ne_zero` and `abs_volume_eq_density`. Grep shows the same call across many TamingCompatibility files (Wedge, StarTwoComp, PairingSmooth, Hodge/*, Charts/*), some wrapped as `by change Module.finrank \u211d Space = 4; simp [Space]`. The rewrite from `Module.finrank \u211d Space` to `4` has no canonical simp lemma. Each call site therefore depends on the definition of `Space` and on `simp` unfolding it.",
+      "proposed_change": "In TamingCompatibility/Model.lean, next to `abbrev Space := EuclideanSpace \u211d (Fin 4)`, add `@[simp] lemma finrank_space : Module.finrank \u211d Space = 4 := by simp [Space]`. This is only the `finrank` of `EuclideanSpace`, which simp already evaluates, so there is no loop. Replace the call-site `by simp [Space]` proofs with `by simp` or the lemma name. In particular, state `basisIndex` as `finCongr finrank_space`.",
+      "benefit": "The proof is stated once and the many repeated side-goal proofs go away. Call sites no longer unfold `Space` to get a dimension. `Fin (Module.finrank \u211d Space)` index types can be normalised by `simp` to `Fin 4`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/TamingCompatibility/DifferentialForms/StarTwoComp.lean",
+          "declaration": "invariantPart star lemmas",
+          "excerpt": "(by change Module.finrank \u211d Space = 4; simp [Space]) (invariantPart J \u03b1 x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/TamingCompatibility/DifferentialForms/Sign.lean",
+          "declaration": "OAI.TamingCompatibility.ManifoldTop.abs_coordinateVolume",
+          "excerpt": "(by simp [Space]) (ManifoldForms.pullback (invariantPart J \u03b1) (extChartAt Model p).symm z)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/TamingCompatibility/Functional/RawCriticalNorm.lean",
+          "declaration": "raw critical norm use",
+          "excerpt": "(by simp [Space] : Module.finrank \u211d Space = 4) L"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 31553,
+    "cache_read_input_tokens": 125227,
+    "output_tokens": 4659,
+    "output_tokens_details": {
+      "thinking_tokens": 969
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31553,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2478,
+        "cache_read_input_tokens": 34093,
+        "cache_creation_input_tokens": 1473,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1473
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1853487,
+  "duration_ms": 38539,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T01:39:42",
+  "unit": "file",
+  "source_sha256": "d5c81cbc98133eb111fec6ab8d01d49c4e0a3535190dab228126fd8e62a9486e",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

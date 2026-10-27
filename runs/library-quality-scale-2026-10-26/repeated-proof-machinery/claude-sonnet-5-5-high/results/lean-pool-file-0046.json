@@ -1,0 +1,125 @@
+{
+  "id": "lean-pool-file-0046",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I checked the repeated blocks against Mathlib's `Nat.dist` API and against `annulusMass`, `productAnnulus` and `gaussianL2NormSq` in Definitions.lean. I found no existing library lemma that converts `Nat.dist` to an absolute value. `Nat.dist` has only the `dist_eq_sub_of_le` and `dist_eq_sub_of_le_right` case lemmas in Mathlib/Data/Nat/Dist.lean. I ruled out repeated `annulusMass` nonnegativity proofs (lines 209, 711, 1333) and repeated `hermiteNormSq_nonneg` uses as too short to count. I also skipped the repeated `d = 0` branches in the shell-count lemmas, because they are case branches rather than shared reasoning. All three findings are modest, and the proposed lemmas have not been compiled. The third finding is a repetition inside one proof, and the first two span several proofs.",
+  "findings": [
+    {
+      "declaration": "shell_offset_mem_cube_sdiff (with block_decay_compare_coord)",
+      "start_line": 499,
+      "end_line": 520,
+      "excerpt": "rw [Nat.dist_eq_sub_of_le hle] at hq",
+      "problem": "The same case split on `j q \u2264 \u2113 q` is redone three times to relate `Nat.dist` to the signed difference. The first copy is `hdist_eq` in `block_decay_compare_coord` (lines 435-441, real/absolute-value form). The other two are in `shell_offset_mem_cube_sdiff`: one proves the cube bound `-r \u2264 j q - \u2113 q \u2264 r` (lines 499-505), and one proves the distance is exactly `r` (lines 514-520). Each copy does `rcases le_total`, rewrites with `Nat.dist_eq_sub_of_le` or `_right`, then closes with `omega` or casts and `abs_of_*`. The file never states the fact `Nat.dist a b` equals the absolute value of `(a:\u2124) - b`.",
+      "proposed_change": "Add one private lemma, for example `private lemma nat_dist_cast_int (a b : \u2115) : ((Nat.dist a b : \u2115) : \u2124) = |(a : \u2124) - b|`. Its proof: `rcases Nat.le_total a b with h | h`, rewrite with `Nat.dist_eq_sub_of_le h` or `Nat.dist_eq_sub_of_le_right h`, then finish with `Nat.cast_sub`, `abs_of_nonpos` or `abs_of_nonneg`, and `omega`. A real-valued version follows by `exact_mod_cast`, and it replaces `hdist_eq`. In `shell_offset_mem_cube_sdiff`, the cube-membership part becomes `abs_le` applied to `nat_dist_cast_int` and `hq`. The 'not in inner cube' part then needs only `abs_le` and `omega` applied to `hxq` and `hdist`, with no case split.",
+      "benefit": "The Nat/\u2124/\u211d distance conversion is proved once. The three call sites no longer repeat the `dist_eq_sub_of_le` / `_right` rewrites, and each shrinks to a one-line use of the lemma. That makes the shell and decay arguments about distances easier to follow and to maintain.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PhaseRetrieval/DimdPoly/Internal/Hermite1Dimd/BlockLocalization.lean",
+          "declaration": "block_decay_compare_coord",
+          "excerpt": "\u00b7 rw [Nat.dist_eq_sub_of_le hj, abs_of_nonpos]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PhaseRetrieval/DimdPoly/Internal/Hermite1Dimd/BlockLocalization.lean",
+          "declaration": "shell_offset_mem_cube_sdiff",
+          "excerpt": "rw [Nat.dist_eq_sub_of_le hle] at hdist"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/Nat/Dist.lean",
+          "declaration": "Nat.dist_eq_sub_of_le",
+          "excerpt": "theorem dist_eq_sub_of_le {n m : \u2115} (h : n \u2264 m) : dist n m = m - n"
+        }
+      ]
+    },
+    {
+      "declaration": "finiteLeakage / finiteLeakage_of_blockLocalization_shell_sum_bound / finiteLeakage_global_bound_of_shell_sum_bound (versus finitePartialLeakage)",
+      "start_line": 1392,
+      "end_line": 1400,
+      "excerpt": "exact shell_sum_bound_of_shell_cardinality_bound\n      (d := d) (C := C) (c := c) (B := B) (le_of_lt hC)",
+      "problem": "`finiteLeakage` and `finitePartialLeakage` both run the same pipeline. Both obtain `blockLocalization`, build the shell-sum hypothesis from `shell_sum_bound_of_shell_cardinality_bound`, `shell_sum_localizationLeakageCoefficient_bound` and `shell_cardinality_bound_filter`, and then call `finitePartialLeakage_bound_of_shell_sum_bound` (lines 1396-1400 and 1418-1421). `finiteLeakage` does this through two extra private lemmas that take `htail` and `hshell` as large abstract hypotheses (lines 1312-1375), only to be instantiated once. The statement of `finitePartialLeakage` already contains everything `finiteLeakage` needs, because the global `tsum` bound follows from the finite-partial-sum bound via `Real.tsum_le_of_sum_le`.",
+      "proposed_change": "Prove `finiteLeakage` from `finitePartialLeakage`. Write `obtain \u27e8C, c, B, hC, hc, hB, ht, hpart\u27e9 := finitePartialLeakage \u03ba`. Then return `\u27e8C, c, B, hC, hc, hB, ht, fun M G => Real.tsum_le_of_sum_le (fun j => <annulusMass nonneg>) (fun s => hpart s M G)\u27e9`. Reuse the existing nonnegativity argument from lines 1333-1334. Delete `finiteLeakage_of_blockLocalization_shell_sum_bound` and `finiteLeakage_global_bound_of_shell_sum_bound`, which duplicate the hypothesis block and the pipeline. `finitePartialLeakage` does not depend on `finiteLeakage`, so there is no circularity.",
+      "benefit": "The shell-sum assembly is written once instead of twice. About 90 lines of private plumbing with large abstract hypotheses go away. The two exported results become visibly related: the global bound is the supremum of the partial-sum bound. Future changes to the leakage constants then touch one proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PhaseRetrieval/DimdPoly/Internal/Hermite1Dimd/BlockLocalization.lean",
+          "declaration": "finitePartialLeakage",
+          "excerpt": "(shell_sum_localizationLeakageCoefficient_bound (d := d) hCpos hcpos hBnonneg)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PhaseRetrieval/DimdPoly/Internal/Hermite1Dimd/BlockLocalization.lean",
+          "declaration": "finiteLeakage_global_bound_of_shell_sum_bound",
+          "excerpt": "refine Real.tsum_le_of_sum_le ?_ ?_"
+        }
+      ]
+    },
+    {
+      "declaration": "productBasis_annulusFactorization",
+      "start_line": 367,
+      "end_line": 412,
+      "excerpt": "by_cases hz : z \u2208 productAnnulus (d := 1) (fun _ => j q)",
+      "problem": "The proof repeats the same case analysis on whether `z \u2208 productAnnulus (d := 1) (fun _ => j q)` in two blocks. It converts membership to the coordinate inequality via `simpa [productAnnulus]`, then closes with `simp [F, hz, hz0]`. One block shows the integrability of `F q (z 0) * conj (F q (z 0))` (lines 367-371). The other shows the pointwise equality of the integrands for the one-dimensional `gaussianL2NormSq` and `annulusMass` (lines 406-412). A third, similar block works with the d-dimensional annulus in the first calc step (lines 382-393). The two `hz0` conversions are identical.",
+      "proposed_change": "Before the calc, prove a pointwise fact once: `have hFind : \u2200 (q : Fin d) (z : CSpace 1), F q (z 0) = if z \u2208 productAnnulus (d := 1) (fun _ => j q) then oneDimPhi (\u03ba q) (\u03b1 q) (z 0) else 0`. Prove it with `by_cases` and `simpa [productAnnulus]`. The `hind` congruence (lines 365-371) and the one-dimensional integrand equality (lines 404-412) then reduce to `simp [hFind, oneDimLift]` and `rw`. Alternatively, state a small standalone lemma, `z \u2208 productAnnulus (d := 1) (fun _ => n) \u2194 (n:\u211d) \u2264 \u2016z 0\u2016 \u2227 \u2016z 0\u2016 < n + 1`, and use it in both places.",
+      "benefit": "The annulus-membership translation is stated once. The factorization proof becomes shorter, and the main calc chain is no longer interrupted by repeated membership case splits.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PhaseRetrieval/DimdPoly/Internal/Hermite1Dimd/BlockLocalization.lean",
+          "declaration": "productBasis_annulusFactorization",
+          "excerpt": "\u00b7 have hz0 : \u00ac ((j q : \u211d) \u2264 \u2016z 0\u2016 \u2227 \u2016z 0\u2016 < (j q : \u211d) + 1) := by simpa [productAnnulus] using hz"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/PhaseRetrieval/DimdPoly/Internal/Hermite1Dimd/Definitions.lean",
+          "declaration": "productAnnulus",
+          "excerpt": "{ z | \u2200 q, (j q : \u211d) \u2264 \u2016z q\u2016 \u2227 \u2016z q\u2016 < (j q : \u211d) + 1 }"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 52371,
+    "cache_read_input_tokens": 275953,
+    "output_tokens": 8743,
+    "output_tokens_details": {
+      "thinking_tokens": 3191
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 52371,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4361,
+        "cache_read_input_tokens": 53245,
+        "cache_creation_input_tokens": 3055,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3055
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3245373,
+  "duration_ms": 66715,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T22:53:47",
+  "unit": "file",
+  "source_sha256": "647955271e30c732b0d85d5af0752b76751f784ad5cacf51915ec8f04dd657fa",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

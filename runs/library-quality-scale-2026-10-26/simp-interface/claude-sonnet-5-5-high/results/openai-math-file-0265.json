@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0265",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the definitions it depends on (blendedAngle and its endpoint lemmas, baseAngle, cos_baseAngle, sin_baseAngle) and the downstream uses of blendedPath. I did not run Lean. The claims below concern simp-interface gaps only; I found no rewrite loop or competing-rule problem in this file. Uncertainty: I did not check whether simp already closes these goals with less unfolding, so the benefit is about readability and robustness, not necessarily a shorter proof. The second finding is lower confidence, because the endpoint lemmas live in another file and the target's `rw` calls work as written.",
+  "findings": [
+    {
+      "declaration": "blendedPath (and blendedPath_periodic)",
+      "start_line": 13,
+      "end_line": 19,
+      "excerpt": "![Real.cos (blendedAngle a A s h (2 * Real.pi * t)),\n    Real.sin (blendedAngle a A s h (2 * Real.pi * t))]",
+      "problem": "blendedPath is a plain def with no simp lemmas for its components or for its relation to the angle. The simp-normal form of a blendedPath goal therefore needs the definitions unfolded, and that unfolding goes through to baseAngle. In this file `blendedPath_periodic` uses `simp [blendedPath, blendedAngle, baseAngle, mul_add, Real.cos_add_two_pi]`. Downstream files repeat the same unfolding: BlendedNormalizedLoop uses `p, blendedPath, blendedAngle, baseAngle, haz, hsb, hhb`, BlendedDensityCompact uses `[blendedPath, blendedAngle, hs\u2080, ...]`, and CollarDensityMoments uses `[blendedPath, blendedAngle, cos_baseAngle, sin_baseAngle]`. Unfolding blendedAngle and baseAngle to raw `arctan`/`cos` expressions also fights the canonical `cos_baseAngle`/`sin_baseAngle` lemmas, which are not simp lemmas themselves.",
+      "proposed_change": "Add simp lemmas that expose the structure. One option is `@[simp] lemma blendedPath_apply_zero : blendedPath a A s h t 0 = Real.cos (blendedAngle a A s h (2*Real.pi*t))` with a matching `_apply_one` for sin. Another is a single lemma `blendedPath a A s h t = ![cos (blendedAngle \u2026), sin (blendedAngle \u2026)]`, which is `rfl`. Also add `@[simp]` lemmas for `Real.cos`/`Real.sin` of `blendedAngle a A s h (\u03b8 + 2\u03c0)` or for periodicity. Downstream proofs can then cite `blendedPath_apply_zero` and `blendedAngle_zero` instead of unfolding blendedAngle and baseAngle.",
+      "benefit": "Callers get a stable simp normal form at the blendedAngle level. The repeated three-definition unfolding in the simp sets goes away, and those proofs no longer break if the internal definition of blendedAngle or baseAngle changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/BlendedNormalizedLoop.lean",
+          "declaration": "blended_normalized_loop (inner proof)",
+          "excerpt": "p, blendedPath, blendedAngle, baseAngle, haz, hsb, hhb]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Geometry/BlendedDensityCompact.lean",
+          "declaration": "blended_density_near_interior",
+          "excerpt": "by simpa [blendedPath, blendedAngle, hs\u2080, LoopDensity.interiorPath] using hpt"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Whitney/CollarDensityMoments.lean",
+          "declaration": "blendedPath_collar",
+          "excerpt": "simp [blendedPath, blendedAngle, cos_baseAngle, sin_baseAngle]"
+        }
+      ]
+    },
+    {
+      "declaration": "blendedPath_covers",
+      "start_line": 48,
+      "end_line": 60,
+      "excerpt": "rw [blendedAngle_pi, blendedAngle_zero]",
+      "problem": "`blendedAngle_zero` and `blendedAngle_zero`'s sibling `blendedAngle_pi` are the canonical evaluations of blendedAngle at the endpoints, but they are not simp lemmas. This proof therefore applies them by hand with `rw` three times (lines 49, 55, 60). Other files re-derive the same facts by unfolding, for example `simp [blendedAngle, baseAngle]`, or cite them via `simpa only [..., blendedAngle_zero a A s h]`. A simp call over blendedAngle cannot see the endpoint values unless the definition is unfolded. Unfolding gives a different normal form from the stated lemmas, and the lemmas need `ring` afterwards to match.",
+      "proposed_change": "Tag `blendedAngle_zero` and `blendedAngle_pi` in VelocityAngleInterpolation.lean with `@[simp]`. The right-hand sides contain no blendedAngle, so this cannot loop. Then lines 49\u201360 can use `simp only [blendedAngle_pi, blendedAngle_zero]`, or plain simp, and callers can drop `blendedAngle, baseAngle` from their simp sets.",
+      "benefit": "Evaluations of blendedAngle at 0 and \u03c0 get a single canonical result. Proofs that touch endpoint angles no longer need to unfold the definitions, and the endpoint algebra no longer has to be redone with `ring`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/VelocityAngleInterpolation.lean",
+          "declaration": "blendedAngle_zero",
+          "excerpt": "blendedAngle a A s h 0 = h + ((1 - s) * (2 * Real.arctan a) + s * A)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/BlendedSpatialTurns.lean",
+          "declaration": "unitAngle endpoint lemma",
+          "excerpt": "simpa only [unitAngle, he, blendedAmplitude] using blendedAngle_pi a A s h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 15359,
+    "cache_read_input_tokens": 67100,
+    "output_tokens": 4880,
+    "output_tokens_details": {
+      "thinking_tokens": 1421
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15359,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3476,
+        "cache_read_input_tokens": 24773,
+        "cache_creation_input_tokens": 3364,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3364
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.116962,
+  "duration_ms": 35898,
+  "turns": 9,
+  "attempts": 2,
+  "judged": "2026-10-27T00:46:37",
+  "unit": "file",
+  "source_sha256": "c43b96964dd1d1bcb6d9624a0c7b200cacc19844e9c07eca949a34d78ff47060",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

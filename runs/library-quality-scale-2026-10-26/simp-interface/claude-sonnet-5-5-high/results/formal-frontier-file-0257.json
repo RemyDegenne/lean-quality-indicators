@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0257",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the consumer `GroupScheme/UpperTriangularSplitKernel.lean` (lines 205\u2013345). I also grepped the sibling `UpperTriangular`/`Unitriangular` coordinate-ring files and the other users of `DiagonalCoordinateRing`. The only simp lemmas here are `quotient_offDiagonal` and `universal_apply`. I did not see a loop or an obvious competing rule among them. The findings are about missing simp-interface lemmas. I could not run Lean, so I have not checked that the suggested lemmas or the resulting simp calls compile. For the second finding, the lemma that stays out of the simp set is only a proposal, based on reading `quotient_offDiagonal`.",
+  "findings": [
+    {
+      "declaration": "DiagonalCoordinateRing.relation (and its uses in quotient_offDiagonal and ideal_isHopfIdeal_proof)",
+      "start_line": 45,
+      "end_line": 47,
+      "excerpt": "def relation (i j : \u03b9) : GeneralLinearCoordinateRing.CoordinateRing K \u03b9 :=\n  if i = j then 0 else matrix K \u03b9 i j",
+      "problem": "`relation` is a bare `def` with an `if` body and no equation lemmas for its two cases. Every proof that uses it unfolds the definition and then fixes up the `if`. `quotient_offDiagonal` does `simpa [relation, h] using hz`. Inside `ideal_isHopfIdeal_proof`, `counit_gen`, `comul_gen` and `antipode_gen` each repeat `simp [relation, hij]` for the diagonal case and `simp only [relation, hij, ite_false]` for the off-diagonal case. The same unfold-and-split pattern appears six times. `relation` is not marked `@[simp]` or `@[reducible]`, so `simp` leaves `relation K \u03b9 i j` as an opaque term. Callers must know the `if` implementation to reduce it.",
+      "proposed_change": "Add two equation lemmas right after the definition. These are `@[simp] theorem relation_self (i) : relation K \u03b9 i i = 0 := by simp [relation]` and `@[simp] theorem relation_of_ne {i j} (h : i \u2260 j) : relation K \u03b9 i j = matrix K \u03b9 i j := by simp [relation, h]`. Then the six occurrences can drop `relation` from the simp set. The off-diagonal case becomes `rw [relation_of_ne hij]` (or `simp [hij]`), and the diagonal case becomes `simp [hij]` or `subst hij; simp`. The definition is unfolded in one place only and the `ite_false` plumbing disappears. If later files such as `UpperTriangularCoordinateRing.lean` reuse this pattern with their own `relation`, they can follow the same shape.",
+      "benefit": "`relation` gets a canonical simp normal form, so proofs about the ideal generators no longer depend on the `if` implementation. `simp` reduces `relation K \u03b9 i i` to `0`, and `relation K \u03b9 i j` to a matrix entry once `i \u2260 j` is known, so the three Hopf-ideal side goals share one reduction step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/Algebra/DiagonalCoordinateRing.lean",
+          "declaration": "DiagonalCoordinateRing.ideal_isHopfIdeal_proof (counit_gen)",
+          "excerpt": "\u00b7 simp only [relation, hij, ite_false]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/Algebra/DiagonalCoordinateRing.lean",
+          "declaration": "DiagonalCoordinateRing.quotient_offDiagonal",
+          "excerpt": "simpa [relation, h] using hz"
+        }
+      ]
+    },
+    {
+      "declaration": "DiagonalCoordinateRing.quotient (opaque def) with simp lemmas quotient_offDiagonal / universal_apply",
+      "start_line": 57,
+      "end_line": 64,
+      "excerpt": "def quotient : GeneralLinearCoordinateRing.CoordinateRing K \u03b9 \u2192\u2090[K] CoordinateRing K \u03b9 :=\n  Ideal.Quotient.mk\u2090 K (ideal K \u03b9)",
+      "problem": "The simp interface is stated in terms of the plain `def` `quotient`, but no lemma connects `quotient` to `Ideal.Quotient.mk (ideal K \u03b9)`. Mathlib lemmas such as `Bialgebra.Quotient.counit_mk` and the `Ideal.Quotient` API are phrased with `Ideal.Quotient.mk`, and `simp` cannot see through `quotient`. Downstream users therefore reach for `change` to convert by defeq. `UpperTriangularSplitKernel.lean` does `change Coalgebra.counit (R := K) (Ideal.Quotient.mk (UpperTriangularCoordinateRing.ideal K n) ...) = ... (Ideal.Quotient.mk (DiagonalCoordinateRing.ideal K n) ...)` before `rw [Bialgebra.Quotient.counit_mk, ...]`. The same file repeats long `change` blocks around `quotient` at lines 211\u2013217, 242\u2013259 and 329\u2013333. Inside this file, `ideal_isHopfIdeal_proof` also uses `change Coalgebra.counit ...`, `change (Algebra.TensorProduct.map q q) ...` and `change q (...)` to get from `quotient` to the Mathlib forms. `quotient_offDiagonal` has the extra hypothesis `h : i \u2260 j`, and `simp` only discharges it when `hij : \u00ac i = j` or `i \u2260 j` is a simp argument. Users still call it with `rw [...quotient_offDiagonal K n i index h ...]`.",
+      "proposed_change": "Add a defeq-proved bridge lemma `theorem quotient_apply (x) : quotient K \u03b9 x = Ideal.Quotient.mk (ideal K \u03b9) x := rfl`. Do not make it a global `@[simp]` lemma, because it would rewrite away the `quotient (matrix ..)` form that `quotient_offDiagonal` and `universal_apply` match. Together with it, add simp-usable companions in the `quotient` normal form for the Hopf operations used in this file and its consumers. Examples are `counit (quotient x) = counit x` and `Algebra.TensorProduct.map (quotient) (quotient) (comul x)`, if they hold by `Bialgebra.Quotient` lemmas. Callers can then `rw [quotient_apply]` or `simp [quotient_apply]` instead of the `change ... Ideal.Quotient.mk ...` blocks.",
+      "benefit": "Callers no longer need long `change` statements that restate both sides in `Ideal.Quotient.mk` form. They can use Mathlib's quotient-Hopf simp lemmas directly, and the simp set around `quotient` is predictable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/UpperTriangularSplitKernel.lean",
+          "declaration": "upperTriangularDiagonalBialgHom (counit proof)",
+          "excerpt": "(Ideal.Quotient.mk (DiagonalCoordinateRing.ideal K n)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/UpperTriangularSplitKernel.lean",
+          "declaration": "upperTriangularDiagonalCoordinateMap_section",
+          "excerpt": "exact (DiagonalCoordinateRing.quotient_offDiagonal K n i j hij).symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/Algebra/DiagonalCoordinateRing.lean",
+          "declaration": "DiagonalCoordinateRing.ideal_isHopfIdeal_proof (antipode_gen)",
+          "excerpt": "change q (HopfAlgebra.antipode K (matrix K \u03b9 i j)) = 0"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 17543,
+    "cache_read_input_tokens": 55363,
+    "output_tokens": 6028,
+    "output_tokens_details": {
+      "thinking_tokens": 1972
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17543,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3986,
+        "cache_read_input_tokens": 17678,
+        "cache_creation_input_tokens": 3878,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3878
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1360083,
+  "duration_ms": 41896,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:43:23",
+  "unit": "file",
+  "source_sha256": "c054a2ca90bee66883d5bae5b2fe52c4649ab444f8e3c1d41884c377d8b74072",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

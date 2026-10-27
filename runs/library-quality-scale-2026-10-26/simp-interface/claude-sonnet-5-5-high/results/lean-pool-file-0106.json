@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0106",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped the repo for other uses of twoByTwo*. There are none outside this file, so the simp interface only affects the internal proofs. I did not run Lean, so the proposed lemmas are untested, and I make no claim about loops or observed simp failures. The findings concern missing canonical lemmas and a competing or unfolding pattern. The simp lemmas that are present (`twoByTwoRows_apply_singleton`, `twoByTwoKernel_apply`) look terminating and well oriented.",
+  "findings": [
+    {
+      "declaration": "twoByTwoRowPMF / twoByTwoDensity_apply",
+      "start_line": 86,
+      "end_line": 89,
+      "excerpt": "lemma twoByTwoDensity_apply (i j : Fin 2) :\n    (twoByTwoDensity i j : \u211d\u22650\u221e) = twoByTwoRowPMF i j := by\n  fin_cases i <;> fin_cases j <;> simp [twoByTwoDensity, twoByTwoRowPMF]",
+      "problem": "`twoByTwoRowPMF` is defined by pattern matching and has no entry-level simp lemmas. So `@[simp] twoByTwoDensity_apply` rewrites the explicit `if i = j then 3/4 else 1/4` form into an opaque `PMF` application that simp cannot evaluate. Every proof that needs the numbers (this lemma, and lines 97 and 101) unfolds the definition with `simp [twoByTwoRowPMF]`, so the simp set does not reach a canonical numeric normal form. The simp lemma also competes with unfolding `twoByTwoDensity`. If a caller passes `twoByTwoDensity` to simp, the inner term is unfolded first and the `\u2191(twoByTwoDensity i j)` lemma can no longer fire.",
+      "proposed_change": "Add one closed-form lemma, `@[simp] lemma twoByTwoRowPMF_apply (i j : Fin 2) : twoByTwoRowPMF i j = if i = j then 3/4 else 1/4` (in \u211d\u22650\u221e). Alternatively add the four entry lemmas for `twoByTwoRowPMF 0 0`, `0 1`, `1 0` and `1 1`. Then restate the density lemma as `((twoByTwoDensity i j : \u211d\u22650) : \u211d\u22650\u221e) = if i = j then 3/4 else 1/4`, or derive it from the new lemma. The `fin_cases` proofs and the `norm_num [... twoByTwoRowPMF]` calls then reduce to plain `simp`.",
+      "benefit": "The kernel's singleton masses and the density's coercion normalise to the same numeric expression, and no `simp [twoByTwoRowPMF]` unfolding is needed. This makes the full-rank proof and the density proofs more robust, and it removes the competing-rule problem between unfolding `twoByTwoDensity` and `twoByTwoDensity_apply`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ChannelCapacity/DischargedExample.lean",
+          "declaration": "twoByTwo_rowMatrixFullRank",
+          "excerpt": "norm_num [Fin.sum_univ_two, twoByTwoKernel_apply_singleton, twoByTwoRowPMF] at h0 h1 \u22a2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ChannelCapacity/DischargedExample.lean",
+          "declaration": "twoByTwoRowPMF",
+          "excerpt": "noncomputable def twoByTwoRowPMF : Fin 2 \u2192 PMF (Fin 2)"
+        }
+      ]
+    },
+    {
+      "declaration": "twoByTwoKernel_apply_singleton",
+      "start_line": 71,
+      "end_line": 73,
+      "excerpt": "lemma twoByTwoKernel_apply_singleton (i j : Fin 2) :\n    twoByTwoKernel i {j} = twoByTwoRowPMF i j := by\n  simp [twoByTwoKernel_apply, twoByTwoRows]",
+      "problem": "The simp set has two lemmas that already compose to this statement: `@[simp] twoByTwoKernel_apply` and `@[simp] twoByTwoRows_apply_singleton`. The proof nevertheless passes `twoByTwoRows` to simp, which unfolds the definition and bypasses `twoByTwoRows_apply_singleton`. It also passes `twoByTwoKernel_apply`, which is already simp. The user-facing singleton lemma `twoByTwoKernel_apply_singleton` is not tagged simp. Callers therefore pass it explicitly (lines 97 and 101) instead of relying on the default simp set. The three rules are split inconsistently between the default simp set and manual arguments.",
+      "proposed_change": "Make the chain work from the default set. Either tag `twoByTwoKernel_apply_singleton` with `@[simp]`, proved by `simp` or `rw [twoByTwoKernel_apply, twoByTwoRows_apply_singleton]`, or leave it untagged and drop it from callers. Remove the redundant `twoByTwoKernel_apply` and the unfolding of `twoByTwoRows` from the proof arguments. The `twoByTwoRows` unfolding in line 120 should also go, so that `twoByTwoRows` stays irreducible to simp and only `twoByTwoRows_apply_singleton` governs its behaviour.",
+      "benefit": "There is one clear route from `twoByTwoKernel i {j}` to `twoByTwoRowPMF i j`. Downstream `simp` and `norm_num` calls no longer need hand-supplied rules or definition unfolding, and the unfolding no longer defeats the intended simp lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ChannelCapacity/DischargedExample.lean",
+          "declaration": "twoByTwoRows_apply_singleton",
+          "excerpt": "(twoByTwoRows i).toMeasure {j} = twoByTwoRowPMF i j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ChannelCapacity/DischargedExample.lean",
+          "declaration": "twoByTwoKernel_apply",
+          "excerpt": "twoByTwoKernel i = (twoByTwoRows i).toMeasure"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 8070,
+    "cache_read_input_tokens": 11607,
+    "output_tokens": 5050,
+    "output_tokens_details": {
+      "thinking_tokens": 2401
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 8070,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3139,
+        "cache_read_input_tokens": 7594,
+        "cache_creation_input_tokens": 4489,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4489
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0839487,
+  "duration_ms": 34299,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:03:21",
+  "unit": "file",
+  "source_sha256": "c8c705e68fa2d66895e21f910e6a71ad96ed575e7a042c2592edc950750fbfeb",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

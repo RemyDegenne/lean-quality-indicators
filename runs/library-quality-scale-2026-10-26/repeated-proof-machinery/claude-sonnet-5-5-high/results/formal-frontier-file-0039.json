@@ -1,0 +1,109 @@
+{
+  "id": "formal-frontier-file-0039",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the two `StableRange.Local` lemmas it depends on. I also read `Product.lean`, `RightDual.lean`, the two test clients that repeat the Jacobson block, and the other uses of `free_of_isUnit_compl*`. The file has one theorem, so I looked for machinery repeated between it and other files. Two patterns turned up. (1) The proper-two-sided-Jacobson and unit-complement block is repeated verbatim in test files, and a third test partly repeats it. (2) The double-opposite scalar-transport scaffold (`compHom` along `opOp.symm`, two `RingHomInvPair` instances, an identity semilinear equivalence) is rebuilt here, although `Product.lean` already builds the same equivalence privately. Both are modest, and the evidence for (1) comes from tests, not from other library proofs. I did not check which import graph would be least disruptive for the new shared declarations. I could not compile any proposed replacement.",
+  "findings": [
+    {
+      "declaration": "Module.Projective.free_of_isLocalRing (hI / hunit block)",
+      "start_line": 81,
+      "end_line": 90,
+      "excerpt": "apply (Ring.jacobson_lt_top R\u1d50\u1d52\u1d56).ne",
+      "problem": "The proof proves two facts about an arbitrary local ring (here `R\u1d50\u1d52\u1d56`): `(Ring.jacobson S).toTwoSided \u2260 \u22a4` and `r \u2209 (Ring.jacobson S).toTwoSided \u2192 IsUnit r`. Each takes a few lines of `TwoSidedIdeal.asIdeal` and `Ideal.mem_toTwoSided` bookkeeping, and neither is specific to opposite rings or to projective modules. The same two proofs appear almost verbatim as anonymous `example`s in the stable-range tests. A third test, `local_jacobson_properties`, repeats the unit half and a variant of the properness half. The facts are about local rings in general and belong in `StableRange.Local`, next to `mem_ringJacobson_iff`.",
+      "proposed_change": "Add two lemmas to `StableRange.Local`, for `{S : Type*} [Ring S] [IsLocalRing S]`.\n\n1. `IsLocalRing.ringJacobson_toTwoSided_ne_top : (Ring.jacobson S).toTwoSided \u2260 \u22a4`. Proof sketch: given `h`, apply `congrArg TwoSidedIdeal.asIdeal` to it, rewrite with `Ideal.asIdeal_toTwoSided` and `TwoSidedIdeal.top_asIdeal`, and contradict `(Ring.jacobson_lt_top S).ne`.\n2. `IsLocalRing.isUnit_of_notMem_ringJacobson_toTwoSided (r : S) (hr : r \u2209 (Ring.jacobson S).toTwoSided) : IsUnit r`. Proof sketch: by contradiction, use `Ideal.mem_toTwoSided.mpr` together with `(mem_ringJacobson_iff r).mpr`.\n\nThen lines 81\u201390 shrink to:\n```lean\nlet _ : Module.Free R\u1d50\u1d52\u1d56\u1d50\u1d52\u1d56 P :=\n  free_of_isUnit_compl_arbitraryRank (R := R\u1d50\u1d52\u1d56) (Ring.jacobson R\u1d50\u1d52\u1d56).toTwoSided\n    IsLocalRing.ringJacobson_toTwoSided_ne_top\n    IsLocalRing.isUnit_of_notMem_ringJacobson_toTwoSided\n```\nThe `R\u1d50\u1d52\u1d56` instance is `IsLocalRing R\u1d50\u1d52\u1d56`, which the current proof already uses. The `LocalJacobsonClient` examples would become direct uses of the new lemmas.",
+      "benefit": "The theorem body then contains only the opposite-ring transport and the call to the arbitrary-rank result, which is what its docstring describes. The Jacobson-to-two-sided conversion is stated once and reused, so a change to the `Ideal.toTwoSided` API is fixed in one place. Future uses of `free_of_isUnit_compl_arbitraryRank` with the canonical radical do not have to re-derive it either.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/stable-range/tests/StableRangeTests/LocalJacobsonClient.lean",
+          "declaration": "example (R : Type u) [Ring R] [IsLocalRing R] : (Ring.jacobson R).toTwoSided \u2260 \u22a4",
+          "excerpt": "simpa only [Ideal.asIdeal_toTwoSided, TwoSidedIdeal.top_asIdeal] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/stable-range/tests/StableRangeTests/LocalJacobsonClient.lean",
+          "declaration": "example (R : Type u) [Ring R] [IsLocalRing R] (r : R) (hr : r \u2209 (Ring.jacobson R).toTwoSided) : IsUnit r",
+          "excerpt": "exact hr (Ideal.mem_toTwoSided.mpr ((IsLocalRing.mem_ringJacobson_iff r).mpr h))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/tests/ProjectiveModulesTests/K0LocalPIDCalculationsClient.lean",
+          "declaration": "local_jacobson_properties",
+          "excerpt": "exact hr ((IsLocalRing.mem_ringJacobson_iff r).mpr h)"
+        }
+      ]
+    },
+    {
+      "declaration": "Module.Projective.free_of_isLocalRing (double-opposite transport)",
+      "start_line": 70,
+      "end_line": 79,
+      "excerpt": "let _ : Module R\u1d50\u1d52\u1d56\u1d50\u1d52\u1d56 P := Module.compHom P eR.symm.toRingHom",
+      "problem": "The proof re-builds the identity semilinear equivalence `P \u2243\u209b\u2097[opOp.symm] P` between the original and the double-opposite module structure. The pieces are the `compHom` structure, the two `RingHomInvPair` instances and the equivalence `{ AddEquiv.refl P with map_smul' := fun _ _ \u21a6 rfl }`. `ProjectiveModules/Module/Product.lean` builds exactly this object as the private `doubleOppositeEquiv` and uses it in `finite_pi` and `projective_pi` (about 25 lines, repeated inline there as well). Because that definition is private, the only way to reuse it is to copy the scaffold again, and `LocalRing.lean` has done so. The scaffold is also fragile: the instance order, the `.symm` direction and the `compHom` direction must all agree.",
+      "proposed_change": "Move `doubleOppositeEquiv` out of `Product.lean`'s private section into a small shared file with minimal imports, so neither `Product.lean` nor `LocalRing.lean` risks an import cycle. The statement stays as in `Product.lean`: for `[Semiring R] [AddCommMonoid M] [Module R M]` it is a semilinear equivalence `M \u2243\u209b\u2097[(RingEquiv.opOp R).toRingHom] M` for the `Module.compHom` structure along `(RingEquiv.opOp R).symm.toRingHom`. The proof is the identity map with `rfl` for additivity and scalars.\n\nOptionally add the two transfer lemmas that both files need: `Module.Projective R\u1d50\u1d52\u1d56\u1d50\u1d52\u1d56 M` from `Module.Projective R M` (via `Projective.of_equiv`), and `Module.Free R M` from `Module.Free R\u1d50\u1d52\u1d56\u1d50\u1d52\u1d56 M` (via `Free.of_equiv`).\n\nWith these, lines 70\u201379 and line 92 of `free_of_isLocalRing` shrink to a few lines. `projective_pi` in `Product.lean` can use the projectivity lemma instead of its inline `@Module.Projective.of_equiv \u2026` call.",
+      "benefit": "The inverse-pair and `compHom` scaffolding is written once, with a single checked orientation, instead of in each proof. `free_of_isLocalRing` then reads as: transport to `R\u1d50\u1d52\u1d56\u1d50\u1d52\u1d56`, apply the right-module result over `R\u1d50\u1d52\u1d56`, transport back. Later right-module results over `R\u1d50\u1d52\u1d56` can reuse the transport without copying it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/Module/Product.lean",
+          "declaration": "Module.doubleOppositeEquiv",
+          "excerpt": "private def doubleOppositeEquiv"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/Module/Product.lean",
+          "declaration": "Module.projective_pi",
+          "excerpt": "exact @Module.Projective.of_equiv (Ri i) (Ri i)\u1d50\u1d52\u1d56\u1d50\u1d52\u1d56 _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-modules/ProjectiveModules/Module/Product.lean",
+          "declaration": "Module.finite_pi",
+          "excerpt": "RingHomInvPair.of_ringEquiv_symm (RingEquiv.opOp (Ri i))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 37135,
+    "cache_read_input_tokens": 201660,
+    "output_tokens": 8137,
+    "output_tokens_details": {
+      "thinking_tokens": 2554
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37135,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4154,
+        "cache_read_input_tokens": 39244,
+        "cache_creation_input_tokens": 1820,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1820
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.250112,
+  "duration_ms": 74084,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:23",
+  "unit": "file",
+  "source_sha256": "6c27e6de34f4eb2331f2fb52d814d39720f70e1cc1349e09a3825736cf20752e",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

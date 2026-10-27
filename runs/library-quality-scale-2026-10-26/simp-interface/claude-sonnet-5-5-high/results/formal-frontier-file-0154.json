@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0154",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the tests in NormFormsTests/Coordinate.lean and NormFormsTests/DirectAPI.lean. I also grepped NormForms/CoordinateNormIteration.lean for uses. I did not read Mathlib simp sets in detail. I could not run Lean, so I make no claim that a loop or simp failure occurs. The only simp-tagged lemmas are `coordinateChange_apply` and `coordinateNorm_coordinateChange` (`simp\u2193`). I flag a missing canonical rule for evaluation, a missing simp attribute on the zero-iff lemma, and a definitional unfolding rule that competes with the real normal form. The evaluation and zero-iff findings point to downstream uses. The unfolding finding is more a design judgement. I propose no change to the orientation of the reindex, smul or change-of-basis lemmas.",
+  "findings": [
+    {
+      "declaration": "coordinateNormPolynomial_eval",
+      "start_line": 97,
+      "end_line": 98,
+      "excerpt": "theorem coordinateNormPolynomial_eval (b : Basis \u03b9 K L) (x : \u03b9 \u2192 K) :\n    MvPolynomial.eval x (coordinateNormPolynomial b) = coordinateNorm b x := by",
+      "problem": "This is the bridge from the polynomial to the coordinate norm. It is not a simp lemma, so no canonical normal form exists for `eval x (coordinateNormPolynomial b)`. The file's own consequences (`coordinateNormPolynomial_eval_eq_zero_iff`, `coordinateNormPolynomial_eval_coordinateChange`) and the reindex lemma are all stated through it. Clients must write `rw [coordinateNormPolynomial_eval]` by hand before simp can use the norm lemmas. The tests repeat this pattern: `rw [coordinateNormPolynomial_eval]` followed by `simp [coordinateNorm]`, and `coordinateNormPolynomial_eval _ _` is used as a term. The orientation (polynomial evaluation to `coordinateNorm`) is terminating and cannot cycle, because `coordinateNorm` is a definition that is not simp-unfolded.",
+      "proposed_change": "Mark `coordinateNormPolynomial_eval` with `@[simp]`. Together with `@[simp]` on `coordinateNorm_eq_zero_iff` (and `coordinateNorm_coordinateChange` which is already `simp\u2193`), simp would then close `eval x (coordinateNormPolynomial b) = 0 \u2194 x = 0` and `eval (coordinateChange b b' x) (coordinateNormPolynomial b) = eval x (coordinateNormPolynomial b')`. After that, `coordinateNormPolynomial_eval_eq_zero_iff` and `coordinateNormPolynomial_eval_coordinateChange` would be redundant as simp lemmas and should not also be tagged. The proofs inside the file that `rw` this lemma (`coordinateNormPolynomial_eval_eq_zero_iff`, `coordinateNorm_reindex`) are unaffected. `simp [h]` in `coordinateNormPolynomial_ne_zero` rewrites `eval x 0` and does not hit this lemma.",
+      "benefit": "Users can reduce statements about the norm form to statements about `coordinateNorm` with plain `simp`. The tests' manual `rw [coordinateNormPolynomial_eval]` step before `simp [coordinateNorm]` goes away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/norm-forms/NormFormsTests/Coordinate.lean",
+          "declaration": "complex_norm_polynomial",
+          "excerpt": "rw [coordinateNormPolynomial_eval]\n    simp [coordinateNorm, Algebra.norm_complex_apply, Complex.normSq_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/norm-forms/NormForms/Coordinate.lean",
+          "declaration": "coordinateNormPolynomial_eval_coordinateChange",
+          "excerpt": "rw [coordinateNormPolynomial_eval, coordinateNorm_coordinateChange,\n    coordinateNormPolynomial_eval]"
+        }
+      ]
+    },
+    {
+      "declaration": "coordinateNorm_eq_zero_iff",
+      "start_line": 46,
+      "end_line": 48,
+      "excerpt": "theorem coordinateNorm_eq_zero_iff (b : Basis \u03b9 K L) (x : \u03b9 \u2192 K) :\n    coordinateNorm b x = 0 \u2194 x = 0 := by",
+      "problem": "This is a standard `_eq_zero_iff` normal-form lemma: its left side is a simple head-symbol pattern and its right side is strictly simpler. It is not `@[simp]`, although the file already tags the neighbouring lemma `coordinateNorm_coordinateChange`. The same applies to `coordinateNormPolynomial_eval_eq_zero_iff` (line 112), which duplicates this lemma through the eval bridge. As a result, simp cannot decide `coordinateNorm b x = 0` for the file's main definition. The proofs of `coordinateNormPolynomial_eval_eq_zero_iff` and `coordinateNormPolynomial_ne_zero` and the downstream use in `CoordinateNormIteration` have to cite the lemma by name.",
+      "proposed_change": "Add `@[simp]` to `coordinateNorm_eq_zero_iff`. Pair this with the `@[simp]` on `coordinateNormPolynomial_eval` from the previous finding, so that `coordinateNormPolynomial_eval_eq_zero_iff` becomes derivable by simp and need not be tagged separately. This avoids two competing rules for `eval \u2026 = 0`. The `x = 0` side has no `coordinateNorm` and cannot loop.",
+      "benefit": "Simp can use non-vanishing of the norm without the user supplying the lemma name. The simp set then has a canonical form for zero tests on both the norm and the norm polynomial.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/norm-forms/NormForms/Coordinate.lean",
+          "declaration": "coordinateNormPolynomial_eval_eq_zero_iff",
+          "excerpt": "rw [coordinateNormPolynomial_eval, coordinateNorm_eq_zero_iff]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/norm-forms/NormForms/CoordinateNormIteration.lean",
+          "declaration": "use of coordinateNormPolynomial_eval_eq_zero_iff",
+          "excerpt": "NormForms.coordinateNormPolynomial_eval_eq_zero_iff basis x"
+        }
+      ]
+    },
+    {
+      "declaration": "coordinateChange_apply",
+      "start_line": 64,
+      "end_line": 67,
+      "excerpt": "@[simp]\ntheorem coordinateChange_apply (b : Basis \u03b9 K L) (b' : Basis \u03ba K L) (x : \u03ba \u2192 K) :\n    coordinateChange b b' x = b.equivFun (b'.equivFun.symm x) :=\n  rfl",
+      "problem": "This `@[simp]` lemma is just the definitional unfolding of `coordinateChange`. It makes simp expand every `coordinateChange b b' x` into `b.equivFun (b'.equivFun.symm x)`, which discards the abstraction the API is built around. It competes with the real structural rule `coordinateNorm_coordinateChange`, which has to be marked `@[simp\u2193]` so that it fires before the unfolding. Without the pre-rewrite flag, the unfolding would turn the argument into `b.equivFun (\u2026)`. The lemma would then no longer match the rule, which has the shape `coordinateNorm b (coordinateChange b b' x)`. The docstring also says the lemma states that the element is unchanged. That is not what the statement says. Downstream, the tests do not rely on this simp lemma. `complex_swap_coordinates` still writes `simp [coordinateChange]`, so the unfolding is requested explicitly there as well.",
+      "proposed_change": "Remove `@[simp]` from `coordinateChange_apply`. Keep it as a plain lemma for explicit `rw` or `simp [coordinateChange_apply]` (the tests' `simp [coordinateChange]` already covers the opt-in case). Then downgrade `coordinateNorm_coordinateChange` to an ordinary `@[simp]`, since nothing competes with it. Fix the docstring to say it unfolds the definition. If the unfolding is kept as a simp lemma, document why `simp\u2193` is needed. I have not verified how this interacts with `coordinateChangePolynomial_eval`, whose right side contains `coordinateChange b b' x i`.",
+      "benefit": "Terms built from `coordinateChange` stay in their abstract form under simp. The simp set no longer depends on pre/post rewrite priority to keep `coordinateNorm_coordinateChange` applicable. Users opt into the unfolding when they want it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/norm-forms/NormForms/Coordinate.lean",
+          "declaration": "coordinateNorm_coordinateChange",
+          "excerpt": "@[simp\u2193]\ntheorem coordinateNorm_coordinateChange"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/norm-forms/NormFormsTests/Coordinate.lean",
+          "declaration": "complex_swap_coordinates",
+          "excerpt": "fin_cases i <;> simp [coordinateChange]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 13718,
+    "cache_read_input_tokens": 56509,
+    "output_tokens": 6415,
+    "output_tokens_details": {
+      "thinking_tokens": 2007
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13718,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3557,
+        "cache_read_input_tokens": 15940,
+        "cache_creation_input_tokens": 1791,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1791
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.12469290000000001,
+  "duration_ms": 50069,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:13:05",
+  "unit": "file",
+  "source_sha256": "6a2f284a1a902654b7636f7918df2e420cbab8ff470804c82a3e355669b2231e",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

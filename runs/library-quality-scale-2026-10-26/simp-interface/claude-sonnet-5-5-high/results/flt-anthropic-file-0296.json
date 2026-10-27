@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0296",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. It has no @[simp] attributes at all, apart from the global `attribute [-simp]` removals in the header. I checked the Place.ord API in Definitions/Def_AlgebraicCurve_DivisorClassGroup.lean and Def_AlgebraicCurve_PlacesOverDVR.lean, where ord_zero and ord_one are simp but ord_neg is not. I also grepped for uses of the file's local lemmas. Both findings are about missing simp lemmas. I did not run Lean, so I cannot say whether the proposed attributes cause conflicts or break existing `simp` calls. One example is simp-set interaction with `map_pow` for `algebraMap c ^ i`. Other candidates (tD_mul, tD_pow, mem_valSubalgebra, ord_pow) I judged not clearly worth simp status because of non-canonical orientation or little use.",
+  "findings": [
+    {
+      "declaration": "ord_algebraMap / ord_neg / ord_pow (local Place.ord lemmas)",
+      "start_line": 73,
+      "end_line": 86,
+      "excerpt": "theorem ord_neg (v : Place K F) (a : F) : v.ord (-a) = v.ord a := by",
+      "problem": "`v.ord (algebraMap K F c) = 0` and `v.ord (-a) = v.ord a` are unconditional, size-decreasing normalisations. They sit next to the simp lemmas `Place.ord_zero` and `Place.ord_one`, but they are not simp. Every use is therefore a hand-threaded `rw`: lines 93, 99, 163, 167 and 779 (`rw [..., ord_neg, hS\u20810.2, zero_add]`). The proof of `ord_neg` itself shows the gap, since it needs `show (-1 : F) = algebraMap K F (-1) by simp` followed by an explicit `ord_algebraMap`. The library's own `Place.ord_neg` (PlacesOverDVR) is also not simp, so `simp` cannot discharge `w.ord (-x)` anywhere.",
+      "proposed_change": "Mark `ord_algebraMap` and `ord_neg` as `@[simp]`, preferably by moving them next to `Place.ord_zero` / `Place.ord_one` in the Place API. Both are unconditional and terminating: the right-hand side is a literal 0, or a strictly smaller argument. Then `simp` can close goals like `w.ord (-(a)) = w.ord a`. `ord_neg` should be proved before `ord_algebraMap` is used, as it is now. Keep `ord_pow` non-simp, or simp only with care, because its right-hand side introduces a cast and a product.",
+      "benefit": "Callers that normalise `ord` of negations and constants, such as the `rw [..., ord_neg, ...]` chains at lines 93, 99 and 779, could use `simp` instead of listing each lemma. The local lemmas are also stated in a form that other Place files could reuse as simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_DivisorClassGroup.lean",
+          "declaration": "AlgebraicCurve.Place.ord_zero",
+          "excerpt": "@[simp]\ntheorem ord_zero : v.ord (0 : F) = 0 := by simp [ord]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_AlgebraicCurve_PlacesOverDVR.lean",
+          "declaration": "AlgebraicCurve.ord_neg",
+          "excerpt": "theorem ord_neg (f : F) : w.ord (-f) = w.ord f := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_exists_smul_D_eq_smul_dCoord_of_forall_isIntegral_trace_mul_eq_aeval.lean",
+          "declaration": "ord_aeval_eq_zero",
+          "excerpt": "rw [ord_algebraMap, w.ord_mul ht0 hq0]"
+        }
+      ]
+    },
+    {
+      "declaration": "tD and its lemmas tD_algebraMap, tD_self, tD_aeval, tD_add, tD_sum",
+      "start_line": 273,
+      "end_line": 279,
+      "excerpt": "theorem tD_algebraMap (c : K) : tD t ht (algebraMap K F c) = 0 :=",
+      "problem": "`tD` is a bare function `F \u2192 F` defined by `choose`. It has the lemmas `tD_algebraMap`, `tD_self`, `tD_aeval` and `tD_add`, but none is simp. It has no `tD_zero` / `tD_one` and no `map_add`-style lemmas, because it is not a bundled `Derivation` or additive map. The consequences are visible in the proofs. Line 749 gets zero from `have := tD_algebraMap t ht 0; rwa [map_zero] at this`. Line 698 needs `rw [tD_mul, \u2190 map_pow, tD_algebraMap, mul_zero, zero_add, map_pow, mul_comm]` to turn `algebraMap c ^ i` into a form that `tD_algebraMap` accepts. Line 665 chains `tD_mul, tD_sub_algebraMap, tD_self, mul_one, add_comm`. `tD_algebraMap_mul` is stated but never used.",
+      "proposed_change": "Add `tD_zero : tD t ht 0 = 0` and `tD_one : tD t ht 1 = 0`. Mark the unconditional evaluation lemmas `tD_algebraMap`, `tD_self`, `tD_aeval`, `tD_zero`, `tD_one` and `tD_sub_algebraMap` as `@[simp]`. Add a `tD_algebraMap_pow` / `tD_algebraMap_mul` variant, or bundle `tD` as a `Derivation K F F`. Then `map_zero`, `map_add` and `Derivation.leibniz` supply the shape the proofs need. Keep `tD_mul` and `tD_pow` as plain `rw` lemmas. Their right-hand sides are not a canonical form, with `y * tD z + z * tD y` and a `y ^ (n - 1)` term.",
+      "benefit": "Line 749 shrinks to `simp`. The `\u2190 map_pow \u2026 map_pow, mul_comm` detour at line 698 goes away. The remaining uses at 665 and 756 become short `simp [tD_mul]` / `simp` calls. A reader no longer has to reconstruct the order of rewrites around `algebraMap` powers, and the derivation-evaluation facts are available to `simp` without manual threading.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_exists_smul_D_eq_smul_dCoord_of_forall_isIntegral_trace_mul_eq_aeval.lean",
+          "declaration": "ord_aeval_derivative_le",
+          "excerpt": "have := tD_algebraMap t ht 0\n      rwa [map_zero] at this"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_exists_smul_D_eq_smul_dCoord_of_forall_isIntegral_trace_mul_eq_aeval.lean",
+          "declaration": "ord_aeval_derivative_le",
+          "excerpt": "rw [tD_mul, \u2190 map_pow, tD_algebraMap, mul_zero, zero_add, map_pow, mul_comm]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicCurve_exists_smul_D_eq_smul_dCoord_of_forall_isIntegral_trace_mul_eq_aeval.lean",
+          "declaration": "tD_algebraMap_mul",
+          "excerpt": "rw [tD_mul, tD_algebraMap, mul_zero, add_zero]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 37696,
+    "cache_read_input_tokens": 112385,
+    "output_tokens": 6205,
+    "output_tokens_details": {
+      "thinking_tokens": 2310
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37696,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3966,
+        "cache_read_input_tokens": 39691,
+        "cache_creation_input_tokens": 2018,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2018
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22408850000000002,
+  "duration_ms": 44487,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:18:53",
+  "unit": "file",
+  "source_sha256": "c5e9d2e01ccc533bb6a54efe3aefb6baed68660c3b0bb30af0b77bfadb814841",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

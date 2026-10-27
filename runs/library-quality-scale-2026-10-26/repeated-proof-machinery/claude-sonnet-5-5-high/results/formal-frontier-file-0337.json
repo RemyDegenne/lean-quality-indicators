@@ -1,0 +1,94 @@
+{
+  "id": "formal-frontier-file-0337",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also grepped Mathlib and the scheme-properties library for other uses of `Cover.mkOfCovers` and found no existing two-open cover helper. I did not compile anything. Two repeated blocks are reported. The first is the identical two-open cover built in `glueHom` and in `hom_ext_sup`. The second is the pair of near-identical restriction-to-structure-morphism calc chains in `isOver_glueHom`. The four-case pullback compatibility in `glueHom` is repetitive, but its cases differ in orientation and in which hypothesis they use, so I did not report it. `glue_restrict_right` also duplicates the `glueHom_restrict_left` calc, but that is a short calculation.",
+  "findings": [
+    {
+      "declaration": "AlgebraicGeometry.Scheme.PartialMap.glueHom (and hom_ext_sup)",
+      "start_line": 56,
+      "end_line": 79,
+      "excerpt": "Cover.mkOfCovers Bool\n        (fun b \u21a6 match b with\n          | false => V.toScheme\n          | true => p.domain.toScheme)",
+      "problem": "`glueHom` and `hom_ext_sup` each build the same two-element open cover of `(U \u2294 V).toScheme`. The cover is indexed by `Bool` and uses the `homOfLE` inclusions. Both copies also repeat the same surjectivity argument (case split on `x.2`, `Subtype.ext`, `homOfLE_apply`) and the same `cases b <;> infer_instance` for the open-immersion property. This is about 20 lines of non-trivial proof, copied verbatim. A fix to one copy, such as changing the index type or the surjectivity proof, has to be repeated in the other.",
+      "proposed_change": "Introduce one shared private definition placed before `glueHom`:\n\n`private noncomputable def supCover (U V : X.Opens) : (U \u2294 V).toScheme.OpenCover := Cover.mkOfCovers Bool (fun b \u21a6 match b with | false => V.toScheme | true => U.toScheme) (fun b \u21a6 ...) (surj proof) (inst proof)`\n\nAdd the two obvious lemmas `(supCover U V).f false = X.homOfLE le_sup_right` and `(supCover U V).f true = X.homOfLE le_sup_left` by `rfl`.\n\nThen `hom_ext_sup` becomes `(supCover U V).hom_ext g\u2081 g\u2082 (fun b \u21a6 by cases b; exacts [hV, hU])`. `hom_ext_sup` has to move before `glueHom`, and it needs only `U V g\u2081 g\u2082 hU hV`. In `glueHom`, replace the `let C := ...` block with `let C := supCover p.domain V`. The rest of `glueHom` (`k`, `glueMorphisms`, the four `change`/`cancel_epi` cases) stays the same. The `change` goals there already unfold `C.f b` to `homOfLE`, so they should still typecheck.",
+      "benefit": "Removes the duplicated cover construction and surjectivity proof. The cover is then defined in one place, and the proof that two morphisms from the union agree can be reused by `glueHom`, `hom_ext_sup` and any later lemma. Readers see the cover once, with a name, instead of finding it inline twice.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/PartialMapGluing.lean",
+          "declaration": "AlgebraicGeometry.Scheme.PartialMap.hom_ext_sup",
+          "excerpt": "let C : (U \u2294 V).toScheme.OpenCover :=\n    Cover.mkOfCovers Bool\n      (fun b \u21a6 match b with\n        | false => V.toScheme\n        | true => U.toScheme)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/AlgebraicGeometry/Cover/MorphismProperty.lean",
+          "declaration": "AlgebraicGeometry.Scheme.Cover.mkOfCovers",
+          "excerpt": "def Cover.mkOfCovers (J : Type*) (obj : J \u2192 Scheme.{u}) (map : (j : J) \u2192 obj j \u27f6 X)"
+        }
+      ]
+    },
+    {
+      "declaration": "AlgebraicGeometry.Scheme.PartialMap.isOver_glueHom",
+      "start_line": 228,
+      "end_line": 260,
+      "excerpt": "  \u00b7 calc\n      X.homOfLE (le_sup_left : p.domain \u2264 p.domain \u2294 V) \u226b\n          ((p.glueHom V f h).hom \u226b (Y \u2198 S)) =",
+      "problem": "The two goals produced by `hom_ext_sup` are proved by two calc chains of seven and six steps with the same shape. Each chain reassociates, rewrites with `homOfLE_glueHom_left` or `_right`, and applies `comp_over`. It then rewrites with `Scheme.Opens.\u03b9_comp_over`, rewrites with `Scheme.homOfLE_\u03b9`, and reassociates back. Only the piece (`p` against `f`) and the inclusion (`le_sup_left` against `le_sup_right`) differ. The same transport argument is therefore written twice, and every step is spelled out by hand.",
+      "proposed_change": "Add a private lemma for an arbitrary open `W \u2264 U` with a morphism `g : W.toScheme \u27f6 Y`.\n\nStatement: if `[g.IsOver S]` (the `Over` instance for `W.toScheme` is the open-subscheme instance) and `X.homOfLE hW \u226b \u03c6 = g`, then `X.homOfLE hW \u226b (\u03c6 \u226b (Y \u2198 S)) = X.homOfLE hW \u226b (U.\u03b9 \u226b (X \u2198 S))`.\n\nProof sketch: `rw [\u2190 Category.assoc, h\u03c6, comp_over g S, \u2190 Scheme.Opens.\u03b9_comp_over W S, \u2190 Scheme.homOfLE_\u03b9 X hW, Category.assoc]`.\n\nBoth bullets of `isOver_glueHom` then become `restrict_over_aux \u2026 (homOfLE_glueHom_left p V f h)` and `restrict_over_aux \u2026 (homOfLE_glueHom_right p V f h)`. For the left bullet, `p.hom` needs a `p.IsOver S` instance in place of `f.IsOver S`, which holds by hypothesis.",
+      "benefit": "The calc chains collapse to one reusable lemma plus two one-line applications. The statement 'a morphism from the union that restricts to an `S`-morphism on an open is compatible with the structure maps there' is stated once. The instance proof then reads as two applications of that lemma rather than about 30 lines of parallel bookkeeping.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/scheme-properties/SchemeProperties/PartialMapGluing.lean",
+          "declaration": "AlgebraicGeometry.Scheme.PartialMap.isOver_glueHom",
+          "excerpt": "  \u00b7 calc\n      X.homOfLE (le_sup_right : V \u2264 p.domain \u2294 V) \u226b\n          ((p.glueHom V f h).hom \u226b (Y \u2198 S)) ="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 10740,
+    "cache_read_input_tokens": 17001,
+    "output_tokens": 3131,
+    "output_tokens_details": {
+      "thinking_tokens": 158
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10740,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2658,
+        "cache_read_input_tokens": 13072,
+        "cache_creation_input_tokens": 1597,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1597
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.07597809999999999,
+  "duration_ms": 21884,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T01:38:45",
+  "unit": "file",
+  "source_sha256": "a08e52d7838da177ebd093c6aaee1bd614efee6d2c2974d4641282556e4e5cd0",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

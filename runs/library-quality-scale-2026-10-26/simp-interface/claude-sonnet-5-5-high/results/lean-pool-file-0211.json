@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0211",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and grepped the other Cobham internal files (StepAlgebra, Simulate) for uses of the simp lemmas and of `blockWidth`. I didn't run Lean, so I make no claim that a simp call failed or looped. I found no rewrite cycles or competing rules in the @[simp] set. The two findings are modest interface gaps. Everything else (the length lemmas, `leftCodeFrom_succ`, `cellsCode_zero`) looks terminating and in a sensible direction.",
+  "findings": [
+    {
+      "declaration": "symDecode_symCode",
+      "start_line": 90,
+      "end_line": 94,
+      "excerpt": "@[simp] theorem symDecode_symCode (g : \u0393) (rest : List Bool) :\n    symDecode (symCode g ++ rest) = g := by cases g <;> rfl",
+      "problem": "The simp lemma's left-hand side requires an explicit `++ rest`. The bare form `symDecode (symCode g)` is the most common normal form, and it does not unify with `symCode g ++ ?rest`, so this simp lemma cannot fire on it. The file itself works around this in `symCode_injective`: it introduces a artificial `++ []` and instantiates the lemma by hand.",
+      "proposed_change": "Add a companion `@[simp] theorem symDecode_symCode' (g : \u0393) : symDecode (symCode g) = g := by cases g <;> rfl` (or derive it from the general lemma with `List.append_nil`). `symCode_injective` can then use it directly instead of the `++ []` detour.",
+      "benefit": "`simp` closes the canonical round-trip goal `symDecode (symCode g) = g` without the caller adding `++ []`. The `symCode_injective` proof gets shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/Encoding.lean",
+          "declaration": "symCode_injective",
+          "excerpt": "have h1 : symDecode (symCode a ++ []) = a := symDecode_symCode a []"
+        }
+      ]
+    },
+    {
+      "declaration": "blockRuler_length / blockWidth",
+      "start_line": 385,
+      "end_line": 391,
+      "excerpt": "@[simp] theorem blockRuler_length (W : \u2115) : (blockRuler W).length = blockWidth W := by",
+      "problem": "The simp normal form of `(blockRuler W).length` is `blockWidth W`, which is an opaque def for `simp` and `omega`. Every length-bound proof then has to unfold it by hand with `rw [..., blockRuler_length, blockWidth]; omega`. This pattern is repeated in `symDecode_take_padTo_rightCode`, `tapeStepBlocks_eq` (twice) and several times in StepAlgebra and Simulate. The simp set therefore stops one step short of arithmetic that `omega` can use. Separately, `tapeCode_length` keeps `blockWidth W` in its statement, so it shares this stopping point.",
+      "proposed_change": "Add `theorem blockWidth_def (W : \u2115) : blockWidth W = 2 * (W + 1) := rfl`, or make `blockWidth` reducible/`@[simp]`-unfoldable. Then `simp [blockWidth]` or `simp` followed by `omega` replaces the manual `rw [..., blockRuler_length, blockWidth]` chains. State the length lemmas with whichever normal form is chosen consistently.",
+      "benefit": "Removes the repeated manual unfolding and gives callers one canonical form for block widths. Fewer proofs depend on rewriting in a specific order.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/Encoding.lean",
+          "declaration": "tapeStepBlocks_eq",
+          "excerpt": "rw [rightCode_length, blockRuler_length, blockWidth]; omega"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/Simulate.lean",
+          "declaration": "cellsCode_length use",
+          "excerpt": "rw [cellsCode_length, blockRuler_length, blockWidth]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Classes/P/Cobham/Internal/StepAlgebra.lean",
+          "declaration": "StepAlgebra length side goal",
+          "excerpt": "(by rw [rightCode_length, blockRuler_length, blockWidth]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 26138,
+    "cache_read_input_tokens": 30584,
+    "output_tokens": 3507,
+    "output_tokens_details": {
+      "thinking_tokens": 1542
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26138,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2583,
+        "cache_read_input_tokens": 26571,
+        "cache_creation_input_tokens": 3580,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3580
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1426884,
+  "duration_ms": 26852,
+  "turns": 3,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:17",
+  "unit": "file",
+  "source_sha256": "e35633a90b62ed27fca2e371fe54a1c1a0c4dd1476301a5261493925edaf6228",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

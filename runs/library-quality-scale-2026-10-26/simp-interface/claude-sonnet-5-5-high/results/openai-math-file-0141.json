@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0141",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, the definitions of zeroOutput, zeroAccepted and zeroOutput_feasible in ZeroObjective.lean, and realCost in Geometry/RealCost.lean. I grepped the KMedianRecovery directory for how realCost and zeroOutput are unfolded elsewhere. The file declares no simp attributes, so both findings are about missing unfolding lemmas on the definitions it uses. They are interface suggestions, not defects that block compilation. I did not run Lean, so I make no claims about simp behaviour. One uncertainty: the right hypothesis shape and whether to mark the lemmas @[simp] depend on how the other call sites use them.",
+  "findings": [
+    {
+      "declaration": "zero_successful_completion (heq step)",
+      "start_line": 56,
+      "end_line": 58,
+      "excerpt": "simp only [zeroOutput,dite_eq_left hready]",
+      "problem": "zeroOutput is a dite on BranchReady, but ZeroObjective.lean defines no unfolding lemma for it. To rewrite zeroOutput to zeroAccepted, this proof unfolds the definition and then supplies the raw dite lemma with the hypothesis by hand. zeroOutput_feasible in ZeroObjective.lean unfolds the definition again and splits the ifs. Callers see the `by classical exact if h : \u2026` body, not a stable normal form.",
+      "proposed_change": "Next to zeroOutput in ZeroObjective.lean, add `lemma zeroOutput_of_ready (h : BranchReady F S s colors q 0 0) : zeroOutput D F S hSF hS \u0394 h\u0394 hbound s colors q = zeroAccepted D F S hSF hS \u0394 h\u0394 hbound s colors q h`. Add the matching `zeroOutput_of_not_ready` giving `fun _ => S`. Then heq becomes `zeroOutput_of_ready _ _ \u2026 hready`. Mark the lemma @[simp] only if it works as a conditional simp lemma, with h found by discharger or hypothesis. Otherwise leave it unmarked and use `rw`.",
+      "benefit": "The two-branch definition is unfolded in one place. Callers rewrite with a named lemma, and the proof no longer depends on the internal `dite` shape.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedianRecovery/Recovery/ZeroObjective.lean",
+          "declaration": "zeroOutput",
+          "excerpt": "exact if h : BranchReady F S s colors q 0 0 then\n    zeroAccepted D F S hSF hS \u0394 h\u0394 hbound s colors q h else fun _ => S"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedianRecovery/Recovery/ZeroObjective.lean",
+          "declaration": "zeroOutput_feasible",
+          "excerpt": "dsimp only [zeroOutput]\n  split_ifs with h"
+        }
+      ]
+    },
+    {
+      "declaration": "zero_successful_probability (nonnegativity of realCost)",
+      "start_line": 106,
+      "end_line": 109,
+      "excerpt": "unfold realCost\n    rw [dite_eq_left (zeroOutput_feasible D F S hSF hS \u0394 h\u0394 hbound s colors _ bits).2.2]\n    exact Finset.sum_nonneg (fun p _ => distanceTo_nonneg _ _ _)",
+      "problem": "realCost is defined as `if h : U.Nonempty then \u2211 \u2026 else 0` and has no companion simp lemmas such as realCost_of_nonempty or realCost_nonneg. Each user unfolds it by hand: `unfold realCost`, `rw [dite_eq_left \u2026]`, or `simp only [realCost, dite_eq_left hS]`. The same pattern appears in RecoveryGuesses.lean, in RealCost.lean's own sampled_metric_branch, and in the sibling Branching files. Nonnegativity is reproved separately at each site with `Finset.sum_nonneg \u2026 distanceTo_nonneg`.",
+      "proposed_change": "In Geometry/RealCost.lean, add `lemma realCost_of_nonempty (D U : Finset V) (h : U.Nonempty) : realCost D U = \u2211 p \u2208 D, distanceTo U h p` (conditional @[simp], or used via `simp [realCost_of_nonempty _ _ hS]`). Also add `realCost_empty : realCost D \u2205 = 0` and `realCost_nonneg : 0 \u2264 realCost D U`. Then lines 106\u2013109 collapse to `exact realCost_nonneg _ _`, and the `simp only [realCost, dite_eq_left hS]` call sites become one rewrite.",
+      "benefit": "This gives one canonical unfolded form for the cost. The many ad-hoc `unfold realCost` / `dite_eq_left` proofs shrink to named lemma uses, and the nonnegativity fact is proved once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedianRecovery/Geometry/RealCost.lean",
+          "declaration": "realCost",
+          "excerpt": "if h : U.Nonempty then \u2211 p \u2208 D, distanceTo U h p else 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedianRecovery/Recovery/RecoveryGuesses.lean",
+          "declaration": "anonymous proof step (hc) in the lemma ending with realCost D S \u2264 (101/100:\u211d)*comparisonCost D C.assign",
+          "excerpt": "simp only [realCost,dite_eq_left hS]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KMedianRecovery/Recovery/AllBad.lean",
+          "declaration": "realCost_eq",
+          "excerpt": "simp only [realCost,cost,connection,dite_eq_left hS,distanceTo]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 28618,
+    "cache_read_input_tokens": 164354,
+    "output_tokens": 5174,
+    "output_tokens_details": {
+      "thinking_tokens": 946
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28618,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2237,
+        "cache_read_input_tokens": 31391,
+        "cache_creation_input_tokens": 1240,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1240
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18267940000000002,
+  "duration_ms": 134747,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-26T23:12:04",
+  "unit": "file",
+  "source_sha256": "7d0482a155d5b27bf7775398c71192fb686992fea474c755fed641d2392677ee",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

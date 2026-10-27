@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0348",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, `multivariableLaurentTerm` and `multivariableLaurentCoeff` in LaurentSeries/Basic.lean, and `openExtension`, `openExtension_apply` and `openExtension_coe` in FunctionSpace.lean. I also grepped the SeveralComplexVariables directory for other uses of these. I did not run Lean, so I don't know whether the proposed lemmas would simplify the exact goals here. The `openExtension_apply` finding is the weaker one: it rests on repeated `rw ...; rfl` use, and the right orientation or form for a simp lemma there is a judgment call. I found no loop or competing-rule problems in the simp calls that do appear in the file.",
+  "findings": [
+    {
+      "declaration": "exists_laurentProjections (uses of multivariableLaurentTerm unfolding)",
+      "start_line": 203,
+      "end_line": 215,
+      "excerpt": "\u00b7 simp [hj, c, multivariableLaurentTerm]",
+      "problem": "`multivariableLaurentTerm` is an @[expose] def with no simp or unfolding lemmas. Every user unfolds it by name, and the unfolding exposes a raw `(\u220f i, z i ^ m i) \u2022 c m`. The Kronecker-delta step in this proof is done by hand. It does `by_cases`, `subst`, then `simp only [ite_true, ..., multivariableLaurentTerm, c]` in one branch and `simp [..., multivariableLaurentTerm]` in the other. Line 159 unfolds the term again to prove a vanishing case, and other files do the same: `simp only [multivariableLaurentTerm, hzero k hk, smul_zero]` in Reinhardt/Extension.lean and `simp [multivariableLaurentTerm, hzero]`-style steps in Reinhardt/PartialHull.lean. No file has a named lemma for these routine cases, so each proof depends on the definition's body.",
+      "proposed_change": "Add small lemmas next to the definition in LaurentSeries/Basic.lean. The first is a definitional unfolding lemma `multivariableLaurentTerm_apply : multivariableLaurentTerm c m z = (\u220f i, z i ^ m i) \u2022 c m`. The others are @[simp] lemmas for the cases that recur. One covers a zero coefficient, `c m = 0 \u2192 multivariableLaurentTerm c m z = 0`. One covers `multivariableLaurentTerm (fun j => if j = k then v else 0) m z = if m = k then multivariableLaurentTerm (fun _ => v) k z else 0`, or an equivalent statement about `Pi.single`. Then lines 205\u2013206 and 213\u2013215 reduce to `simp [hj]` or `simp [hmk]`, with no `subst` or manual unfolding. The same lemmas shorten the unfolding calls in Extension.lean and PartialHull.lean.",
+      "benefit": "The proofs no longer depend on the body of `multivariableLaurentTerm`. The sparse-coefficient case is handled by one canonical rule, so reordering the definition or changing the summand shape needs a single edit, not edits in several files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/SeveralComplexVariables/SeveralComplexVariables/LaurentSeries/Basic.lean",
+          "declaration": "multivariableLaurentTerm",
+          "excerpt": "(\u220f i, z i ^ m i) \u2022 c m"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/SeveralComplexVariables/SeveralComplexVariables/Reinhardt/Extension.lean",
+          "declaration": "hterm / hs in the extension proof",
+          "excerpt": "simp only [multivariableLaurentTerm, hzero k hk, smul_zero]"
+        }
+      ]
+    },
+    {
+      "declaration": "openExtension_apply (as used in exists_laurentCoeffCLM, exists_laurentTermCLM, exists_laurentProjections)",
+      "start_line": 199,
+      "end_line": 220,
+      "excerpt": "rw [openExtension_apply U _ hz]",
+      "problem": "The only simp lemma for `openExtension` is `openExtension_coe`, which fires only on a subtype-coerced point `\u2191z`. The commonly needed lemma `openExtension_apply`, for `z \u2208 U` given as a hypothesis, is not tagged simp. It is applied by hand with `rw [openExtension_apply U _ hz]` at lines 112, 141, 199 and 220, and also in FunctionSpace.lean, Montel.lean and CartanThullen.lean. The `rw` is often followed by `rfl` (see lines 141\u2013142 and Montel.lean:216) to close a goal that differs only by a subtype wrapper. The explicit `U _ hz` arguments are bookkeeping that a simp lemma with a discharged side condition would avoid. Without such a lemma, the surrounding `simp only [Submodule.coe_sum, ContinuousMap.sum_apply]` at lines 200 and 221 cannot also rewrite `openExtension`. That forces the proof to split into an `rw` step and a simp step.",
+      "proposed_change": "Mark `openExtension_apply` as @[simp]. Its side condition `z \u2208 U` can be discharged from a hypothesis in context when the call is `simp [hz]`. Alternatively, add a companion lemma `openExtension_apply_of_mem` in the same form. Pair it with a simp lemma for `openExtension U (\u2211 i \u2208 s, \u2191(f i)) z`, or use `Submodule.coe_sum` and `ContinuousMap.sum_apply` followed by `openExtension_coe`. The `rw ...; simp only ...` pairs at lines 199\u2013200 and 220\u2013221 could then become one `simp [hz]`-style call.",
+      "benefit": "Users get a single normal form for `openExtension U f z` on points of `U`. The pattern repeated across at least five files becomes one simp call, with no `rfl` fix-up and no explicit `U _ hz` arguments.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/SeveralComplexVariables/SeveralComplexVariables/FunctionSpace.lean",
+          "declaration": "openExtension_apply",
+          "excerpt": "theorem openExtension_apply (U : TopologicalSpace.Opens E)\n    (f : C(U, F)) {z : E} (hz : z \u2208 U) : openExtension U f z = f \u27e8z, hz\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/SeveralComplexVariables/SeveralComplexVariables/FunctionSpace.lean",
+          "declaration": "openExtension_coe",
+          "excerpt": "@[simp] theorem openExtension_coe (U : TopologicalSpace.Opens E)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/SeveralComplexVariables/SeveralComplexVariables/Montel.lean",
+          "declaration": "Montel proof step",
+          "excerpt": "(hA n).congr V.isOpen (fun z hz => by rw [openExtension_apply V _ hz]; rfl)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 21423,
+    "cache_read_input_tokens": 99672,
+    "output_tokens": 5237,
+    "output_tokens_details": {
+      "thinking_tokens": 1300
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21423,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2655,
+        "cache_read_input_tokens": 24479,
+        "cache_creation_input_tokens": 957,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 957
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1480532,
+  "duration_ms": 48178,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:54:01",
+  "unit": "file",
+  "source_sha256": "9dfedabb041878b2bd667d47d11b558afa9ebb9a0fbd3c6512b9d9ac4a309f16",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

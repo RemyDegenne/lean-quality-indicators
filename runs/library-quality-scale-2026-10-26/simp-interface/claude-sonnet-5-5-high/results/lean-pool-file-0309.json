@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0309",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it depends on: `translateCoefficientPath` and its simp lemmas in MeanCoefficientPath.lean, `weight` and `normalize` in ContinuousTimeWeight.lean, and `weightedSolution` in LinearDuhamelWeighted.lean. I also grepped for other uses of `solutionFamily`, `coefficientFamily` and `evolutionFamily`. Beyond the two findings, I saw no other simp problems. The three local defs (`coefficientFamily`, `evolutionFamily`, `solutionFamily`) have no unfolding or apply lemmas, but downstream uses pass them as explicit arguments, so I did not flag that. I did not run Lean. The `hw`/`hn` finding is moderate: it rests on the file already having `@[simp]` apply lemmas for `weight` and `normalize`, which makes the commutation identities natural canonical lemmas. Whether they should carry `@[simp]` depends on how often they would fire elsewhere. I did not check whether PacketCorrectionCoefficientBudget.lean is imported by the target.",
+  "findings": [
+    {
+      "declaration": "EulerLpCylinderRegularForward.evolutionFamily_propagator_zero",
+      "start_line": 315,
+      "end_line": 318,
+      "excerpt": "have hz : translateCoefficientPath B (0 : Space) = B := by\n    apply ContinuousMap.ext\n    intro r\n    exact translated_zero (B r)",
+      "problem": "The zero-translation identity for `translateCoefficientPath` is not available as a simp lemma where the definition lives. MeanCoefficientPath.lean has `translateCoefficientPath_apply` (simp, `rfl`) and MeanCoefficientSpatial.lean has `@[simp] translated_zero`, but there is no `translateCoefficientPath_zero` there. The file therefore reproves it locally with `ContinuousMap.ext` and `translated_zero`. A non-simp copy already exists in a different namespace (`EulerCoefficientPath.translateCoefficientPath_zero`, in PacketCorrectionCoefficientBudget.lean), which reproves it a second way. The result is a duplicated proof, and a rewrite step that `simp` cannot find on its own.",
+      "proposed_change": "Add `@[simp] theorem translateCoefficientPath_zero (A : C(K, Space \u2192\u1d47 V)) : translateCoefficientPath A 0 = A` in MeanCoefficientPath.lean, next to `translateCoefficientPath_apply`. The proof would be `ContinuousMap.ext fun t => by simp`, using the existing simp lemmas. Move or reuse the copy in PacketCorrectionCoefficientBudget.lean instead of duplicating it. Then `hz` becomes `translateCoefficientPath_zero B`, or `simp` can discharge `translateCoefficientPath B 0` directly.",
+      "benefit": "There is one canonical zero-translation rewrite, available to `simp` in every file that uses `EulerMeanCoefficients`. The ad-hoc `hz` proofs disappear, and `rw [\u2190 hz] at h` can be replaced by a simp-normal rewrite.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MeanCoefficientPath.lean",
+          "declaration": "EulerMeanCoefficients.translateCoefficientPath_apply",
+          "excerpt": "@[simp] theorem translateCoefficientPath_apply (A : C(K, Space \u2192\u1d47 V)) (a : Space) (t : K) :\n    translateCoefficientPath A a t = translated (A t) a := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/MeanCoefficientSpatial.lean",
+          "declaration": "translated_zero",
+          "excerpt": "@[simp] theorem translated_zero (A : Space \u2192\u1d47 V) : translated A 0 = A := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketCorrectionCoefficientBudget.lean",
+          "declaration": "EulerCoefficientPath.translateCoefficientPath_zero",
+          "excerpt": "theorem translateCoefficientPath_zero {V : Type*} [NormedAddCommGroup V] [NormedSpace \u211d V]\n    (A : C(K, Space \u2192\u1d47 V)) : translateCoefficientPath A 0 = A := by"
+        }
+      ]
+    },
+    {
+      "declaration": "EulerLinearDuhamel.Evolution.weightedSolution_map",
+      "start_line": 64,
+      "end_line": 74,
+      "excerpt": "have hw : weight g (L.compLeftContinuous \u211d (Icc (0 : \u211d) T) f) =\n      L.compLeftContinuous \u211d (Icc (0 : \u211d) T) (weight g f) := by",
+      "problem": "The commutation of `weight g` and `normalize g hg` with post-composition by a bounded linear map (`compLeftContinuous`) is proved as two anonymous `have`s inside `weightedSolution_map`. The surrounding library already has `@[simp] weight_apply` and `@[simp] normalize_apply`, plus commutation lemmas with `multiplier` (`normalize_multiplier`, `weight_multiplier`). The analogous lemmas for `compLeftContinuous` are missing from that API. As a result, `simp` cannot move `weight` or `normalize` past `L.compLeftContinuous`, and each caller must redo the `ContinuousMap.ext` and `map_smul` argument by hand.",
+      "proposed_change": "In ContinuousTimeWeight.lean, add lemmas such as `weight_compLeftContinuous (L : E \u2192L[\u211d] F) (g) (f) : weight g (L.compLeftContinuous \u211d K f) = L.compLeftContinuous \u211d K (weight g f)` and the matching `normalize_compLeftContinuous`. Consider tagging them `@[simp]` only if the compLeftContinuous-outside form is the intended normal form. In `weightedSolution_map`, replace `hw` and `hn` by these lemmas, so the proof reduces to `unfold weightedSolution; rw [weight_compLeftContinuous, U.solution_map V L hL, normalize_compLeftContinuous]`.",
+      "benefit": "The interface for `weight` and `normalize` becomes complete and consistent with the existing `multiplier` lemmas. The inline proofs are no longer needed, and other naturality proofs can reuse the lemmas or `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/ContinuousTimeWeight.lean",
+          "declaration": "EulerContinuousTimeWeight.normalize_multiplier",
+          "excerpt": "simp only [normalize_apply, multiplier_apply, map_smul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/ContinuousTimeWeight.lean",
+          "declaration": "EulerContinuousTimeWeight.weight_apply",
+          "excerpt": "@[simp] theorem weight_apply (g : C(K, \u211d)) (f : C(K, E)) (t : K) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 23271,
+    "cache_read_input_tokens": 176443,
+    "output_tokens": 5670,
+    "output_tokens_details": {
+      "thinking_tokens": 982
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23271,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2775,
+        "cache_read_input_tokens": 26751,
+        "cache_creation_input_tokens": 533,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 533
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.16746429999999998,
+  "duration_ms": 50342,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-27T01:31:45",
+  "unit": "file",
+  "source_sha256": "7bb96c93b7ae0e31790a1a4bcc50e895eb15df006d3c0fa1ec6e7efcd715fe96",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

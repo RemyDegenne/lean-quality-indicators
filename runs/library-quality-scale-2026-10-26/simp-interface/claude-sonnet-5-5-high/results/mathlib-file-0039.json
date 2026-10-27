@@ -1,0 +1,115 @@
+{
+  "id": "mathlib-file-0039",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and compared its simp attributes with the PresheafedSpace analogues (PresheafedSpace.lean, Stalks.lean) and the Scheme analogues (Scheme.lean). I found no rewrite cycles or competing rules, and the comp_base and comp_c_app lemmas are redundant after comp_toHom. I deliberately did not flag the restrictStalkIso_*_apply lemmas, because Stalks.lean says simpNF rejects them as simp lemmas. The three findings are consistency and coverage gaps, not demonstrated simp failures. I could not run Lean, so I could not check whether adding the attributes passes the simpNF linter or changes downstream `simp` calls. The `stalkMap_comp` finding is the least certain, because the Scheme version is also not simp.",
+  "findings": [
+    {
+      "declaration": "AlgebraicGeometry.LocallyRingedSpace.stalkMap_germ_apply",
+      "start_line": 441,
+      "end_line": 444,
+      "excerpt": "lemma stalkMap_germ_apply (U : Opens Y) (x : X) (hx : f.base x \u2208 U) (y) :\n    f.stalkMap x (Y.presheaf.germ U (f.base x) hx y) =",
+      "problem": "The categorical form `stalkMap_germ` is `@[reassoc (attr := simp)]`, but its elementwise form `stalkMap_germ_apply` has no `simp` attribute. A goal of the form `f.stalkMap x (germ U (f.base x) hx y)` is therefore not normalised, even though the same file marks `stalkMap_inv_hom_apply` and `stalkMap_hom_inv_apply` as simp. The Scheme-level analogue `germ_stalkMap_apply` is `@[simp]`, so the two interfaces disagree. The rewrite direction is the same as in `stalkMap_germ` and cannot loop.",
+      "proposed_change": "Mark `stalkMap_germ_apply` with `@[simp]`, as `Scheme.Hom.germ_stalkMap_apply` is. Check the simpNF linter. The only worry is that the LHS head is `f.stalkMap x` applied to a `germ`, and the linter may judge it reducible by other lemmas. If so, keep it as a documented non-simp lemma.",
+      "benefit": "Element-level goals about stalk maps of germs simplify to `f.c.app` followed by a germ, as the categorical form already does. Users no longer need to call `stalkMap_germ_apply` by name. The LocallyRingedSpace and Scheme simp sets become consistent.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/AlgebraicGeometry/Scheme.lean",
+          "declaration": "AlgebraicGeometry.Scheme.Hom.germ_stalkMap_apply",
+          "excerpt": "@[simp]\nlemma germ_stalkMap_apply (U : Y.Opens) (x : X) (hx : f x \u2208 U) (y) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Geometry/RingedSpace/LocallyRingedSpace.lean",
+          "declaration": "AlgebraicGeometry.LocallyRingedSpace.stalkMap_germ",
+          "excerpt": "@[reassoc (attr := simp)]\nlemma stalkMap_germ (U : Opens Y) (x : X) (hx : f.base x \u2208 U) :"
+        }
+      ]
+    },
+    {
+      "declaration": "AlgebraicGeometry.LocallyRingedSpace.stalkMap_comp",
+      "start_line": 372,
+      "end_line": 374,
+      "excerpt": "lemma stalkMap_comp (x : X) :\n    (f \u226b g : X \u27f6 Z).stalkMap x = g.stalkMap (f.base x) \u226b f.stalkMap x :=",
+      "problem": "`stalkMap_id` is `@[simp]`, but its companion `stalkMap_comp` is not. The underlying `PresheafedSpace.stalkMap.comp` is `@[simp]`. The LocallyRingedSpace `Hom.stalkMap` is a different definition, defined via `toShHom.hom.stalkMap`, so the PresheafedSpace simp lemma does not fire on it. Compositions of morphisms therefore stay as `(f \u226b g).stalkMap x`. Callers have to use `simp only [stalkMap_comp]`, as `residueFieldMap_comp` does, or `rw [stalkMap_comp]`.",
+      "proposed_change": "Add `@[simp]` to `stalkMap_comp`, so that `(f \u226b g).stalkMap x` normalises to `g.stalkMap (f.base x) \u226b f.stalkMap x`. This matches the simp status of the PresheafedSpace lemma and of `stalkMap_id`, and it terminates because the composition is split into smaller pieces. If the maintainers prefer the opposite normal form, keep it non-simp and document why.",
+      "benefit": "`simp` can then push stalk maps through composites, as it does for `stalkMap_id`. Callers no longer need to name the lemma, which makes proofs about `residueFieldMap` and similar constructions shorter.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Geometry/RingedSpace/Stalks.lean",
+          "declaration": "AlgebraicGeometry.PresheafedSpace.stalkMap.comp",
+          "excerpt": "@[simp]\ntheorem comp {X Y Z : PresheafedSpace.{_, _, v} C} (\u03b1 : X \u27f6 Y) (\u03b2 : Y \u27f6 Z) (x : X) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Geometry/RingedSpace/LocallyRingedSpace/ResidueField.lean",
+          "declaration": "AlgebraicGeometry.LocallyRingedSpace.residueFieldMap_comp",
+          "excerpt": "simp only [residueFieldMap, stalkMap_comp]"
+        }
+      ]
+    },
+    {
+      "declaration": "AlgebraicGeometry.LocallyRingedSpace.basicOpen_zero",
+      "start_line": 312,
+      "end_line": 314,
+      "excerpt": "theorem basicOpen_zero (X : LocallyRingedSpace.{u}) (U : Opens X.carrier) :\n    X.toRingedSpace.basicOpen (0 : X.presheaf.obj <| op U) = \u22a5 := by",
+      "problem": "The unconditional `basicOpen_zero` is not `simp`. The conditional lemma `basicOpen_eq_bot_of_isNilpotent` is `@[simp]`, and it needs `IsNilpotent f` as a side condition. Its own proof calls `simp [basicOpen_zero]` twice to handle the `0` case. The most basic instance, `basicOpen 0 = \u22a5`, therefore relies on discharging a side goal, or on the user supplying `basicOpen_zero` by hand.",
+      "proposed_change": "Mark `basicOpen_zero` as `@[simp]`, so the unconditional case is the canonical rule and the nilpotent lemma covers the remaining cases. The proofs of `basicOpen_eq_bot_of_isNilpotent` could then drop the explicit `basicOpen_zero` arguments to `simp`. Check that simpNF does not report `basicOpen_zero` as subsumed by the nilpotent lemma.",
+      "benefit": "`simp` closes `basicOpen 0 = \u22a5` directly, without an `IsNilpotent 0` side-condition proof and without naming the lemma. The explicit `[basicOpen_zero]` arguments in this file become unnecessary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Geometry/RingedSpace/LocallyRingedSpace.lean",
+          "declaration": "AlgebraicGeometry.LocallyRingedSpace.basicOpen_eq_bot_of_isNilpotent",
+          "excerpt": "simp [eq_zero_of_zero_eq_one hn.symm f, basicOpen_zero]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 33141,
+    "cache_read_input_tokens": 163547,
+    "output_tokens": 7729,
+    "output_tokens_details": {
+      "thinking_tokens": 2460
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33141,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2949,
+        "cache_read_input_tokens": 34641,
+        "cache_creation_input_tokens": 2513,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2513
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22623669999999999,
+  "duration_ms": 56833,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:08",
+  "unit": "file",
+  "source_sha256": "be984b13415ddd7af47f120293db02b921c7e2f71b4e35e5b6a4ff73cbfe1475",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

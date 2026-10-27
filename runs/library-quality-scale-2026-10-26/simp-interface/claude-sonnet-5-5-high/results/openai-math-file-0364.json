@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0364",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and its uses. These were KaplanskyRational.lean, KaplanskySelfAdjointBall.lean and KadisonSimilarity/Representation/KaplanskySelfAdjoint.lean. I also checked how Mathlib's cfc lemmas discharge continuity side goals. The file has no simp or fun_prop attributes at all. I found no loops or competing rules. The two findings are interface gaps: the continuity lemmas lack `@[fun_prop]`, and the transform has no equation lemma. I did not run Lean, so I did not check how any of this behaves when compiled. I did not recommend `@[simp]` on `kaplanskyTransform_inverse` because its `|t| \u2264 1` side condition can't be discharged by simp in general. I made the same call for `abs_kaplanskyTransform_le_one`.",
+  "findings": [
+    {
+      "declaration": "continuous_kaplanskyTransform / continuous_kaplanskyInverse",
+      "start_line": 27,
+      "end_line": 33,
+      "excerpt": "theorem continuous_kaplanskyTransform : Continuous kaplanskyTransform := by",
+      "problem": "The continuity lemmas have no `@[fun_prop]` attribute. Mathlib's cfc lemmas (`cfc_comp`, `cfc_sub`, `cfc_mul`, `cfc_congr` and others) take their `ContinuousOn f (spectrum R a)` arguments with the default `by cfc_cont_tac`, and that tactic is a wrapper around `fun_prop`. Because `kaplanskyTransform` and `kaplanskyInverse` are opaque defs, `fun_prop` cannot see through them, and so those side goals cannot be discharged automatically. The file therefore passes `continuous_kaplanskyTransform.continuousOn continuous_kaplanskyInverse.continuousOn` by hand to `cfc_comp`. Any future `cfc_mul`, `cfc_add` or `cfc_comp` use with these functions will need the same manual terms.",
+      "proposed_change": "Mark both lemmas `@[fun_prop]` (and `@[continuity]` if that attribute is in use). This is not a simp annotation; it is a registration with the tactic that cfc already calls for its side goals. The explicit `.continuousOn` arguments to `cfc_comp` at lines 75\u201376 can then be omitted so the default `cfc_cont_tac` fills them. The `fun_prop (disch := ...)` proofs inside these lemmas stay as they are.",
+      "benefit": "cfc side conditions that mention these two functions are discharged automatically. That removes the manual `.continuousOn` plumbing and keeps the continuity interface consistent with Mathlib's cfc API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/CStarAlgebra/ContinuousFunctionalCalculus/Unital.lean",
+          "declaration": "cfc_mul",
+          "excerpt": "lemma cfc_mul (f g : R \u2192 R) (a : A) (hf : ContinuousOn f (spectrum R a) := by cfc_cont_tac)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/KaplanskyTransform.lean",
+          "declaration": "exists_kaplanskyTransform_preimage",
+          "excerpt": "continuous_kaplanskyTransform.continuousOn continuous_kaplanskyInverse.continuousOn]"
+        }
+      ]
+    },
+    {
+      "declaration": "kaplanskyTransform (def)",
+      "start_line": 23,
+      "end_line": 23,
+      "excerpt": "def kaplanskyTransform (t : \u211d) : \u211d := 2 * t / (1 + t ^ 2)",
+      "problem": "`kaplanskyTransform` is a plain def with no equation lemma. Downstream users therefore expand it ad hoc with `unfold kaplanskyTransform`, or with `simp only [kaplanskyTransform, ...]` inside an operator-valued computation. Examples are KaplanskyRational.lean (`unfold kaplanskyTransform`) and KaplanskySelfAdjoint.lean (`simp only [kaplanskyTransform, smul_apply, sub_apply, smul_sub]`). This matters most in the second case, where the same name is also used for the operator-level `kaplanskyTransform` in the Representation file, so the simp set is easy to get wrong. There is also no named rewrite rule for the scalar formula, and `kaplanskyInverse` has none either.",
+      "proposed_change": "Add non-simp unfolding lemmas such as `theorem kaplanskyTransform_apply (t : \u211d) : kaplanskyTransform t = 2 * t / (1 + t ^ 2) := rfl` and the matching one for `kaplanskyInverse`. Do not tag them `@[simp]`, so that `cfc kaplanskyTransform a` is not expanded unwantedly. Callers can then write `rw [kaplanskyTransform_apply]` or `simp only [kaplanskyTransform_apply]`, which is explicit and targets only the applied form. The file's own proofs at lines 28, 32, 38 and 53 can use the same lemmas.",
+      "benefit": "This gives one canonical, named, controlled expansion instead of scattered `unfold` or def-name `simp only` calls. Each use rewrites only applied terms. Because the lemmas are non-simp, the cfc-level expressions that the rest of the development relies on stay folded.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonKastler/KaplanskyRational.lean",
+          "declaration": "rational_transform_complex",
+          "excerpt": "  unfold kaplanskyTransform"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/KadisonSimilarity/Representation/KaplanskySelfAdjoint.lean",
+          "declaration": "KaplanskySelfAdjoint (proof using kaplanskyTransform)",
+          "excerpt": "simp only [kaplanskyTransform, smul_apply, sub_apply, smul_sub]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 14415,
+    "cache_read_input_tokens": 60243,
+    "output_tokens": 4830,
+    "output_tokens_details": {
+      "thinking_tokens": 1507
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14415,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2276,
+        "cache_read_input_tokens": 16696,
+        "cache_creation_input_tokens": 1732,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1732
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11200430000000001,
+  "duration_ms": 47073,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T02:05:53",
+  "unit": "file",
+  "source_sha256": "dc406e671bbbf02e57b084a38c566d149a1d6645e046936ea34bdf02106c0a01",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

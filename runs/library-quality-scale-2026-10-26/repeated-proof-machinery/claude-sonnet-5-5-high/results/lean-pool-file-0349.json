@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0349",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file. Compared the three hom_ext lemmas, the three desc/\u03b9-equation pairs (chainMulStage, chainColimitMul, chainMulStageL) and the cocone naturality proofs. Did not compile any replacement. A generic functor-parametrised lemma has an unverified detail: the `erw` unification of `F.map (colimit.\u03b9 ..)` for a general F, which I expect to work because the file's own `change` steps already show the instances are definitionally equal. I did not report the left/right mul_chainMap induction pair, because their bodies differ enough that sharing would save little.",
+  "findings": [
+    {
+      "declaration": "chainColimit_tensorRight_hom_ext, tensorLeft_chainColimit_hom_ext, chainColimit_sandwich_hom_ext",
+      "start_line": 252,
+      "end_line": 267,
+      "excerpt": "apply (cancel_epi (preservesColimitIso (tensorRight X)\n    (chainDiagram B \u03b4)).inv).mp\n  apply colimit.hom_ext\n  intro k\n  erw [\u03b9_preservesColimitIso_inv_assoc,\n    \u03b9_preservesColimitIso_inv_assoc]\n  exact w (smallNatEquiv.inverse.obj k)",
+      "problem": "Three theorems have the same proof. Each cancels the epi `(preservesColimitIso F (chainDiagram B \u03b4)).inv`, applies `colimit.hom_ext`, rewrites with `\u03b9_preservesColimitIso_inv_assoc` twice (by `erw`), and applies the hypothesis at `smallNatEquiv.inverse.obj k`. They differ only in the functor F: `tensorRight X` at 252\u2013267, `tensorLeft X` at 290\u2013305, and `tensorRight Y \u22d9 tensorLeft X` at 509\u2013525. The `erw` and the index bookkeeping with `smallNatEquiv.inverse.obj` are repeated each time.",
+      "proposed_change": "Add one generic lemma first:\n\ntheorem chainColimit_functor_hom_ext (B \u03b4) [HasColimitsOfShape SmallNat.{v} E] (F : E \u2964 E) [PreservesColimitsOfShape SmallNat.{v} F] {Z : E} {f g : F.obj (chainColimit B \u03b4) \u27f6 Z} (w : \u2200 n : \u2115, F.map (chainColimit\u03b9 B \u03b4 n) \u226b f = F.map (chainColimit\u03b9 B \u03b4 n) \u226b g) : f = g\n\nThe proof is the current body, written once. Cancel the epi `(preservesColimitIso F (chainDiagram B \u03b4)).inv`, use `colimit.hom_ext`, rewrite with `\u03b9_preservesColimitIso_inv_assoc`, and finish with `w (smallNatEquiv.inverse.obj k)`.\n\nThe three theorems then become one-line uses:\n- right: `chainColimit_functor_hom_ext B \u03b4 (tensorRight X) w`\n- left: `chainColimit_functor_hom_ext B \u03b4 (tensorLeft X) w`\n- sandwich: `chainColimit_functor_hom_ext B \u03b4 (tensorRight Y \u22d9 tensorLeft X) w`\n\nEach `w` is already stated as `F.map (\u03b9 n) \u226b f = \u2026` up to definitional unfolding of `tensorRight`/`tensorLeft` whiskering. A `fun n => w n` or `by simpa using w n` bridge may be needed. The sandwich case needs `PreservesColimitsOfShape` for the composite, which comes from the existing instances via `comp_preservesColimitsOfShape` (or similar). Both are available under the hypotheses these theorems already assume.",
+      "benefit": "The fiddly `erw` colimit-iso argument sits in one place. The three public extensionality lemmas become short statements. A future change (for example moving off `erw`) is made once rather than three times.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/ChainAlgebra.lean",
+          "declaration": "tensorLeft_chainColimit_hom_ext",
+          "excerpt": "apply (cancel_epi (preservesColimitIso (tensorLeft X)\n    (chainDiagram B \u03b4)).inv).mp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/ChainAlgebra.lean",
+          "declaration": "chainColimit_sandwich_hom_ext",
+          "excerpt": "apply (cancel_epi (preservesColimitIso\n    (tensorRight Y \u22d9 tensorLeft X) (chainDiagram B \u03b4)).inv).mp"
+        }
+      ]
+    },
+    {
+      "declaration": "chainMulStage / \u03b9_chainMulStage, chainColimitMul / whiskerLeft_\u03b9_chainColimitMul, chainMulStageL / \u03b9_chainMulStageL",
+      "start_line": 240,
+      "end_line": 249,
+      "excerpt": "erw [chainMulStage, \u03b9_preservesColimitIso_hom_assoc]\n  exact colimit.\u03b9_desc (chainMulCocone B \u03b4 mu h\u03b4l j)\n    (smallNatEquiv.functor.obj i)",
+      "problem": "Three definitions have the shape `(preservesColimitIso F (chainDiagram B \u03b4)).hom \u226b colimit.desc _ c`. They are `chainMulStage` (F = tensorRight (B j)), `chainColimitMul` (F = tensorLeft (chainColimit)) and `chainMulStageL` (F = tensorLeft (B i)). Each comes with a stage-evaluation lemma whose proof is the same: `change F.map (colimit.\u03b9 \u2026) \u226b _ = _`, then `erw [def, \u03b9_preservesColimitIso_hom_assoc]`, then `exact colimit.\u03b9_desc c (smallNatEquiv.functor.obj n)`. That is the same argument at 233\u2013249, 355\u2013377 and 444\u2013460.",
+      "proposed_change": "Add a generic definition and its evaluation lemma. Take `F : E \u2964 E` with `[PreservesColimitsOfShape SmallNat.{v} F]` and `c : Cocone (chainDiagram B \u03b4 \u22d9 F)`. Define\n\nchainDescThrough F c : F.obj (chainColimit B \u03b4) \u27f6 c.pt := (preservesColimitIso F (chainDiagram B \u03b4)).hom \u226b colimit.desc _ c\n\nProve once that `F.map (chainColimit\u03b9 B \u03b4 n) \u226b chainDescThrough F c = c.\u03b9.app (smallNatEquiv.functor.obj n)`. The proof is the existing `erw [\u03b9_preservesColimitIso_hom_assoc]` followed by `colimit.\u03b9_desc`.\n\nThen set `chainMulStage := chainDescThrough (tensorRight (B j)) (chainMulCocone \u2026)` and likewise for the other two. Each \u03b9-lemma becomes the generic lemma plus the `app` computation, which is `rfl` or `simp`, and the `\u03b9_chainMulStage*` statements can be kept as one-liners. Each lemma's statement is unchanged, so the downstream rewrites in `\u03b9_tensorHom_chainColimitMul` and the associativity proof still work.",
+      "benefit": "The `change`/`erw` argument exists once instead of three times. The pattern 'a map out of F(colimit) built from a cocone' is named. The multiplication development then reads as 'build cocone, call the generic descent', which is easier to maintain.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/ChainAlgebra.lean",
+          "declaration": "whiskerLeft_\u03b9_chainColimitMul",
+          "excerpt": "erw [chainColimitMul, \u03b9_preservesColimitIso_hom_assoc]\n  exact colimit.\u03b9_desc (chainMulTotalCocone B \u03b4 mu h\u03b4l h\u03b4r)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/ChainAlgebra.lean",
+          "declaration": "\u03b9_chainMulStageL",
+          "excerpt": "erw [chainMulStageL, \u03b9_preservesColimitIso_hom_assoc]\n  exact colimit.\u03b9_desc (chainMulLCocone B \u03b4 mu h\u03b4r i)"
+        }
+      ]
+    },
+    {
+      "declaration": "chainMulCocone and chainMulLCocone (with the naturality of chainMulTotalCocone)",
+      "start_line": 187,
+      "end_line": 211,
+      "excerpt": "naturality := fun {k k'} f => by\n        change (chainMap B \u03b4\n            (leOfHom (smallNatEquiv.inverse.map f)) \u25b7 B j) \u226b",
+      "problem": "`chainMulCocone` (187\u2013211), `chainMulLCocone` (399\u2013423) and `chainMulTotalCocone` (308\u2013332) all build a cocone with `pt := chainColimit B \u03b4` and `app := fun k => G (smallNatEquiv.inverse.obj k)`. Each proves naturality by the same recipe. It does a long `change` that spells out `leOfHom (smallNatEquiv.inverse.map f)`, rewrites with `Category.comp_id`, and calls a lemma stated for `h : i \u2264 i'`. The `leOfHom (smallNatEquiv.inverse.map f)` translation from a morphism of `SmallNat` to `\u2264` is repeated each time.",
+      "proposed_change": "Add a small constructor, `chainCoconeOfLE`. Given `F : E \u2964 E`, a family `app : \u2115 \u2192 (F.obj (chainFunctor-stage n) \u27f6 P)`, and a proof `\u2200 {a b} (h : a \u2264 b), F.map (chainMap B \u03b4 h) \u226b app b = app a`, it returns `Cocone (chainDiagram B \u03b4 \u22d9 F)` with `pt := P`. The `change`, `comp_id` and `leOfHom` translation are proved once there. Each of the three cocones then supplies only `app` and the existing lemma (`mul_chainMap_\u03b9_left`, `mul_chainMap_\u03b9_right`, `chainMulStage_natural`). If combined with the descent helper in the previous finding, this gives a single `chainDescOfLE`-style entry point for all three multiplications.",
+      "benefit": "This removes three long, nearly identical `change` blocks that are brittle to refactoring of `chainDiagram`. It states the real content, compatibility along `\u2264`, directly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/ChainAlgebra.lean",
+          "declaration": "chainMulLCocone",
+          "excerpt": "change (B i \u25c1 chainMap B \u03b4\n            (leOfHom (smallNatEquiv.inverse.map f))) \u226b"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Classical/Deligne/ChainAlgebra.lean",
+          "declaration": "chainMulTotalCocone",
+          "excerpt": "exact chainMulStage_natural B \u03b4 mu h\u03b4l h\u03b4r\n          (leOfHom (smallNatEquiv.inverse.map f)) }"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 23771,
+    "cache_read_input_tokens": 54491,
+    "output_tokens": 5541,
+    "output_tokens_details": {
+      "thinking_tokens": 835
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23771,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4100,
+        "cache_read_input_tokens": 26133,
+        "cache_creation_input_tokens": 1567,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1567
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1559551,
+  "duration_ms": 41593,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T01:54:33",
+  "unit": "file",
+  "source_sha256": "41376d4c5ce492492d046a172eceee9879f7078726df12f8053d439ab96ad912",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,135 @@
+{
+  "id": "openai-math-file-0347",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of Model.lean (lines 1\u2013116). The file has no @[simp] declarations of its own. I then checked how the other files in OAI/RepresentationTheory/Saxl use wordRep, rowWord, columnGroup, cyclic and polytabloid. The findings come from the repeated manual unfolding I found there. I did not check the exact simp normal form after each proposed change, and I did not run Lean. The proposed lemma statements are sketches that still need a compile check. I did not report simp annotations on canonicalTableau, kronecker or staircase; I found no concrete use that would benefit.",
+  "findings": [
+    {
+      "declaration": "wordRep",
+      "start_line": 17,
+      "end_line": 23,
+      "excerpt": "toFun := fun f a => f (a \u2218 g)",
+      "problem": "The file gives no canonical simp lemma for how `wordRep n d g f` evaluates at a word. Downstream proofs instead unfold the definition and list the structure-coercion lemmas by hand. The same simp set `wordRep, MonoidHom.coe_mk, OneHom.coe_mk, LinearMap.coe_mk, AddHom.coe_mk, Pi.single_apply` is repeated in Basic.lean `polytabloid_rowWord` and in HighProjection.lean `polytabloid_support`. SpechtSubmodule.lean `wordPair_move` uses `simpa [dotProduct, wordPerm, wordRep, ...]`. Several other places use `change` to see through `wordRep`. Unfolding `wordRep` through these coercions depends on the definition's internal structure, so it is brittle and not a stable normal form.",
+      "proposed_change": "Directly after `wordRep`, add `@[simp] lemma wordRep_apply (g : Equiv.Perm (Fin n)) (f : WordSpace n d) (a : Fin n \u2192 Fin d) : wordRep n d g f a = f (a \u2218 g) := rfl`. Then replace the long `simp only [... wordRep, MonoidHom.coe_mk, ...]` calls with `simp only [wordRep_apply, ...]`. Also consider tagging `wordRep_single` (Polytabloid.lean:98) `@[simp]`. Its LHS is the unapplied `wordRep n d g (Pi.single a 1)`, so it does not compete with `wordRep_apply`. Many call sites currently invoke it by hand via `rw`, `simp_rw` or `simp only`. Only the `wordRep_apply` change is argued here with evidence.",
+      "benefit": "One orientation-stable rule, `wordRep g f a = f (a \u2218 g)`, replaces ad hoc unfolding of the structure projections. This shortens proofs such as `polytabloid_rowWord` and `polytabloid_support`. It also keeps the proofs working if the internal construction of `wordRep` changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/Saxl/Basic.lean",
+          "declaration": "polytabloid_rowWord",
+          "excerpt": "simp only [Finset.sum_apply, Pi.smul_apply, wordRep, MonoidHom.coe_mk,\n    OneHom.coe_mk, LinearMap.coe_mk, AddHom.coe_mk, Pi.single_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/Saxl/HighProjection.lean",
+          "declaration": "polytabloid_support",
+          "excerpt": "simp only [Finset.sum_apply, Pi.smul_apply, wordRep, MonoidHom.coe_mk,\n      OneHom.coe_mk, LinearMap.coe_mk, AddHom.coe_mk, Pi.single_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/Saxl/SpechtSubmodule.lean",
+          "declaration": "wordPair_move",
+          "excerpt": "simpa [dotProduct, wordPerm, wordRep, Function.comp_assoc] using hh"
+        }
+      ]
+    },
+    {
+      "declaration": "columnGroup",
+      "start_line": 55,
+      "end_line": 65,
+      "excerpt": "carrier := {g | \u2200 i, (t (g i)).val.2 = (t i).val.2}",
+      "problem": "`columnGroup` has no membership characterization lemma, so simp cannot turn `g \u2208 columnGroup t` into the pointwise column condition. Users instead rely on definitional unfolding. They write `have hc : g \u2208 columnGroup tt := by intro i; exact ...`, or `change` to expose the condition (Polytabloid.lean `hcol` uses `intro i; change (t (f i)).val.2 = _; simp [f]`). They also extract the condition with `g.property i`. This is the usual case where a subgroup defined by a `carrier` set should come with a `mem_...` iff lemma.",
+      "proposed_change": "After the definition add `@[simp] lemma mem_columnGroup {n} {\u03bc} (t : Tableau n \u03bc) (g : Equiv.Perm (Fin n)) : g \u2208 columnGroup t \u2194 \u2200 i, (t (g i)).val.2 = (t i).val.2 := Iff.rfl`. Then proofs of the form `intro i; change ...; simp` become `simp [mem_columnGroup]`. Uses of `g.property i` can become `(mem_columnGroup t _).1 g.property i`. Since the RHS contains no membership, there is no loop risk.",
+      "benefit": "`simp` and `rw` can reduce and prove column-group membership without depending on the definitional unfolding of the subgroup carrier. This removes the `change` and `intro` workarounds at several call sites and keeps the proofs readable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/Saxl/Polytabloid.lean",
+          "declaration": "polytabloid_alternating (hcol proof)",
+          "excerpt": "have hcol : h \u2208 columnGroup t := by\n    intro i\n    change (t (f i)).val.2 = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/Saxl/StaircaseSign.lean",
+          "declaration": "staircase sign argument (hc)",
+          "excerpt": "have hc : g \u2208 columnGroup tt := by\n      intro i\n      exact congrArg Fin.val (congrFun hg i)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/Saxl/Basic.lean",
+          "declaration": "column_perm_rowWord",
+          "excerpt": "\u00b7 exact g.property i"
+        }
+      ]
+    },
+    {
+      "declaration": "rowWord",
+      "start_line": 50,
+      "end_line": 52,
+      "excerpt": "fun i => \u27e8(t i).val.1, YoungDiagram.mem_iff_lt_colLen.mp",
+      "problem": "`rowWord` is a plain def with no simp lemma for its coordinates, such as `(rowWord t i).val = (t i).val.1`. Because of this, many proofs unfold `rowWord` together with the specific tableau constructions around it. Examples are `simpa [rowWord, j, rowLetterInclusion, i]`, `simp only [... rowWord, stairRowTableau, rotateRowPositions, ...]` and `simpa [a, rowWord, stairRowTableau, ...]`. Unfolding the Fin-valued function exposes the anonymous-constructor term and its dependent proof, rather than the row index `(t i).val.1`.",
+      "proposed_change": "Add `@[simp] lemma rowWord_val {n \u03bc} (t : Tableau n \u03bc) (i : Fin n) : (rowWord t i).val = (t i).val.1 := rfl`. A plain `rowWord_apply : rowWord t i = \u27e8_, _\u27e9` would carry a proof term and is worse. With `rowWord_val`, the call sites can replace `rowWord` in their simp lists with `rowWord_val`. The `Fin.val` form is what these proofs consume, for instance after `congrArg Fin.val (congrFun hh k)`.",
+      "benefit": "Callers get the row index directly, instead of unfolding `rowWord` and fighting the dependent proof term. They no longer need to list `rowWord` itself in simp sets that also unfold tableau constructions, so those simp calls are less likely to over-unfold. The statement `rowWord` is meant to expose, 'the row coordinate of the cell', becomes the simp normal form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/Saxl/PieriRestriction.lean",
+          "declaration": "strip-product lemma (he)",
+          "excerpt": "simpa [rowWord, j, rowLetterInclusion, i] using hh'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/Saxl/HighProjection.lean",
+          "declaration": "high projection lemmas",
+          "excerpt": "simpa [a, rowWord, stairRowTableau, rotateRowPositions, staircaseSwap] using hh"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/RepresentationTheory/Saxl/BandSupport.lean",
+          "declaration": "band support lemmas",
+          "excerpt": "simpa [rightWord,rowWord,stairRowTableau,rotateRowPositions,bandTableau,staircaseSwap] using hh"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 53387,
+    "cache_read_input_tokens": 356508,
+    "output_tokens": 7907,
+    "output_tokens_details": {
+      "thinking_tokens": 1541
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 53387,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3502,
+        "cache_read_input_tokens": 55013,
+        "cache_creation_input_tokens": 2387,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2387
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3283088,
+  "duration_ms": 63783,
+  "turns": 19,
+  "attempts": 1,
+  "judged": "2026-10-27T01:53:39",
+  "unit": "file",
+  "source_sha256": "b612d450e3d2b10d0f12a49915c4319641dc07ccf1a63a27f49a1a33a05def81",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

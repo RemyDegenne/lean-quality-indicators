@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0179",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. It declares no @[simp] lemmas, so the findings are about missing canonical lemmas and one lemma oriented against the simp normal form. I checked Mathlib's Matrix.GeneralLinearGroup API (coe_scalar is simp, map_scalar is not) and looked at how the local lemmas are used. I did not run Lean. I did not check how the simp set behaves on the abbrev-wrapped terms (sc, rsc, \u03b9, Nd), so whether plain simp already closes these goals is uncertain. I also judged several candidates too weak to report: mem_Hf_iff, mem_H1_iff and mem_Kfix_iff (Iff.rfl lemmas), the redundancy of Nd_sc with Nd_\u03b9, and the long `attribute [-simp]` lists (their lemmas live in other files).",
+  "findings": [
+    {
+      "declaration": "sc_inv_eq",
+      "start_line": 221,
+      "end_line": 221,
+      "excerpt": "theorem sc_inv_eq (w : L\u02e3) : (sc L w)\u207b\u00b9 = \u03b9 L (rsc L w)\u207b\u00b9 := (map_inv (\u03b9 L) (rsc L w)).symm",
+      "problem": "The lemma is stated against the simp normal form. `sc` is a reducible abbrev for `\u03b9 L (rsc L w)`, so the statement is `(\u03b9 (rsc w))\u207b\u00b9 = \u03b9 ((rsc w)\u207b\u00b9)`. That is the exact reverse of the simp lemma `map_inv`, which pushes `\u03b9` through inversion. Its proof is literally `(map_inv ..).symm`. It can never be tagged @[simp] without risking a rewrite cycle with `map_inv`. Its only use is `simp only [hB, sc_inv_eq]` at line 778. That call expands inverses of `sc` into `\u03b9` of an inverse, which is the opposite of the direction the rest of the file moves (`rw [map_mul, map_inv]` in `sc_inv_smul_smul`, and `hck`/`hlk` in `hcover`).",
+      "proposed_change": "Drop `sc_inv_eq`. Instead state the inverse lemma in the canonical push-through direction, for example `sc_inv (w : L\u02e3) : sc L w\u207b\u00b9 = (sc L w)\u207b\u00b9` (proved by `map_inv`), or fold `(sc L w)\u207b\u00b9` into the `hBalt` statement. Alternatively make `hBalt` hold by `simp only [hB]` with `map_inv` applied in its normal direction. This keeps the local rewrite set consistent with `map_inv` and leaves it safe for simp.",
+      "benefit": "The local rule no longer fights Mathlib's `map_inv`. A reader sees one orientation for inverse of `sc`/`\u03b9`. The lemma could be tagged @[simp] without a latent loop.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_lt_top_forall_measure_preimage_le_of_isHaarMeasure_eqLocus_sigmaAdelicAct_center.lean",
+          "declaration": "main (hBalt)",
+          "excerpt": "intro r; simp only [hB, sc_inv_eq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_lt_top_forall_measure_preimage_le_of_isHaarMeasure_eqLocus_sigmaAdelicAct_center.lean",
+          "declaration": "sc_inv_smul_smul",
+          "excerpt": "rw [smul_smul, map_mul, map_inv]"
+        }
+      ]
+    },
+    {
+      "declaration": "sc_mul / sc_one (and the rsc/sc scalar API)",
+      "start_line": 223,
+      "end_line": 229,
+      "excerpt": "theorem sc_one : sc L 1 = 1 := by\n  show \u03b9 L (Matrix.GeneralLinearGroup.scalar (Fin 2) 1) = 1\n  rw [map_one, map_one]",
+      "problem": "`rsc` and `sc` are abbrevs for `scalar (Fin 2)` and `\u03b9 \u2218 rsc`, but there are no canonical lemmas for `rsc L (t*t')`, `rsc L 1` and `rsc L t\u207b\u00b9`. The file also has no lemma for how `rsc` interacts with `map`. Each time, the proof unfolds by hand with `show ... scalar (Fin 2) ...` so that `rw [map_mul]`/`map_inv` can see a bare `scalar` application. `sc_mul` and `sc_one` do this, and so do `inS_of_fixed_mul_rsc`, `inS_rsc_mul`, `inS_rsc_inv`, `mem_Kfix_of_eq`, and `hck`/`hlk` in `main`. The `show` lines also restate the `Matrix.GeneralLinearGroup.scalar (Fin 2)` and `Units.map ((\u03c3 : L \u2192+* L) : L \u2192* L)` expressions at length. Mathlib's `Matrix.GeneralLinearGroup.map_scalar` is not simp, and the local `map_scalar` is a plain unattributed lemma. So scalar bookkeeping never gets a simp normal form.",
+      "proposed_change": "Add a small, terminating, push-inward simp set for `rsc`/`sc`: `rsc_mul : rsc L (t*t') = rsc L t * rsc L t'`, `rsc_one : rsc L 1 = 1`, `rsc_inv : rsc L t\u207b\u00b9 = (rsc L t)\u207b\u00b9`. Add the matching `sc` versions (`sc_mul`, `sc_one`, `sc_inv`, which are already half-present) and a `map_rsc : Matrix.GeneralLinearGroup.map (\u03c3 : L \u2192+* L) (rsc L t) = rsc L (Units.map (\u03c3 : L \u2192* L) t)` version of `map_scalar`. Tag them @[simp]; each strictly moves a product, inverse or `map` inward, so there is no loop. Alternatively define `rsc` as a `MonoidHom`, as `scalar` is, so `map_mul`/`map_inv`/`map_one` apply directly. The `show ...scalar...; rw [\u2190 map_inv, \u2190 map_mul]` blocks could then be `simp`/`rw [rsc_inv, rsc_mul]`.",
+      "benefit": "The repeated unfold-then-rewrite boilerplate disappears. The scalar proofs stop depending on the transparency of `abbrev`s. The statements shrink, since the long `Units.map ((\u03c3 : L \u2192+* L) : L \u2192* L)` expressions would be written once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_lt_top_forall_measure_preimage_le_of_isHaarMeasure_eqLocus_sigmaAdelicAct_center.lean",
+          "declaration": "sc_mul",
+          "excerpt": "show \u03b9 L (Matrix.GeneralLinearGroup.scalar (Fin 2) (t * t')) = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_lt_top_forall_measure_preimage_le_of_isHaarMeasure_eqLocus_sigmaAdelicAct_center.lean",
+          "declaration": "inS_rsc_inv",
+          "excerpt": "show InS K L \u03c3 (Matrix.GeneralLinearGroup.scalar (Fin 2) t)\u207b\u00b9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_lt_top_forall_measure_preimage_le_of_isHaarMeasure_eqLocus_sigmaAdelicAct_center.lean",
+          "declaration": "main (hlk)",
+          "excerpt": "show (\u03b9 L (Matrix.GeneralLinearGroup.scalar (Fin 2) (l * (k : L\u02e3))))\u207b\u00b9 = _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/LinearAlgebra/Matrix/GeneralLinearGroup/Defs.lean",
+          "declaration": "Matrix.GeneralLinearGroup.map_scalar",
+          "excerpt": "lemma map_scalar (u : R\u02e3) : map f (scalar n u) = scalar n (Units.map f u) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 47514,
+    "cache_read_input_tokens": 139977,
+    "output_tokens": 9932,
+    "output_tokens_details": {
+      "thinking_tokens": 5660
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 47514,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3096,
+        "cache_read_input_tokens": 50204,
+        "cache_creation_input_tokens": 1323,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1323
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.30338970000000004,
+  "duration_ms": 69579,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:18:23",
+  "unit": "file",
+  "source_sha256": "6cd5a57d4491f4bf1c5e3bf50d29b9cf8729ed0985333ab3051e1d043614e84d",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0193",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and focused on its simp interface: the @[simp] lemmas label_representative, iso_hom, basisIso_hom and modelIso_hom, and the places where proofs rewrite by hand. Checked related definitions in GrayChainGlobeRestriction.lean (piece_comparison, which has no simp or reassoc attribute) and TopologicalConePrism.lean (comparisonIso_hom is simp). The existing simp lemmas point in sensible directions and I saw no loop. The findings concern missing leg lemmas about the comparison maps, plus a missing normal-form lemma for sourceLift. I could not run Lean, so the proposed lemmas are untested. In the first finding, whether `simp` closes the isPushout goals after the change is uncertain.",
+  "findings": [
+    {
+      "declaration": "Thomason.Construction.DirectedComplex.OrderedAtomBasis.PushoutGluing.isPushout (and comparison/sourceLift_image)",
+      "start_line": 459,
+      "end_line": 468,
+      "excerpt": "have he : pushout.inl f g \u226b d.iso.hom = d.left :=\n      pushout.inl_desc d.left d.right d.condition\n    rw [\u2190 he, Category.assoc, Iso.symm_hom, Iso.hom_inv_id, Category.comp_id]",
+      "problem": "`comparison` is a def over `pushout.desc`, so `simp` cannot see through it. The file has no simp lemmas saying that the pushout legs composed with `d.comparison` (or `d.iso.hom`) give `d.left` and `d.right`. `pushout.inl_desc d.left d.right d.condition` is therefore re-derived by hand in `sourceLift_image` (twice, as `congrArg` terms) and in both branches of `isPushout`. Each branch then runs the same `rw [\u2190 he, Category.assoc, Iso.symm_hom, Iso.hom_inv_id, Category.comp_id]` script, which is brittle against orientation. The same script appears twice in `CylinderSource.isPushout`. There, `piece_comparison` is also not simp or reassoc, so `rw [modelIso_hom]; exact piece_comparison ..` is needed.",
+      "proposed_change": "After `comparison`, add `@[reassoc (attr := simp)] theorem inl_comparison : pushout.inl f g \u226b d.comparison = d.left := pushout.inl_desc _ _ _` and the matching `inr_comparison`. Also add the iso versions `inl_iso_hom` and `inr_iso_hom` (or let `iso_hom` plus these do the work). Then each branch of `isPushout` can be `simp` after `Iso.symm_hom`/`Iso.hom_inv_id` reassociation, and `sourceLift_image` can use `simp`. In `GrayChainGlobeRestriction`, tag `piece_comparison` with `@[reassoc (attr := simp)]` so the `CylinderSource.isPushout` branches reduce to simp calls.",
+      "benefit": "The comparison/leg identities become canonical normal-form rewrites in one place. This removes four copies of an ordering-sensitive `rw` chain and lets downstream proofs use `simp` instead of re-deriving `desc` facts.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/CategoryTheory/Thomason/Gray/GrayChainGlobeRestriction.lean",
+          "declaration": "piece_comparison",
+          "excerpt": "theorem piece_comparison (n k : \u2115) (s : Bool) :\n    piece n k s \u226b comparison n k = targetPiece n k s := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/CategoryTheory/Thomason/Gray/GrayMappingEndpointEvaluation.lean",
+          "declaration": "other use of piece_comparison",
+          "excerpt": "rw [PastingGlobe.CylinderSource.piece_comparison n k false]"
+        }
+      ]
+    },
+    {
+      "declaration": "Thomason.Construction.DirectedComplex.OrderedAtomBasis.PushoutGluing.sourceLift_eq_atomLift / label / sourceLift",
+      "start_line": 419,
+      "end_line": 438,
+      "excerpt": "theorem sourceLift_eq_atomLift (a : d.Index) :\n    d.sourceLift a = d.atomLift (d.label a) :=",
+      "problem": "`label_representative` is simp, but the other side of the `representative`/`label`/`sourceLift`/`atomLift` interface is not. `sourceLift_eq_atomLift` is not simp. There are no constructor lemmas for `label (.inl a)`, `label (.inr a)`, `sourceLift (.inl a)` or `sourceLift (.inr a)`. As a result the proofs use `change ... (d.sourceLift (.inl a))` (in `generated_left_image` and `generated_right_image`) and `change a.val = b.val at h` (in `sourceLift_eq`) to force the definitional unfolding, then `rw [d.sourceLift_eq_atomLift]`. Simp does not normalize `sourceLift` expressions to the single form `atomLift (label _)`.",
+      "proposed_change": "Add `@[simp] theorem label_inl (a) : d.label (.inl a) = a.val := rfl`, `label_inr`, and `sourceLift_inl`/`sourceLift_inr` (`:= rfl`). Mark `sourceLift_eq_atomLift` `@[simp]`. Its right side `atomLift (label a)` contains no `sourceLift`, and `atomLift` is a def that simp does not unfold, so it should not loop. Together with `label_representative` this turns the two `generated_*_image` proofs into `simp`-style steps and removes the `change`s.",
+      "benefit": "Provides a canonical simp normal form for atom lifts (`atomLift` indexed by `label`). Later proofs avoid `change` and rewrite-by-name, and the definitional unfolding is no longer needed at call sites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/CategoryTheory/Thomason/Transfer/PastingGlobeCylinderPushout.lean",
+          "declaration": "generated_left_image",
+          "excerpt": "change Nonempty (CompositionExpression d.Source d.atomLift (d.sourceLift (.inl a)))\n  rw [d.sourceLift_eq_atomLift]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/CategoryTheory/Thomason/Transfer/PastingGlobeCylinderPushout.lean",
+          "declaration": "label_representative",
+          "excerpt": "@[simp] theorem label_representative (a : B.AtomIndex) :\n    d.label (d.representative a) = a := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 29489,
+    "cache_read_input_tokens": 82137,
+    "output_tokens": 5334,
+    "output_tokens_details": {
+      "thinking_tokens": 1993
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29489,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2512,
+        "cache_read_input_tokens": 31703,
+        "cache_creation_input_tokens": 1799,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1799
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1795257,
+  "duration_ms": 37807,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:20:42",
+  "unit": "file",
+  "source_sha256": "cfd233078d8c4ef5985430198ccec4c9b928e25ceee1110e3d8940754ce22e48",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

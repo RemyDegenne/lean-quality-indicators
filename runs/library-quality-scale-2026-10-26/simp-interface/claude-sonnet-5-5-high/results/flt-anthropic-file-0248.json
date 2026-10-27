@@ -1,0 +1,115 @@
+{
+  "id": "flt-anthropic-file-0248",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the related definitions: Place.ord lemmas in Def_AlgebraicCurve_DivisorClassGroup, intSeriesC in Def_ModularCurve_X1, and laurentOfInt in Def_ModularCurve_TateFormal. I also grepped for existing simp lemmas and for duplicates of these lemmas. I did not run Lean. The suggestions are about simp-set design, not correctness. I did not claim any loop or failure was observed. I weighed adding @[simp] to ord_pow' but dropped it: the existing ord_zpow is deliberately not simp, and ord_mul has side conditions.",
+  "findings": [
+    {
+      "declaration": "E4_ne_zero / E6_ne_zero / delta_ne_zero (missing simp lemma for coefficients of laurentOfInt)",
+      "start_line": 176,
+      "end_line": 200,
+      "excerpt": "simp only [laurentOfInt_apply, HahnSeries.ofPowerSeries_apply_coeff, PowerSeries.coeff_map,\n    HahnSeries.coeff_zero] at h1",
+      "problem": "The three non-vanishing proofs repeat the same `simp only` list. They unfold `laurentOfInt_apply` and then push the coefficient through `ofPowerSeries_apply_coeff` and `coeff_map`. They then still need a manual `rw` with `coeff_zero_eq_constantCoeff_apply` and `constantCoeff_*`. The interface has no canonical simp lemma for the coefficient of `laurentOfInt K f` at a natural-number index. `laurentOfInt_apply` is not simp, and unfolding it exposes `ofPowerSeries` and `map`. Each caller therefore rebuilds the normal form by hand.",
+      "proposed_change": "Next to `laurentOfInt`, add a lemma such as `(laurentOfInt K f).coeff (n : \u2124) = Int.cast (PowerSeries.coeff n f)` for `n : \u2115`, marked @[simp], with its proof being the `simp only` call above. Optionally add a `coeff_zero`/`coeff_succ_X_mul` variant. Each of the three `_ne_zero` proofs can then be roughly `intro h; simpa using congrArg (fun x => x.coeff (n : \u2124)) h`.",
+      "benefit": "The three proofs shrink and share one normal form. Later users of `laurentOfInt` get coefficient extraction through `simp` instead of copying the four-lemma `simp only` list.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_ModularCurve_TateFormal.lean",
+          "declaration": "laurentOfInt_apply",
+          "excerpt": "theorem laurentOfInt_apply (K : Type*) [CommRing K] (f : PowerSeries \u2124) :\n    laurentOfInt K f = HahnSeries.ofPowerSeries \u2124 K (f.map (Int.castRingHom K)) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_gcd_natAbs_ord_eisensteinRatio_pow_eq_div_placeWidth_of_not_mem_ssPlaces.lean",
+          "declaration": "E4_ne_zero",
+          "excerpt": "rw [PowerSeries.coeff_zero_eq_constantCoeff_apply, constantCoeff_eisenstein4, map_one] at h1"
+        }
+      ]
+    },
+    {
+      "declaration": "intSeriesC_eq_laurentOfInt",
+      "start_line": 143,
+      "end_line": 143,
+      "excerpt": "theorem intSeriesC_eq_laurentOfInt (p : PowerSeries \u2124) : intSeriesC K p = laurentOfInt K p := rfl",
+      "problem": "`intSeriesC K` and `laurentOfInt K` are two definitionally equal presentations of one map. Only `laurentOfInt` is a RingHom, so `map_mul`, `map_pow` and `map_sub` apply to it as simp lemmas. The bridge lemma has no simp attribute and is applied only by `rw`. `thetaL_mul_delta` has to say `rw [intSeriesC_eq_laurentOfInt, intSeriesC_eq_laurentOfInt, map_mul (laurentOfInt K) (eisenstein4 ^ 2), map_pow] at h` with the arguments spelled out. The main theorem closes the same gap with a bare `rfl`. The sibling file `..._eq_one_of_mem_ssPlaces` declares the identical lemma again and also uses it only by `rw`.",
+      "proposed_change": "Move this lemma to the definition of `intSeriesC` (Def_ModularCurve_X1), or `laurentOfInt`, and mark it @[simp]. It rewrites toward the RingHom form and cannot cycle, since there is no reverse rule. The `rw` chain in `thetaL_mul_delta` could then become `simpa [\u2190 map_pow, \u2190 map_mul] using h`, or just `simpa using h` once the matching map_mul/map_pow normal form is available. Delete the duplicate copies in the `Sol` files.",
+      "benefit": "There is one canonical normal form (`laurentOfInt`) for integer-coefficient Laurent series. Rewrites and ring-hom simp lemmas then fire automatically. Users no longer repeat the lemma per file or fall back on `rfl` to cross the boundary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_ModularCurve_X1.lean",
+          "declaration": "intSeriesC",
+          "excerpt": "def intSeriesC (p : PowerSeries \u2124) : LaurentSeries K :=\n  HahnSeries.ofPowerSeries \u2124 K (p.map (Int.castRingHom K))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_gcd_natAbs_ord_eisensteinRatio_pow_eq_one_of_mem_ssPlaces.lean",
+          "declaration": "intSeriesC_eq_laurentOfInt",
+          "excerpt": "theorem intSeriesC_eq_laurentOfInt (p : PowerSeries \u2124) : intSeriesC K p = laurentOfInt K p := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "ord_jGeomGen_sub (ite-valued statement) and its uses in `solution`",
+      "start_line": 115,
+      "end_line": 122,
+      "excerpt": "= if x.evalAt (jGeomGen K N) = c then (placeRamificationJ N x : \u2124) else 0",
+      "problem": "The statement is a single `if \u2026 then \u2026 else` that needs `[DecidableEq K]`. In `solution` every use has to be split by hand into the three evalAt cases. Each case ends with a manual `rw [if_pos he0] at h0` or `rw [if_neg he1] at h1`, six times in total. These rewrites are exactly what `simp` would do given hypotheses `he0 : v.evalAt J = 0` and so on. As an ite lemma it is not a usable simp rule without a decidability instance, and the condition must match syntactically. The file also adds `[DecidableEq K]` to the section only for this lemma.",
+      "proposed_change": "State two decidability-free lemmas, `ord_jGeomGen_sub_of_evalAt_eq (h : x.evalAt (jGeomGen K N) = c) : ord (\u2026) = placeRamificationJ N x` and `ord_jGeomGen_sub_of_evalAt_ne (h : \u2026 \u2260 c) : ord (\u2026) = 0`. Make them simp lemmas with their side conditions as hypotheses, or keep the ite lemma as a corollary. The case branches of `solution` can then call them directly and skip the `if_pos`/`if_neg` rewrites. The `DecidableEq K` variable can be dropped.",
+      "benefit": "The case analysis no longer needs `rw [if_pos/if_neg] at` plumbing. The lemma needs no decidability assumption. It can be used by `simp` once the evalAt hypotheses are in context.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_gcd_natAbs_ord_eisensteinRatio_pow_eq_div_placeWidth_of_not_mem_ssPlaces.lean",
+          "declaration": "solution",
+          "excerpt": "rw [if_pos he0] at h0\n      rw [if_neg he1] at h1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 25616,
+    "cache_read_input_tokens": 104575,
+    "output_tokens": 5542,
+    "output_tokens_details": {
+      "thinking_tokens": 1299
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25616,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3122,
+        "cache_read_input_tokens": 28461,
+        "cache_creation_input_tokens": 1168,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1168
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1683615,
+  "duration_ms": 39548,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:40:34",
+  "unit": "file",
+  "source_sha256": "0a08595c9eb2928ce5813abc5d85cf4ba5e94b1489483f09427a0c2d21e37aea",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

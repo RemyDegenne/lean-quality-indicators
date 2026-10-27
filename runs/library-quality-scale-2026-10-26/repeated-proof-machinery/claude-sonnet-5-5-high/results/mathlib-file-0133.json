@@ -1,0 +1,99 @@
+{
+  "id": "mathlib-file-0133",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and looked for repeated nontrivial proofs. I found two repeated p = 0 / p = \u221e / 0 < p < \u221e case-split patterns. Other repetitions, such as `Mem\u2113p.const_smul` against `norm_const_smul_le`, and the `ite` bookkeeping in the `single` lemmas, are short or differ enough that I did not report them. I checked line numbers and the surrounding declarations with Read. I could not compile any replacement. The `Mem\u2113p.mono'` replacement uses only the existing signature. The norm-invariance lemma is a proposal, and its `ext`/`simp` steps are untested.",
+  "findings": [
+    {
+      "declaration": "Mem\u2113p.neg and Mem\u2113p.star_mem",
+      "start_line": 203,
+      "end_line": 210,
+      "excerpt": "  \u00b7 apply mem\u2113p_zero\n    simp [hf.finite_dsupport]\n  \u00b7 apply mem\u2113p_infty\n    simpa using hf.bddAbove\n  \u00b7 apply mem\u2113p_gen\n    simpa using hf.summable hp",
+      "problem": "`Mem\u2113p.neg` and `Mem\u2113p.star_mem` (lines 790\u2013797) have the same three-way split on `p`. In each case the proof unfolds the finite-support, `BddAbove` and `Summable` formulations and checks that the pointwise norm (and the zero set) is unchanged by `-` or `star`. The only fact used is `\u2016-f i\u2016 = \u2016f i\u2016` (resp. `\u2016star (f i)\u2016 = \u2016f i\u2016`). The file already has `Mem\u2113p.mono'`, which handles all exponents from a pointwise norm bound. It is stated before `neg`, so using it creates no dependency problem. The two exponent-by-exponent proofs duplicate that machinery.",
+      "proposed_change": "Replace both proofs with the existing norm-domination lemma. For `Mem\u2113p.neg`: `hf.mono' fun i => by simp`. For `Mem\u2113p.star_mem`: `hf.mono' fun i => by simp`, using `norm_star` (a simp lemma under `NormedStarGroup`). Here `mono'` is instantiated with `F := E`, `g := f`, and `fun i => (norm_neg _).le` or `(norm_star _).le` gives the hypothesis. The `neg_iff` and `star_iff` wrappers are unchanged. Any further map that preserves pointwise norms can be handled the same way.",
+      "benefit": "This removes about 12 lines of duplicated case analysis. The proofs state the real reason the property is preserved, namely that norms are unchanged pointwise. Future changes to the `Mem\u2113p` definition then need maintenance in only one place (`mono`), not in `neg`, `star_mem` and similar lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Lp/lpSpace.lean",
+          "declaration": "Mem\u2113p.mono'",
+          "excerpt": "theorem mono' {F : \u03b1 \u2192 Type*} [\u2200 i, NormedAddCommGroup (F i)] {f : (i : \u03b1) \u2192 E i}\n    {g : (i : \u03b1) \u2192 F i} (hg : Mem\u2113p g p) (hfg : \u2200 i, \u2016f i\u2016 \u2264 \u2016g i\u2016) :\n    Mem\u2113p f p :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Lp/lpSpace.lean",
+          "declaration": "Mem\u2113p.star_mem",
+          "excerpt": "  \u00b7 apply mem\u2113p_zero\n    simp [hf.finite_dsupport]\n  \u00b7 apply mem\u2113p_infty\n    simpa using hf.bddAbove\n  \u00b7 apply mem\u2113p_gen\n    simpa using hf.summable hp"
+        }
+      ]
+    },
+    {
+      "declaration": "lp.norm_neg, NormedStarGroup (lp E p) instance, lp.norm_toNorm",
+      "start_line": 533,
+      "end_line": 543,
+      "excerpt": "  rcases p.trichotomy with (rfl | rfl | hp)\n  \u00b7 simp only [norm_eq_card_dsupport, coeFn_neg, Pi.neg_apply, ne_eq, neg_eq_zero]\n  \u00b7 cases isEmpty_or_nonempty \u03b1",
+      "problem": "`lp.norm_toNorm` (lines 480\u2013485) proves by cases on `p` that the `lp` norm depends only on the pointwise norms `\u2016x i\u2016`. `lp.norm_neg` (lines 533\u2013543) and the `NormedStarGroup (lp E p)` instance (lines 820\u2013827) redo this exponent-by-exponent argument. `norm_neg` also handles the empty-index case and uses `IsLUB.unique` and `HasSum.unique`. The star instance repeats the three-way split on `p`, with an extra impossible `p = 0` case. All three reduce to the fact that `\u2016x\u2016` is determined by `fun i => \u2016x i\u2016`, which `norm_toNorm` already encodes.",
+      "proposed_change": "After `norm_toNorm`, add one lemma, for example `lp.norm_eq_of_norm_apply_eq {F : \u03b1 \u2192 Type*} [\u2200 i, NormedAddCommGroup (F i)] {x : lp E p} {y : lp F p} (h : \u2200 i, \u2016x i\u2016 = \u2016y i\u2016) : \u2016x\u2016 = \u2016y\u2016`. Proof sketch: `toNorm x = toNorm y` by `ext`/`funext` from `h`, since `toNorm` has the coordinate `\u2016x i\u2016`. Then `rw [\u2190 norm_toNorm (x := x), \u2190 norm_toNorm (x := y), this]`. Rewrite `norm_neg` as `norm_eq_of_norm_apply_eq fun i => by simp`. Rewrite `norm_star_le f` as `le_of_eq (norm_eq_of_norm_apply_eq fun i => by simp)`. This lemma has no `p \u2260 0` hypothesis, so the star instance no longer needs the `exfalso` branch or the `Fact (1 \u2264 p)` argument. All of this sits after `norm_toNorm` and uses only `lp.star_apply` and `norm_star`.",
+      "benefit": "One lemma carries the p-case analysis. `norm_neg` and `norm_star_le` shrink to one-line proofs. The `p = 0`, `p = \u221e` and `0 < p < \u221e` cases are no longer duplicated, including the empty-index special case. The lemma is also reusable for other norm-preserving maps.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Lp/lpSpace.lean",
+          "declaration": "lp.norm_toNorm",
+          "excerpt": "  \u00b7 simp [norm_eq_card_dsupport]\n  \u00b7 simp [norm_eq_ciSup]\n  \u00b7 simp [norm_eq_tsum_rpow hp]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Normed/Lp/lpSpace.lean",
+          "declaration": "NormedStarGroup (lp E p) instance",
+          "excerpt": "    \u00b7 simp only [lp.norm_eq_ciSup, lp.star_apply, norm_star]\n    \u00b7 simp only [lp.norm_eq_tsum_rpow h, lp.star_apply, norm_star]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 40477,
+    "cache_read_input_tokens": 82749,
+    "output_tokens": 5456,
+    "output_tokens_details": {
+      "thinking_tokens": 2143
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40477,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3053,
+        "cache_read_input_tokens": 40536,
+        "cache_creation_input_tokens": 3870,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3870
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22475489999999998,
+  "duration_ms": 39104,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:08:42",
+  "unit": "file",
+  "source_sha256": "04c60ed897fd49208db76cbfd1005d370d1593c14ea9e08df6b41874af23a0b1",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

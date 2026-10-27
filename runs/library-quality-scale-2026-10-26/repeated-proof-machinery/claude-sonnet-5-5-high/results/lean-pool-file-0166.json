@@ -1,0 +1,93 @@
+{
+  "id": "lean-pool-file-0166",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and compared its proof blocks with the sources of `sourceBound` and `inverseRadiusEnvelope`. I also compared them with the three other proofs that use `inverseRadiusEnvelope`: PacketFiveCostGuards, PacketInitializedOutputCosts and PacketForwardOutputCosts. The one substantial repeated argument I found is the inline `hiR` step: the inverse of `initialRadius R M Rc` is bounded by `inverseRadiusEnvelope X`. It appears in four proofs, one of them in this file. The other candidates are short or non-repeated: `hb`, `hi` and `hs` nonnegativity via `positivity`, the inline `sourceBound` monotonicity (used once), and the pressure/time `mul_le_mul` tails. I did not report any of them. I did not compile the proposed lemma. The `nlinarith` in the Initialized/Forward copies suggests `linarith` may need a fallback in some context, but `linarith only [hp, hRX, hRc]` compiles in the target and FiveCostGuards copies. The final step needs `4*M*Rc \u2264 4*X^2`, which comes from `hp : M*Rc \u2264 X*X` after ring normalization. The Initialized and Forward uses pass `Kc.M \u2264 Z` from `hK.pressure` and `Kc.Rc \u2264 Z` from `hK.radius`, so they fit the lemma's hypotheses directly.",
+  "findings": [
+    {
+      "declaration": "EulerPacketCorrectionOutput.correction_output_bound (inline `hiR` step)",
+      "start_line": 164,
+      "end_line": 169,
+      "excerpt": "  have hiR : (initialRadius R Kc.M Kc.Rc)\u207b\u00b9 \u2264 inverseRadiusEnvelope X := by\n    simp only [initialRadius,one_div,inv_inv]\n    unfold inverseRadiusEnvelope\n    have hp := mul_le_mul hM hRc Kc.Rc_nonneg hX\n    linarith only [hp, hRX, hRc]",
+      "problem": "The same inequality is re-proved inline in four theorems: `(initialRadius R M Rc)\u207b\u00b9 \u2264 inverseRadiusEnvelope X`. The argument is to simplify the inverse to `1+8R+4M\u00b7Rc+Rc`, bound `M*Rc \u2264 X*X` with `mul_le_mul`, and finish with a linear combination. It is repeated in this file's `correction_output_bound`, in `five_costs_bound` (PacketFiveCostGuards), and in the initialized and forward output-cost theorems. The Initialized and Forward copies are identical to each other. Any change to `initialRadius` or `inverseRadiusEnvelope` must be made in all four places.",
+      "proposed_change": "Add one lemma beside `inverseRadiusEnvelope` (in PacketFiveCostPolynomial, which already imports `initialRadius` through PacketCorrectionScalar; otherwise in this file or PacketCorrectionScalar), for example:\n\ntheorem initialRadius_inv_le_inverseRadiusEnvelope {R M Rc X : \u211d} (hRc0 : 0 \u2264 Rc) (hX : 0 \u2264 X) (hRX : R \u2264 X) (hM : M \u2264 X) (hRc : Rc \u2264 X) : (initialRadius R M Rc)\u207b\u00b9 \u2264 inverseRadiusEnvelope X := by\n  simp only [initialRadius, one_div, inv_inv]\n  unfold inverseRadiusEnvelope\n  have hp := mul_le_mul hM hRc hRc0 hX\n  linarith only [hp, hRX, hRc]\n\nThe proof is the existing block unchanged. The uses then become:\n- Here (line 164): `have hiR := initialRadius_inv_le_inverseRadiusEnvelope Kc.Rc_nonneg hX hRX hM hRc`.\n- PacketFiveCostGuards `five_costs_bound`: `have hiR := initialRadius_inv_le_inverseRadiusEnvelope Kc.Rc_nonneg hX0 hRX hM hRc`.\n- PacketInitializedOutputCosts and PacketForwardOutputCosts: `have hiR := initialRadius_inv_le_inverseRadiusEnvelope Kc.Rc_nonneg hZ hRZ hK.pressure hK.radius`.\n\nEach use keeps its current hypotheses. If the Initialized/Forward `nlinarith` is needed for any reason, put it in the lemma.",
+      "benefit": "This removes about 20 duplicated lines across four proofs and puts the inverse-radius bound in one named, documented lemma. The large `correction_output_bound` and the initialized/forward cost theorems then read as assemblies of named facts, and the radius formula is maintained in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketFiveCostGuards.lean",
+          "declaration": "EulerPacketFiveCost.five_costs_bound",
+          "excerpt": "    have hprod := mul_le_mul hM hRc Kc.Rc_nonneg hX0\n    linarith only [hprod, hRX, hRc]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketInitializedOutputCosts.lean",
+          "declaration": "initialized output cost theorem (hiR block, line 122)",
+          "excerpt": "    have hp := mul_le_mul hm hr Kc.Rc_nonneg hZ\n    nlinarith only [hp,hRZ,hr]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketForwardOutputCosts.lean",
+          "declaration": "forward initialized output cost theorem (hiR block, line 229)",
+          "excerpt": "    have hp := mul_le_mul hm hr Kc.Rc_nonneg hZ\n    nlinarith only [hp,hRZ,hr]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketFiveCostPolynomial.lean",
+          "declaration": "EulerPacketFiveCost.inverseRadiusEnvelope",
+          "excerpt": "def inverseRadiusEnvelope (X : \u211d) : \u211d := 1+8*X+4*X^2+X"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/PacketCorrectionScalar.lean",
+          "declaration": "EulerPacketCorrectionScalar.initialRadius",
+          "excerpt": "def initialRadius (R M Rc : \u211d) : \u211d := 1/(1+8*R+4*M*Rc+Rc)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 27956,
+    "cache_read_input_tokens": 160006,
+    "output_tokens": 6059,
+    "output_tokens_details": {
+      "thinking_tokens": 1478
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27956,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2587,
+        "cache_read_input_tokens": 31124,
+        "cache_creation_input_tokens": 761,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 761
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18845059999999997,
+  "duration_ms": 61982,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-26T23:15:39",
+  "unit": "file",
+  "source_sha256": "334cf58fdc619c401fab82641191d2aecb02a6856d5d499dfe33514ddabc685a",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

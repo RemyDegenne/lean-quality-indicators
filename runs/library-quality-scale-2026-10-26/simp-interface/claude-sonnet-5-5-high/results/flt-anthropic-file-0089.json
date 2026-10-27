@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0089",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Mathlib simp lemmas about `RingAut` (`RingAut.one_apply`, `RingAut.mul_apply`) and `AlgEquiv`. I also checked where the file's own simp-related lemmas are used (`\u03c3_one_apply`, `\u03c3_mul_apply`, `algebraMap_tr`, `Tr`). I did not run Lean. Both findings are therefore about likely redundancy or missing interface. I did not observe any simp failure or loop. The scoped simp lemmas `m_tmul`, `\u03c6_apply`, `\u03c3\u2090_apply` and `tr\u2097_apply` look well oriented, because they push towards `a * \u03c3 h b` or the underlying `tr`. I found no rewrite cycle among them.",
+  "findings": [
+    {
+      "declaration": "CHRAux.\u03c3_one_apply / CHRAux.\u03c3_mul_apply",
+      "start_line": 19,
+      "end_line": 22,
+      "excerpt": "theorem \u03c3_one_apply (x : A) : \u03c3 1 x = x := by rw [map_one]; rfl",
+      "problem": "Both lemmas are plain `map_one`/`map_mul` followed by Mathlib's existing `@[simp]` lemmas `RingAut.one_apply` and `RingAut.mul_apply`. Since `RingAut` is an `abbrev` for `R \u2243+* R`, these lemmas should already fire on the type `G \u2192* (A \u2243+* A)` used here. The default simp set should therefore already normalise `\u03c3 1 x` to `x` and `\u03c3 (g*h) x` to `\u03c3 g (\u03c3 h x)`. The lemmas are unannotated, so the file passes them by hand: `simp only [..., \u03c3_one_apply, ...]` at lines 55, 90 and 120, and `simp [\u03c3_one_apply]` and `simpa [\u03c3_one_apply]` at lines 255 and 259. This leaves the simp interface unclear. A reader cannot tell whether `\u03c3_one_apply` supplies something simp lacks. Tagging `\u03c3_mul_apply` @[simp] would be harmful, because lines 90, 97, 159 and 209 use it as `\u2190 \u03c3_mul_apply` to fold products back, so a forward simp rule would compete with that.",
+      "proposed_change": "In the full-`simp` call sites (lines 255 and 259), drop `\u03c3_one_apply`, leaving `simp` and `simpa using hS 1`. In the `simp only` sites, replace `\u03c3_one_apply` with the core Mathlib lemmas `map_one` and `RingAut.one_apply`. Then delete `\u03c3_one_apply`. Keep `\u03c3_mul_apply` as an explicitly named, non-simp folding lemma, with a docstring saying it is only used right-to-left. The same two lemmas are also redefined at lines 20 and 22 of `S_AlgebraicGeometry_Scheme_exists_open_eq_comp_aut_of_comp_eq_of_free_of_quotient.lean`. If a shared version is wanted, put it in one place.",
+      "benefit": "This removes a lemma that competes with the core simp set, and it makes clear that the only non-default direction is the deliberate `\u2190 \u03c3_mul_apply` fold. Call sites also become shorter and more robust.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Ring/Aut.lean",
+          "declaration": "RingAut.one_apply",
+          "excerpt": "theorem one_apply (x : R) : (1 : R \u2243+* R) x = x := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Ring/Aut.lean",
+          "declaration": "RingAut.mul_apply",
+          "excerpt": "theorem mul_apply (f g : R \u2243+* R) (x : R) : (f * g) x = f (g x) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Ring/Aut.lean",
+          "declaration": "RingAut",
+          "excerpt": "abbrev RingAut := RingEquiv R R"
+        }
+      ]
+    },
+    {
+      "declaration": "CHRAux.algebraMap_tr / CHRAux.Tr / CHRAux.tr",
+      "start_line": 94,
+      "end_line": 103,
+      "excerpt": "theorem algebraMap_tr (hfix : \u2200 a : A, (\u2200 g : G, \u03c3 g a = a) \u2192 a \u2208 Set.range (algebraMap A\u2080 A)) (c : A) : algebraMap A\u2080 A (tr \u03c3 hfix c) = Tr \u03c3 c :=",
+      "problem": "`tr` is defined with `Exists.choose`, so `algebraMap_tr` is its only usable characterisation. Every proof about `tr` has to unfold `Tr` and rewrite with `algebraMap_tr` by hand, and the lemma is never registered with simp. The same list `algebraMap_tr, Tr` is repeated at lines 107, 109, 114 and 179. `Tr` is a plain `def` with no unfolding lemma. Because `Tr` must be unfolded in each proof, the `Finset.sum` form is exposed everywhere and the abstract `Tr` is not kept. By contrast, the other characterising lemmas in this file (`m_tmul`, `\u03c6_apply`, `tr\u2097_apply`) are scoped simp lemmas. `algebraMap_tr` is the lemma that characterises the one definition built with `choose`, and it is left out.",
+      "proposed_change": "Mark `algebraMap_tr` as `@[scoped simp]`, like the neighbouring `tr\u2097_apply`. Its LHS `algebraMap A\u2080 A (tr \u03c3 hfix c)` is a specific head and its RHS `Tr \u03c3 c` is smaller, so there is no loop risk. Optionally add `theorem Tr_apply (c : A) : Tr \u03c3 c = \u2211 h, \u03c3 h c := rfl` as a deliberately non-simp unfolding lemma, and pass it explicitly instead of the bare `Tr` in the `simp only` lists. Call sites would shrink to `simp [Finset.sum_add_distrib]` and similar.",
+      "benefit": "The characterising lemma of the `choose`-based definition `tr` is applied automatically, in line with the other scoped simp lemmas. Call sites no longer repeat the pair `algebraMap_tr, Tr`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_Scheme_isFinite_flat_etale_of_free_of_quotient.lean",
+          "declaration": "CHRAux.tr\u2097",
+          "excerpt": "map_add' x y := hinj (by simp [algebraMap_tr, Tr, Finset.sum_add_distrib])"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_Scheme_isFinite_flat_etale_of_free_of_quotient.lean",
+          "declaration": "CHRAux.recon",
+          "excerpt": "simp only [algebraMap_tr, Tr, map_mul, Finset.sum_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AlgebraicGeometry_Scheme_isFinite_flat_etale_of_free_of_quotient.lean",
+          "declaration": "CHRAux.tr\u2097_apply",
+          "excerpt": "@[scoped simp] theorem tr\u2097_apply"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 19825,
+    "cache_read_input_tokens": 97093,
+    "output_tokens": 7842,
+    "output_tokens_details": {
+      "thinking_tokens": 3289
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19825,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2970,
+        "cache_read_input_tokens": 20553,
+        "cache_creation_input_tokens": 3285,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3285
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1674533,
+  "duration_ms": 61260,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T23:00:51",
+  "unit": "file",
+  "source_sha256": "028923eca95c52469994dd44ae3cf4beb5818fdd1993c634d2f35b83c4ef7fbd",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

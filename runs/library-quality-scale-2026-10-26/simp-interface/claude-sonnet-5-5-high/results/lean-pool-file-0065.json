@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0065",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the definitions of expIterate and OnRealAxis in Basic.lean. I also searched for downstream uses of the new definitions (orbitVisitSet, denseOrbitSetExp, escapingSetExp, EscapesToInfinity). The file has no @[simp] declarations and no simp-set conflicts. The only concerns are missing canonical membership and unfolding lemmas for the new set-valued definitions. I could not run Lean, so I don't know whether the proposed simp lemmas would fire in the presence of existing mathlib lemmas such as Set.mem_iUnion and Set.mem_preimage. I did not recommend a simp lemma for escapesToInfinity_of_im_eq_zero or similar.",
+  "findings": [
+    {
+      "declaration": "orbitVisitSet",
+      "start_line": 91,
+      "end_line": 93,
+      "excerpt": "def orbitVisitSet (U : Set \u2102) : Set \u2102 :=\n  \u22c3 n : \u2115, expIterate n \u207b\u00b9' U",
+      "problem": "orbitVisitSet is a new opaque-ish definition with no membership characterisation registered for simp. Every use re-exposes the internal union-of-preimages form by hand, via `mem_iUnion.2 \u27e8n, by simpa [hzw] using hwU\u27e9`, `mem_iUnion.mp hzU`, and `mem_iInter` rewrites followed by `mem_iUnion`. The preimage membership step needs a separate simp call. Simp cannot normalise `z \u2208 orbitVisitSet U` to the intended `\u2203 n, expIterate n z \u2208 U`.",
+      "proposed_change": "Add `@[simp] theorem mem_orbitVisitSet {U : Set \u2102} {z : \u2102} : z \u2208 orbitVisitSet U \u2194 \u2203 n : \u2115, expIterate n z \u2208 U := by simp [orbitVisitSet]` (or `Set.mem_iUnion`/`Set.mem_preimage`). Then replace the manual `mem_iUnion` / `simpa` steps in isOpen_dense_orbitVisitSet, mem_denseOrbitSetExp_iff_visit_countableBasis and dense_denseOrbitSet_exp_diff_countable with `simp`/`rw [mem_orbitVisitSet]`. The `\u22c3` unfolding should stay confined to this one lemma.",
+      "benefit": "The canonical form of `z \u2208 orbitVisitSet U` is the existential over n, which is what every proof wants. This removes repeated hand unfolding and gives later users the same normal form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ExpChaotic/Dynamics.lean",
+          "declaration": "isOpen_dense_orbitVisitSet",
+          "excerpt": "exact mem_iUnion.2 \u27e8n, by simpa [hzw] using hwU\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ExpChaotic/Dynamics.lean",
+          "declaration": "mem_denseOrbitSetExp_iff_visit_countableBasis",
+          "excerpt": "obtain \u27e8n, hn\u27e9 := mem_iUnion.mp hzU"
+        }
+      ]
+    },
+    {
+      "declaration": "escapingSetExp / denseOrbitSetExp / OnRealAxis",
+      "start_line": 44,
+      "end_line": 45,
+      "excerpt": "def escapingSetExp : Set \u2102 := {z | EscapesToInfinity z}",
+      "problem": "The set-valued definitions escapingSetExp and denseOrbitSetExp, and the predicate OnRealAxis (defined in Basic.lean as `z.im = 0`), have no simp-facing membership or unfolding lemmas. Proofs rely on definitional unfolding. For example, `dense_escapingSet_exp` ends with `exact escapesToInfinity_of_eventually_onRealAxis hm` and depends on `z \u2208 escapingSetExp` unfolding by defeq. `escapesToInfinity_of_im_eq_zero hm` silently uses `OnRealAxis x` as `x.im = 0`. Elsewhere in the library, callers write `simp [ExponentialJuliaSetMisiurewicz.OnRealAxis]` or `simp [hn, OnRealAxis]` to unfold it. `simp` cannot turn `z \u2208 escapingSetExp` into `EscapesToInfinity z`, nor `z \u2208 denseOrbitSetExp` into `Dense (MulAction.orbit ..)`.",
+      "proposed_change": "Add `@[simp] theorem mem_escapingSetExp {z : \u2102} : z \u2208 escapingSetExp \u2194 EscapesToInfinity z := Iff.rfl` and `@[simp] theorem mem_denseOrbitSetExp {z : \u2102} : z \u2208 denseOrbitSetExp \u2194 Dense (MulAction.orbit (IterateMulAct Complex.exp) z) := Iff.rfl`. Also add `theorem onRealAxis_iff {z : \u2102} : OnRealAxis z \u2194 z.im = 0 := Iff.rfl`, ideally `@[simp]`, next to the OnRealAxis definition in Basic.lean. Then call sites can use `simp` instead of `simp [OnRealAxis]` and defeq-based `exact`s.",
+      "benefit": "Membership in these sets and OnRealAxis facts normalise to their intended predicate form without name-specific unfolding at each use. This makes `simp` and `simpa` calls such as those in Covering.lean and Results.lean robust and uniform.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ExpChaotic/Covering.lean",
+          "declaration": "dense_iterated_preimages_real_axis",
+          "excerpt": "exact \u27e8n, by simp [hn, OnRealAxis]\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ExpChaotic/Results.lean",
+          "declaration": "dense_iteratedPreimages_realAxis",
+          "excerpt": "simpa [ExponentialJuliaSetMisiurewicz.OnRealAxis] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ExpChaotic/Basic.lean",
+          "declaration": "OnRealAxis",
+          "excerpt": "def OnRealAxis (z : \u2102) : Prop := z.im = 0"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 13320,
+    "cache_read_input_tokens": 56600,
+    "output_tokens": 4160,
+    "output_tokens_details": {
+      "thinking_tokens": 630
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13320,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2411,
+        "cache_read_input_tokens": 16230,
+        "cache_creation_input_tokens": 1103,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1103
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.10056,
+  "duration_ms": 30705,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T22:56:23",
+  "unit": "file",
+  "source_sha256": "985db7938511485449f277df08754a49b1a4ff6c130e4541e238fad768710867",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

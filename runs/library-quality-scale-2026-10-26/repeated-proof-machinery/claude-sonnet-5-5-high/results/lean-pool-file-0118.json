@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0118",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, the definitions of spatialPartial, spatialSecondPartial and backwardHeatTestFunction, and searched the CKN directory for existing differentiability lemmas for heatKernel and heatKernelSpaceDerivative. I found none. I did not check Mathlib for an existing lemma about differentiating a translated function, so the shared lemma may reduce to an existing one. I cannot run Lean, so none of the proposed lemmas is compiled. The proofs that bound the cylinder and annulus are thin wrappers and are not flagged. The time-derivative proof is also not flagged, because it has no counterpart in the other proofs.",
+  "findings": [
+    {
+      "declaration": "CKN.Foundation.Heat.centeredBackwardHeatTest_spatialPartial / centeredBackwardHeatTest_secondSpatialPartial",
+      "start_line": 152,
+      "end_line": 195,
+      "excerpt": "have hcomp := houter.comp z.1 hinner\n  have hvalue := congrArg (fun L : Vec3 \u2192L[\u211d] \u211d => L (basisVec i)) hcomp.fderiv",
+      "problem": "Both theorems repeat the same long argument for differentiating a translated, scaled function. They build hinner (the fderiv of x \u21a6 x - x\u2080 is id), build houter (a const_mul of a differentiable function), compose them, apply the result to basisVec i, and finish with the same calc that turns `r ^ 2 \u2022 L \u2218SL id` into `r ^ 2 * L (basisVec i)`. Lines 154-195 and 260-303 are the same proof with only the inner function changed, from heatKernel to heatKernelSpaceDerivative \u00b7 \u03c4 i. The restated fderiv expressions make each proof about 45 lines.",
+      "proposed_change": "Add one private lemma, for example `fderiv_const_mul_comp_sub_apply`. Its statement is: for `f : Vec3 \u2192 \u211d`, `c : \u211d`, `x\u2080 x v : Vec3`, and `hf : DifferentiableAt \u211d f (x - x\u2080)`, we have `(fderiv \u211d (fun y : Vec3 => c * f (y - x\u2080)) x) v = c * (fderiv \u211d f (x - x\u2080)) v`. Proof sketch: `hf.hasFDerivAt.const_mul c` composed with `(hasFDerivAt_id x).sub_const x\u2080`, then `.fderiv` and `simp`. In the first theorem, the change at lines 175-176 already puts the goal in the shape `fderiv (fun x => backwardHeatTestFunction r (x - x\u2080) _) z.1 (basisVec i)`, so after `unfold backwardHeatTestFunction` it is the lemma with `f := fun y => heatKernel y \u03c4`, followed by `heatKernel_fderiv_apply_basisVec_local h\u03c4 i`. The second theorem is the same with `f := fun y => heatKernelSpaceDerivative y \u03c4 i`, followed by `heatKernelSpaceDerivative_fderiv_apply_basisVec h\u03c4 i`. Each use then needs only the differentiability hypothesis, which the next finding also supplies as a lemma. No new imports are needed. Both rewritten uses keep their hypotheses (ht : z.2 - t\u2080 < r^2, so h\u03c4 : 0 < r^2 - (z.2 - t\u2080)).",
+      "benefit": "This removes about 60 duplicated lines of chain-rule bookkeeping. A reader sees directly that the derivative of a translate is the translate of the derivative. Any later translated derivative (for example a third derivative) becomes a one-line application instead of a third copy.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Heat/CylinderCentered.lean",
+          "declaration": "CKN.Foundation.Heat.centeredBackwardHeatTest_secondSpatialPartial",
+          "excerpt": "have hcomp := houter.comp z.1 hinner\n  have hvalue := congrArg (fun L : Vec3 \u2192L[\u211d] \u211d => L (basisVec i)) hcomp.fderiv"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Heat/CylinderCentered.lean",
+          "declaration": "CKN.Foundation.Heat.centeredBackwardHeatTest_spatialPartial",
+          "excerpt": "simpa only [Function.comp_def] using hvalue"
+        }
+      ]
+    },
+    {
+      "declaration": "heatKernel_fderiv_apply_basisVec_local, heatKernelSpaceDerivative_fderiv_apply_basisVec, centeredBackwardHeatTest_spatialPartial, centeredBackwardHeatTest_secondSpatialPartial",
+      "start_line": 78,
+      "end_line": 84,
+      "excerpt": "rw [show (fun y : Vec3 => heatKernel y t) = fun y : Vec3 =>\n        (4 * Real.pi * t) ^ (-(3 : \u211d) / 2) *\n          Real.exp (-(\u2211 j, y j ^ 2) / (4 * t)) by\n      funext y\n      exact heatKernel_eq_formula_sum ht]\n    fun_prop (disch := positivity)",
+      "problem": "The same differentiability argument is written out four times. It rewrites heatKernel (or heatKernelSpaceDerivative) to the explicit Gaussian formula and calls `fun_prop (disch := positivity)`. It appears at lines 78-84 and 92-101 for the generic t. It appears again at lines 161-168 (hheat) and 269-280 (hdiff) with t instantiated to `r ^ 2 - (z.2 - t\u2080)`, where the whole formula is retyped with that long expression.",
+      "proposed_change": "Add two private lemmas, `heatKernel_differentiableAt_space {x} {t} (ht : 0 < t) : DifferentiableAt \u211d (fun y : Vec3 => heatKernel y t) x` and `heatKernelSpaceDerivative_differentiableAt_space (ht : 0 < t) (i) : DifferentiableAt \u211d (fun y : Vec3 => heatKernelSpaceDerivative y t i) x`. Their proofs are the existing blocks at lines 78-84 and 92-101, stated once for a generic t. The two helper lemmas then use `hdiff := heatKernel_differentiableAt_space ht` and the corresponding second lemma. The two centered theorems pass `h\u03c4`, so hheat and hdiff become one-liners. A search of the CKN directory found no existing lemma of this form.",
+      "benefit": "This removes four copies of the rewrite-and-`fun_prop` pattern, two of which spell out the long expression `r ^ 2 - (z.2 - t\u2080)` repeatedly. The formula-based differentiability proof is then maintained in one place, and the theorem proofs show only the derivative calculation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Heat/CylinderCentered.lean",
+          "declaration": "CKN.Foundation.Heat.centeredBackwardHeatTest_spatialPartial",
+          "excerpt": "exact heatKernel_eq_formula_sum h\u03c4]\n      fun_prop (disch := positivity)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Heat/CylinderCentered.lean",
+          "declaration": "CKN.Foundation.Heat.centeredBackwardHeatTest_secondSpatialPartial",
+          "excerpt": "rw [heatKernelSpaceDerivative, ite_eq_left h\u03c4,\n          heatKernel_eq_formula_sum h\u03c4]]\n      fun_prop (disch := positivity)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 21036,
+    "cache_read_input_tokens": 36279,
+    "output_tokens": 4249,
+    "output_tokens_details": {
+      "thinking_tokens": 637
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21036,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2886,
+        "cache_read_input_tokens": 17188,
+        "cache_creation_input_tokens": 7777,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 7777
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1302739,
+  "duration_ms": 33034,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:05:42",
+  "unit": "file",
+  "source_sha256": "712ff9e9260982777dbff0a37270aececd9d154da90ef3cc410d13b2a84c94a7",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

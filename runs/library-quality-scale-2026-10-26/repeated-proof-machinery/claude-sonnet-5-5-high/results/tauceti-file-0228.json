@@ -1,0 +1,83 @@
+{
+  "id": "tauceti-file-0228",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole Gumbel/PDF.lean file. I also read the `map_withDensity_abs_deriv_mul` helper in MeasureTheory/Measure/WithDensity.lean and the analogous `*_eq_withDensity` proofs in Gompertz/PDF.lean, GeneralizedPareto/PDF.lean and GeneralizedGamma/PDF.lean. Within the file, the other candidates are `integrable_gumbelMeasure_iff` and `integral_gumbelMeasure_eq`, and the `le_or_gt s 0` zero branches. They are short wrappers over Mathlib API or routine branches, so I did not report them. The one reportable pattern is the change-of-variables skeleton for `gumbelMeasure_eq_withDensity`, which Gompertz and GeneralizedPareto repeat. I have not compiled the proposed lemma, and I did not check whether the exponential-source skeleton also fits the other `map_withDensity_abs_deriv_mul` users (LogNormal, InverseGamma, etc.). The Gamma-source GeneralizedGamma proof differs slightly.",
+  "findings": [
+    {
+      "declaration": "TauCeti.Probability.gumbelMeasure_eq_withDensity",
+      "start_line": 184,
+      "end_line": 198,
+      "excerpt": "filter_upwards [ae_restrict_mem measurableSet_Ioi] with e he\n      exact gumbelTransform_weight hs m e he\n    rw [withDensity_congr_ae hweight, image_gumbelTransform_Ioi hs m,\n      Measure.restrict_univ] at hmap",
+      "problem": "The positive-scale branch builds the substitution argument for `(expMeasure 1).map \u03c6` by hand. It applies `map_withDensity_abs_deriv_mul` with `s := Ioi 0`. It restates the pointwise identity `ofReal |\u03c6' e| * f (\u03c6 e) = exponentialPDF 1 e` as an `=\u1d50[volume.restrict (Ioi 0)]` statement and proves it with `ae_restrict_mem`. It rewrites with `withDensity_congr_ae`, then with `expMeasure_eq_withDensity_restrict_Ioi`. The same sequence appears in Gompertz/PDF.lean (`hmap`, `hw`, `filter_upwards [ae_restrict_mem measurableSet_Ioi]`, `rw [withDensity_congr_ae hw, ...]`) and in GeneralizedPareto/PDF.lean (`hmap`, `hw`, same `filter_upwards`, same rewrites). Only the transform, its derivative, injectivity, the pointwise weight lemma and the image differ. So the measure-theoretic bookkeeping is duplicated in every pushforward-of-exponential density proof.",
+      "proposed_change": "Add one lemma next to `expMeasure_eq_withDensity_restrict_Ioi` in Exponential/Basic.lean, or in the WithDensity file:\n\ntheorem expMeasure_one_map_eq_withDensity {\u03c6 \u03c6' : \u211d \u2192 \u211d} {f : \u211d \u2192 \u211d\u22650\u221e} (h\u03c6 : Measurable \u03c6) (h\u03c6' : \u2200 e \u2208 Ioi (0:\u211d), HasDerivWithinAt \u03c6 (\u03c6' e) (Ioi 0) e) (hinj : InjOn \u03c6 (Ioi 0)) (hweight : \u2200 e \u2208 Ioi (0:\u211d), ENNReal.ofReal |\u03c6' e| * f (\u03c6 e) = exponentialPDF 1 e) : (expMeasure 1).map \u03c6 = (volume.restrict (\u03c6 '' Ioi 0)).withDensity f.\n\nProof sketch: `rw [expMeasure_eq_withDensity_restrict_Ioi]`. Replace `exponentialPDF 1` by the weight using `withDensity_congr_ae` with `filter_upwards [ae_restrict_mem measurableSet_Ioi]` and `hweight`. Then close with `map_withDensity_abs_deriv_mul measurableSet_Ioi h\u03c6 h\u03c6' hinj`.\n\nThe Gumbel positive branch then becomes:\n`rw [gumbelMeasure_of_pos hs, expMeasure_one_map_eq_withDensity (f := gumbelPDF m s) (by fun_prop) (fun e he \u21a6 by simpa [div_eq_mul_inv] using (((Real.hasDerivAt_log he.ne').const_mul s).const_sub m).hasDerivWithinAt) (gumbelTransform_injOn hs m) (fun e he \u21a6 gumbelTransform_weight hs m e he), image_gumbelTransform_Ioi hs m, Measure.restrict_univ]`.\n\nThe `hmap` and `hweight` blocks disappear.\n\nGompertz keeps its own image and indicator step, and GeneralizedPareto keeps its set `A` and indicator step. They pass `gompertzPDF_mul_abs_deriv` and `transform_weight` as `hweight`, and drop their `hmap` and `hw` blocks. The imports already available in those files cover the lemma.",
+      "benefit": "The Gumbel proof is reduced to its own content: the transform, its derivative, injectivity, the weight identity and the image. The generic measure-theoretic bookkeeping is stated and proved once instead of being copied, with small variations, into each exponential-pushforward density proof (at least Gumbel, Gompertz and GeneralizedPareto). A fix to the pattern, such as a change in the `map_withDensity_abs_deriv_mul` signature, then happens in one place. Readers no longer have to check that each copy performs the same ae-congruence step.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Probability/Distributions/Gompertz/PDF.lean",
+          "declaration": "TauCeti.Probability.gompertzMeasure_eq_withDensity",
+          "excerpt": "filter_upwards [ae_restrict_mem measurableSet_Ioi] with e he\n      exact gompertzPDF_mul_abs_deriv h\u03b7 hb he\n    rw [withDensity_congr_ae hw, gompertzTransform_image h\u03b7 hb] at hmap"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Probability/Distributions/GeneralizedPareto/PDF.lean",
+          "declaration": "TauCeti.Probability.generalizedParetoMeasure_eq_withDensity",
+          "excerpt": "filter_upwards [ae_restrict_mem measurableSet_Ioi] with e he\n      exact transform_weight hs \u03be he\n    rw [withDensity_congr_ae hw, image_generalizedParetoMap_Ioi hs] at hmap"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/MeasureTheory/Measure/WithDensity.lean",
+          "declaration": "TauCeti.MeasureTheory.map_withDensity_abs_deriv_mul",
+          "excerpt": "((volume.restrict s).withDensity fun t \u21a6 ENNReal.ofReal |\u03c6' t| * f (\u03c6 t)).map \u03c6 =\n      (volume.restrict (\u03c6 '' s)).withDensity f"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 19827,
+    "cache_read_input_tokens": 67455,
+    "output_tokens": 5275,
+    "output_tokens_details": {
+      "thinking_tokens": 1626
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19827,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3365,
+        "cache_read_input_tokens": 21633,
+        "cache_creation_input_tokens": 2123,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2123
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1388235,
+  "duration_ms": 33264,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:34:33",
+  "unit": "file",
+  "source_sha256": "dc8d6a03c159d52fe40ad1aae322522239794aeb67f07c19fe5624e3256f1dfb",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

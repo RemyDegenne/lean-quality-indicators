@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0254",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, the definitions in AllocationOutputs.lean (lower, excess, ruleOne, ruleTwo, variation) and the downstream use of holesTwo, sideTotal and sideVariation in CrossRule.lean. The file declares no simp lemmas or attributes. The main weakness is that the two-branch definitions holesTwo and ruleTwo have no case lemmas in simp form, so each proof unfolds the whole `if` with `simp only [def, ite_true]` or `ite_eq_right`. I did not report sideTotal and sideVariation: they are plain sums, and I saw no use that needs a simp rule. I cannot run Lean, so the proposed lemmas are untested. The sketched proofs are `if_pos`/`if_neg`/`rfl`-style and I expect them to work. I saw no rewrite loop or competing-rule problem.",
+  "findings": [
+    {
+      "declaration": "holesTwo",
+      "start_line": 71,
+      "end_line": 72,
+      "excerpt": "if i=o then max (R-sideTotal \u03c9 o) 0 else \u03c9 i",
+      "problem": "holesTwo is a two-branch `if` with no case lemmas, simp or otherwise. Each client proof unfolds the definition with `simp only [holesTwo,ite_true]` or `simp only [holesTwo,ite_eq_right ...]`. The only way to reach either branch is to unfold the definition, which exposes the `if` and the `max` in the goal. The same pattern appears in holes_two_movement (lines 90 and 92), in rule_two_holes (lines 105 and 122) and in CrossRule.lean (lines 30 and 32).",
+      "proposed_change": "Add `@[simp] theorem holesTwo_self (R \u03c9 o) : holesTwo R \u03c9 o o = max (R - sideTotal \u03c9 o) 0 := if_pos rfl` and `@[simp] theorem holesTwo_of_ne (R \u03c9) {o i} (h : i \u2260 o) : holesTwo R \u03c9 o i = \u03c9 i := if_neg h` (or an equivalent proof). Then rewrite the uses as `simp [holesTwo_of_ne _ _ (ne_of_mem_erase hi)]` and `simp only [holesTwo_self]`. This mirrors the existing `rule_two_side` lemma for ruleTwo. The definition then stays folded and the `i = o` and `i \u2260 o` cases give a canonical normal form.",
+      "benefit": "Proofs no longer unfold the definition to reach a branch. The simp interface for holesTwo is stated in one place and reused by AllocationMovement and CrossRule. The conditional lemma has hypothesis `i \u2260 o`, which simp can discharge from context, and neither rule can loop.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/UniformKServer/CrossRule.lean",
+          "declaration": "holes sum lemma (uses holesTwo)",
+          "excerpt": "simp only [holesTwo,ite_eq_right (ne_of_mem_erase hi)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/UniformKServer/AllocationMovement.lean",
+          "declaration": "holes_two_movement",
+          "excerpt": "simp only [holesTwo,ite_eq_right (ne_of_mem_erase hi)]"
+        }
+      ]
+    },
+    {
+      "declaration": "rule_two_holes",
+      "start_line": 103,
+      "end_line": 123,
+      "excerpt": "simp only [ruleTwo,holesTwo,ite_eq_right hi]",
+      "problem": "The existing branch lemma `rule_two_side` (`ruleTwo d w q D o i = d i-D*w i` for `i \u2260 o`) is not tagged simp. There is no matching `ruleTwo_self` lemma for the `i = o` branch. The proofs therefore unfold ruleTwo with `simp only [ruleTwo,...,ite_true]` or `ite_eq_right`. This happens at line 105 and line 122 here, and at lines 112, 120 and 142 of AllocationOutputs.lean. After `subst i`, `simp only [ruleTwo,holesTwo,ite_true]` expands the `min` and the `univ.erase o` sum and does not leave a stable normal form.",
+      "proposed_change": "In AllocationOutputs.lean, mark `rule_two_side` as `@[simp]`, since its `i \u2260 o` hypothesis is dischargeable. Add `@[simp] theorem ruleTwo_self (d w q D o) : ruleTwo d w q D o o = min (d o) (q - \u2211 j \u2208 univ.erase o, (d j - D*w j)) := if_pos rfl`. Use these together with the proposed `holesTwo_self` and `holesTwo_of_ne` in `rule_two_holes`, so the proof states the two cases directly instead of unfolding both definitions.",
+      "benefit": "Callers can simplify `ruleTwo ... o i` by case without exposing `ite`. This removes the repeated `simp only [ruleTwo,...]` unfolding in several proofs. The two cases of `rule_two_holes` become a short rewrite followed by the existing min/max argument.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/UniformKServer/AllocationOutputs.lean",
+          "declaration": "rule_two_side",
+          "excerpt": "ruleTwo d w q D o i = d i-D*w i := ite_eq_right hi"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/UniformKServer/AllocationOutputs.lean",
+          "declaration": "rule_two_budget",
+          "excerpt": "simp only [ruleTwo,ite_true]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 17363,
+    "cache_read_input_tokens": 63766,
+    "output_tokens": 4682,
+    "output_tokens_details": {
+      "thinking_tokens": 1626
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17363,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2429,
+        "cache_read_input_tokens": 16548,
+        "cache_creation_input_tokens": 4828,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4828
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1226686,
+  "duration_ms": 33110,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:42:25",
+  "unit": "file",
+  "source_sha256": "61777c89a278da3eabce7deef902d6a1db96f5f1e5caf1db9ded745c7ef62dde",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

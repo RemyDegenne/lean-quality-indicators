@@ -1,0 +1,105 @@
+{
+  "id": "formal-frontier-file-0210",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, the upstream definitions in ProcyclicQuotient.lean and PrimewisePadic.lean, the downstream PrimewisePadicKernelTransport.lean, and the test file ProfiniteGroupsTests/ProcyclicBaseMap.lean. I checked the existing @[simp] lemmas for cycles. `_symm` rewrites a `.symm` away, `_self` and `_trans` shrink the term, and `_diagonal` and `_apply_down` push the equivalence inward. I found no loop and no competing rules. The findings are about missing simp-normal-form lemmas. I did not run Lean, so I make no claim about observed simp behaviour. Two things are uncertain. First, whether simp's default `Multiplicative`/`ContinuousMonoidHom` coercion lemmas already rewrite the applied form of `primewisePadicBaseMapOfGenerator`. Second, whether `trans_apply` firing first changes how the bundled `_trans` lemma behaves in practice.",
+  "findings": [
+    {
+      "declaration": "ProfiniteGrp.primewisePadicBaseMapOfGenerator_naturality",
+      "start_line": 135,
+      "end_line": 141,
+      "excerpt": "    f.comp (primewisePadicBaseMapOfGenerator G g) =\n      primewisePadicBaseMapOfGenerator H (f g) := by",
+      "problem": "Naturality is only stated as an equality of bundled maps, `f.comp (base G g) = base H (f g)`. Simp-based uses need the pointwise form `f (base G g x) = base H (f g) x`, and no such lemma exists, simp-tagged or not. The callers of the lemma re-derive it by hand with `congrArg (fun f => f x)` followed by `simpa`. That happens twice in the test file, in the `example` at lines 125-133 and in `hconst` at lines 142-150. The comp form also cannot fire on the applied term `f (base G g x)`.",
+      "proposed_change": "Add a corollary, for example `primewisePadicBaseMapOfGenerator_apply_map (f) (g) (x) : f (primewisePadicBaseMapOfGenerator G g x) = primewisePadicBaseMapOfGenerator H (f g) x`, proved by `congrArg (fun k => k x) (\u2026_naturality G H f g)`, and mark it `@[simp]`. The orientation pushes `f` inside, so each rewrite moves the homomorphism onto the generator argument and simp terminates. Optionally also add a `comp` simp form of naturality. Keep the existing comp theorem unsimped, since its LHS is a `comp` of a bundled map.",
+      "benefit": "Goals that apply `f` to a base-map value are normalised by `simp` directly. The congrArg/simpa boilerplate in downstream proofs and tests goes away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroupsTests/ProcyclicBaseMap.lean",
+          "declaration": "ProcyclicBaseMapTests.finite12OneNotGenerator (hconst)",
+          "excerpt": "have hx := congrArg (fun f : primewisePadic.{0} \u2192\u209c* finiteCyclic 12 => f x) h"
+        }
+      ]
+    },
+    {
+      "declaration": "ProfiniteGrp.primewisePadicChangeUniverse_trans",
+      "start_line": 102,
+      "end_line": 106,
+      "excerpt": "    primewisePadicChangeUniverse.{u,v}.trans primewisePadicChangeUniverse.{v,w} =\n      primewisePadicChangeUniverse.{u,w} := by",
+      "problem": "The composition law is a simp lemma only for the unapplied bundled `.trans`. The normal form of elements is the nested application `primewisePadicChangeUniverse.{v,w} (primewisePadicChangeUniverse.{u,v} x)`, because `ContinuousMulEquiv.trans_apply` is already used to expand trans. This nested form is not rewritten to `primewisePadicChangeUniverse.{u,w} x`, so the collapse is only available at the coordinate level via `_apply_down`. The file's own test `transCoordinates` handles composition with `rw [primewisePadicChangeUniverse_trans, \u2026]` rather than `simp`. The `_symm` lemma has a similar gap: there is no applied simp lemma `{v,u} ({u,v} x) = x` stated on elements, although `ContinuousMulEquiv.symm_apply_apply` can reach it only after `_symm` rewrites the `.symm`. That route does not help if the inverse already appears as `{v,u}`.",
+      "proposed_change": "Add the element-level lemma `@[simp] theorem primewisePadicChangeUniverse_apply_apply (x : primewisePadic.{u}) : primewisePadicChangeUniverse.{v,w} (primewisePadicChangeUniverse.{u,v} x) = primewisePadicChangeUniverse.{u,w} x := congrArg (\u00b7 x) primewisePadicChangeUniverse_trans`. Add the analogous `{v,u} ({u,v} x) = x`, which is the `u = w` case; it should be stated separately or derived from `_self`.",
+      "benefit": "Simp can collapse chains of universe changes on elements, which is the normal form when users apply the equivalences to elements. Proofs then no longer need to detour through the bundled `.trans` or through coordinates.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroupsTests/ProcyclicBaseMap.lean",
+          "declaration": "ProcyclicBaseMapTests.transCoordinates",
+          "excerpt": "rw [primewisePadicChangeUniverse_trans,\n    primewisePadicChangeUniverse_apply_down]"
+        }
+      ]
+    },
+    {
+      "declaration": "ProfiniteGrp.primewisePadicChangeUniverse_generator / primewisePadicBaseMapOfGenerator_diagonal",
+      "start_line": 70,
+      "end_line": 75,
+      "excerpt": "    primewisePadicChangeUniverse.{u,v} primewisePadicGenerator =\n      primewisePadicGenerator := by\n  exact primewisePadicChangeUniverse_diagonal 1",
+      "problem": "`primewisePadicGenerator` is an opaque `def` (`primewisePadicDiagonal 1`) with no simp lemma linking it to the diagonal. So the family of simp lemmas about the diagonal (`_diagonal` on the base map, `primewisePadicMapOfGenerator_diagonal`) never fires on the generator. This file has to duplicate a separate `_generator` lemma for universe change. The base map has no matching lemma `primewisePadicBaseMapOfGenerator G g primewisePadicGenerator = g`. Simp cannot prove it, even though it is the most natural image statement. The proof of `_generator` also goes through defeq (`diagonal 1`), which shows the two forms are not syntactically canonical.",
+      "proposed_change": "Add `@[simp] theorem primewisePadicBaseMapOfGenerator_generator (G) (g : G) : primewisePadicBaseMapOfGenerator G g primewisePadicGenerator.{0} = g`. A proof could be `by simpa using primewisePadicBaseMapOfGenerator_diagonal G g 1`, and checking that it compiles is still needed. Alternatively, provide a lemma such as `primewisePadicGenerator_eq_diagonal : primewisePadicGenerator = primewisePadicDiagonal 1` (rfl) and choose one canonical form, deleting the redundant `_generator` simp lemma.",
+      "benefit": "The generator's image under base maps simplifies automatically. There is a single canonical form for the generator and diagonal, so the simp set no longer needs parallel lemmas for each.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/PrimewisePadic.lean",
+          "declaration": "ProfiniteGrp.primewisePadicGenerator",
+          "excerpt": "noncomputable def primewisePadicGenerator : primewisePadic.{u} :=\n  primewisePadicDiagonal 1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 27242,
+    "cache_read_input_tokens": 120234,
+    "output_tokens": 7596,
+    "output_tokens_details": {
+      "thinking_tokens": 3045
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27242,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3043,
+        "cache_read_input_tokens": 28263,
+        "cache_creation_input_tokens": 2992,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2992
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19697940000000003,
+  "duration_ms": 58928,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:33",
+  "unit": "file",
+  "source_sha256": "b8fa86bb61f498a083e1ceeb08e92b5a8246c7e6bbf67e02ef29a303ffe1ae22",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

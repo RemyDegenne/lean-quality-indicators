@@ -1,0 +1,94 @@
+{
+  "id": "lean-pool-file-0126",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it relies on in Basic.lean (isVar_iff_isHom, isHom_def, isHom_const'). I compared the simp setup with the sibling Sigma.lean and Subtype.lean, and searched the QuasiBorelSpaces directory for uses of the Quotient lemmas. I could not run Lean. Whether the @[simps] projection lemma competes with isVar_iff_isHom is inferred from how simps works on Prop-valued fields. I did not check the name or form of the generated lemma, and I make no claim that anything loops. Both findings are about unwanted expansion and an inconsistent attribute scheme, not about observed failures. The remaining declarations (isHom_mk, isHom_lift') have plausible simp/fun_prop tags, and I found no cycle.",
+  "findings": [
+    {
+      "declaration": "QuasiBorelSpace.Quotient.isHom_def",
+      "start_line": 47,
+      "end_line": 50,
+      "excerpt": "@[simp]\nlemma isHom_def (\u03c6 : \u211d \u2192 Quotient S) : IsHom \u03c6 \u2194 \u2203 \u03c8 : \u211d \u2192 A, IsHom \u03c8 \u2227 \u2200r, \u03c6 r = \u27e6\u03c8 r\u27e7 := by",
+      "problem": "This is a global @[simp] unfolding lemma. It rewrites every `IsHom \u03c6` for \u03c6 : \u211d \u2192 Quotient S into an existential over lifts. That is the definitional unfolding of the quotient structure, not a normal form. It fires on goals such as `IsHom (fun r \u21a6 \u27e6f r\u27e7)` and turns them into an existential. The simp set then has to prove that existential, when `isHom_mk` composed with `isHom_comp'` via fun_prop would give a direct proof. The same file also applies `@[simps]` to the instance, which should produce a projection lemma rewriting `IsVar \u03c6` straight to the same existential. `isVar_iff_isHom` is also @[simp] and rewrites `IsVar \u03c6` to `IsHom \u03c6`. So there are overlapping routes to one expression, and the file never says which is canonical. The sibling file Sigma.lean states its identical `isHom_def` (also `IsHom \u03c6 \u2194 \u2203 \u2026` for \u03c6 : \u211d \u2192 Sigma) as `@[local simp]`. Quotient.lean is inconsistent with that. The unfolding lemma is used only by `simp only [isHom_def, \u2026]` inside this file.",
+      "proposed_change": "Change `@[simp]` on `isHom_def` to `@[local simp]`, or drop the attribute and keep the existing explicit `simp only [isHom_def, \u2026]` calls. That matches Sigma.isHom_def. Consider whether the bare `@[simps]` on the instance is needed. If it is kept, restrict it to the projections that are actually used, or add `-` simp exclusions where needed, so that only one rewrite direction for `IsVar` and `IsHom` on quotients remains.",
+      "benefit": "Downstream `simp` calls will no longer expand quotient homomorphism goals into existentials, so `fun_prop` and `isHom_mk` stay the way to prove them. Authors get one consistent attribute scheme across the Sigma and Quotient files, and the simp set has fewer overlapping `IsVar`/`IsHom` rewrites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/QuasiBorelSpaces/Sigma.lean",
+          "declaration": "QuasiBorelSpace.Sigma.isHom_def",
+          "excerpt": "@[local simp]\nlemma isHom_def (\u03c6 : \u211d \u2192 (i : I) \u00d7 P i) : IsHom \u03c6 \u2194 \u2203 (\u03c8 : Var I P), \u2200r, \u03c6 r = \u03c8 r := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/QuasiBorelSpaces/Basic.lean",
+          "declaration": "QuasiBorelSpace.isVar_iff_isHom",
+          "excerpt": "@[simp]\nlemma isVar_iff_isHom {A : Type*} {_ : QuasiBorelSpace A} (f : \u211d \u2192 A) : IsVar f \u2194 IsHom f := by"
+        }
+      ]
+    },
+    {
+      "declaration": "QuasiBorelSpace.Quotient.isHom_lift",
+      "start_line": 62,
+      "end_line": 66,
+      "excerpt": "@[simp, local fun_prop]\nlemma isHom_lift",
+      "problem": "The attribute set is inconsistent. `isHom_lift` is tagged `@[simp]` but only `local fun_prop`. Its sibling `isHom_lift'` and `isHom_mk` have global `fun_prop`. `isHom_lift` therefore cannot be used by fun_prop outside this file, even though it is the natural rule for `IsHom (Quotient.lift f hf\u2082)`, a term with no argument-dependence, which `isHom_lift'` does not syntactically match. It is also a conditional simp lemma. Its hypothesis `hf\u2081 : IsHom f` has to be discharged by simp's own discharger, and it duplicates the role fun_prop plays. A grep of the repository finds no use of `isHom_lift` outside this declaration. So the simp tag buys nothing visible, and the fun_prop tag is hidden from downstream users.",
+      "proposed_change": "Decide the intended interface. If it is meant to be a general rule, use `@[fun_prop]` (global) and remove `simp`. If it is only a helper for `isHom_lift'`, drop `simp` and keep only `local fun_prop`. Alternatively, derive it as the `C = Unit`/constant-parameter special case of `isHom_lift'` so that only one lift rule is registered.",
+      "benefit": "Users of `Quotient.lift` get a predictable fun_prop rule, simp does not try to discharge `IsHom f` side goals for an unrelated lemma, and the simp-set stays small.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/QuasiBorelSpaces/Quotient.lean",
+          "declaration": "QuasiBorelSpace.Quotient.isHom_lift'",
+          "excerpt": "@[simp, fun_prop]\nlemma isHom_lift'"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 17109,
+    "cache_read_input_tokens": 59521,
+    "output_tokens": 6311,
+    "output_tokens_details": {
+      "thinking_tokens": 2742
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17109,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2832,
+        "cache_read_input_tokens": 18857,
+        "cache_creation_input_tokens": 2265,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2265
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1375181,
+  "duration_ms": 48627,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:07:35",
+  "unit": "file",
+  "source_sha256": "7f7f44cb79b270f46e79e8ce3c2ed3626a4d02934ed3f76bb86b565b3f6fd179",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

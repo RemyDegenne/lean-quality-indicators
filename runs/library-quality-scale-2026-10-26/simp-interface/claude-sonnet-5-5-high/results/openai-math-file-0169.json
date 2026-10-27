@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0169",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and grepped the repo for the shiftedRho/shiftedCurrent/positiveTimeShift definitions and their uses. The file has no @[simp] declarations of its own. The simp interface problem is the missing normalisation lemmas for shiftedRho/shiftedCurrent, which are re-proved by hand in several places. I did not run Lean. The suggested lemma statements and the effect of adding them are untested. Whether the extra simp lemma would loop or conflict with other simp sets is also unchecked. I considered the repeated `x \u2260 x+z` argument and the derivWithin/Ici_mem_nhds pattern, but I did not find enough evidence to report them as simp-interface problems.",
+  "findings": [
+    {
+      "declaration": "classical_shifted_electric_physical_representation_before (h\u03c10/hj0), classical_shifted_magnetic_physical_representation_before (hj0)",
+      "start_line": 422,
+      "end_line": 430,
+      "excerpt": "simp only [shiftedRho,positiveTimeShift_eq ha (le_refl 0),add_zero]",
+      "problem": "No canonical simp lemma says that `shiftedRho s a (0,y)` and `shiftedCurrent s a (0,y)` equal `rho`/`current` of `s.f (a,\u00b7)`. The same `simp only [shiftedRho/shiftedCurrent, positiveTimeShift_eq ha (le_refl 0), add_zero]` is proved by hand as an ad hoc `h\u03c10`/`hj0` in this file (lines 425, 428, 529). The identical lemmas are copied into ShiftedRho.lean (lines 270, 273) and MagneticMomentDensity.lean (line 236). Each use then needs a manual `rw [h\u03c10,hj0]` or `simp_rw [hj0]` and a hand-built function-equality statement. The `simpa only [...]` calls at lines 293 and 311 also spell out the same `positiveTimeShift_eq ha (le_refl 0), add_zero` normalisation.",
+      "proposed_change": "Next to the definitions in Geometry/ShiftedRho.lean, add lemmas such as `shiftedRho_zero (ha : 0<a) (y) : shiftedRho s a (0,y) = rho (fun z => s.f (a,z)) y` and `shiftedCurrent_zero (ha : 0<a) (y) : shiftedCurrent s a (0,y) = current (fun z => s.f (a,z)) y`. Add `shiftedRho_of_nonneg` and `shiftedCurrent_of_nonneg` for `0\u2264t`, giving `... (t,y) = rho (fun q => s.f (a+t,q)) y`, and the matching `current` form. Mark them `@[simp]` with the side condition `0<a` (and `0\u2264t`), which simp can discharge from the hypotheses. The hand-proved `h\u03c10`, `hj0` and `h\u03c1eq`/`hjval` can then be replaced by `simp [ha]` or a plain `rw`. The `simpa only [positiveTimeShift_eq ...]` calls at lines 293 and 311 can drop the extra rewrites in the same way.",
+      "benefit": "The normal form `rho/current (s.f (a+t,\u00b7))` is stated once, and the four duplicated ad hoc proofs in three files go away. Later proofs about shifted moments can use `simp` instead of re-deriving the zero-time and nonneg-time identities. The side conditions are plain hypotheses, so the rewrite terminates.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/VlasovMaxwell/Geometry/ShiftedRho.lean",
+          "declaration": "shiftedRho / shiftedCurrent",
+          "excerpt": "def shiftedCurrent (s : Solution) (a : \u211d) : Field :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/VlasovMaxwell/Regularity/PositiveExtension.lean",
+          "declaration": "positiveTimeShift_eq",
+          "excerpt": "positiveTimeShift a F (t,x)=F (a+t,x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/VlasovMaxwell/Retarded/MagneticMomentDensity.lean",
+          "declaration": "duplicate hj0 in magnetic physical representation",
+          "excerpt": "simp only [shiftedCurrent,positiveTimeShift_eq ha (le_refl 0),add_zero]"
+        }
+      ]
+    },
+    {
+      "declaration": "electricMomentDensity_actual_before (herr) and magneticMomentDensity_actual_before (herr)",
+      "start_line": 341,
+      "end_line": 344,
+      "excerpt": "simp only [shiftedCurrent,positiveTimeShift,positiveTimeExtend,PiLp.smul_apply,smul_eq_mul]",
+      "problem": "There is no simp/apply lemma for a coordinate of `shiftedCurrent s a p`. Both momentum-density proofs rebuild `fun p => shiftedCurrent s a p i = positiveTimeShift a (fun p => current ... p.2 i)` by unfolding `shiftedCurrent`, `positiveTimeShift`, `positiveTimeExtend` and the smul lemmas. They then rewrite with it and apply `unfold dirD`. Here `simp only` unfolds `positiveTimeShift` and `positiveTimeExtend` down to the cutoff smul, which breaks the abstraction that `fderiv_positiveTimeShift` and `positiveTimeShift_eq` rely on. The same unfolding is also copied in ShiftedRho.lean (line 189) and MagneticMomentDensity.lean (line 159).",
+      "proposed_change": "Add one lemma next to the definition, for example `shiftedCurrent_apply (s a) (p) (i) : shiftedCurrent s a p i = positiveTimeShift a (fun q : \u211d \u00d7 Vec => current (fun z => s.f (q.1,z)) q.2 i) p`, and use it in the `herr` steps. A `shiftedRho` version is not needed because `shiftedRho` is definitionally `positiveTimeShift` of `rho`. Alternatively, state a componentwise `positiveTimeShift_apply` lemma for `PiLp`-valued `F`. Then `herr` becomes `funext p; exact shiftedCurrent_apply s a p i`, and `positiveTimeShift`/`positiveTimeExtend` stay opaque to simp.",
+      "benefit": "The unfolding is written once instead of three or four times. The proofs stay at the `positiveTimeShift` level, so `fderiv_positiveTimeShift` and `positiveTimeShift_eq` apply directly. The proofs are also less sensitive to changes in the cutoff definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/VlasovMaxwell/Geometry/ShiftedRho.lean",
+          "declaration": "electricMomentDensity_actual (herr copy)",
+          "excerpt": "simp only [shiftedCurrent,positiveTimeShift,positiveTimeExtend,PiLp.smul_apply,smul_eq_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/VlasovMaxwell/Regularity/PositiveExtension.lean",
+          "declaration": "positiveTimeExtend",
+          "excerpt": "positiveTimeCut a p.1 \u2022 F p"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 40790,
+    "cache_read_input_tokens": 163512,
+    "output_tokens": 5255,
+    "output_tokens_details": {
+      "thinking_tokens": 1213
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40790,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2754,
+        "cache_read_input_tokens": 43852,
+        "cache_creation_input_tokens": 951,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 951
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2320812,
+  "duration_ms": 39921,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:15:56",
+  "unit": "file",
+  "source_sha256": "a99935ef8472afc52a1e9cf18c3d3cddcc7d39279569345d55945418c0aeb575",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

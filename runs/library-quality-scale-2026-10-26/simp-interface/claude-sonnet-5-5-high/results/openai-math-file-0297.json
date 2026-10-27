@@ -1,0 +1,119 @@
+{
+  "id": "openai-math-file-0297",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it depends on: radialMatchedProfile (in RadialProfileSplice.lean), radialShootingNu and radialShootingQ. I then grepped the project for how those definitions are unfolded and rewritten elsewhere. The file has no simp attributes of its own, and the only `simpa only` calls are on explicit lemma lists, so the findings concern missing canonical rewrite lemmas. I could not run Lean, so I make no claim that any proposed lemma compiles or that any simp call currently fails or loops. The `simpa only [F, hQout r hr] using he` calls at lines 71 and 78 are fine. Unfolding radialMatchedProfile directly is deliberate, since it is an `if` definition.",
+  "findings": [
+    {
+      "declaration": "radialMatchedProfile branch rewriting inside radialMatched_spectral_bases (hQout)",
+      "start_line": 59,
+      "end_line": 62,
+      "excerpt": "rw [radialMatchedProfile,ite_eq_right (not_le.mpr (hR.trans_le hr))]",
+      "problem": "`radialMatchedProfile` is an `if r \u2264 innerBoundaryRadius then \u2026 else \u2026` definition with no `_of_le` / `_of_gt` equation lemmas. Every caller therefore unfolds the definition and hand-feeds `ite_eq_left` or `ite_eq_right` with a proof of the branch condition. The same shape appears in about 20 places: SpectralMatchedBases.lean:61, RadialProfileSplice.lean:43/45/68, RadialMatchedInnerAmplitude.lean:15, RadialMatchedProfileLimit.lean:33/34, RadialCartesianSmooth.lean:50, SpectralRemoteMatchedUniform.lean:63, RadialWeightComparison.lean:42, HomogeneousOutgoingTail.lean:82 and others. Unfolding the definition leaves the `if` exposed in the goal. Each caller also has to rephrase the side condition with `not_le.mpr`, `.not_ge` or `le_rfl`, which varies from site to site.",
+      "proposed_change": "In RadialProfileSplice.lean, next to the definition, add two equation lemmas: `radialMatchedProfile_of_le (h : r \u2264 innerBoundaryRadius) : radialMatchedProfile n z r = radialShootingInnerComplex n (profileMatchingParameter z) r` and `radialMatchedProfile_of_gt (h : innerBoundaryRadius < r) : radialMatchedProfile n z r = radialShootingExteriorProfile n z r`. Each is proved by `if_pos` / `if_neg` and is oriented from the opaque matched profile to the concrete branch. Attach `simp` only if the side goal is routinely discharged by `simp`; otherwise use them with `rw` or `simp only [radialMatchedProfile_of_gt hr']`. Then hQout reads `rw [radialMatchedProfile_of_gt (hR.trans_le hr)]; rfl`, and the other call sites shrink the same way.",
+      "benefit": "The `if` is no longer exposed in downstream goals. The rewrite is stated once with a single hypothesis form (`r \u2264 b` or `b < r`). Dozens of ad hoc `ite_eq_right (not_le.mpr \u2026)` / `.not_ge` variants collapse into one canonical rewrite per branch. Callers become more uniform, and a later change to the splice definition touches one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialProfileSplice.lean",
+          "declaration": "radialMatchedProfile",
+          "excerpt": "if r \u2264 innerBoundaryRadius then radialShootingInnerComplex n (profileMatchingParameter z) r"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialMatchedInnerAmplitude.lean",
+          "declaration": "inner-branch use",
+          "excerpt": "rw [radialMatchedProfile,ite_eq_left hr.2]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialPhysicalAsymptotic.lean",
+          "declaration": "exterior-branch use",
+          "excerpt": "simp only [radialMatchedProfile,ite_eq_right (not_le.mpr hr),radialShootingExteriorProfile,\u03bd,Z]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousOutgoingTail.lean",
+          "declaration": "exterior-branch use",
+          "excerpt": "simpa only [radialMatchedProfile, ite_eq_right hr.not_ge,"
+        }
+      ]
+    },
+    {
+      "declaration": "h\u03bc (radialShootingNu in physical form), repeated across files",
+      "start_line": 45,
+      "end_line": 48,
+      "excerpt": "unfold radialShootingNu radialShootingQ\n    ring",
+      "problem": "`radialShootingNu m z` is defined as `-2*radialShootingQ z-1/(n : \u2102)`, and `radialShootingQ z` is `-Complex.I*(radialShootingB \u2026 : \u2102)`. The physical form `-1/(m : \u2102)+2*Complex.I*(radialShootingB \u2026 : \u2102)` is used throughout, but there is no canonical rewrite lemma for it. Each use re-proves it with `unfold radialShootingNu radialShootingQ; ring` and then rewrites with `rw [\u2190 h\u03bc]` or `rw [\u2190 h\u03bc] at he`. The same statement is re-proved in RadialShootingPhysicalJet.lean:26-30, RadialExteriorPressureIdentity.lean:20-23, RadialCanonicalParameterEquation.lean:30-34, HomogeneousOutgoingTail.lean:72-76, RadialMatchedTailSelection.lean:65-68 and HomogeneousMatchedOutgoing.lean:69-72. A related lemma, `radialShootingNu_physical`, exists in RadialPhysicalScaling.lean for the `-2*radialShootingA n` form, but not for this `-1/m` form. In the file under review, hX has to be restated in the unfolded form (hX') only so that `rw [\u2190 h\u03bc]` can convert it. This is a missing canonical rewrite, not a simp-loop issue.",
+      "proposed_change": "Add one theorem next to the definition in RadialExteriorShootingFamily.lean: `radialShootingNu_eq (m : \u2115) (z : ProfileMatchingBall) : radialShootingNu m z = -1/(m : \u2102) + 2*Complex.I*(radialShootingB (profileMatchingParameter z) : \u2102)`, proved by `unfold radialShootingNu radialShootingQ; ring`. Use it with `rw` or `simp only [radialShootingNu_eq]` at each site, replacing the local `h\u03bc` / `h\u03bd` / `h\u03bdform` haves. This lemma should not be a global `@[simp]`, because it would expand `radialShootingNu` in every goal that mentions it. Keep it as an explicit rewrite lemma, or apply it only through `simp only`.",
+      "benefit": "It removes at least six copies of the same four-line `have`. The `unfold \u2026 ring` proof, which depends on how Q and Nu are defined, lives in one place. The unfolded-hypothesis restatement (`hX'`) can then be obtained from `radialShootingNu_eq m z \u25b8 hX` or one `rw`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialExteriorShootingFamily.lean",
+          "declaration": "radialShootingNu",
+          "excerpt": "-2*radialShootingQ z-1/(n : \u2102)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialExteriorPressureIdentity.lean",
+          "declaration": "h\u03bd inside the pressure identity proof",
+          "excerpt": "unfold radialShootingNu radialShootingQ\n    ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Linear/HomogeneousOutgoingTail.lean",
+          "declaration": "h\u03bd inside the outgoing tail proof",
+          "excerpt": "unfold radialShootingNu radialShootingQ\n    ring"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/MathematicalPhysics/DefocusingNLS/Profile/RadialPhysicalScaling.lean",
+          "declaration": "radialShootingNu_physical",
+          "excerpt": "radialShootingNu (n+radialInnerShootingThreshold) z="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 34343,
+    "cache_read_input_tokens": 111851,
+    "output_tokens": 5134,
+    "output_tokens_details": {
+      "thinking_tokens": 435
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 34343,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3359,
+        "cache_read_input_tokens": 34345,
+        "cache_creation_input_tokens": 4011,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4011
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1999211,
+  "duration_ms": 42164,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:20:39",
+  "unit": "file",
+  "source_sha256": "e314e4dd4be75dafa5f1a7033ce6c5f289eb29ffe144452b1d12751d5291f3ba",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

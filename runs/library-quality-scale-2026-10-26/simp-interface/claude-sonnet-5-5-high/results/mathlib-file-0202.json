@@ -1,0 +1,104 @@
+{
+  "id": "mathlib-file-0202",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the simp-tagged declarations. These were unitSMul_smul, logMap_apply, logMap_zero, logMap_one, logMap_eq_logEmbedding, intNorm_coe, quotIntNorm_apply, integerSetToAssociates_apply, integerSetQuotEquivAssociates_apply, integerSetEquiv_apply_fst, integerSetEquivNorm_apply_fst, idealSetMap_apply and mixedEmbedding_preimageOfMemIntegerSet. I found no loop or competing-rule problem among them. I grepped Mathlib for outside uses. Only Ideal/Asymptotics.lean uses mem_idealSet, and nothing outside this file uses logMap_apply, unitSMul_smul or norm_unit_smul. The two findings below are about missing simp lemmas in the idealSet/integerSet API. Both rest on in-file usage patterns, since I cannot run Lean to see how simp behaves. They are modest, not definite defects. I did not recommend simp attributes on lemmas that look simple but have no use in the file. Examples are unit_smul_eq_zero, which simp would not reach anyway because unitSMul_smul rewrites u \u2022 x first, and norm_unit_smul.",
+  "findings": [
+    {
+      "declaration": "NumberField.mixedEmbedding.fundamentalCone.idealSetEquiv_apply / idealSetEquiv_symm_apply",
+      "start_line": 522,
+      "end_line": 528,
+      "excerpt": "theorem idealSetEquiv_apply (a : idealSet K J) :\n    (idealSetEquiv K J a : mixedSpace K) = a := rfl",
+      "problem": "`idealSetEquiv` is a bundled equivalence, and these two lemmas are its coercion-to-`mixedSpace K` simp lemmas, in forward and inverse direction. Neither is tagged `@[simp]`. The analogous lemmas `idealSetMap_apply`, `integerSetEquiv_apply_fst` and `mixedEmbedding_preimageOfMemIntegerSet` are `@[simp]`. As a result `idealSetEquiv_apply` is passed by hand to `rw` in `intNorm_idealSetEquiv_apply`. `idealSetEquiv_symm_apply` is passed by hand to `rw` in `idealSetEquivNorm`. `intNorm_idealSetEquiv_apply` is fed to `simp_rw` in `card_isPrincipal_dvd_norm_le`. Any new proof about `idealSetEquiv` has to rediscover these names. The `_symm_` lemma also has an awkward proof that is only needed because it is not a `rfl`-simp lemma.",
+      "proposed_change": "Mark `idealSetEquiv_apply` and `idealSetEquiv_symm_apply` as `@[simp]`. Their left sides are applications of a concrete equiv under a coercion and their right sides are strictly smaller, so I see no loop. Also consider `@[simp]` on `intNorm_idealSetEquiv_apply`, whose left side `intNorm (idealSetEquiv K J a).val` has a head symbol `intNorm` that nothing else rewrites. Since `intNorm_coe` is already simp and has the same type of right side, this keeps the normal form `mixedEmbedding.norm \u2191a`.",
+      "benefit": "Goals that mix `intNorm`, `idealSetEquiv` and `mixedEmbedding.norm` reduce to the canonical `norm (a : mixedSpace K)` form with plain `simp`. The `simp_rw` lists in `idealSetEquivNorm` and `card_isPrincipal_dvd_norm_le` get shorter. It also gives later Mathlib users of `idealSet` (for example `Ideal/Asymptotics.lean`) the same simp interface that `integerSet` already has.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/NumberField/CanonicalEmbedding/FundamentalCone.lean",
+          "declaration": "idealSetMap_apply",
+          "excerpt": "theorem idealSetMap_apply (a : idealSet K J) : (idealSetMap K J a : mixedSpace K) = a := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/NumberField/CanonicalEmbedding/FundamentalCone.lean",
+          "declaration": "idealSetEquivNorm",
+          "excerpt": "rw [idealSetEquiv_symm_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/NumberField/CanonicalEmbedding/FundamentalCone.lean",
+          "declaration": "card_isPrincipal_dvd_norm_le",
+          "excerpt": "simp_rw [\u2190 intNorm_idealSetEquiv_apply, \u2190 Nat.le_floor_iff hs]"
+        }
+      ]
+    },
+    {
+      "declaration": "NumberField.mixedEmbedding.fundamentalCone.preimageOfMemIntegerSet_mixedEmbedding",
+      "start_line": 300,
+      "end_line": 304,
+      "excerpt": "theorem preimageOfMemIntegerSet_mixedEmbedding {x : (\ud835\udcde K)}\n    (hx : mixedEmbedding K (x : \ud835\udcde K) \u2208 integerSet K) :\n    preimageOfMemIntegerSet (\u27e8mixedEmbedding K (x : \ud835\udcde K), hx\u27e9) = x := by",
+      "problem": "This is the left-inverse companion of the `@[simp]` lemma `mixedEmbedding_preimageOfMemIntegerSet`. It is the canonical simplification of `preimageOfMemIntegerSet \u27e8mixedEmbedding K x, hx\u27e9` to `x`. It is not tagged `@[simp]`, although the file itself applies it inside `simp_rw`, in `preimage_of_IdealSetMap`. Only one direction of the round trip is therefore available to `simp`. The statement also carries redundant `(x : \ud835\udcde K)` ascriptions and parentheses.",
+      "proposed_change": "Add `@[simp]` to `preimageOfMemIntegerSet_mixedEmbedding`, and drop the redundant `(x : \ud835\udcde K)` ascriptions. The left side is headed by `preimageOfMemIntegerSet` applied to an explicit `Subtype.mk`, which only matches when the subtype value has the form `mixedEmbedding K x`. The right side is the variable `x`, and `hx` is a proof argument, so I expect no loop. It does not overlap with `mixedEmbedding_preimageOfMemIntegerSet`, which has a different head symbol.",
+      "benefit": "Round trips through `preimageOfMemIntegerSet` close with plain `simp`. At the moment each such call site must name this lemma, as `preimage_of_IdealSetMap` does.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/NumberField/CanonicalEmbedding/FundamentalCone.lean",
+          "declaration": "mixedEmbedding_preimageOfMemIntegerSet",
+          "excerpt": "@[simp]\ntheorem mixedEmbedding_preimageOfMemIntegerSet (a : integerSet K) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/NumberField/CanonicalEmbedding/FundamentalCone.lean",
+          "declaration": "preimage_of_IdealSetMap",
+          "excerpt": "simp_rw [idealSetMap, \u2190 hx\u2082, preimageOfMemIntegerSet_mixedEmbedding]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 24574,
+    "cache_read_input_tokens": 52560,
+    "output_tokens": 6034,
+    "output_tokens_details": {
+      "thinking_tokens": 2479
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24574,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2854,
+        "cache_read_input_tokens": 26598,
+        "cache_creation_input_tokens": 1989,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1989
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.163904,
+  "duration_ms": 42308,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:22:53",
+  "unit": "file",
+  "source_sha256": "7fd39faca4865af8b4cbf0e654bb2019d808cb0882f5e21e65e4476fe4da02e0",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,109 @@
+{
+  "id": "mathlib-file-0100",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and compared the `map\u2082*` definitions in Mathlib/Data/List/Defs.lean (lines 310-375) with the `zipWith*` and `zip*` definitions in Batteries/Data/List/Basic.lean. I grepped Mathlib for uses of both families. The only occurrences of `map\u2082Left`/`map\u2082Right` are in Defs.lean and this file, so nothing else depends on them. The only Mathlib uses of `zipWithLeft`/`zipLeft` and the like are in this file. Core Lean has none of these definitions. The `zipLeft*`/`zipRight*` lemmas in this file are about the Batteries definitions, so I did not flag them. The main uncertainty is whether the `map\u2082*` names are kept for historical or Lean 3 porting reasons. I found no doc comment or deprecation note giving a reason to keep both families. The definitions are in Defs.lean, not in the target file. The finding is about the lemma API this file builds on the duplicate definitions.",
+  "findings": [
+    {
+      "declaration": "Map\u2082Left / Map\u2082Right lemma sections (map\u2082Left_nil_right, map\u2082Left_eq_map\u2082Left', map\u2082Left_eq_zipWith, map\u2082Right_*, map\u2082Right_eq_map\u2082Right', map\u2082Right_eq_zipWith)",
+      "start_line": 155,
+      "end_line": 211,
+      "excerpt": "theorem map\u2082Left_eq_map\u2082Left' : \u2200 as bs, map\u2082Left f as bs = (map\u2082Left' f as bs).fst",
+      "problem": "Mathlib's `List.map\u2082Left` is the same function as Batteries' `List.zipWithLeft`. Both give `[]` for `[]`, map `f a none` over the rest when `bs` runs out, and use `f a (some b)` on matching pairs. `map\u2082Right` likewise equals `zipWithRight`, because both are defined as `flip` over the Left version. The doc comments are near-identical, including `map\u2082Left f as bs = (map\u2082Left' f as bs).fst`. This file develops the `nil`/`cons` simp lemmas and the equations to `zipWith` only for the Mathlib copy. The Batteries copy (`zipWithLeft`, `zipWithRight`, `zipLeft`, `zipRight`) gets no such lemmas apart from the `zipLeft`/`zipRight` ones. Nothing else in Mathlib uses `map\u2082Left` or `map\u2082Right`. The result is two parallel APIs and parallel lemma sets for one concept, and the lemmas proved for one do not apply to the other.",
+      "proposed_change": "Make one family canonical. Since Batteries is the upstream dependency, keep `zipWithLeft`/`zipWithRight`/`zipWithLeft'`/`zipWithRight'` and state these lemmas for them. Then either deprecate `map\u2082Left`/`map\u2082Right`/`map\u2082Left'`/`map\u2082Right'` as aliases of the Batteries names, or drop them. Move the `nil_right`/`cons_cons` and `_eq_zipWith` lemmas under the `zipWith*` names, and use them to prove the existing `zipLeft` lemmas.",
+      "benefit": "This removes a duplicated function family and its duplicated lemma API. Users get one set of simp lemmas, and the `zipLeft`/`zipRight` lemmas can be derived from the general `zipWithLeft` ones. It also avoids the Mathlib-versus-Batteries naming inconsistency (`map\u2082Left'` against `zipWithLeft'`).",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/List/Defs.lean",
+          "declaration": "List.map\u2082Left",
+          "excerpt": "def map\u2082Left (f : \u03b1 \u2192 Option \u03b2 \u2192 \u03b3) : List \u03b1 \u2192 List \u03b2 \u2192 List \u03b3\n  | [], _ => []\n  | a :: as, [] => (a :: as).map fun a => f a none\n  | a :: as, b :: bs => f a (some b) :: map\u2082Left f as bs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/batteries-4453b52d2468/Batteries/Data/List/Basic.lean",
+          "declaration": "List.zipWithLeft",
+          "excerpt": "@[expose, simp] def zipWithLeft (f : \u03b1 \u2192 Option \u03b2 \u2192 \u03b3) : List \u03b1 \u2192 List \u03b2 \u2192 List \u03b3\n  | [], _ => []\n  | a :: as, [] => (a :: as).map fun a => f a none\n  | a :: as, b :: bs => f a (some b) :: zipWithLeft f as bs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/batteries-4453b52d2468/Batteries/Data/List/Basic.lean",
+          "declaration": "List.zipWithRight",
+          "excerpt": "  zipWithLeft (flip f) bs as"
+        }
+      ]
+    },
+    {
+      "declaration": "Map\u2082Left' / Map\u2082Right' lemma sections (map\u2082Left'_nil_right, map\u2082Right'_nil_left, map\u2082Right'_nil_right, map\u2082Right'_nil_cons, map\u2082Right'_cons_cons)",
+      "start_line": 45,
+      "end_line": 79,
+      "excerpt": "theorem map\u2082Left'_nil_right (f : \u03b1 \u2192 Option \u03b2 \u2192 \u03b3) (as) :\n    map\u2082Left' f as [] = (as.map fun a => f a none, []) := by cases as <;> rfl",
+      "problem": "`map\u2082Left'` and `map\u2082Right'` are the same as Batteries' `zipWithLeft'` and `zipWithRight'`. Both return the mapped list together with the leftover tail, and have the same three-case structure and the same `flip` definition of the Right version. Batteries also defines `zipLeft'` and `zipRight'` as `zipWithLeft' Prod.mk` and `zipWithRight' Prod.mk`, and the file's own `zipLeft'_*` lemmas are stated for those. So the file proves the same equations (`nil_right`, `nil_left`, `cons_cons`) twice, once for the Mathlib `map\u2082*'` functions and once for the Batteries `zip*'` instances. The two sets of lemmas do not connect to each other.",
+      "proposed_change": "Prove these lemmas for `zipWithLeft'` and `zipWithRight'`, and derive the `zipLeft'`/`zipRight'` lemmas as the `Prod.mk` specialisations. Retire or deprecate the `map\u2082Left'` and `map\u2082Right'` names.",
+      "benefit": "This halves the number of nearly identical `_nil_*` and `_cons_cons` lemmas. It also removes the need to convert between `map\u2082Left'` and `zipWithLeft'` when both appear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Data/List/Defs.lean",
+          "declaration": "List.map\u2082Left'",
+          "excerpt": "  | a :: as, b :: bs =>\n    let rec' := map\u2082Left' f as bs\n    (f a (some b) :: rec'.fst, rec'.snd)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/batteries-4453b52d2468/Batteries/Data/List/Basic.lean",
+          "declaration": "List.zipWithLeft'",
+          "excerpt": "  | a :: as, b :: bs => let r := zipWithLeft' f as bs; (f a (some b) :: r.1, r.2)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/batteries-4453b52d2468/Batteries/Data/List/Basic.lean",
+          "declaration": "List.zipLeft'",
+          "excerpt": "def zipLeft' : List \u03b1 \u2192 List \u03b2 \u2192 List (\u03b1 \u00d7 Option \u03b2) \u00d7 List \u03b2 := zipWithLeft' Prod.mk"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 14537,
+    "cache_read_input_tokens": 71713,
+    "output_tokens": 5387,
+    "output_tokens_details": {
+      "thinking_tokens": 1040
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14537,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2814,
+        "cache_read_input_tokens": 17468,
+        "cache_creation_input_tokens": 1150,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1150
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.11921330000000001,
+  "duration_ms": 42082,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T23:02:08",
+  "unit": "file",
+  "source_sha256": "150d099cf35544591ff04cc8cfa914dc6a6174e2054eb1f4e18368bf7c1c48c6",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

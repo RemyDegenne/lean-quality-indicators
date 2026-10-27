@@ -1,0 +1,83 @@
+{
+  "id": "lean-pool-file-0107",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file plus Generic.lean (imported), Helpers.lean, Scanner.lean and If.lean. The file's single-step lemmas (rewind-left, halt\u2192rewind) each inline the \"write-back of the symbol under the head preserves tape cells\" argument. That argument is already proved as `tape_readBackWrite_preserves` in the imported Generic.lean, and Scanner.lean uses it in one line. A second small repetition is the derivation `head = 0` from `read = \u0393.start` plus no \u25b7 at positions \u2265 1. I did not compile the proposed rewrites. The rewrites rely on the goals having the `(t.writeAndMove (readBackWrite t.read).to\u0393 d).cells = t.cells` shape. Scanner.lean line 80 closes the same shape with `exact`, and the halt step needs only a `dsimp only [complementCfg]` defeq. The new `head_eq_zero_of_read_eq_start` lemma is a suggestion, not an existing declaration. Other possible repetition in the file (the head-minus-one block, the decides-in-time bookkeeping) is short or appears only once here, so I did not report it.",
+  "findings": [
+    {
+      "declaration": "complement_rewind_step_left and complementTM_rewind_and_flip (hstep1)",
+      "start_line": 89,
+      "end_line": 93,
+      "excerpt": "  \u00b7 simp only [Tape.writeAndMove, Tape.move_cells]\n    rw [to\u0393_readBackWrite_of_ne_start hread_ne]\n    simp only [Tape.write, Tape.read]; split\n    \u00b7 rfl\n    \u00b7 exact Function.update_eq_self _ _",
+      "problem": "The same cell-preservation argument is proved inline in two proofs. The first is the cells goal of `complement_rewind_step_left` (lines 89\u201393). The second is the `\u00ac read = start` branch of the cells goal in `hstep1` inside `complementTM_rewind_and_flip` (lines 157\u2013167). Both unfold `writeAndMove`, rewrite with `to\u0393_readBackWrite_of_ne_start`, unfold `Tape.write`, split on `head = 0`, and close with `rfl` or `Function.update_eq_self`. This is exactly the statement of the already-imported lemma `tape_readBackWrite_preserves`, which Generic.lean proves with the identical script. The same script is also copied into If.lean (lines 242\u2013246) and elsewhere. The halt step also re-derives `head = 0` from `read = \u0393.start` and the no-\u25b7 hypothesis (lines 160\u2013162). `complement_rewind_step_base` does the same at lines 105\u2013108.",
+      "proposed_change": "Reuse the existing lemma in both places.\n\n1. In `complement_rewind_step_left`, replace lines 89\u201393 with `\u00b7 exact tape_readBackWrite_preserves c.output _ (Or.inr hread_ne)`. Scanner.lean line 80 closes the same goal shape this way.\n\n2. In `hstep1`, replace the whole cells bullet (lines 157\u2013167) with `\u00b7 dsimp only [complementCfg]; exact tape_readBackWrite_preserves c_halt.output _ (by by_cases hread : c_halt.output.read = \u0393.start; exacts [Or.inl (head_eq_zero_of_read_eq_start c_halt.output hread hnostart), Or.inr hread])`.\n\n3. For the shared `head = 0` argument, add one small lemma. Statement: `theorem head_eq_zero_of_read_eq_start (t : Tape) (hread : t.read = \u0393.start) (hns : \u2200 j, j \u2265 1 \u2192 t.cells j \u2260 \u0393.start) : t.head = 0`. Proof: `by_contra h; exact hns t.head (by omega) hread`. `Tape.read` unfolds definitionally, so `hread` can be passed directly.\n\n4. Use that lemma in `complement_rewind_step_base` (lines 105\u2013108) and in `hstep1`. Ideally put it in Generic.lean next to `tape_readBackWrite_preserves`, so the other rewind-step proofs can use it too.",
+      "benefit": "Two copies of the unfold-split-update_eq_self argument shrink to one-line uses of a lemma that already exists and is tested. The `head = 0` argument is also stated once. Readers no longer have to re-check that the inline script matches the library lemma. Any change to `Tape.write` or `readBackWrite` then needs fixing in one place rather than in every copy, including those in other combinator files. Both rewritten proofs keep their actual hypotheses (`hread_ne`, `hnostart`) and need no new imports, since Generic.lean is already imported.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Combinators/Internal/Generic.lean",
+          "declaration": "tape_readBackWrite_preserves",
+          "excerpt": "theorem tape_readBackWrite_preserves (t : Tape) (d : Dir3)\n    (h : t.head = 0 \u2228 t.read \u2260 \u0393.start) :\n    (t.writeAndMove (readBackWrite t.read).to\u0393 d).cells = t.cells"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Combinators/Internal/Scanner.lean",
+          "declaration": "scanner step lemma using the shared lemma",
+          "excerpt": "  \u00b7 exact tape_readBackWrite_preserves c.output _ (Or.inr hne)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Combinators/Internal/If.lean",
+          "declaration": "if_rewind_step_left_full",
+          "excerpt": "    simp only [Tape.write, Tape.read]; split\n    \u00b7 rfl\n    \u00b7 exact Function.update_eq_self _ _"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 22760,
+    "cache_read_input_tokens": 67059,
+    "output_tokens": 4754,
+    "output_tokens_details": {
+      "thinking_tokens": 1318
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22760,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2765,
+        "cache_read_input_tokens": 23458,
+        "cache_creation_input_tokens": 3231,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3231
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1453059,
+  "duration_ms": 35425,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:03:31",
+  "unit": "file",
+  "source_sha256": "781a642454a46c9e0dc3b1a8b87e7ef98c0692dd85245d9ed8cc5e4eaa42da09",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

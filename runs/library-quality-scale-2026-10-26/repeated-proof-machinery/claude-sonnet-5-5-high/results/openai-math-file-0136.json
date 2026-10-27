@@ -1,0 +1,109 @@
+{
+  "id": "openai-math-file-0136",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read MachineSubroutine.trace in MachineControlEmbedding.lean, and I grepped for other uses of PositionMachine and Emitter.traceAt. Emitter.traceAt, as defined in the target, is not called inside the target. I did not locate the signatures of PositionMachine.positionTrace and steps_le_time, so the second finding's shared lemmas are sketches and not verified statements. The choice/true-false branch duplication was not reported, because moving duplicated branches inside a helper is excluded by the rubric. I also did not report the repeated and/or cases in compile and compileGlobal, since those are definitions and not proofs.",
+  "findings": [
+    {
+      "declaration": "Emitter.seq / Emitter.choice (inline MachineSubroutine.trace lifting, duplicating Emitter.traceAt)",
+      "start_line": 170,
+      "end_line": 181,
+      "excerpt": "have hl := MachineSubroutine.trace Sum.inl (some (.inr right.entry))",
+      "problem": "Emitter.traceAt (lines 198-208) packages a lift of an emitter trace through MachineSubroutine.trace. That includes the final `simp only [MachineSubroutine.configuration, MachineSubroutine.label]` normalisation. The file never uses it. `seq` repeats the same three steps by hand for `left` (hl) and `right` (hr). `choice` repeats them for the `left` and `right` bodies at lines 644 and 656. `traceAt` is also declared after `seq`, so it was not available when `seq` was written. The same unpack-and-simp pattern then appears for `test` (a Selector) in `choice`, and for the lookup tail in `affineTrace` (line 558).",
+      "proposed_change": "Move `Emitter.traceAt` above `seq`. In `seq`, set hl := `left.traceAt Sum.inl (some (.inr right.entry)) (seqProgram left right) (fun _ => rfl) input hv base frame` and hr := `right.traceAt Sum.inr none (seqProgram left right) (fun _ => rfl) input hv (emitTapes base (first input)) (frame.emit (first input))`. Then `rw [Nat.add_comm .., Function.iterate_add_apply, hl, hr, emitTapes_append]` goes through without the `simp only` lines. In `choice`, build each `body` with `left.traceAt (fun label => .inr (.inr (.inl label))) none (choiceProgram test left right) (fun _ => rfl) input (leftValid input hv hpred) base frame`, and similarly for `right`. Add a matching `Selector.traceAt`, concluding with `((), predicate input), none)` as the state, for `ht`. The `simp only [MachineSubroutine.configuration, MachineSubroutine.label] at \u2026` lines then disappear from five places. I have not compiled this.",
+      "benefit": "The configuration-lifting argument is stated once, so any change to the `MachineSubroutine.configuration` normal form needs one edit. `seq` and `choice` reduce to composing traces with `trace_trans`. The existing helper is also no longer dead code.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/BinPacking/CookLevin/TermMachine.lean",
+          "declaration": "Emitter.traceAt",
+          "excerpt": "simpa only [MachineSubroutine.configuration, MachineSubroutine.label] using h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/BinPacking/CookLevin/TermMachine.lean",
+          "declaration": "Emitter.choice",
+          "excerpt": "have body := MachineSubroutine.trace (fun label => .inr (.inr (.inl label))) none"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/BinPacking/Machines/MachineControlEmbedding.lean",
+          "declaration": "MachineControlEmbedding.trace",
+          "excerpt": "(run : (MachineComposition.advance (TM2.step source))^[steps] (some a) = some b) :"
+        }
+      ]
+    },
+    {
+      "declaration": "testTrace / affineTrace and testSteps_le / affineSteps_le (shared position phase and bound preamble)",
+      "start_line": 437,
+      "end_line": 441,
+      "excerpt": "have position := PositionMachine.positionTrace .cursor .scratch .position",
+      "problem": "`testTrace` (lines 434-469) and `affineTrace` (lines 531-563) both start with the same position-computation phase. It is a call to `PositionMachine.positionTrace` on the cursor, scratch and position tapes, with the same three `by decide` side goals, the `frame.cursorWord` hypothesis and the clean-scratch hypothesis. A `simp only [hp, List.append_nil] at position` follows. Both end with the same drain-and-restore step: `MachineDrain.drainTrace .position \u2026`, a proof that `Function.update _ .position [] = _` using `frame.clean .position`, and `rw [encodeWord_length, \u2026] at drain`. The bound proofs `testSteps_le` (473-480) and `affineSteps_le` (569-581) also repeat the same preamble: the `steps_le_time` / `PositionMachine.timePolynomial` simp, `position_le`, `hd`, and an `input.size` lower bound. Only the final `nlinarith` differs.",
+      "proposed_change": "Add one lemma for the position phase. It would take a `Frame input base`, a position `p`, a program and label embedding with the `fun _ => rfl` code hypothesis, and an exit label. It would conclude with the iterate trace from `.position .start` to `prepared := Function.update base .position (encodeWord (p.eval input.cursor))`, in `PositionMachine.steps p input.cursor` steps. Add a second lemma for the drain phase. Its conclusion would be the `(p.eval input.cursor + 2)`-step trace from `prepared` back to `base`, under the cleanliness hypothesis for `.position`. Add a third lemma, `position_cost_facts`, bundling `he`, `hp` and `hd` for a position `p`, which both bound proofs can consume. In `testTrace` and `affineTrace`, replace the repeated blocks with calls to these lemmas. Keep the `test` / `seed`+`scan`+`restore` middle phases and the final `trace_trans` composition. I could not verify the exact signatures of `PositionMachine.positionTrace` and `steps_le_time`, so these lemma statements are sketches.",
+      "benefit": "Each trace proof would show only what is specific to it: the comparison phase for `testTrace`, and the seed, scan and restore phases plus the lookup tail for `affineTrace`. The duplicated cleanliness reasoning and the `timePolynomial` arithmetic would also be maintained in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/BinPacking/CookLevin/TermMachine.lean",
+          "declaration": "affineTrace",
+          "excerpt": "have position := PositionMachine.positionTrace .cursor .scratch .position"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/BinPacking/CookLevin/TermMachine.lean",
+          "declaration": "testSteps_le",
+          "excerpt": "have he := PositionMachine.steps_le_time p input.cursor"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/BinPacking/CookLevin/TermMachine.lean",
+          "declaration": "affineSteps_le",
+          "excerpt": "have hd : positionDepth p \u2264 positionDepth p * (input.size + 1) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 36370,
+    "cache_read_input_tokens": 244968,
+    "output_tokens": 6955,
+    "output_tokens_details": {
+      "thinking_tokens": 2512
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36370,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3178,
+        "cache_read_input_tokens": 39205,
+        "cache_creation_input_tokens": 1094,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1094
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2395588,
+  "duration_ms": 53726,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T23:09:40",
+  "unit": "file",
+  "source_sha256": "057572ab7a919b6edae6d291d6395cf6570dc7a2de869763a4805980d03f3d43",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

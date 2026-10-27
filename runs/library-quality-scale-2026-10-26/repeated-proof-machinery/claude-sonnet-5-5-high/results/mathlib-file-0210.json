@@ -1,0 +1,109 @@
+{
+  "id": "mathlib-file-0210",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the q-expansion API in QExpansion.lean (qExpansion_smul, qExpansion_mul, qExpansion_pow). I looked for nontrivial reasoning repeated across proofs. The first finding is the E\u2084/E\u2086 blocks in weight_two_qExpansion_eq_zero. The second is the weight 4 and 6 rank lemmas plus the middle case of dimension_level_one. I did not compile any of the proposed rewrites. The `ModularForm.pow` weight-casting details are the main uncertainty, so the helper in the first finding is stated for general `F` and avoids pow. I left out the trivial duplicates (the E\u2084 and E\u2086 coefficient lemmas, and the `lt_or_ge k 0` splits) because they are short.",
+  "findings": [
+    {
+      "declaration": "weight_two_qExpansion_eq_zero",
+      "start_line": 226,
+      "end_line": 240,
+      "excerpt": "(finrank_eq_one_iff_of_nonzero' E\u2086 (E_ne_zero _ \u27e83, rfl\u27e9)).mp",
+      "problem": "The proof runs the same argument twice, once for E\u2084 with `f.mul f` and once for E\u2086 with `(f.mul f).mul f`. Each run has two parts. First, a rank-one space gives a scalar `c` with `c \u2022 E = F`, via `finrank_eq_one_iff_of_nonzero'` and `Module.rank_eq_one_iff_finrank_eq_one`. Second, that equation is turned into a power-series equation by rewriting backwards through `ModularForm.qExpansion_mul` and `ModularForm.qExpansion_smul` and then using `congrArg DFunLike.coe`. The two blocks differ only in the form `F` and the Eisenstein series. The repetition is also why `hqc6` needs a long `rw` chain.",
+      "proposed_change": "Add a private helper, stated for any weight `k` and `F g : ModularForm \ud835\udcae\u2112 k`:\n`private lemma exists_smul_qExpansion_eq {k : \u2124} (hk : Module.rank \u2102 (ModularForm \ud835\udcae\u2112 k) = 1) {g : ModularForm \ud835\udcae\u2112 k} (hg : g \u2260 0) (F : ModularForm \ud835\udcae\u2112 k) : \u2203 c : \u2102, c \u2022 qExpansion 1 (g : \u210d \u2192 \u2102) = qExpansion 1 (F : \u210d \u2192 \u2102)`.\nProof sketch:\n1. `obtain \u27e8c, hc\u27e9 := (finrank_eq_one_iff_of_nonzero' g hg).mp (Module.rank_eq_one_iff_finrank_eq_one.mp hk) F`.\n2. `refine \u27e8c, ?_\u27e9`.\n3. `rw [\u2190 ModularForm.qExpansion_smul one_pos one_mem_strictPeriods_SL c g, show (c \u2022 g : \u210d \u2192 \u2102) = F from congrArg DFunLike.coe hc]`.\nThen use it twice:\n- `obtain \u27e8c4, hc4\u27e9 := exists_smul_qExpansion_eq levelOne_weight_four_rank_one (E_ne_zero _ \u27e82, rfl\u27e9) (f.mul f)`, then `rw [ModularForm.qExpansion_mul one_pos one_mem_strictPeriods_SL, \u2190 pow_two] at hc4`.\n- `obtain \u27e8c6, hc6\u27e9 := exists_smul_qExpansion_eq levelOne_weight_six_rank_one (E_ne_zero _ \u27e83, rfl\u27e9) ((f.mul f).mul f)`, then `rw [ModularForm.qExpansion_mul one_pos one_mem_strictPeriods_SL, ModularForm.qExpansion_mul one_pos one_mem_strictPeriods_SL, \u2190 pow_succ, \u2190 pow_two] at hc6`.\nFinish with `eq_zero_of_pow_eq_smul \u2026 hc4 hc6`. The `rw` steps are untested, so the exact rewrite order or `pow` normal forms may need adjusting. `ModularForm.qExpansion_pow` could shorten them if weight casts allow.",
+      "benefit": "The rank-one-to-scalar-multiple argument and the q-expansion transport are stated and proved once. The main proof shrinks to two short uses plus the algebraic core. A later change, such as a different `strictPeriods` hypothesis or q-expansion API, would need one edit instead of two parallel ones. The reusable helper can also serve other rank-one comparisons at level one.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/ModularForms/LevelOne/DimensionFormula.lean",
+          "declaration": "weight_two_qExpansion_eq_zero (E\u2084 block)",
+          "excerpt": "(finrank_eq_one_iff_of_nonzero' E\u2084 (E_ne_zero _ \u27e82, rfl\u27e9)).mp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/ModularForms/LevelOne/DimensionFormula.lean",
+          "declaration": "weight_two_qExpansion_eq_zero (E\u2086 block)",
+          "excerpt": "\u2190 ModularForm.qExpansion_smul one_pos one_mem_strictPeriods_SL c6 E\u2086,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/ModularForms/QExpansion.lean",
+          "declaration": "ModularForm.qExpansion_smul",
+          "excerpt": "qExpansion h (a \u2022 f) = a \u2022 qExpansion h f"
+        }
+      ]
+    },
+    {
+      "declaration": "levelOne_weight_four_rank_one / levelOne_weight_six_rank_one / dimension_level_one (3 \u2264 k < 12 case)",
+      "start_line": 194,
+      "end_line": 202,
+      "excerpt": "(rank_eq_one_add_rank_cuspForm (by simp) \u27e83, rfl\u27e9).trans",
+      "problem": "The weight 4 and weight 6 lemmas have the same proof term. It applies `rank_eq_one_add_rank_cuspForm`, then kills the cusp-form rank with `CuspForm.rank_eq_zero_of_weight_lt_twelve`, then runs `norm_cast`. The middle branch of `dimension_level_one` (lines 261\u2013265) redoes the same decomposition for all even `3 \u2264 k < 12`, but by a different route (`discriminantEquiv.rank_eq` plus `levelOne_neg_weight_rank_zero`). It does not reuse the existing `rank_eq_zero_of_weight_lt_twelve`. The fact 'even `3 \u2264 k < 12` gives rank 1' is therefore proved in three places.",
+      "proposed_change": "Prove it once for general `k`:\n`lemma levelOne_rank_eq_one_of_lt_twelve {k : \u2115} (hk : 3 \u2264 k) (hk12 : k < 12) (hk2 : Even k) : Module.rank \u2102 (ModularForm \ud835\udcae\u2112 k) = 1`.\nProof sketch: `rw [rank_eq_one_add_rank_cuspForm hk hk2, CuspForm.rank_eq_zero_of_weight_lt_twelve (by exact_mod_cast hk12)]; simp`.\nThen:\n- `levelOne_weight_four_rank_one := levelOne_rank_eq_one_of_lt_twelve (by norm_num) (by norm_num) \u27e82, rfl\u27e9`, and likewise for 6 with `\u27e83, rfl\u27e9`.\n- In `dimension_level_one`, replace the middle-case `rw [rank_eq_one_add_rank_cuspForm \u2026, discriminantEquiv.rank_eq, levelOne_neg_weight_rank_zero \u2026]` with `rw [levelOne_rank_eq_one_of_lt_twelve hk.1 hk.2 hk2]`. The existing `fin_cases \u2026 <;> simp [Nat.ModEq]` then closes the case.\nThe `\u2115`-cast match with `ModularForm \ud835\udcae\u2112 4` in the two wrappers may need an explicit `by simpa using \u2026`.",
+      "benefit": "One lemma covers all weights 4 \u2264 k < 12, instead of each weight carrying its own copy of the decomposition. The two wrappers become one-liners. `dimension_level_one` reuses the named fact in place of an ad hoc `discriminantEquiv` rewrite chain.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/ModularForms/LevelOne/DimensionFormula.lean",
+          "declaration": "levelOne_weight_four_rank_one",
+          "excerpt": "(rank_eq_one_add_rank_cuspForm (by simp) \u27e82, rfl\u27e9).trans"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/ModularForms/LevelOne/DimensionFormula.lean",
+          "declaration": "dimension_level_one",
+          "excerpt": "rw [rank_eq_one_add_rank_cuspForm hk.1 hk2, CuspForm.discriminantEquiv.rank_eq,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/NumberTheory/ModularForms/LevelOne/DimensionFormula.lean",
+          "declaration": "CuspForm.rank_eq_zero_of_weight_lt_twelve",
+          "excerpt": "CuspForm.discriminantEquiv.rank_eq.trans (levelOne_neg_weight_rank_zero (by lia))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 20367,
+    "cache_read_input_tokens": 51501,
+    "output_tokens": 5905,
+    "output_tokens_details": {
+      "thinking_tokens": 1732
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20367,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3703,
+        "cache_read_input_tokens": 18415,
+        "cache_creation_input_tokens": 5881,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5881
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14568409999999998,
+  "duration_ms": 41416,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:12",
+  "unit": "file",
+  "source_sha256": "9774a4275ffda60b1390306aafecddb3baefa477355883cbde84761adcae49c5",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

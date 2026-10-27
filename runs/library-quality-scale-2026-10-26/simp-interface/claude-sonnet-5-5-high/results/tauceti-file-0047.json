@@ -1,0 +1,110 @@
+{
+  "id": "tauceti-file-0047",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the downstream uses in Moebius.lean, EulerProduct/Convolution/Basic.lean and NormCoeff.lean, and Mathlib's ArithmeticFunction simp attributes. I did not run Lean, so the competing-rule claim is a credible risk and not something I observed. Most other simp attributes look sound: delta_one, delta_of_ne_one, mem_divisorsAntidiagonal, divisorsAntidiagonal_one, convolutionPow_zero and convolutionPow_succ all have terminating, canonical orientations. Mathlib marks `ArithmeticFunction.mul_apply` as simp too, so the first finding is weaker than it would otherwise be. The third finding has no downstream use to support it.",
+  "findings": [
+    {
+      "declaration": "TauCeti.IdealArithmeticFunction.convolution_apply",
+      "start_line": 219,
+      "end_line": 221,
+      "excerpt": "theorem convolution_apply (f g : IdealArithmeticFunction K) (A : (Ideal (\ud835\udcde K))\u2070) :",
+      "problem": "`convolution_apply` is a simp lemma that unfolds every applied convolution into a `Finset.sum`. The file also registers function-level simp lemmas for the same head: `delta_convolution`, `convolution_delta`, `convolution_zero` and `zero_convolution`. Downstream `convolution_moebius_one` and `convolution_one_moebius` are simp lemmas too. On a term such as `convolution delta f A`, the unfolding lemma competes with `delta_convolution`. If it fires first, the sum is expanded and the identity lemma no longer applies. Downstream code never relies on the unfolding being simp. It always calls `rw [convolution_apply]` explicitly (Moebius.lean line 288, EulerProduct/Convolution/Basic.lean line 44, EulerProduct/Basic.lean line 439, Convolution/Multiplicative.lean line 111).",
+      "proposed_change": "Drop `@[simp]` from `convolution_apply`. Keep the existing simp lemmas `convolution_zero`, `zero_convolution`, `delta_convolution` and `convolution_delta`. Make `convolution_apply_one` and `convolution_one_one_apply` simp lemmas, since they are the useful normal forms (`f 1 * g 1` and the `card`). Prove their bodies with `simp [convolution_apply]` where they currently use plain `simp`. The same change fixes the three proofs that use plain `simp` through the unfolding: `convolution_zero`, `convolution_neg` and `convolution_add`.",
+      "benefit": "Applied identity-law expressions would reduce to `f A` and `0` instead of an expanded sum. The unit-ideal and cardinality cases keep clean simp normal forms. Unfolding to a sum would be an explicit choice, as the existing downstream uses already make it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/NumberTheory/ArithmeticDirichletSeries/Moebius.lean",
+          "declaration": "TauCeti.IdealArithmeticFunction.convolution_moebius_one",
+          "excerpt": "rw [delta_of_ne_one hA, convolution_apply]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/NumberTheory/ArithmeticDirichletSeries/Convolution/Basic.lean",
+          "declaration": "TauCeti.IdealArithmeticFunction.delta_convolution",
+          "excerpt": "theorem delta_convolution (f : IdealArithmeticFunction K) : convolution delta f = f := by"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.normCoeff_convolutionPow",
+      "start_line": 440,
+      "end_line": 445,
+      "excerpt": "theorem normCoeff_convolutionPow (f : IdealArithmeticFunction K) (n : \u2115) :\n    normCoeff K (f.convolutionPow n) = normCoeff K f ^ n := by",
+      "problem": "The sibling transport lemmas `normCoeff_delta` and `normCoeff_convolution` are `@[simp]`, and `convolutionPow_zero` and `convolutionPow_succ` are simp too. `normCoeff_convolutionPow` is not simp. For a symbolic exponent `n`, simp therefore stops at `normCoeff K (convolutionPow f n)`, although the intended normal form `normCoeff K f ^ n` is a strict simplification. The lemma's own base case, `zero => simp`, already relies on the simp set being able to push `normCoeff` through delta.",
+      "proposed_change": "Add `@[simp]` to `normCoeff_convolutionPow`. The rewrite goes from `normCoeff K (convolutionPow f n)` to `normCoeff K f ^ n`. It is terminating and has no cycle, because the right side contains no `convolutionPow`. The instance `convolutionPow f (n+1)` is rewritten first by `convolutionPow_succ`, and the result still simplifies to a power.",
+      "benefit": "The transport family becomes uniformly simp-closed. Users no longer need to `rw` the lemma by hand to rewrite a general-exponent power.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/NumberTheory/ArithmeticDirichletSeries/Convolution/Basic.lean",
+          "declaration": "TauCeti.normCoeff_convolution",
+          "excerpt": "normCoeff K (f.convolution g) = normCoeff K f * normCoeff K g"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.IdealArithmeticFunction.convolution_neg / neg_convolution",
+      "start_line": 309,
+      "end_line": 312,
+      "excerpt": "theorem convolution_neg (f g : IdealArithmeticFunction K) :\n    convolution f (-g) = -convolution f g := by",
+      "problem": "`convolution_zero` and `zero_convolution` are simp lemmas, but their negation analogues `convolution_neg` and `neg_convolution` (lines 309 and 315) are not. This is inconsistent with the way negation is treated for ordinary multiplication, where `mul_neg` and `neg_mul` are simp. An expression such as `convolution f (-g)` is left unnormalised, and `convolution_sub` has to be proved by manual `rw`. Because `convolution` is deliberately not a `Mul`, the generic `mul_neg` and `neg_mul` simp lemmas do not cover these cases.",
+      "proposed_change": "Mark `convolution_neg` and `neg_convolution` as `@[simp]`. Both push `-` outward and terminate. Optionally mark `convolution_smul` and `smul_convolution` the same way. Leave `convolution_add` and `add_convolution` non-simp, as Mathlib does for `mul_add`.",
+      "benefit": "Simp gives a canonical form for negated arguments, and the convolution API is symmetric with the existing zero lemmas. This is a low-risk consistency fix. No downstream use currently needs it, so the benefit is modest.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/NumberTheory/ArithmeticDirichletSeries/Convolution/Basic.lean",
+          "declaration": "TauCeti.IdealArithmeticFunction.convolution_zero",
+          "excerpt": "theorem convolution_zero (f : IdealArithmeticFunction K) : convolution f 0 = 0 := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 28837,
+    "cache_read_input_tokens": 94970,
+    "output_tokens": 8823,
+    "output_tokens_details": {
+      "thinking_tokens": 4987
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28837,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3593,
+        "cache_read_input_tokens": 28185,
+        "cache_creation_input_tokens": 4665,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4665
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.21309499999999998,
+  "duration_ms": 64340,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T22:53:55",
+  "unit": "file",
+  "source_sha256": "b9bd59e8090ef0ce5223386a1192c3b9f0095af0607686c505c007dc38a89707",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

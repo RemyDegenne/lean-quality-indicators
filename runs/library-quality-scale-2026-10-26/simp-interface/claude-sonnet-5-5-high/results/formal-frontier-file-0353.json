@@ -1,0 +1,109 @@
+{
+  "id": "formal-frontier-file-0353",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and the GL coordinate ring simp lemmas (matrix_apply, matrix_det) plus downstream uses (SpecialLinearKernel, SpecialLinear, GeneralSpecialLinearSmooth, and a test file). I did not run Lean, so the claims about simp's behaviour come from reading the simp attributes and rewrite order. They are not experimental observations. I considered other identities (for example the comp_quotient lemmas) and did not report them, since they are not clearly good simp lemmas.",
+  "findings": [
+    {
+      "declaration": "SpecialLinearCoordinateRing.quotient_det",
+      "start_line": 59,
+      "end_line": 60,
+      "excerpt": "theorem quotient_det :\n    quotient K n (matrix K n).det = 1 := by",
+      "problem": "The sibling `quotient_detInverse` and `polynomialToCoordinateRing_det` are `@[simp]`, but `quotient_det` is not. Tagging it as written would not help, because `GeneralLinearCoordinateRing.matrix_det` is a simp lemma that rewrites `(matrix K n).det` to `algebraMap _ _ (determinant K n)`. Simp rewrites the argument first, so the LHS `quotient K n (matrix K n).det` would never match. As a result, `simp` cannot reduce `quotient K n (matrix K n).det` or `quotient K n (algebraMap _ _ (determinant K n))` to 1. Every downstream use calls `rw [..., quotient_det]` or `exact quotient_det K n` by hand, and the proof of `polynomialToCoordinateRing_det` has to undo `matrix_det` with `rw [\u2190 matrix_det, quotient_det]`. The two determinant forms are two spellings of one fact, and the simp set covers neither.",
+      "proposed_change": "Add a simp lemma stated on the simp-normal form, for example `@[simp] theorem quotient_algebraMap_determinant : quotient K n (algebraMap (PolynomialRing K n) (GeneralLinearCoordinateRing.CoordinateRing K n) (determinant K n)) = 1 := by rw [\u2190 matrix_det]; exact quotient_det K n`. Keep `quotient_det` as the non-simp `matrix` form, or add a comment that `matrix_det` blocks it. Optionally also tag `polynomialQuotient_det` (line 145) with `@[simp]` for consistency with `polynomialToCoordinateRing_det`.",
+      "benefit": "`simp` can then discharge determinant-one goals in the quotient, such as those in SpecialLinearKernel and SpecialLinear. `polynomialToCoordinateRing_det` and similar proofs no longer need manual `rw [\u2190 matrix_det]` to undo another simp lemma. The simp set becomes consistent with `quotient_detInverse`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/Algebra/GeneralLinearCoordinateRing.lean",
+          "declaration": "GeneralLinearCoordinateRing.matrix_det",
+          "excerpt": "@[simp] theorem matrix_det :\n    (matrix K n).det = algebraMap (PolynomialRing K n) (CoordinateRing K n)\n      (determinant K n)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/GroupScheme/SpecialLinearKernel.lean",
+          "declaration": "specialLinearDeterminant_eq_unitCoordinate",
+          "excerpt": "rw [AlgHom.comp_apply, generalLinearDeterminantCoordinateMap_coordinate, quotient_det]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/Algebra/SpecialLinearCoordinateRing.lean",
+          "declaration": "SpecialLinearCoordinateRing.polynomialToCoordinateRing_det",
+          "excerpt": "rw [\u2190 matrix_det, quotient_det]"
+        }
+      ]
+    },
+    {
+      "declaration": "SpecialLinearCoordinateRing.entry",
+      "start_line": 260,
+      "end_line": 260,
+      "excerpt": "def entry (i j : n) : CoordinateRing K n := quotient K n (matrix K n i j)",
+      "problem": "`entry` is an opaque `def` for `quotient K n (matrix K n i j)`, and there is no simp or normalizing lemma that connects the two. The only link is `polynomialEquiv_variable`, which is not simp and is proved with `change`. `matrix_apply` is `@[simp]` and rewrites `matrix K n i j` to `algebraMap _ _ (MvPolynomial.X (i, j))`, so `simp` turns `quotient K n (matrix K n i j)` into `quotient K n (algebraMap _ _ (X (i,j)))`. That is neither `entry K n i j` nor anything with a lemma. There are two competing normal forms for the same element, and no rule picks one. The tests state facts about `entry` and need the manual `simpa only [AlgHom.comp_apply, AlgHom.id_apply]` plus `congrArg` machinery.",
+      "proposed_change": "Choose `entry` as the canonical form. Add `theorem quotient_matrix_apply (i j : n) : quotient K n (matrix K n i j) = entry K n i j := rfl` (not simp, so it cannot be blocked by `matrix_apply`), together with a simp lemma on the post-`matrix_apply` form, `@[simp] theorem quotient_algebraMap_X (i j : n) : quotient K n (algebraMap (PolynomialRing K n) (GeneralLinearCoordinateRing.CoordinateRing K n) (MvPolynomial.X (i, j))) = entry K n i j := rfl`. Tag `polynomialEquiv_variable` `@[simp]`, or restate it with `mk\u2090` and `X`, so that the polynomial-side variables also normalize to `entry`.",
+      "benefit": "Expressions such as `f (quotient K n (matrix K n i j))` or `polynomialEquiv K n (mk\u2090 _ (X (i,j)))` then simplify to a single `entry` normal form. Callers no longer have to rely on defeq via `change`, and statements about entries (as in the GeneralSpecialLinearSmooth tests) can be closed by `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/Algebra/GeneralLinearCoordinateRing.lean",
+          "declaration": "GeneralLinearCoordinateRing.matrix_apply",
+          "excerpt": "@[simp] theorem matrix_apply (i j : n) :\n    matrix K n i j = algebraMap (PolynomialRing K n) (CoordinateRing K n)\n      (MvPolynomial.X (i, j)) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroupsTest/GeneralSpecialLinearSmooth.lean",
+          "declaration": "example (entry readback)",
+          "excerpt": "simpa only [AlgHom.comp_apply, AlgHom.id_apply] using readback"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/algebraic-groups/AlgebraicGroups/Algebra/SpecialLinearCoordinateRing.lean",
+          "declaration": "SpecialLinearCoordinateRing.polynomialEquiv_variable",
+          "excerpt": "  change (polynomialQuotientToCoordinateRing K n)\n    ((Ideal.Quotient.mk\u2090 K (polynomialIdeal K n)) (MvPolynomial.X (i, j))) =\n      polynomialToCoordinateRing K n (MvPolynomial.X (i, j))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 6302,
+    "cache_read_input_tokens": 71281,
+    "output_tokens": 4929,
+    "output_tokens_details": {
+      "thinking_tokens": 941
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 6302,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2888,
+        "cache_read_input_tokens": 17653,
+        "cache_creation_input_tokens": 524,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 524
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0816461,
+  "duration_ms": 35475,
+  "turns": 8,
+  "attempts": 3,
+  "judged": "2026-10-27T01:59:08",
+  "unit": "file",
+  "source_sha256": "28c4f1dda0d5e9aa239a3c832ec8ff2589fbb67d10c480a8b08c960d63d4c225",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

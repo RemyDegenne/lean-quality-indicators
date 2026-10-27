@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0138",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read arrangementGraph in ArrangementGraph.lean, scheduledTreeBulkMatching_slot in ScheduledTreeBulkCoordinates.lean, and badTreeArrangement_fraction_bound in TreeArrangementFraction.lean. These are the files that use reindexArrangement. A grep found no simp lemmas about arrangementGraph.Adj, and no apply lemma for reindexArrangement. reindexArrangement_eq_iff itself looks sound as a simp lemma. It terminates, and its right-hand side is simpler than its left-hand side. I did not run Lean, so the suggested lemmas are untested. The first finding is also weaker than it looks: the `arrangementGraph` Adj definition is a `match`, so definitional unfolding through `change` works.",
+  "findings": [
+    {
+      "declaration": "arrangementGraphReindex",
+      "start_line": 20,
+      "end_line": 39,
+      "excerpt": "        change (\u2203 i j, reindexArrangement f e (f a, i) = (f b, j)) \u2194\n          \u2203 i j, e (a, i) = (b, j)\n        simp only [reindexArrangement_eq_iff]",
+      "problem": "arrangementGraph has no simp or characterisation lemmas for Adj. The only way to expose adjacency is a manual `change` that restates the match-reduced body, and it is written out twice. The `simp only [reindexArrangement_eq_iff]` calls cannot work without it, because simp does not unfold the `match` in the structure field. Any other user who wants to simp about adjacency in this graph must repeat the same `change` hack. That is a gap in the simp interface.",
+      "proposed_change": "In ArrangementGraph.lean, next to the definition, add simp-normal-form lemmas: `arrangementGraph_adj_inl_inr : (arrangementGraph m e).Adj (.inl a) (.inr b) \u2194 \u2203 i j, e (a, i) = (b, j)` and `arrangementGraph_adj_inr_inl : (arrangementGraph m e).Adj (.inr b) (.inl a) \u2194 \u2203 i j, e (a, i) = (b, j)`. Add `Iff.rfl` proofs and tag both `@[simp]`. Optionally add `_inl_inl` and `_inr_inr` versions that reduce to `False`. Then the two non-trivial cases here can be proved by `simp [reindexArrangement_eq_iff]` with no `change`. The `rfl` cases can also be replaced by simp.",
+      "benefit": "The Adj unfolding is stated once as a canonical rewrite rule. This proof no longer duplicates the long `change` goals. Other uses of arrangementGraph adjacency, such as ArrangementBoundary, also get a reusable simp interface that composes with `reindexArrangement_eq_iff`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Tree/ArrangementGraph.lean",
+          "declaration": "arrangementGraph",
+          "excerpt": "| .inl a, .inr b => \u2203 i j, e (a, i) = (b, j)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Tree/ArrangementReindex.lean",
+          "declaration": "arrangementGraphReindex",
+          "excerpt": "change (\u2203 i j, reindexArrangement f e (f a, i) = (f b, j)) \u2194"
+        }
+      ]
+    },
+    {
+      "declaration": "reindexArrangement / reindexArrangement_eq_iff",
+      "start_line": 9,
+      "end_line": 18,
+      "excerpt": "@[simp] theorem reindexArrangement_eq_iff {L L' : Type*} (f : L \u2243 L') {m : \u2115}",
+      "problem": "The only simp lemma about reindexArrangement is an equality-iff that fires only when both sides have the shape `(f _, _)`. There is no simp lemma for the pointwise value `reindexArrangement f e (f a, i)`, and none for the generic application. Downstream code therefore unfolds the definition by hand. scheduledTreeBulkMatching_slot uses a long `simpa only [scheduledTreeBulkMatching, scheduledTreeBulkCoordinates, reindexArrangement, Equiv.trans_apply, Equiv.symm_symm, Equiv.prodCongr_apply, Equiv.refl_apply, Prod.map, Equiv.apply_symm_apply, Prod.mk.eta]`. badTreeArrangement_fraction_bound relies on a `change` to the unfolded form. The definition is not irreducible and has no `@[simps]`, so simp normal forms leak the internal `trans` and `prodCongr` structure.",
+      "proposed_change": "Add a canonical evaluation lemma such as `@[simp] theorem reindexArrangement_apply_map (f : L \u2243 L') (e) (a : L) (i : Fin m) : reindexArrangement f e (f a, i) = (f (e (a, i)).1, (e (a, i)).2)`. The proof would be `by simp [reindexArrangement]`, or rfl-style after unfolding. Optionally add a generic form, `reindexArrangement f e x = (f (e (f.symm x.1, x.2)).1, (e (f.symm x.1, x.2)).2)`, as a non-simp lemma. Then scheduledTreeBulkMatching_slot can be shortened by rewriting with these lemmas instead of unfolding `reindexArrangement`. The eq_iff lemma can then follow from the apply lemma.",
+      "benefit": "Users get a stable, small simp-normal form for reindexed arrangements and no longer unfold the definition with a long fragile simp set. The abstraction is only unfolded once, in the file that defines it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/ScheduledTreeBulkCoordinates.lean",
+          "declaration": "scheduledTreeBulkMatching_slot",
+          "excerpt": "reindexArrangement, Equiv.trans_apply, Equiv.symm_symm, Equiv.prodCongr_apply,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Characters/TreeArrangementFraction.lean",
+          "declaration": "badTreeArrangement_fraction_bound",
+          "excerpt": "change _ \u2194 3 * 2 ^ n < 4 * Fintype.card (arrangementGraph m (reindexArrangement f e)).ConnectedComponent"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 19107,
+    "cache_read_input_tokens": 70263,
+    "output_tokens": 4099,
+    "output_tokens_details": {
+      "thinking_tokens": 550
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19107,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2736,
+        "cache_read_input_tokens": 20556,
+        "cache_creation_input_tokens": 2564,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2564
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1244643,
+  "duration_ms": 30939,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-26T23:09:44",
+  "unit": "file",
+  "source_sha256": "baee519d31c6a3d5b015b78ab9cf53243e6a0fe7f2a75c646a55cd2c6dac5427",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

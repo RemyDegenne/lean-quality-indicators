@@ -1,0 +1,104 @@
+{
+  "id": "tauceti-file-0224",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of Equivariance.lean. I also read the related `normalConjugation_act`, `comp_normalSemidirectMul` and `lift_normalConjugation_comp` in the sibling `Normal.lean` files, and `act_def` and `pointMulEquiv_left` in SemidirectProduct/Basic.lean. I grepped the repo for uses of the file's lemmas. The only outside use is `normalSemidirectMul_equivariant` in HopfIdeal/Normal/Product/Properties.lean:186. I found no public componentwise multiplication lemmas for the internal semidirect product in Basic.lean. I did not run Lean. So the claim that the point-level lemma is not in simp normal form is reasoned from `Category.assoc` being simp, not observed. The same goes for how `comp_lift` would interact with the base simp lemmas. The `let`/`letI` form of the simp lemma `normalSemidirectConjugation_act` appears elsewhere in the repo (`comp_normalSemidirectMul`), so I did not flag it.",
+  "findings": [
+    {
+      "declaration": "lift_normalSemidirectConjugationHom_fst / lift_normalSemidirectConjugationHom_snd (with simp lemmas normalSemidirectConjugationHom_fst / _snd)",
+      "start_line": 65,
+      "end_line": 97,
+      "excerpt": "  rw [Category.assoc, normalSemidirectConjugationHom_fst, \u2190 Category.assoc, comp_lift]",
+      "problem": "The only @[simp] lemmas for `normalSemidirectConjugationHom` are the base-object forms `normalSemidirectConjugationHom i j \u226b fst N H = lift (fst G (N \u2297 H)) (snd G (N \u2297 H) \u226b fst N H) \u226b normalConjugation i` and the `snd` analogue. Applied to a generalized point `lift g x \u226b hom \u226b fst`, they leave the nested form `lift g x \u226b lift (fst ..) (snd .. \u226b fst ..) \u226b normalConjugation i`, not the canonical `lift g (x \u226b fst N H) \u226b normalConjugation i`. The lemma that states the canonical form is the point-level `lift_normalSemidirectConjugationHom_fst`/`_snd`. It is not a simp lemma, and its LHS `(lift g x \u226b hom) \u226b fst N H` is not in simp normal form, because the simp lemma `Category.assoc` rewrites it first. So it could not be tagged @[simp] as stated. The effect is visible in the constructor proof. The three `ext` goals use `rw` chains that repeat the same lemma three times in a row (lines 151\u2013153, 155\u2013157) and interleave the `_fst` and `_snd` versions (lines 162\u2013164). The rewriting order is brittle and the chains are hard to read.",
+      "proposed_change": "State the point-level lemmas in simp-normal (right-associated) form and tag them. For example, give `lift g x \u226b normalSemidirectConjugationHom i j \u226b fst N H = lift g (x \u226b fst N H) \u226b TauCeti.normalConjugation i` as `@[simp, reassoc]`, and likewise for `snd`. Alternatively, drop the base-object `normalSemidirectConjugationHom_fst`/`_snd` as simp lemmas and keep only these. Then the three `ext` branches of `normalSemidirectConjugation` can be closed by `simp` with the normalConjugation lemmas instead of repeated `rw`. The same would simplify the proof of `normalSemidirectConjugation_act`.",
+      "benefit": "There is one canonical simp rewrite for the first and second component of conjugation on a generalized point. Proofs no longer need hand-ordered `rw` chains that repeat a lemma. Downstream users who `simp` with these projections get `lift g (x \u226b fst) \u226b normalConjugation i` directly, not the internal nested `lift` form.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/CategoryTheory/Monoidal/SemidirectProduct/Equivariance.lean",
+          "declaration": "normalSemidirectConjugation",
+          "excerpt": "rw [lift_normalSemidirectConjugationHom_fst,\n        lift_normalSemidirectConjugationHom_fst,\n        lift_normalSemidirectConjugationHom_fst,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/CategoryTheory/Monoidal/SemidirectProduct/Equivariance.lean",
+          "declaration": "normalSemidirectConjugationHom_fst",
+          "excerpt": "normalSemidirectConjugationHom i j \u226b fst N H =\n      lift (fst G (N \u2297 H)) (snd G (N \u2297 H) \u226b fst N H) \u226b"
+        }
+      ]
+    },
+    {
+      "declaration": "semidirect_mul_fst / semidirect_mul_snd",
+      "start_line": 99,
+      "end_line": 115,
+      "excerpt": "private theorem semidirect_mul_fst (A : Action H N) (x y : X \u27f6 N \u2297 H) :",
+      "problem": "The componentwise formulas for multiplication of generalized points of `N \u2297 H` under `A.semidirectProductGrpObj` are the canonical simp lemmas for that group structure: `(x * y) \u226b fst = (x \u226b fst) * A.act (x \u226b snd) (y \u226b fst)` and `(x * y) \u226b snd = (x \u226b snd) * (y \u226b snd)`. They are `private` and not tagged @[simp], and they live in this downstream file, not next to the group structure in SemidirectProduct/Basic.lean. Basic.lean has the simp lemmas `pointMulEquiv_left`/`_right` but no public simp lemma for `(x*y) \u226b fst` or `(x*y) \u226b snd`. A reader who simplifies a product of points in `N \u2297 H` therefore cannot get the components from `simp`. In this file the lemmas are invoked by name in the `rw` chains of `normalSemidirectConjugation` (lines 160\u2013168), which also need a careful ordering with `normalConjugation_act_compatible`.",
+      "proposed_change": "Move the two lemmas to Basic.lean (or make them public here) as `@[simp, reassoc]` lemmas such as `mul_comp_fst` and `mul_comp_snd` for `A.semidirectProductGrpObj`. They rewrite a product's component into a product of components, so the rewrite direction is the terminating one. Keep the act form of the `fst` formula, since `normalConjugation_act` is already simp and evaluates it. Then the `act_mul` branch of `normalSemidirectConjugation` can be shortened to a `simp` call plus `normalConjugation_act_compatible`.",
+      "benefit": "Anyone computing in the internal semidirect product gets the component projections of products from `simp`, with a single orientation. The proof of the constructor's `act_mul` field no longer depends on a precise `rw` order.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/CategoryTheory/Monoidal/SemidirectProduct/Basic.lean",
+          "declaration": "pointMulEquiv_left",
+          "excerpt": "theorem pointMulEquiv_left {X : C} (f : X \u27f6 N \u2297 G) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/CategoryTheory/Monoidal/SemidirectProduct/Normal.lean",
+          "declaration": "normalConjugation_act",
+          "excerpt": "(normalConjugation i j).act h n =\n      lift (h \u226b j) n \u226b TauCeti.normalConjugation i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/CategoryTheory/Monoidal/SemidirectProduct/Equivariance.lean",
+          "declaration": "normalSemidirectConjugation",
+          "excerpt": "semidirect_mul_fst, lift_normalSemidirectConjugationHom_fst,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 27750,
+    "cache_read_input_tokens": 113851,
+    "output_tokens": 7030,
+    "output_tokens_details": {
+      "thinking_tokens": 2787
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27750,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3689,
+        "cache_read_input_tokens": 28161,
+        "cache_creation_input_tokens": 3602,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3602
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19270910000000002,
+  "duration_ms": 50834,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:33:43",
+  "unit": "file",
+  "source_sha256": "f1829f07e5c475646a838d8b3e6019080bfafae014dfd1e38545dfce782fb502",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

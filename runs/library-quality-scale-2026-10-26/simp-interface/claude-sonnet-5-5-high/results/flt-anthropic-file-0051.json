@@ -1,0 +1,110 @@
+{
+  "id": "flt-anthropic-file-0051",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the FibreModel definitions (constantsHom, affineBaseFin). I also checked the Mathlib IntermediateField.equivOfEq lemmas. The file has one simp attribute, `coe_embS`. It has no simp lemmas for `embS`, `asEquiv` or `constantsHom`. The proofs instead use `change`, `rfl` and `simp [embS]`. The findings are about missing or unused simp interfaces. I did not run Lean, so I make no claims about simp behaviour that I have not read in the sources. The suggested lemmas would be proved by `rfl` or short existing arguments, but none has been compiled. The `constantsHom` finding would need an edit in the definitions file.",
+  "findings": [
+    {
+      "declaration": "FibreIsoK.coe_embS / embS (use in assemble.key)",
+      "start_line": 189,
+      "end_line": 191,
+      "excerpt": "@[scoped simp] theorem coe_embS (b : S) :\n    (embS N \u2113 S b : LaurentSeries Qb) = coeffEmb Qb ((b : FN) : LaurentSeries \u211a) := rfl",
+      "problem": "`embS` has only the coercion lemma `coe_embS`, which is tagged simp. There are no lemmas for its ring-hom behaviour, so `embS N \u2113 S 1 = 1` is proved inline. That proof is `Subtype.ext (by simp [embS])`, which unfolds the definition by hand instead of using the simp lemma already provided. The simp set is therefore inconsistent: the lemma exists but the one use that would benefit from it bypasses it. The same coercion unfolding is redone with `change` in `solution` (`hb\u2080`).",
+      "proposed_change": "Add `@[scoped simp] theorem embS_one : embS N \u2113 S 1 = 1` and, if needed, `embS_mul` and `embS_zero`. Prove them via `Subtype.ext` and `coe_embS` together with `map_one`/`map_mul`/`map_zero` for `coeffEmb`. Then replace `Subtype.ext (by simp [embS])` with `embS_one`. Use `simp [coe_embS]` instead of `change` where the coercion has to be unfolded. This keeps `embS` unfolded only through its simp lemma, never by `simp [embS]`.",
+      "benefit": "Readers get one canonical way to compute with `embS`, and callers no longer unfold the definition. The one-off inline lemma becomes reusable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_IgusaScheme_exists_algEquiv_residueField_tensor_chartAlg_chartRing_apply_tmul.lean",
+          "declaration": "assemble (key)",
+          "excerpt": "have : embS N \u2113 S 1 = 1 := Subtype.ext (by simp [embS])"
+        }
+      ]
+    },
+    {
+      "declaration": "b1 / assemble hypothesis hcT (constantsHom has no simp lemma)",
+      "start_line": 195,
+      "end_line": 195,
+      "excerpt": "(hcT : \u2200 a : \u21a5A, algebraMap \u21a5A TT a = constantsHom N A a)",
+      "problem": "The `constantsHom` definition has no simp or unfolding lemma, such as `constantsHom N A a = algebraMap Qb TT (a : Qb)` or the `algebraMap A TT` version. As a result the file threads the relation `hcT` through `b1` and `assemble` as an explicit hypothesis. `solution` proves it by `rfl`, and it is then applied manually with `rw [hcT]`. `b1` also reproves the bridge to `algebraMap Qb TT` as a local `hconst` (`rw [hcT]; rfl`). `assemble` uses `change \u03c8 (algebraMap \u21a5A _ a) = _; rw [\u03c8.commutes, hcT]`. These are signs that the simp interface for `constantsHom` is missing.",
+      "proposed_change": "In Def_ModularCurve_FibreModel, next to `constantsHom`, add `theorem constantsHom_apply (a : A) : constantsHom N A a = algebraMap (AlgebraicClosure \u211a) (laurentBaseChange ..) (a : AlgebraicClosure \u211a) := rfl`. Orient it towards the `algebraMap` form, which `map_mul`, `AlgHom.commutes` and `Subalgebra.algebraMap_mem` already understand. Tag it `@[simp]`, or at least use it via `simp [constantsHom_apply]`. Then drop the `hcT` and `hconst` hypotheses and `change` steps. A companion lemma stating `algebraMap \u21a5A TT a = constantsHom N A a` should only be provided with an orientation that cannot loop with the first lemma.",
+      "benefit": "The `hcT` argument disappears from the signatures of `b1` and `assemble`. The repeated `change \u2026 rw [hcT]` steps collapse into `simp`. The orientation toward `algebraMap` is explicit, so there are no competing normal forms.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_ModularCurve_FibreModel.lean",
+          "declaration": "constantsHom",
+          "excerpt": "def constantsHom : A \u2192+* laurentBaseChange (AlgebraicClosure \u211a) (modularFunctionFieldFull N) :=\n  (algebraMap (AlgebraicClosure \u211a) (laurentBaseChange (AlgebraicClosure \u211a)\n      (modularFunctionFieldFull N))).comp A.subtype"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_IgusaScheme_exists_algEquiv_residueField_tensor_chartAlg_chartRing_apply_tmul.lean",
+          "declaration": "assemble",
+          "excerpt": "by change \u03c8 (algebraMap \u21a5A _ a) = _; rw [\u03c8.commutes, hcT]"
+        }
+      ]
+    },
+    {
+      "declaration": "FibreIsoK.asEquiv",
+      "start_line": 100,
+      "end_line": 100,
+      "excerpt": "def asEquiv : (\u21a5A \u2297[\u2124\u2113] S) \u2243\u2090[\u21a5A] AS N \u2113 A S := AlgEquiv.refl",
+      "problem": "`asEquiv` is a transport equivalence into a type synonym, defined as `AlgEquiv.refl`, and it has no simp lemma. `asEquiv N \u2113 A S (a \u2297\u209c b)` occurs throughout `b1`, `assemble` and `solution`, and simp cannot see through it. The proofs therefore need `change \u03c8 (a \u2297\u209c b) = _ at this`, `change \u2026 = constantsHom N A a * embS \u2026` and the `rw [h\u03c8, \u2026]` forms. A reader or simp call cannot normalise these terms.",
+      "proposed_change": "Add `@[simp] theorem asEquiv_apply (x : \u21a5A \u2297[\u2124\u2113] S) : asEquiv N \u2113 A S x = x := rfl`, which is well-founded and non-looping. Alternatively add `asEquiv_tmul` and `asEquiv_symm_apply`. With these, `h\u03c8` in `b1` and `assemble` can be applied directly through `simp`. The `change \u2026 at this` and `change \u2026 = _` workarounds can be removed.",
+      "benefit": "The type-synonym transport becomes invisible to simp, which removes the `change` boilerplate. The lemma statements stay in a normal form that matches how `\u03c8` is applied.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_IgusaScheme_exists_algEquiv_residueField_tensor_chartAlg_chartRing_apply_tmul.lean",
+          "declaration": "b1",
+          "excerpt": "change \u03c8 (a \u2297\u209c b) = _ at this"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 40954,
+    "cache_read_input_tokens": 166587,
+    "output_tokens": 6113,
+    "output_tokens_details": {
+      "thinking_tokens": 2213
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40954,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2907,
+        "cache_read_input_tokens": 43965,
+        "cache_creation_input_tokens": 1002,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1002
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2416247,
+  "duration_ms": 46055,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T22:54:25",
+  "unit": "file",
+  "source_sha256": "70c6051eb5488fecc1b1f425f7dd5709f86fff37d626b630f60ef3d3e4c3f77f",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

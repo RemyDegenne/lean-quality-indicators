@@ -1,0 +1,99 @@
+{
+  "id": "formal-frontier-file-0037",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, Mathlib's Functoriality.lean (the simp status of resolutionMap_*, cochainsMap_*, map_id), and the file's downstream uses of coefficientFunctor in NormalizedCohomology.lean and InitialInvariantsExactSequence.lean. I did not run Lean. The two findings are plausible simp-interface weaknesses, not observed failures. I am unsure whether `map_add` fires syntactically on `map (id G) (f+g) n` when `f g : X \u27f6 Y`, because that needs `res (id G) X =?= X` at reducible transparency. The simp attributes on `resolutionMap_add`, `cochainsMap_add`, `map_add` and `map_zero` look sound: the left-hand sides are specific and terminating.",
+  "findings": [
+    {
+      "declaration": "coefficientFunctor_map",
+      "start_line": 109,
+      "end_line": 112,
+      "excerpt": "(coefficientFunctor (k := k) (G := G) n).map f =\n      map (ContinuousMonoidHom.id G) f n := rfl",
+      "problem": "`coefficientFunctor_map` is a simp lemma that rewrites `(coefficientFunctor n).map f` into the bare `map (id G) f n`. This competes with the generic functor and additive simp rules (`Functor.map_comp`, `Functor.map_add`, `Functor.map_zero`) that already apply to `(coefficientFunctor n).map (f \u226b g)`, `.map (f + g)` and `.map 0` through the `Additive` instance. Once the term is rewritten to `map (id G) f n`, the functor lemmas no longer match. The remaining lemmas are only `map_add` and `map_zero`, which are stated for `res \u03c6 X \u27f6 Y` and would have to unify `res (id G) X` with `X`. There is no simp lemma for composition of `map (id G) \u00b7 n`. The generic `ContinuousCohomology.map_comp` has the shape `map (\u03c6.comp \u03c8)`. As a result, downstream proofs unfold the whole functor by hand: `NormalizedCohomology.lean` uses `simpa only [ContinuousCohomology.coefficientFunctor, normalizedContinuousCohomology] using (coefficientFunctor ...).map_comp ...`. The file's own `map_comp` field proof needs `convert ... all_goals rfl`.",
+      "proposed_change": "Choose one normal form. Either (a) drop `@[simp]` from `coefficientFunctor_map` and keep `coefficientFunctor_obj` as simp, so that `Functor.map_comp`, `Functor.map_add` and `Functor.map_zero` normalise functor-level expressions; or (b) keep it and add companion simp lemmas for the fixed-group case, such as `map (id G) (f \u226b g) n = map (id G) f n \u226b map (id G) g n` stated for `f : X \u27f6 Y`, plus `id`-specialised add/zero versions, so the `map (id G)` form is closed under composition and addition. Option (a) is the lower-risk change.",
+      "benefit": "The simp-normal form of `coefficientFunctor` expressions becomes predictable. `simp` can use functor and additive laws directly, and callers no longer need `simpa only [coefficientFunctor, ...]` or `convert ... rfl` to unfold the definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/NormalizedCohomology.lean",
+          "declaration": "TopRep.normalizedContinuousCohomologyMap_comp",
+          "excerpt": "simpa only [ContinuousCohomology.coefficientFunctor,\n    normalizedContinuousCohomology] using"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/ContinuousCohomologyFunctor.lean",
+          "declaration": "coefficientFunctor",
+          "excerpt": "convert h using 1\n    all_goals rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/InitialInvariantsExactSequence.lean",
+          "declaration": "zeroNatIso",
+          "excerpt": "dsimp only [coefficientFunctor_obj, coefficientFunctor_map]"
+        }
+      ]
+    },
+    {
+      "declaration": "map_add / map_zero (and map_add_apply)",
+      "start_line": 72,
+      "end_line": 90,
+      "excerpt": "@[simp] theorem map_add (\u03c6 : H \u2192\u209c* G) (f g : res \u03c6 X \u27f6 Y) (n : \u2115) :",
+      "problem": "The simp lemmas `ContinuousCohomology.map_add` and `ContinuousCohomology.map_zero` have the same short names as the root `map_add` and `map_zero` (the `AddHomClass` and `ZeroHomClass` lemmas). Inside the namespace, or after `open ContinuousCohomology`, `simp [map_add]` is an ambiguous identifier. The file already needs `_root_.add_apply` to avoid a similar clash, and its own `simp only [map_add, ...]` in `map_add_apply` relies on overload resolution. `map_add_apply` is also redundant. It is not simp, but `simp only [map_add, TopModuleCat.hom_add, add_apply]` proves it, so the simp set already normalises that expression.",
+      "proposed_change": "Rename the lemmas to unambiguous names, for example `map_res_add` and `map_res_zero` or `ContinuousCohomology.map_add'`. Keep the `@[simp]` attributes, and note that `map_add_apply` is a convenience form already covered by simp.",
+      "benefit": "`simp [map_add]` and `simp [map_zero]` in downstream code cannot silently pick, or fail to disambiguate between, the generic additive-hom lemma and this one. The simp interface stays readable and robust under `open ContinuousCohomology`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/ContinuousCohomologyFunctor.lean",
+          "declaration": "map_add_apply",
+          "excerpt": "simp only [map_add, TopModuleCat.hom_add, _root_.add_apply]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 10234,
+    "cache_read_input_tokens": 32186,
+    "output_tokens": 5306,
+    "output_tokens_details": {
+      "thinking_tokens": 2301
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 10234,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3009,
+        "cache_read_input_tokens": 12020,
+        "cache_creation_input_tokens": 2227,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2227
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0972306,
+  "duration_ms": 40583,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T22:51:26",
+  "unit": "file",
+  "source_sha256": "7fb15945f4e27d0d4e9db4a5115f87c56f009f05dc30d80ed81a597dd4c1baf9",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,88 @@
+{
+  "id": "lean-pool-file-0151",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read MachineRationalVectorScale.lean, and I grepped for the definitions rationalRowDivideValues, machineRationalRowDivideCanonicalInput and rationalFiniteVectorCode and for the uses of machineRationalRowDivide_encode. Only the encode/ofFn pair is a real duplication. The `_mem_FP` proofs and the `_apply` lemma are routine and I did not count them. I did not inspect the exact statement of machineRationalRowDivide_encode beyond the grep output, which shows its LHS form and the start of its RHS (`binaryListCode rationalEntryBinaryCode ...`). The proposed helper has not been compiled. It assumes the RHS is `binaryListCode rationalEntryBinaryCode (rationalRowDivideValues scale row)` and that `rationalFiniteVectorCode` unfolds definitionally to `binaryListCode rationalEntryBinaryCode (List.ofFn _)`. The latter is visible at MachineRationalEllipsoidEncoding.lean:32-33.",
+  "findings": [
+    {
+      "declaration": "rationalRowDivideValues_l1_ofFn and machineRationalNormalizedDirectionCode_encode (same pattern as rationalRowDivideValues_reciprocal_ofFn and machineRationalVectorScaleCode_encode in MachineRationalVectorScale.lean)",
+      "start_line": 45,
+      "end_line": 68,
+      "excerpt": "rw [rationalRowDivideValues, List.map_ofFn]\n  apply congrArg List.ofFn\n  funext i",
+      "problem": "The same row-division bridge is proved twice, here and in MachineRationalVectorScale.lean. Both versions use a coordinatewise ofFn lemma: unfold rationalRowDivideValues, rewrite with List.map_ofFn, then apply congrArg List.ofFn and funext i. Both encode theorems then repeat the same scaffold. They rewrite with the scalar-code lemma, `change` the goal to `machineRationalRowDivide (machineRationalRowDivideCanonicalInput scale (List.ofFn _)) = _`, rewrite with machineRationalRowDivide_encode and the ofFn lemma, and finish with `rfl`. The only parts that differ are the scale RawRat (the L1 fold versus `RawRat.one.div s`) and the pointwise arithmetic goal. Any change to how rationalRowDivideValues or the canonical input is defined must be fixed in every copy, and the generic ofFn/encode step is mixed in with the specific arithmetic.",
+      "proposed_change": "Add one lemma next to machineRationalRowDivide_encode in MachineRationalRowDivide.lean. It needs no new imports, since both files already import that file. Statement: `theorem machineRationalRowDivide_encode_ofFn {d : \u2115} (scale : RawRat) (v w : Fin d \u2192 \u211a) (h : \u2200 i, binaryNormalizeRawRat ((rawRatOfRat (v i)).div scale) = w i) : machineRationalRowDivide (pair (rawRatBinaryCode scale) (rationalFiniteVectorCode v)) = rationalFiniteVectorCode w`. Proof sketch: `change machineRationalRowDivide (machineRationalRowDivideCanonicalInput scale (List.ofFn v)) = _`, then `rw [machineRationalRowDivide_encode, rationalRowDivideValues, List.map_ofFn]`, then show `List.ofFn (fun i \u21a6 ...) = List.ofFn w` by `congrArg List.ofFn (funext h)`, and close by unfolding rationalFiniteVectorCode. In the target, the encode theorem becomes `rw [machineRationalNormalizedDirectionCode, machineRationalVectorL1RawCode_encode]` followed by `exact machineRationalRowDivide_encode_ofFn _ _ _ (fun i \u21a6 by simp [rationalNormalizedDirection, binaryNormalizeRawRat_eq_value, RawRat.value_div, rawRatOfRat_value, rawRatListL1Sum_ofFn_value, cutL1Scale])`. The standalone `rationalRowDivideValues_l1_ofFn` can then be deleted. In MachineRationalVectorScale.lean, after the same `simp only [machinePairFirst_pair, machinePairSecond_pair, machineRawRatDivCode_encode]`, the encode theorem becomes `exact machineRationalRowDivide_encode_ofFn _ _ _ (fun i \u21a6 by simp [rationalVectorScale, binaryNormalizeRawRat_eq_value, RawRat.value_div, RawRat.value_one, rawRatOfRat_value]; ring)`. Its `rationalRowDivideValues_reciprocal_ofFn` can be deleted too.",
+      "benefit": "The list/ofFn plumbing and the `change \u2026 rfl` scaffolding are written once. Each user file then states only its own scalar identity, so a reader sees the actual mathematics: b i / cutL1Scale b, and s * v i. If rationalRowDivideValues or the canonical input encoding changes, only one proof needs repair. Any future vector-wise row-division wrapper can reuse the helper instead of copying about 20 lines.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/MachineRationalVectorScale.lean",
+          "declaration": "rationalRowDivideValues_reciprocal_ofFn",
+          "excerpt": "rw [rationalRowDivideValues, List.map_ofFn]\n  apply congrArg List.ofFn\n  funext i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/MachineRationalVectorScale.lean",
+          "declaration": "machineRationalVectorScaleCode_encode",
+          "excerpt": "change machineRationalRowDivide\n      (machineRationalRowDivideCanonicalInput\n        (RawRat.one.div s) (List.ofFn v)) = _\n  rw [machineRationalRowDivide_encode,\n    rationalRowDivideValues_reciprocal_ofFn]\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/MachineRationalRowDivide.lean",
+          "declaration": "rationalRowDivideValues",
+          "excerpt": "row.map fun q \u21a6 binaryNormalizeRawRat ((rawRatOfRat q).div scale)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/BeyondBethe/MachineRationalEllipsoidEncoding.lean",
+          "declaration": "rationalFiniteVectorCode",
+          "excerpt": "binaryListCode rationalEntryBinaryCode (List.ofFn v)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 8021,
+    "cache_read_input_tokens": 18863,
+    "output_tokens": 4428,
+    "output_tokens_details": {
+      "thinking_tokens": 1310
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 8021,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3752,
+        "cache_read_input_tokens": 8673,
+        "cache_creation_input_tokens": 3277,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3277
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.07826229999999999,
+  "duration_ms": 34114,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T23:12:13",
+  "unit": "file",
+  "source_sha256": "e07364c56633f086a6cd4a946a97c57ad373033d3258b014174749baeb8ce109",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

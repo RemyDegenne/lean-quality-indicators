@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0296",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it depends on (binStateDensity, canonicalBinVector, finite_state_sum in BinMarginalInput.lean). I also checked where binStateDensity and binStateGeneratingAverage are unfolded elsewhere. I checked the Mathlib simp/norm_cast attributes on Complex.ofReal_pow, Complex.ofReal_prod and Complex.re_sum. The file declares no simp lemmas and no simp attributes, so there are no competing rules or loop risks to report. The findings are modest, concern proof-level simp usage and the unfolding interface, and I did not run Lean. I did not find a credible simp loop or a missing simp lemma that would clearly pay off. binStateDensity_sum and the main limit theorem are not good simp-attribute candidates, because they hold for arbitrary J, A and x and have non-canonical right-hand sides.",
+  "findings": [
+    {
+      "declaration": "exists_bounded_real_count_interpolation",
+      "start_line": 10,
+      "end_line": 18,
+      "excerpt": "simpa only [Complex.ofReal_re, Complex.re_sum, \u2190 Complex.ofReal_pow,\n    \u2190 Complex.ofReal_prod, Complex.mul_re, Complex.ofReal_im, mul_zero, sub_zero] using h",
+      "problem": "The simp set uses \u2190 Complex.ofReal_pow and \u2190 Complex.ofReal_prod, which run against the simp-normal direction. In Mathlib, ofReal_pow and ofReal_prod are @[simp, norm_cast] and push the coercion inward. Reversing them to fold the real powers and products back under one cast is a hand-picked orientation. It only works because of the exact shape of h, and it needs the extra rules Complex.mul_re, ofReal_im, mul_zero and sub_zero to clean up. The proof therefore depends on a bespoke simp set that fights the default normal form, and it may break if the shape of the earlier statement changes.",
+      "proposed_change": "Take the real part in a form that keeps the default orientation. For example, state the complex interpolation identity with the cast pushed inward (as it already is), and either use `exact_mod_cast` on `congrArg Complex.re (hc t)` after rewriting the per-term real part, or add a small local `have hterm : \u2200 a, (c a * \u220f i, (v (a i) : \u2102)^(t i).val).re = (c a).re * \u220f i, v (a i)^(t i).val` proved by `rw [\u2190 Complex.ofReal_pow, \u2190 Complex.ofReal_prod]; simp`. Then close with `simpa [hterm] using h` using the default simp set, so no reversed lemmas appear in the final call.",
+      "benefit": "The final step uses the standard push-cast simp normal form and a named intermediate fact. This makes the proof robust to simp-set changes and easier to read. It also avoids encouraging reversed rewrites with Complex.ofReal_pow and Complex.ofReal_prod.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Basic/Complex/Basic.lean",
+          "declaration": "Complex.ofReal_pow",
+          "excerpt": "theorem ofReal_pow (r : \u211d) (n : \u2115) : ((r ^ n : \u211d) : \u2102) = (r : \u2102) ^ n"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Basic/Complex/BigOperators.lean",
+          "declaration": "Complex.ofReal_prod",
+          "excerpt": "theorem ofReal_prod (f : \u03b1 \u2192 \u211d) : ((\u220f i \u2208 s, f i : \u211d) : \u2102) = \u220f i \u2208 s, (f i : \u2102)"
+        }
+      ]
+    },
+    {
+      "declaration": "binStateDensity / binStateGeneratingAverage (unfolding interface)",
+      "start_line": 35,
+      "end_line": 49,
+      "excerpt": "unfold binStateDensity binStateGeneratingAverage",
+      "problem": "binStateDensity is an irreducible-looking noncomputable def. Its only unfolding is the filter-card count divided by A*x. Every consumer re-opens it with `unfold` or `simp only [binStateDensity, \u2026]` and then redoes the same conversion between the card of a filter and an indicator sum. This file does it inline in the `he` step at lines 31\u201334, and binStateDensity_sum unfolds it with `simp only [binStateDensity, \u2190 sum_div, \u2190 he]`. Other files do the same: BinMarginalInput.lean, Arithmetic/DistinctBinGenerating.lean and Arithmetic/DistinctBinDistribution.lean. There is no canonical rewrite lemma for the indicator-sum form, so each call site unfolds the whole definition and relies on a bespoke simp set.",
+      "proposed_change": "Add one equation lemma next to the definition (or here): `theorem binStateDensity_eq_sum_ite (J A x r) : binStateDensity J A x r = (\u2211 n \u2208 Ioc 0 \u230aA*x\u230b\u208a, if canonicalBinVector J x n = r then (1:\u211d) else 0)/(A*x)`. Prove it using the existing `he` argument (`sum_boole` / `\u2190 sum_filter`). Use it in binStateDensity_interpolation instead of the local `he` plus `unfold`, and in binStateGeneratingAverage_states. Do not tag it @[simp]. It is an unfolding lemma that would expand a atomic quantity at every use, so call it explicitly via `rw` or `simp only`.",
+      "benefit": "The unfolding is shared and named, so downstream proofs stop re-deriving the card-to-indicator conversion. They also stop depending on whether `simp only [binStateDensity]` leaves the expression in a particular shape.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Amplification/BinMarginalInput.lean",
+          "declaration": "binStateDensity",
+          "excerpt": "(((Ioc 0 \u230aA*x\u230b\u208a).filter (fun n => canonicalBinVector J x n = r)).card : \u211d)/(A*x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Arithmetic/DistinctBinGenerating.lean",
+          "declaration": "binStateGeneratingAverage_states",
+          "excerpt": "simp only [sum_div, binStateDensity]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/JointDickman/Amplification/BinMarginalInput.lean",
+          "declaration": "canonical_binLabel_mean",
+          "excerpt": "simp only [sum_div,Function.comp_apply,binStateDensity,Complex.ofReal_div,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 17374,
+    "cache_read_input_tokens": 48597,
+    "output_tokens": 4675,
+    "output_tokens_details": {
+      "thinking_tokens": 1459
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17374,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2739,
+        "cache_read_input_tokens": 17918,
+        "cache_creation_input_tokens": 3469,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3469
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1211217,
+  "duration_ms": 39415,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:18:51",
+  "unit": "file",
+  "source_sha256": "9d0bb1be6057e7ab35d6a82d24fabeffeb89c120d32fb7a24d1e0b92c6c00b67",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0041",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the related definitions in ClarkOcone.lean (deterministicTimeEmbedding, deterministicPredictableEmbedding, predictableDerivative, timeDerivative_apply, deterministicIntegral_apply, itoIntegral_deterministic) and the reuse sites in NaturalItoDuality.lean. The main simp-interface weakness is that the two lemmas about deterministic integrands are stated in a form that every use has to reverse and chain by hand. A second weakness is that the rfl \"apply\" lemmas are rewritten by hand about ten times, and the `change` blocks that follow them are a symptom of the same gap. Other lemmas in the file are bespoke theorems with heavy dependent arguments, and I made no simp recommendation for them. I did not run Lean, so I did not check whether the proposed simp lemmas would fire or loop. I expect no loop, because each proposed rule rewrites to a smaller or more canonical head symbol.",
+  "findings": [
+    {
+      "declaration": "deterministicTimeEmbedding_eq_tensor / predictableProjection_deterministic",
+      "start_line": 55,
+      "end_line": 77,
+      "excerpt": "deterministicTimeEmbedding (P := P) g = tensor g (Lp.const 2 P (1 : \u211d))",
+      "problem": "The pair of lemmas is oriented against its uses. `deterministicTimeEmbedding_eq_tensor` rewrites the wrapper `deterministicTimeEmbedding g` into `tensor g (Lp.const 2 P 1)`. But `timeDerivative_mderivClosure_wienerIntegral` produces the `tensor g (Lp.const \u2026)` form, and `predictableProjection_deterministic` needs the wrapper form. So every use has to run the first lemma backwards and chain the second by hand: `\u2190 deterministicTimeEmbedding_eq_tensor, predictableProjection_deterministic`. The file does this at lines 103 and 123. NaturalItoDuality.lean does the same at lines 74, 93 and 171. Neither lemma is a simp lemma, and the fixed-point statement `\u03a0 (g \u2297 1) = g` never appears in the canonical form that the derivative lemma produces. A `simp` call therefore cannot close these goals.",
+      "proposed_change": "Add one lemma stated in the normal form that the derivative lemma produces: `predictableProjection \ud835\udcd5 (tensor g (Lp.const 2 P (1 : \u211d))) = deterministicPredictableEmbedding \ud835\udcd5 g`. Prove it by `rw [\u2190 deterministicTimeEmbedding_eq_tensor, predictableProjection_deterministic]`. Tag it `@[simp]`, or at least use it as a single `rw` step. The `\u03a0 (g \u2297 1)` goals at lines 101-103 and 121-123 then close with one rewrite, and the same applies to the three sites in NaturalItoDuality.lean. Keep `deterministicTimeEmbedding_eq_tensor` unannotated, or orient it only as an internal helper. As a simp lemma it could compete with the new rule, since it would turn `deterministicTimeEmbedding g` into a `tensor` term that the new rule then does not match against the wrapper form.",
+      "benefit": "Callers get one canonical rule for the first-chaos Clark-Ocone integrand. They no longer rewrite an equation backwards and rely on the intermediate wrapper form matching. The same step is shared by five proofs instead of being repeated.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/ClarkOconeExamples.lean",
+          "declaration": "predictableDerivative_wienerIntegralD12",
+          "excerpt": "\u2190 deterministicTimeEmbedding_eq_tensor, predictableProjection_deterministic]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/NaturalItoDuality.lean",
+          "declaration": "naturalClarkOcone_wienerIntegral",
+          "excerpt": "\u2190 deterministicTimeEmbedding_eq_tensor, predictableProjection_deterministic,"
+        }
+      ]
+    },
+    {
+      "declaration": "duality_wienerIntegral and clarkOconeIntegral_wienerIntegralD12 (use of ClarkOconeFamily.deterministicIntegral_apply)",
+      "start_line": 95,
+      "end_line": 98,
+      "excerpt": "simpa [ClarkOconeFamily.deterministicIntegral_apply] using this",
+      "problem": "`deterministicIntegral_apply` is a `rfl` unfolding lemma that is not a simp lemma. So the proof builds `congrArg (fun \u03c6 \u21a6 \u03c6 h) hC.deterministicIntegral_eq_wienerIntegral` and passes the lemma by hand to `simpa`. This repeats at lines 97-98 and 135-136. The ready-made statement `IsBrownianOnDeterministic.itoIntegral_deterministic` in ClarkOcone.lean already gives `C.itoIntegral (deterministicPredictableEmbedding \ud835\udcd5 f) = wienerIntegral C.isPreBrownian f`. That lemma is itself the simp-normal consequence, so the local simp-set workaround is redundant.",
+      "proposed_change": "Replace the `have hI \u2026 simpa [...]` block with `hC.itoIntegral_deterministic h`. Replace the final two lines of `clarkOconeIntegral_wienerIntegralD12` with `exact hC.itoIntegral_deterministic g` after the `rw`. If simp use is wanted, tag `itoIntegral_deterministic` with `@[simp]` (it has the hypothesis `hC`, so it is only a conditional rule) rather than passing `deterministicIntegral_apply` ad hoc.",
+      "benefit": "This removes the dependence on an ad hoc simp set, which is fragile because `simpa` could rewrite `this` into a different shape. It also shortens both proofs and uses the lemma that already states the fact.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/ClarkOcone.lean",
+          "declaration": "ClarkOconeFamily.IsBrownianOnDeterministic.itoIntegral_deterministic",
+          "excerpt": "C.itoIntegral (deterministicPredictableEmbedding \ud835\udcd5 f) =\n      wienerIntegral C.isPreBrownian f"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/ClarkOcone.lean",
+          "declaration": "ClarkOconeFamily.deterministicIntegral_apply",
+          "excerpt": "C.itoIntegral (deterministicPredictableEmbedding \ud835\udcd5 f) := rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "clarkOcone_wickExp, clarkOcone_comp_pi, clarkOcone_mul_cylinder, and the predictableDerivative_* proofs",
+      "start_line": 265,
+      "end_line": 272,
+      "excerpt": "rw [clarkOconeIntegral, predictableDerivative, mderivD12_apply,\n    ClarkOconeFamily.timeDerivative_apply] at h",
+      "problem": "There is no simp or rewrite lemma that unfolds `predictableDerivative C F` to its canonical form `predictableProjection \ud835\udcd5 (Malliavin.timeDerivative \u2026 (mderivClosure P F))`. `mderivD12_apply` is `@[simp]`, but `ClarkOconeFamily.timeDerivative_apply` is a plain `rfl` theorem. The file therefore starts each of these proofs with a manual `unfold predictableDerivative \u2026 ; rw [mderivD12_apply, ClarkOconeFamily.timeDerivative_apply, \u2026]` (lines 121, 177, 234, 266, 296, 333, 366, 416). In three theorems (`clarkOcone_wickExp`, `clarkOcone_comp_pi`, `clarkOcone_mul_cylinder`) it also needs a long `change \u2026 at h` that restates the whole goal, because the `rw` cannot reach the expected form (lines 267-272, 417-421 and the corresponding block in `clarkOcone_mul_cylinder`).",
+      "proposed_change": "In ClarkOcone.lean, add `predictableDerivative_eq (C) (F) : predictableDerivative C F = predictableProjection \ud835\udcd5 (Malliavin.timeDerivative C.isPreBrownian C.coordinate C.coordinate_apply C.generated (mderivClosure P F))`. Alternatively, make `ClarkOconeFamily.timeDerivative_apply` a simp lemma, which is safe because it only unfolds a field to a different head symbol. Then `simp only [clarkOconeIntegral, predictableDerivative_eq] at h` followed by the single `timeDerivative_mderivClosure_*` rewrite replaces the repeated `unfold`/`rw` preamble. The three `change \u2026 at h` blocks can then be removed.",
+      "benefit": "This gives one canonical rewrite from `predictableDerivative` to the concrete derivative, so the file no longer repeats the same unfold-and-rewrite preamble. It also removes the large `change \u2026 at h` restatements, which are brittle and hard to read.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/ClarkOcone.lean",
+          "declaration": "ClarkOconeFamily.timeDerivative_apply",
+          "excerpt": "Malliavin.timeDerivative C.isPreBrownian C.coordinate C.coordinate_apply C.generated U :=\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Malliavin/Malliavin/MalliavinDerivative.lean",
+          "declaration": "mderivD12_apply",
+          "excerpt": "theorem mderivD12_apply (F : D12 \u03bc) : mderivD12 \u03bc F = mderivClosure \u03bc F := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 32572,
+    "cache_read_input_tokens": 90703,
+    "output_tokens": 6554,
+    "output_tokens_details": {
+      "thinking_tokens": 1911
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32572,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4998,
+        "cache_read_input_tokens": 34918,
+        "cache_creation_input_tokens": 1667,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1667
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2049143,
+  "duration_ms": 46923,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:29",
+  "unit": "file",
+  "source_sha256": "9fec2c50f9c1f2a4dae93c4b3b96c506c4cd10f10823bb81c57998e9889555e0",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

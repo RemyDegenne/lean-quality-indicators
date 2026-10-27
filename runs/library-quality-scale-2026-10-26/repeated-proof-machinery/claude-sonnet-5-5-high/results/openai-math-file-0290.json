@@ -1,0 +1,130 @@
+{
+  "id": "openai-math-file-0290",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "The file is generated: four namespaces (tm0_88_0, tm0_88_1, tm1_88_0, tm1_88_1) each have 96 per-chunk `def`/`decide +kernel` pairs, six 16-way `fin_cases` dispatch lemmas, `sums_eq`, and a fixed tail of checked/contains/atomContains/KContains lemmas. I read the first block fully and confirmed the other three are the same up to numerals and parameters. I read `tableRule_contains_bridge`, `cachedMomentRuleBox`, `tableMomentK_contains` and `tableAtomBox_contains`. I also found the same tails in TableMoments9/60/61/73/75, so the duplication is repo-wide. I could not run Lean. The proposed replacements are untested, and the kernel-time cost of `fin_cases i <;> decide +kernel` versus the current layout is unknown. I did not report the 96 per-chunk certificate lines per block, because those are distinct numerical data and not repeated reasoning.",
+  "findings": [
+    {
+      "declaration": "tm0_88_0.sums_eq / tm0_88_0.checked (same text in tm0_88_1, tm1_88_0, tm1_88_1)",
+      "start_line": 326,
+      "end_line": 338,
+      "excerpt": "  change (finSum (fun j => (finSum (fun i => chunk j i)).scale 1 6)) = ans\n  simp_rw [sums_eq]\n  decide +kernel",
+      "problem": "The argument that the `cachedMomentRuleBox` value is obtained from per-chunk equalities is redone in each of the four namespaces (lines 326-338, 664-676, 1002-1014, 1340-1352). Each time it unfolds `cachedMomentRuleBox` by `change`, with a hard-coded copy of the definition body in the proof. It then rewrites the chunk sums by `sums_eq` under binders and finishes with a kernel check. This reasoning is not specific to table 88. Any change to `cachedMomentRuleBox` in BasisIntervals.lean, such as the scale constants `1 6`, would break the `change` line in every namespace of every TableMoments*.lean file (9, 60, 61, 73, 75, 88 and others).",
+      "proposed_change": "Add one lemma next to `cachedMomentRuleBox` in BasisIntervals.lean:\n\nlemma cachedMomentRuleBox_eq_of_chunks {c k : Fin 6 \u2192 Fin 16 \u2192 Fin 16 \u2192 CBox} {S : Fin 6 \u2192 Fin 16 \u2192 CBox} {ans : CBox}\n    (hS : \u2200 j i, finSum (fun v => (c j i v).mul (k j i v)) = S j i)\n    (hans : finSum (fun j => (finSum (fun i => S j i)).scale 1 6) = ans) :\n    cachedMomentRuleBox c k = ans := by\n  unfold cachedMomentRuleBox; simp_rw [hS]; exact hans\n\nThe proof is just the unfolding and rewriting that each namespace currently performs inline. Then in each namespace:\n\nlemma checked : cachedMomentRuleBox density0 kernel88_0 = ans :=\n  cachedMomentRuleBox_eq_of_chunks sums_eq (by decide +kernel)\n\nIn tm0_88_0 the `hS` hypothesis is `sums_eq` itself, since `chunk j i` unfolds definitionally to the `finSum` expression. The same one-line term works for kernel88_1 with density0, and for density1 with kernel88_0 and kernel88_1, with no change to hypotheses or imports beyond BasisIntervals, which is already transitively imported.",
+      "benefit": "The `cachedMomentRuleBox` unfolding is stated once and checked once, instead of being copied into 4 \u00d7 (number of table files) proofs. A change to the definition then needs one edit, and each certificate's `checked` shrinks to a single line that names the only table-specific fact, the final kernel computation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/BasisIntervals.lean",
+          "declaration": "cachedMomentRuleBox",
+          "excerpt": "def cachedMomentRuleBox (c k : Fin 6 \u2192 Fin 16 \u2192 Fin 16 \u2192 CBox) : CBox :=\n  finSum fun j => (finSum (fun i => finSum (fun v => (c j i v).mul (k j i v)))).scale 1 6"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/Certificate/TableMoments88.lean",
+          "declaration": "tm1_88_1.checked",
+          "excerpt": "lemma checked : cachedMomentRuleBox density1 kernel88_1 = ans := by\n  change (finSum (fun j => (finSum (fun i => chunk j i)).scale 1 6)) = ans\n  simp_rw [sums_eq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/Certificate/TableMoments61.lean",
+          "declaration": "tm0_61_0.contains",
+          "excerpt": "using @tableRule_contains_bridge false 61 false density0 kernel61_0"
+        }
+      ]
+    },
+    {
+      "declaration": "tm0_88_0.s0_eq (and s1_eq \u2026 s5_eq, and the corresponding lemmas in the other three namespaces)",
+      "start_line": 52,
+      "end_line": 69,
+      "excerpt": "lemma s0_eq (i : Fin 16) : chunk 0 i = s0 i := by\n  fin_cases i\n  \u00b7 exact c0_0",
+      "problem": "Each row is certified by a 16-way `fin_cases` whose branch i is `exact c{j}_{i}`. Every `c{j}_{i}` is itself `chunk j i = s{j}_{i} := by decide +kernel`, with a separate `noncomputable def s{j}_{i}` that is used only to be packed into `![\u2026]`. This chain (defs, 16 lemmas, a 16-branch dispatch and a `![\u2026]` vector) is repeated for 6 rows \u00d7 4 namespaces, 24 times in this file. That is 96 `def`/`lemma` pairs and 24 dispatch proofs, all spelling out the same argument: check each of the 16 entries by kernel evaluation, then assemble them into a function on `Fin 16`. The fact being proved, `chunk j i = box`, is the same finite check at every `i`.",
+      "proposed_change": "Drop the 16 named `s{j}_{i}`/`c{j}_{i}` pairs and the manual dispatch. State each row once as\n\nnoncomputable def s0 : Fin 16 \u2192 CBox := ![\u27e8\u27e8(-16),16\u27e9,\u27e8(-16),16\u27e9\u27e9, \u2026 ]\nlemma s0_eq (i : Fin 16) : chunk 0 i = s0 i := by\n  fin_cases i <;> decide +kernel\n\nOr state `lemma sums_eq (j : Fin 6) (i : Fin 16) : chunk j i = sums j i := by fin_cases j <;> fin_cases i <;> decide +kernel`. The hypotheses are unchanged, since `chunk 0 i` and `s0 i` are the same terms as in the current `s0_eq`. The per-entry `decide +kernel` calls are the same checks as today, now issued from `<;>` instead of from named lemmas.",
+      "benefit": "This removes roughly 90% of the lines per namespace. Rows that share numerals no longer carry a hand-written `exact c{j}_{i}` branch that must match the index. The numerical data and the single check per entry are then the only content of the file, which is easier to review and regenerate.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/Certificate/TableMoments88.lean",
+          "declaration": "tm0_88_0.c0_0",
+          "excerpt": "lemma c0_0 : chunk 0 0 = s0_0 := by decide +kernel"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/Certificate/TableMoments88.lean",
+          "declaration": "tm1_88_1.s5_eq",
+          "excerpt": "lemma s5_eq (i : Fin 16) : chunk 5 i = s5 i := by\n  fin_cases i\n  \u00b7 exact c5_0"
+        }
+      ]
+    },
+    {
+      "declaration": "tm0_88_0.contains / atomContains / KContains (same in the other three namespaces)",
+      "start_line": 339,
+      "end_line": 352,
+      "excerpt": "  simpa only [Nat.cast_ofNat,Nat.cast_zero,Nat.cast_one,Bool.false_eq_true,ite_false,ite_true] using @tableRule_contains_bridge false 88 false density0 kernel88_0",
+      "problem": "The four namespaces repeat the same containment proof: `rw [\u2190 checked]`, a `simpa` with a fixed simp set to turn `(\u219188 : \u211d)` and `if b then 1 else 0` into the literals in the goal, and the closing `tableMomentK_contains \u2026 (by norm_num) (by norm_num)` with the bounds 0 \u2264 88 \u2264 100. The `simpa` sets differ from the goal only in parameters. The hypotheses are only a Bool, the table index 88, a Bool for the \u2113 index, and the density and kernel names. The cast-normalisation step is the nontrivial part. If it needs a change, as when the bridge statement is altered, every copy (here lines 339-344, 677-682, 1015-1020, 1353-1358, and the same in the other TableMoments*.lean files) must be edited.",
+      "proposed_change": "Put the normalisation in TableRuleBridge.lean next to `tableRule_contains_bridge`, as lemmas whose conclusion has literal `ell`. For example:\n\nlemma tableRule_contains_bridge_zero (a : Bool) {M : \u211d} (m : \u2115) (hM : M = m) {c k \u2026} (hc \u2026) (hk \u2026) {ans} (h : cachedMomentRuleBox c k = ans) : ans.Contains (tableMomentRule a M 0)\n\nThe proof is `subst hM; rw [\u2190 h]`, then `simpa using tableRule_contains_bridge a m false hc hk`. A `_one` variant is stated the same way. Each `contains` then becomes `tableRule_contains_bridge_zero false 88 (by norm_num) density0_contains kernel88_0_contains checked`, for example, and the `_one` variant is used for the ell = 1 cases. The extra `hk` argument shape stays the same as today's, so `kernel88_0_contains` is passed unchanged.",
+      "benefit": "The cast and `ite` normalisation, which is the fragile part, lives in one place. Each certificate's `contains` proof becomes a one-line application, and a future refactor of `tableRule_contains_bridge` is a local fix instead of dozens of `simpa` edits.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/TableRuleBridge.lean",
+          "declaration": "tableRule_contains_bridge",
+          "excerpt": "(cachedMomentRuleBox c k).Contains (tableMomentRule a m (if b then 1 else 0))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/Certificate/TableMoments88.lean",
+          "declaration": "tm1_88_1.contains",
+          "excerpt": "using @tableRule_contains_bridge true 88 true density1 kernel88_1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/PlanarPacking/Certificate/TableMoments75.lean",
+          "declaration": "tm1_75_1.contains",
+          "excerpt": "using @tableRule_contains_bridge true 75 true density1 kernel75_1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 54837,
+    "cache_read_input_tokens": 166526,
+    "output_tokens": 8404,
+    "output_tokens_details": {
+      "thinking_tokens": 3245
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 54837,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 6699,
+        "cache_read_input_tokens": 56958,
+        "cache_creation_input_tokens": 1808,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1808
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.32005659999999997,
+  "duration_ms": 66513,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:11:35",
+  "unit": "file",
+  "source_sha256": "a952d3240c6f953b190d4aacff3f50c4abdcdfd6f64ad4740e28e5f1cba8efc2",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

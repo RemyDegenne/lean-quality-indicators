@@ -1,0 +1,83 @@
+{
+  "id": "openai-math-file-0223",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and then searched the repo for other uses of its helpers. `correction_factor_model` and `correction_mixed_error` are already shared, and I found no problem inside them. The assembly in `corrected_dispersion_asymptotic` is a different matter. It is copied almost line for line in Theta/CubicThetaCentralCorrectedDispersionTheorem.lean (lines 46\u201374) and Angular/AngularCorrectedDispersionTheorem.lean (lines 52\u201380). A grep for the `hm := correction_mixed_error _ _ _ _ _ _ ht hc'` line also hit Theta/CubicThetaCentralAngularCorrectedDispersionTheorem.lean, which I did not open, so it is likely a fourth copy. The only differences I saw are the names of the three input theorems and the coefficient family (`fullPrimeCoefficient` versus `angularHeightPrimeCoefficient`). I did not read the Theta-angular file or `angularHeightPrimeCoefficient` itself, and I cannot compile Lean. So the proposed lemma's exact binder form, and whether elaboration works with an abstract `\u03b2`, are unverified. The `hA\u2080` and `hA99` lines are short and I did not count them as a finding by themselves.",
+  "findings": [
+    {
+      "declaration": "CubicFirstMoment.corrected_dispersion_asymptotic",
+      "start_line": 69,
+      "end_line": 107,
+      "excerpt": "let \u03b7 := min \u03b7\u2080 (1/100)\n  refine \u27e8\u03b7,\u03c3,G,Kp+2*(Kt+Kc),max Tp (max Tt Tc),",
+      "problem": "The proof after the three `obtain`s is a long, nontrivial assembly. It contains four steps.\n- It chooses \u03b7 = min \u03b7\u2080 (1/100), derives the exponent comparisons hA\u2080 and hA99, and takes the max of the thresholds Tp, Tt, Tc.\n- It derives hX, hAp and the coprimality roughness bound.\n- It applies `correction_mixed_error` to the Type-I and coprimality bounds.\n- It builds D, hD, hD1 and hS, then closes with `correctedSquareMass_le_of_errors \u2026 .trans_eq; ring`.\n\nIn the Theta and Angular variants this block is repeated almost line for line. That covers the statement of the final conclusion, the choice of \u03b7, the max-threshold bookkeeping, and the K = Kp+2*(Kt+Kc) arithmetic. The variants differ only in which three input theorems are called and in the coefficient family, `fullPrimeCoefficient` versus `angularHeightPrimeCoefficient`. A bug fix or a change to the exponent bookkeeping, for example 99/100 or \u03b7/16, must be made in at least three files. The existing helper `correction_mixed_error` covers only a tiny part of the repeated reasoning.",
+      "proposed_change": "Add one generic lemma to this file, or to CorrectedSquareTransfer.lean, and make each of the three or four theorems a short wrapper that supplies its three input bounds.\n\nStatement sketch. Take the shared data \u03b3, \u03b9, L, W, hL, R, c, hc, hlo, hhi, V, hVnn, hcut, and a coefficient family `\u03b2 : \u03b3 \u2192 (\u03b9 \u2192 \u211d) \u2192 Eisenstein \u2192 \u2102`. Take three existentially quantified inputs in the exact shapes the current `obtain`s produce:\n- `hpositive`: \u2203 \u03b7\u2080 \u03c3 b G Kp Tp, 0<\u03b7\u2080 \u2227 \u03b7\u2080\u22641 \u2227 0<\u03c3 \u2227 0<Kp \u2227 \u2200 r X A e u, Tp \u2264 L r \u2192 \u2026 \u2192 \u2016sievedDispersionVariance (squarefreeDivisorTruncation ((1+log (L r))^b)) (fullSquarefreePrimeSupport R (W r) X e) (\u03b2 r X) u (fun x => (V x:\u2102)) A \u2212 ((cStar^2*\u2016dispersionModel S (\u03b2 r X) u\u2016^2:\u211d):\u2102)*squarefreeModelMass _ A\u2016 \u2264 Kp*A^(2/3)*(L r)^(5/3)/(1+log (L r))^k\n- `htype`: \u2203 Kt Tt, 0<Kt \u2227 \u2200 r X e u A, Tt \u2264 L r \u2192 1 \u2264 L r \u2192 (\u2200 i, 1 \u2264 X i) \u2192 \u220f X i = L r \u2192 (L r)^(99/100) \u2264 A \u2192 \u2016(cStar*star s)*(\u2211 b \u2208 S, \u03b2 b*normTwist u b*typeIMixedGauss b V A \u2212 mixedMassModel S \u03b2 u V A)\u2016 \u2264 Kt*\u2026\n- `hcoprime`: the analogue with `mixedMassModel S \u03b2 u V A \u2212 cStar*s*squarefreeModelMass V A`.\n\nThe conclusion is the displayed \u2203 \u03b7 \u03c3 G K T\u2080 statement with `correctedSquareMass \u2026 (\u03b2 r X) u V A`.\n\nProof sketch. Move the current body verbatim. Everything that mentions a concrete coefficient is already a function of `\u03b2`. This holds for `hS`, which uses the support only, `hD`, `hD1`, and the `correctedSquareMass_le_of_errors` call. The step `(fullPrimeCoefficient R (W r) X)` \u2192 `\u03b2 r X` is the only change to the code.\n\nUse in this file:\n  obtain \u27e8\u03b7\u2080,\u03c3,b,G,Kp,Tp,\u2026\u27e9 := sieved_squarefree_model_asymptotic \u2026\n  obtain \u27e8Kt,Tt,\u2026\u27e9 := logarithmic_typeI_corrected_mixed \u2026\n  obtain \u27e8Kc,Tc,\u2026\u27e9 := mixed_model_coprimality_log_saving \u2026\n  exact corrected_dispersion_assembly (\u03b2 := fun r X => fullPrimeCoefficient R (W r) X) \u2026 hpositive htype hcoprime\n\nThe Angular files do the same with `angularHeightPrimeCoefficient \u2113 R (W r) X` and their `angular_\u2026` inputs. The Theta files use the `_actual` Type-I theorem.\n\nThis needs the same imports as the current file, since it uses only `correctedSquareMass_le_of_errors` and `correction_mixed_error`.",
+      "benefit": "The Theta, Angular and Theta-angular wrappers shrink to the three input-theorem calls plus one `exact`. This removes roughly 30 lines of duplicated threshold and exponent bookkeeping per copy. It also leaves one place where the \u03b7, 99/100 and max-threshold choices are documented and maintained. A reader can then see directly that each variant differs only in its three analytic inputs and its coefficient.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Theta/CubicThetaCentralCorrectedDispersionTheorem.lean",
+          "declaration": "theta-central corrected dispersion theorem (same proof body)",
+          "excerpt": "let \u03b7 := min \u03b7\u2080 (1/100)\n  refine \u27e8\u03b7,\u03c3,G,Kp+2*(Kt+Kc),max Tp (max Tt Tc),"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Angular/AngularCorrectedDispersionTheorem.lean",
+          "declaration": "angular corrected dispersion theorem (same proof body, different coefficient)",
+          "excerpt": "have hm := correction_mixed_error _ _ _ _ _ _ ht hc'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/CubicMoment/Estimates/CorrectedSquareTransfer.lean",
+          "declaration": "CubicFirstMoment.correctedSquareMass_le_of_errors",
+          "excerpt": "correctedSquareMass S \u03b2 u V A \u2264 E\u2081+2*E\u2082"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 29038,
+    "cache_read_input_tokens": 70815,
+    "output_tokens": 4829,
+    "output_tokens_details": {
+      "thinking_tokens": 872
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29038,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3111,
+        "cache_read_input_tokens": 21385,
+        "cache_creation_input_tokens": 11582,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 11582
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17154350000000002,
+  "duration_ms": 36583,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:33:11",
+  "unit": "file",
+  "source_sha256": "ad729564115b8ac11a353472524558ecca8883bcca89531023c82c63d3357ffa",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

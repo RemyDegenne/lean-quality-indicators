@@ -1,0 +1,99 @@
+{
+  "id": "mathlib-file-0031",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the AddMonoidAlgebra.scalarTensorEquiv simp lemmas in MonoidAlgebra.lean, the simp status of MvPolynomial.map_monomial, map_C and map_X in Eval.lean, and all uses of the algebraTensorAlgEquiv_symm_* lemmas in Mathlib. I could not run Lean, so the confluence concern in finding 1 comes from reading the rewrite rules and is not an observed simp failure. I judged the tensorEquivSum_* lemmas, coeff_rTensorAlgEquiv_tmul and the local `Algebra.smul_def` simp attribute acceptable. The local attribute has no downstream effect.",
+  "findings": [
+    {
+      "declaration": "MvPolynomial.algebraTensorAlgEquiv_symm_map (with algebraTensorAlgEquiv_symm_monomial)",
+      "start_line": 120,
+      "end_line": 123,
+      "excerpt": "(algebraTensorAlgEquiv R A).symm (map (algebraMap R A) x) = 1 \u2297\u209c x",
+      "problem": "This @[simp] lemma competes with the other simp rules, because `map_monomial`, `map_C`, `map_X` and `map_add` are all simp lemmas. On `symm (map (algebraMap R A) (monomial m a))`, simp rewrites the inner `map` first, giving `symm (monomial m (algebraMap R A a))`. It then applies `algebraTensorAlgEquiv_symm_monomial` and produces `algebraMap R A a \u2297\u209c monomial m 1`. The lemma `algebraTensorAlgEquiv_symm_map` would give `1 \u2297\u209c monomial m a` for the same term. Because the inner `map` is rewritten first, the lemma is likely to fire only when its argument is an opaque variable. For concrete polynomials the two simp rules lead to different, non-confluent normal forms. The `_X` and `_monomial` lemmas have the same property for `1 \u2297\u209c X s` versus `a \u2297\u209c monomial m 1`.",
+      "proposed_change": "Choose one canonical form for `symm` applied to `map (algebraMap R A) _`. Either keep `algebraTensorAlgEquiv_symm_map` as a non-simp lemma, since its only use is an explicit `rw` in Presentation/Core.lean, or add a bridging simp lemma that normalizes `algebraMap R A a \u2297\u209c monomial m 1` to `1 \u2297\u209c monomial m a` (or the reverse). The first option is the smaller change. It means changing `@[simp] lemma algebraTensorAlgEquiv_symm_map` to a plain `lemma`.",
+      "benefit": "Simp results no longer depend on whether `map` is already applied to an atom or to a concrete polynomial. Users of the simp set get a predictable normal form. The one known use, an explicit `rw [\u2026 algebraTensorAlgEquiv_symm_map]` in Presentation/Core.lean, is unaffected.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/MvPolynomial/Eval.lean",
+          "declaration": "MvPolynomial.map_monomial",
+          "excerpt": "theorem map_monomial (s : \u03c3 \u2192\u2080 \u2115) (a : R) : map f (monomial s a) = monomial s (f a)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/TensorProduct/MvPolynomial.lean",
+          "declaration": "MvPolynomial.algebraTensorAlgEquiv_symm_monomial",
+          "excerpt": "(algebraTensorAlgEquiv R A).symm (monomial m a) = a \u2297\u209c monomial m 1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/Extension/Presentation/Core.lean",
+          "declaration": "use of algebraTensorAlgEquiv_symm_map",
+          "excerpt": "rw [\u2190 map_relationOfHasCoeffs R\u2080, MvPolynomial.algebraTensorAlgEquiv_symm_map]"
+        }
+      ]
+    },
+    {
+      "declaration": "MvPolynomial.algebraTensorAlgEquiv_symm_comp_aeval",
+      "start_line": 113,
+      "end_line": 119,
+      "excerpt": "((algebraTensorAlgEquiv (\u03c3 := \u03c3) R A).symm.toAlgHom.restrictScalars R).comp\n      (MvPolynomial.mapAlgHom (R := R) (S\u2081 := R) (S\u2082 := A) (Algebra.ofId R A)) =\n      Algebra.TensorProduct.includeRight",
+      "problem": "This lemma is tagged @[simp], but its left side is a composition of bundled `AlgHom`s that has been unfolded through `toAlgHom` and `restrictScalars`. Simp will rarely match such a term in practice. Pointwise applications are instead handled by `algebraTensorAlgEquiv_symm_map`, which is proved from this lemma by `congr($(\u2026) x)`. The name also says `aeval`, although the statement is about `mapAlgHom`, which is misleading for anyone searching the simp set. The attribute therefore adds an unlikely-to-fire rule with a mismatched name, and it makes the simp set harder to audit.",
+      "proposed_change": "Remove `@[simp]` from `algebraTensorAlgEquiv_symm_comp_aeval`, keeping it as a helper for the pointwise lemma. Consider renaming it to something like `algebraTensorAlgEquiv_symm_comp_mapAlgHom`.",
+      "benefit": "The simp set contains only rules that can fire on real goals, and the lemma name matches its content. Nothing is lost, because the pointwise form `algebraTensorAlgEquiv_symm_map` already covers the practical case.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/TensorProduct/MvPolynomial.lean",
+          "declaration": "MvPolynomial.algebraTensorAlgEquiv_symm_map",
+          "excerpt": "congr($(algebraTensorAlgEquiv_symm_comp_aeval R A) x)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 9047,
+    "cache_read_input_tokens": 37099,
+    "output_tokens": 5208,
+    "output_tokens_details": {
+      "thinking_tokens": 2055
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 9047,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2586,
+        "cache_read_input_tokens": 12261,
+        "cache_creation_input_tokens": 799,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 799
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0919939,
+  "duration_ms": 38727,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T22:49:52",
+  "unit": "file",
+  "source_sha256": "248786cfc030d871ad5c38ce6e06aa0552c9b48881ae7b55e1547ce081e31805",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

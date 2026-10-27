@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0051",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked Mathlib's integral-closure API (IsIntegral/Basic.lean) for the polynomial-transport pattern. I looked at b2, b1, b4, the algEquiv/adjoin lemma, assemble and the two branches of `solution`. Nothing was compiled. The suggested rewrites rely on the ring-hom compositions being defeq, as the existing `RingHom.ext fun _ => rfl` steps already show. They are untested. Finding 2 is a duplication inside one theorem, so it is weaker under the rubric than finding 1.",
+  "findings": [
+    {
+      "declaration": "FibreIsoK.b1 / FibreIsoK.b4 / FibreIsoK.isIntegral_adjoin_singleton_iff_of_algEquiv (polynomial transport of integrality along a ring hom)",
+      "start_line": 212,
+      "end_line": 262,
+      "excerpt": "refine \u27e8p.map incl', hp.map incl', ?_\u27e9\n      rw [Polynomial.eval\u2082_map]\n      exact hpx",
+      "problem": "The same argument is hand-rolled six times. Take a monic polynomial p over a subring, map it along a ring hom, apply `Polynomial.eval\u2082_map`, and compare the composite of ring homs with `RingHom.ext fun _ => rfl`. The six sites are b1 `incl` (l.217-219) and `incl'` (l.260-262), b4 `\u03c6` (l.339-342) and `\u03b9` (l.356-359), and the algEquiv lemma `\u03c6'`/`\u03c6` (l.389-402). Each site also builds a bespoke `\u2192+*` inclusion by listing five fields (l.213-215, 256-258, 325-327, 352-354). This is the statement that integrality over a smaller ring implies integrality over a bigger ring, or after a ring hom. Mathlib already has it as `RingHom.IsIntegralElem.of_comp` and `RingHom.IsIntegralElem.map`, and `IsIntegral.of_subring` / `IsIntegral.tower_top` cover related shapes.",
+      "proposed_change": "Prove the transport once, or use the existing lemmas directly. In b1, `hint` and `hintR` become `RingHom.IsIntegralElem.of_comp (f := incl) (g := algebraMap _ TT) \u27e8p, hp, hpx\u27e9` and the same with `incl'`. The composite `(algebraMap _ TT).comp incl` is defeq to `base.subtype`, so `hpx` should fit. In b4, the `\u03b9` step is `of_comp` with `g := \u03c0.range.subtype`. The `\u03c6` step is `RingHom.IsIntegralElem.map` applied to `\u27e8p, hp, hrelB\u27e9` with `g := \u03c0`. In the algEquiv lemma, both directions are `RingHom.IsIntegralElem.map` applied to the ring hom underlying `e` or `e.symm`, followed by rewriting `e (e.symm x)`. The inclusion homs can be built once, for example with `Subring.inclusion` / `Subalgebra.inclusion`, or `Subring.subtype`-based comps. Each use then shrinks from about 5-12 lines to 1-3.",
+      "benefit": "The recurring polynomial-mapping plumbing is stated once, in Mathlib. A reader sees at each site only the mathematical step (integral over base, so integral over the larger ring). The `hcomp`/`eval\u2082_map`/`hom_eval\u2082` rewrites no longer need to be re-synchronised in six places.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/IntegralClosure/IsIntegral/Basic.lean",
+          "declaration": "RingHom.IsIntegralElem.of_comp",
+          "excerpt": "lemma RingHom.IsIntegralElem.of_comp {g : S \u2192+* T} {x : T} (hx : (g.comp f).IsIntegralElem x) :\n    g.IsIntegralElem x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/IntegralClosure/IsIntegral/Basic.lean",
+          "declaration": "RingHom.IsIntegralElem.map",
+          "excerpt": "lemma RingHom.IsIntegralElem.map {x : S} (hx : f.IsIntegralElem x) (g : S \u2192+* T) :\n    (g.comp f).IsIntegralElem (g x)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_IgusaScheme_exists_algEquiv_residueField_tensor_chartAlg_chartRing_apply_tmul.lean",
+          "declaration": "FibreIsoK.b4",
+          "excerpt": "refine hIC y \u27e8p.map \u03b9, hp.map \u03b9, ?_\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "solution (Fin and Inf branches)",
+      "start_line": 608,
+      "end_line": 707,
+      "excerpt": "obtain \u27e8a, rfl\u27e9 := Ideal.Quotient.mk_surjective x\n    have hm : \u03c8I (asEquiv N \u2113 A (chartAlgInf N \u2113) (a \u2297\u209c b)) \u2208 fm.BInf := by",
+      "problem": "The two branches (l.608-650 and l.651-707) repeat the same nontrivial argument with Fin replaced by Inf, `jBar` by `jBar\u207b\u00b9`, and `piFin` by `piInf`. Both prove `h\u03c8'`, `hbaseB` and `hbase_adj` by `Subring.closure_le` with the same case split into constants and generator. Both call `assemble` and then discharge the tmul formula through `hm`, `h1`, `h2`, the `congrArg` into `LaurentSeries`, and `coe_mul` with `hcoe_alg`. The 15-line tail from `obtain \u27e8a, rfl\u27e9 \u2026` to `try rfl` is identical up to renaming (l.631-650 vs l.688-707). Any change to `assemble`'s conclusion must be made twice. `assemble` itself already takes `B`, `base`, `g`, `\u03c0` and `hconstB` abstractly, so only the final formula and the base hypotheses are duplicated.",
+      "proposed_change": "Add a lemma next to `assemble` that takes the data (\u03c8, B, base, g, \u03c0, h, hsub, constants, `h\u03c0c`, `piFin_const`-style hypotheses) abstractly. Its conclusion would be `\u2203 eq, \u2200 x b, ((eq (x \u2297\u209c b)).1 : LaurentSeries kA) = algebraMap kA _ x * (\u03c0 \u27e8_, hsub b\u27e9 : LaurentSeries kA)`. Its proof is the current tail (`Ideal.Quotient.mk_surjective`, `hm`, `h1`, `h2`, `heq`) with Fin/Inf replaced by `B`/`\u03c0`. Include in it the closure_le step that shows `base \u2264 B` and `base \u2264 adjoin Qb {g}` from `\u2200 a, constantsHom N A a \u2208 \u00b7` and `g \u2208 \u00b7`. Each branch of `solution` then supplies only its specific `jBar` / `jBar\u207b\u00b9` facts (`hb\u2080`, `hhF`, `fm.piFin_j` / `fm.piInf_jInv`, `fm.ker_piFin` / `fm.ker_piInf`) and one call. This does not merely relocate the branches into a helper. It makes a single statement about an arbitrary chart (g, B, \u03c0), and the Fin and Inf cases are instances of it.",
+      "benefit": "The roughly 40 lines of near-identical plumbing in `solution` are proved once. The Fin/Inf asymmetry is isolated to the few hypotheses that genuinely differ. It becomes easier to see that the two halves of the theorem are the same argument, and future edits cannot make them drift apart.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_IgusaScheme_exists_algEquiv_residueField_tensor_chartAlg_chartRing_apply_tmul.lean",
+          "declaration": "solution (Fin branch)",
+          "excerpt": "(congrArg fm.piFin h1).trans (by rw [map_mul, fm.piFin_const])"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_IgusaScheme_exists_algEquiv_residueField_tensor_chartAlg_chartRing_apply_tmul.lean",
+          "declaration": "solution (Inf branch)",
+          "excerpt": "(congrArg fm.piInf h1).trans (by rw [map_mul, fm.piInf_const])"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 47282,
+    "cache_read_input_tokens": 209519,
+    "output_tokens": 7907,
+    "output_tokens_details": {
+      "thinking_tokens": 2977
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 47282,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4502,
+        "cache_read_input_tokens": 49827,
+        "cache_creation_input_tokens": 1384,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1384
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.28917390000000004,
+  "duration_ms": 62379,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T22:54:38",
+  "unit": "file",
+  "source_sha256": "70c6051eb5488fecc1b1f425f7dd5709f86fff37d626b630f60ef3d3e4c3f77f",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

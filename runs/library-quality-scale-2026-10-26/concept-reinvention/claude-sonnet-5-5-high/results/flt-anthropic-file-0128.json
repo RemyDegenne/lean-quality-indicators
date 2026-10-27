@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0128",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file, `Definitions/Def_ModularCurve_EichlerShimuraData.lean` (`ModularCurve.TateModule`) and `Definitions/Def_EllipticCurve_TateModule.lean` (`_root_.TateModule`). I grepped Mathlib for `TateModule` and found no match, so neither Tate module competes with a Mathlib declaration. Both findings are therefore about competing versions inside the project, which I read the rubric as covering (\"apply the same question within Mathlib itself\"). The remaining parts of the file are either Mathlib-style generic lemmas or named specialisations: `jmap` is `TensorProduct.mk R K N 1`, `latt` and the base-change lemmas are specific, and `local_clauses`, `charpoly_eq_of_quad_of_trace` and `exists_basis_eq_span_of_saturated` have no competing definition that I found. I abstained on those. I did not check the upstream theorems' statements beyond what the file's own use sites show, so I am less certain about how much of the `ModularCurve.TateModule` API could be moved to `_root_.TateModule`.",
+  "findings": [
+    {
+      "declaration": "toRoot / ofRoot / toRootHom / \u03b2 (bridge between ModularCurve.TateModule and _root_.TateModule), together with instSMul, instModule, eq_zero_of_smul_eq_zero, natCast_smul_apply and the Module.Free/Finite instances",
+      "start_line": 97,
+      "end_line": 130,
+      "excerpt": "def toRoot (x : ModularCurve.TateModule p J) : _root_.TateModule p J := \u27e8x, mem_root_of_mem x.2\u27e9",
+      "problem": "The project has two definitions of the Tate module. `ModularCurve.TateModule p J` is a Hecke submodule of `\u2115 \u2192 J` defined by `x 0 = 0 \u2227 \u2200 n, p \u2022 x (n+1) = x n`. `_root_.TateModule p M` is an `AddSubgroup` of `\u2115 \u2192 M` defined by `\u2200 n, p^n \u2022 x n = 0 \u2227 p \u2022 x (n+1) = x n`. The two carriers are the same set of sequences; `mem_root_of_mem` and `mem_of_mem_root` in this file prove it. Only `_root_.TateModule` has the \u2124_[p]-module structure, `rep`, `proj`, and the finiteness, freeness and rank API. This file therefore adds a bridge (`toRoot`, `ofRoot`, `\u03b2`), re-derives the \u2124_[p]-`Module` by pulling back along an injective map, and re-proves `eq_zero_of_smul_eq_zero` and `natCast_smul_apply`. It also re-declares `Module.Free`, `IsTorsionFree` and `Module.Finite` instances for `ModularCurve.TateModule`. The `scoped` instances are visible only to code that opens this namespace. All later results (`\u03c1T`, `tT`, `quadratic_of_root`, `exists_sub_eq_pow_smul_of_root`, `hdiv_jZero`) then repeatedly transport statements back and forth through `\u03b2`.",
+      "proposed_change": "Where `ModularCurve.TateModule` is defined, make it a thin wrapper over the root definition rather than a second concept. For example, define it as the image or comap of `_root_.TateModule` and put `Module \u2124_[p]` and the `HeckeAlg` action there, or state the Hecke-module version as an abbreviation or `Submodule` structure on top of `_root_.TateModule`. Upstream consumers would then get the \u2124_[p]-module structure, `rep` and `proj` directly. At minimum, move `toRoot`, `ofRoot`, `\u03b2` and the module instances next to the definitions as a shared API, so that no downstream file has to rebuild the bridge.",
+      "benefit": "Readers no longer need to track which of two equivalent Tate modules a statement lives in, and the `\u03b2` transport lemmas (`\u03c1T_apply`, `tT_apply'`, `quadratic_of_root`, \u2026) mostly disappear. Module, finiteness and freeness instances are defined once instead of per file, and they are no longer hidden behind `scoped`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_ModularCurve_EichlerShimuraData.lean",
+          "declaration": "ModularCurve.TateModule",
+          "excerpt": "carrier := {x | x 0 = 0 \u2227 \u2200 n, p \u2022 x (n + 1) = x n}"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_EllipticCurve_TateModule.lean",
+          "declaration": "TateModule",
+          "excerpt": "carrier := {x | \u2200 n, ((p ^ n : \u2115) : \u2124) \u2022 x n = 0 \u2227 ((p : \u2115) : \u2124) \u2022 x (n + 1) = x n}"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_EllipticCurve_TateModule.lean",
+          "declaration": "TateModule.instModule",
+          "excerpt": "noncomputable instance instModule : Module \u2124_[p] (TateModule p M) where"
+        }
+      ]
+    },
+    {
+      "declaration": "\u03c1A (and h\u03c1A, \u03c1A_apply) duplicating \u03c1M (h\u03c1, \u03c1M_apply)",
+      "start_line": 713,
+      "end_line": 725,
+      "excerpt": "def \u03c1A : \u0393 \u2192* Module.End O'' (O'' \u2297[\u2124_[p]] (ModularCurve.TateModule p J)) :=",
+      "problem": "`\u03c1A` is `\u03c1M` at `G := \u0393`: both are `(Module.End.baseChangeHom \u2124_[p] O'' (ModularCurve.TateModule p J)).toRingHom.toMonoidHom.comp (\u03c1T p J _)`. `\u03c1A_apply` repeats `\u03c1M_apply` and `h\u03c1A` repeats `h\u03c1` (the proof is just `h\u03c1 O'' \u03c3 x y h a`). The generic `\u03c1M` is never used downstream, and `solution` uses only `\u03c1A` and `h\u03c1A`. The file therefore carries two parallel names for one base-changed Galois representation, with duplicate API lemmas.",
+      "proposed_change": "Delete either `\u03c1M`, `\u03c1M_apply` and `h\u03c1` (and state `h\u03c1` for `\u03c1A` directly) or `\u03c1A`, `\u03c1A_apply` and `h\u03c1A`. If a named specialisation is wanted, define it as `abbrev \u03c1A := \u03c1M p J \u0393 O''` so that `\u03c1M_apply` and `h\u03c1` apply to it automatically. The explicit `(p := p) (J := J)` arguments in the `\u03c1A` statements would also become unnecessary.",
+      "benefit": "There is a single base-change representation to reason about, so `jmap_\u03c1A`, `FA`, `\u03c1res` and `charpoly_galoisRep` can be read without comparing it with an identical generic version. Duplicated lemma statements are removed.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_IsNewform_exists_galoisRepAdic_inertia_apply_ne_and_stableLine_frobenius_eq_qCoeff_smul_of_dvd_of_not_sq_dvd.lean",
+          "declaration": "\u03c1M",
+          "excerpt": "def \u03c1M : G \u2192* Module.End O'' (O'' \u2297[\u2124_[p]] ModularCurve.TateModule p J) :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_IsNewform_exists_galoisRepAdic_inertia_apply_ne_and_stableLine_frobenius_eq_qCoeff_smul_of_dvd_of_not_sq_dvd.lean",
+          "declaration": "h\u03c1",
+          "excerpt": "\u03c1M p J G O'' g (a \u2297\u209c[\u2124_[p]] x) = a \u2297\u209c[\u2124_[p]] y"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_IsNewform_exists_galoisRepAdic_inertia_apply_ne_and_stableLine_frobenius_eq_qCoeff_smul_of_dvd_of_not_sq_dvd.lean",
+          "declaration": "h\u03c1A",
+          "excerpt": "h\u03c1 O'' \u03c3 x y h a"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 106334,
+    "cache_read_input_tokens": 447906,
+    "output_tokens": 5870,
+    "output_tokens_details": {
+      "thinking_tokens": 1328
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 106334,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3454,
+        "cache_read_input_tokens": 107910,
+        "cache_creation_input_tokens": 2505,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2505
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5288506000000001,
+  "duration_ms": 43723,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T23:07:46",
+  "unit": "file",
+  "source_sha256": "ff78cf14881acd0e7f76d93596ca6aac3a8f57a1a78aab66b82e36c711e5b215",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0228",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read all of Basic.lean and the files that use it (NatEmbedding, Tower, Order, Characters, tests). I also checked Mathlib's Multiplicative order instances in TypeTags.lean. I could not run Lean, so I make no claim that anything loops or fails. The three findings concern the missing exponentwise-order simp lemma, the proofs that unfold the `exponent` def instead of using the simp set, and the `bot_eq_one` / `exponent_bot` overlap. I did not flag the simp attribute on `exponent_iProd`, because it is the defining equation and is rfl. I did not flag `iProd_eq_prod`, which I left non-simp. Uncertainty: whether `simp` already closes some of these goals through existing Mathlib lemmas such as `Multiplicative.toAdd_le`.",
+  "findings": [
+    {
+      "declaration": "Supernatural.ofPNat_le_ofPNat_iff (and bot_eq_one / exponent_iSup / dvd_iff_le, which rely on definitional \u2264)",
+      "start_line": 197,
+      "end_line": 210,
+      "excerpt": "    change (\u2200 p : Nat.Primes,\n      (m.val.factorization p.val : \u2115\u221e) \u2264 (n.val.factorization p.val : \u2115\u221e)) at h",
+      "problem": "The interface has simp lemmas for `exponent` of `1`, `*`, `^`, `\u2a06`, `\u2a05`, `\u220f` and `iProd`, but no lemma turning `m \u2264 n` into `\u2200 p, exponent m p \u2264 exponent n p`. The order is only available by definitional unfolding. As a result `ofPNat_le_ofPNat_iff` uses `change` on both sides. `bot_eq_one` and `exponent_iSup` use bare `intro p` / `h p` on `\u2264` goals. `dvd_iff_le` does the same. None of these steps goes through `exponent`, so `simp` cannot reason about the order on supernaturals. Downstream files (Order, Tower, Characters) apply `ofPNat_le_ofPNat_iff.mpr` by hand.",
+      "proposed_change": "Add `theorem le_iff_forall_exponent_le {m n : Supernatural} : m \u2264 n \u2194 \u2200 p, exponent m p \u2264 exponent n p := Iff.rfl` (or an equivalent `exponent_le_exponent` lemma). Use it in `ofPNat_le_ofPNat_iff` with `exponent_ofPNat` and `ENat.natCast_le_natCast`, replacing the two `change` steps. Mark it `@[simp]` only if it is checked not to disturb goals where `\u2264` is used as an order, for example by giving the unfolded form a separate name.",
+      "benefit": "The order becomes reachable from `simp` and `rw` through the same `exponent` interface as the other operations. The `change` proofs would no longer depend on the definitional unfolding of `Multiplicative` and `Pi` order.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Basic.lean",
+          "declaration": "Supernatural.dvd_iff_le",
+          "excerpt": "  \u00b7 rintro \u27e8c, rfl\u27e9 p\n    exact self_le_add_right _ _"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Basic.lean",
+          "declaration": "Supernatural.exponent_iSup",
+          "excerpt": "    exact h p"
+        }
+      ]
+    },
+    {
+      "declaration": "Supernatural.ofPNat_injective, ofPNat_one, ofPNat_mul",
+      "start_line": 186,
+      "end_line": 192,
+      "excerpt": "  \u00b7 have hp' := congrArg (fun x : Supernatural \u21a6 Multiplicative.toAdd x \u27e8p, hp\u27e9) h",
+      "problem": "The simp lemmas `exponent_ofPNat`, `exponent_one` and `exponent_mul` exist, but several proofs bypass them. `ofPNat_one` and `ofPNat_mul` are proved with `simp [ofPNat, exponent, ...]`, which unfolds both defs. `ofPNat_injective` reads components with raw `Multiplicative.toAdd x \u27e8p, hp\u27e9` and then uses `change` to reach the factorization form. Proofs that must unfold `exponent` and `ofPNat` show that the simp-normal form is not used consistently. `NatEmbedding` already does the better thing at line 66 with `congrArg (fun x \u21a6 exponent x \u27e82, _\u27e9) h`. There is also no simp-usable injectivity iff such as `ofPNat m = ofPNat n \u2194 m = n`, so clients must call `ofPNat_injective` by hand.",
+      "proposed_change": "State the component step with `exponent` instead of `toAdd`: `congrArg (fun x : Supernatural \u21a6 exponent x \u27e8p, hp\u27e9) h`, then `simpa using hp'` (or `exact_mod_cast`) via `exponent_ofPNat`. Drop `ofPNat, exponent` from the `simp` sets in `ofPNat_one` and `ofPNat_mul`, and keep only `exponent_ofPNat`, `exponent_one`, `exponent_mul` and the factorization lemmas. Add `@[simp] theorem ofPNat_inj : ofPNat m = ofPNat n \u2194 m = n := ofPNat_injective.eq_iff`.",
+      "benefit": "The simp set becomes the single interface to components, and the definitions stay folded in proofs. `ofPNat_inj` also makes `ofPNat m = ofPNat n` goals in downstream files reducible by `simp`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/NatEmbedding.lean",
+          "declaration": "congrArg use at line 66",
+          "excerpt": "have hp := congrArg (fun x : Supernatural \u21a6 exponent x \u27e82, Nat.prime_two\u27e9) h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/Basic.lean",
+          "declaration": "Supernatural.ofPNat_mul",
+          "excerpt": "  simp [ofPNat, exponent, PNat.mul_coe, Nat.factorization_mul m.pos.ne' n.pos.ne']"
+        }
+      ]
+    },
+    {
+      "declaration": "Supernatural.bot_eq_one",
+      "start_line": 62,
+      "end_line": 69,
+      "excerpt": "theorem bot_eq_one : (@Bot.bot Supernatural instCompleteLattice.toBot) = 1 := by",
+      "problem": "The simp lemma has a left-hand side pinned to one explicit `Bot` instance path (`instCompleteLattice.toBot`). `Supernatural` has several definitionally equal `Bot` paths: Mathlib's `Multiplicative.orderBot` and the Pi instance. The syntactic form of the LHS is therefore fragile and awkward to state. It also overlaps with `NatEmbedding.exponent_bot`, which is also `@[simp]`. `simp` rewrites subterms first, so `\u22a5` becomes `1` and then `exponent_one` fires. The `exponent_bot` rule would then never apply to `exponent \u22a5 p` after `bot_eq_one` is in scope. Together with `exponent_top` (where `\u22a4` has no such rewrite), the normal forms for `\u22a5` and `\u22a4` are asymmetric.",
+      "proposed_change": "Choose one normal form for bottom. Either keep `bot_eq_one` and state it as `(\u22a5 : Supernatural) = 1`, deleting or de-simp-ing `exponent_bot`. Or make `bot_eq_one` non-simp, keep `exponent_bot` (and perhaps `exponent_top`) as the simp rules, and use `bot_eq_one` as an explicit rewrite. Do not leave both as simp lemmas.",
+      "benefit": "The simplifier gets one predictable normal form for `\u22a5`, and the statement of `bot_eq_one` becomes readable. The simp set also avoids two rules for the same expression, one of which is dead.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/supernatural-numbers/SupernaturalNumbers/NatEmbedding.lean",
+          "declaration": "Supernatural.exponent_bot",
+          "excerpt": "theorem exponent_bot (p : Nat.Primes) : exponent (\u22a5 : Supernatural) p = 0 := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/Algebra/Order/Monoid/Unbundled/TypeTags.lean",
+          "declaration": "Multiplicative.orderBot",
+          "excerpt": "instance Multiplicative.orderBot [LE \u03b1] [OrderBot \u03b1] : OrderBot (Multiplicative \u03b1) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 12150,
+    "cache_read_input_tokens": 67347,
+    "output_tokens": 6568,
+    "output_tokens_details": {
+      "thinking_tokens": 1917
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12150,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3993,
+        "cache_read_input_tokens": 15095,
+        "cache_creation_input_tokens": 1068,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1068
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1210387,
+  "duration_ms": 47639,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:34:58",
+  "unit": "file",
+  "source_sha256": "cc7f4804002fc29e505aacdf4ff614c1fcca0c5bdc431ad94d8eb822ae80cf7c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

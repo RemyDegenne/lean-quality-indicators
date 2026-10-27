@@ -1,0 +1,120 @@
+{
+  "id": "flt-anthropic-file-0220",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "partial",
+  "review_notes": "I read the whole file but only checked the simp-relevant parts against definitions: the \u2124-algebra instance bridge lemmas and `PresentId`, the `zpow`/`Units.val` rewrites in the `SI_*` lemmas, and the `coeffMap` naturality lemmas. I looked up Mathlib's `Fin.comp_cons` and searched for a `Ring.inverse` map lemma, and found neither a simp version nor a replacement. I did not inspect the Definitions and Theorems imports in depth. Claims about instance mismatches rest on reading the syntax of the file (`@aeval \u2026 (Ring.toIntAlgebra _)` against ambient `aeval`). I could not run Lean, so I did not confirm any elaboration or unification behaviour, and I do not claim any simp loop. No other part of the file has a convincing simp-interface defect. The `@[scoped simp]` attributes on `coe_restrictSL` and `coe_cuspToMod` are only a mild concern, and I do not report them.",
+  "findings": [
+    {
+      "declaration": "PresentId (with aeval_int_irrel / aevalPoly_int_irrel)",
+      "start_line": 1081,
+      "end_line": 1085,
+      "excerpt": "@Polynomial.aeval \u2124 (LaurentSeries R) _ _ (Ring.toIntAlgebra _) (jqNModC R p) D * Bq R b * \u0394L R =",
+      "problem": "`PresentId` pins the `Algebra \u2124 (LaurentSeries R)` instance to `Ring.toIntAlgebra _` through `@`. The ambient lemmas `cl_cand`, `cl_aeval_jT` and `cl_aeval_c\u2084c\u2086` state their `aeval` terms with the instance found by ordinary instance search. The two forms of the same expression therefore differ only in an instance argument, and syntactic rewriting treats them as different. The file works around this with the hand-written `aeval_int_irrel` and `aevalPoly_int_irrel`, which take two arbitrary `Algebra \u2124 A` instances. Because of the free instance arguments they cannot serve as simp or rw rules. Each use needs an explicit instance argument, `delta PresentId`, or a `congrArg\u2082` step. Examples are lines 980, 1037, 1991-1992, 2120, 2140, 2143 and 2166-2168. Every consumer of `PresentId` pays this cost, and the normal form is not canonical.",
+      "proposed_change": "State `PresentId` with the ordinary `Polynomial.aeval (jqNModC R p) D` and `MvPolynomial.aeval ![jqNModC R p, jqModC R] N`, so that the instances agree with the other `cl_*` lemmas and the `@` annotations disappear. If a mismatch remains, prove one canonicalisation lemma `Subsingleton.elim`-style, e.g. `aeval_int_irrel` with `i\u2082` fixed to the default instance. Mathlib's subsingleton of `Algebra \u2124 A` instances can supply this. Then `cusp_relation_eq_zero`, `cusp_psi` and `cl_cand` can drop the `delta PresentId` and `*_int_irrel` rewrites.",
+      "benefit": "Removes the instance-driven rewrite step at about ten call sites. `rw` and `simp` can then chain `cl_cand`, `cl_aeval_jT` and the `PresentId` hypothesis directly, and `PresentId` reads like the other statements in the file.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_exists_katzGamma0Form_evalCusp_eq_of_five_le.lean",
+          "declaration": "aeval_int_irrel",
+          "excerpt": "theorem aeval_int_irrel {A : Type*} [CommRing A] {\u03c3 : Type*} (i\u2081 i\u2082 : Algebra \u2124 A) (v : \u03c3 \u2192 A)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_exists_katzGamma0Form_evalCusp_eq_of_five_le.lean",
+          "declaration": "cusp_relation_eq_zero",
+          "excerpt": "rw [aevalPoly_int_irrel (Ring.toIntAlgebra _) inferInstance,"
+        }
+      ]
+    },
+    {
+      "declaration": "coe_u_inv_zpow_natCast and the SI_c\u2084/SI_\u0394/SI_Wq_c\u2084/SI_Wq_c\u2086/SI_Wq_\u0394/SI_c\u2086 proofs",
+      "start_line": 733,
+      "end_line": 734,
+      "excerpt": "theorem coe_u_inv_zpow_natCast (u : (VCRing p)\u02e3) (n : \u2115) : ((u\u207b\u00b9 ^ (n : \u2124) : (VCRing p)\u02e3) : VCRing p) = (\u2191u\u207b\u00b9) ^ n := by",
+      "problem": "The coercion/power normalisation `((u\u207b\u00b9 ^ (k:\u2124) : R\u02e3) : R) = (\u2191u\u207b\u00b9)^k` for a numeral exponent is needed in at least six `SI_*` proofs. Examples are lines 747-748, 752-753, 757-758, 762-763, 767-768 and 882. Each repeats `zpow_ofNat, Units.val_pow_eq_pow_val`. The lemma meant to package this, `coe_u_inv_zpow_natCast`, is never used. It is stated for `(n : \u2124)` casts, whereas the goals contain numerals (`4`, `6`, `12`) and the `zpow_ofNat` step is needed first. It is also not tagged `@[simp]`, so it cannot act as a canonical rule.",
+      "proposed_change": "Replace it with a lemma matching the actual goal shape, e.g. `((u\u207b\u00b9 ^ (n : \u2124) : R\u02e3) : R) = (\u2191u\u207b\u00b9) ^ n` with `[n.AtLeastTwo]`/`OfNat` numerals, or better a one-shot lemma `SI.of_map_variableChange` that discharges the zpow/coe step once. Each `SI_*` proof then reduces to the `variableChange_*` lemma plus this rule, and the unused natCast variant is deleted.",
+      "benefit": "Gives one canonical, reusable normalisation for `u\u207b\u00b9 ^ numeral` instead of six copy-pasted rewrite tails and a dead lemma whose form does not match any use.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_exists_katzGamma0Form_evalCusp_eq_of_five_le.lean",
+          "declaration": "SI_c\u2084",
+          "excerpt": "zpow_ofNat, Units.val_pow_eq_pow_val]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_exists_katzGamma0Form_evalCusp_eq_of_five_le.lean",
+          "declaration": "SI_Wq_\u0394",
+          "excerpt": "WeierstrassCurve.map_\u0394, zpow_ofNat, Units.val_pow_eq_pow_val]"
+        }
+      ]
+    },
+    {
+      "declaration": "map_aeval_int / map_aevalPoly_int / comp_vec2 (naturality of aeval)",
+      "start_line": 847,
+      "end_line": 854,
+      "excerpt": "theorem comp_vec2 {A B : Type*} (f : A \u2192 B) (x y : A) : f \u2218 ![x, y] = ![f x, f y] := by",
+      "problem": "These three bare lemmas (`map_aeval_int`, `comp_vec2` and, at line 1076, `map_aevalPoly_int`) form the interface for pushing a ring hom through `aeval ![s, t]`. None is simp-tagged, so the same trio `map_aeval_int, comp_vec2` is re-listed in `rw` chains at 872, 877, 979, 1026, 1036, 1090, 1098 and 1674. `comp_vec2` is the `vecCons` case of Mathlib's `Fin.comp_cons`. Its `Fin 2` specialisation duplicates it, and its `fin_cases` proof is heavier than needed. Restating the pair as separate rewrite rules means each step must be sequenced by hand.",
+      "proposed_change": "Derive `comp_vec2` from `Fin.comp_cons` (or use `Matrix.cons` simp lemmas), and combine the pair into one lemma `map_aeval_vec2 : f (aeval ![x, y] P) = aeval ![f x, f y] P`. Tag it `@[simp]` locally so `simp only [map_aeval_vec2]` replaces the repeated `rw [map_aeval_int, comp_vec2]` pairs. Do the same for `map_aevalPoly_int`.",
+      "benefit": "Fewer lemma names to chain. One rule gives the canonical normal form `aeval ![f x, f y] P`, and the proofs at the listed sites become shorter and less order-dependent.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Data/Fin/Tuple/Basic.lean",
+          "declaration": "Fin.comp_cons",
+          "excerpt": "theorem comp_cons {\u03b1 : Sort*} {\u03b2 : Sort*} (g : \u03b1 \u2192 \u03b2) (y : \u03b1) (q : Fin n \u2192 \u03b1) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularForm_exists_katzGamma0Form_evalCusp_eq_of_five_le.lean",
+          "declaration": "SI_aeval_zero",
+          "excerpt": "rw [map_aeval_int, map_aeval_int, comp_vec2, comp_vec2, hs g hW hD, ht g hW hD]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 100943,
+    "cache_read_input_tokens": 569129,
+    "output_tokens": 11049,
+    "output_tokens_details": {
+      "thinking_tokens": 5193
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 100943,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3552,
+        "cache_read_input_tokens": 102065,
+        "cache_creation_input_tokens": 2891,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2891
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.5712029000000001,
+  "duration_ms": 79682,
+  "turns": 14,
+  "attempts": 1,
+  "judged": "2026-10-27T00:33:03",
+  "unit": "file",
+  "source_sha256": "3ee07c2ffd93271c8b8b8670a342ae6008109f16f8e456e1858cb879cdbe6776",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

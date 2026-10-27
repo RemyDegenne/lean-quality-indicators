@@ -1,0 +1,83 @@
+{
+  "id": "lean-pool-file-0086",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and searched the ErdosGinzburgZiv sources for similar proofs. The same five-step calc chain (rewrite the sum with `val_eq` or `coord_eq`, convert to `Finset.affineCombination`, apply `map_affineCombination`, convert back, then `Fintype.sum_congr`) appears in three proofs. They are `ConvexCombination.coord_eq` in ConvexFlag/Basic.lean (lines 209-230), `ConvexCombination.eval_eq` in ConvexFlag/WeakHull.lean (lines 93-111), and `ConvexCombination.map_on_polytope` in the target (lines 84-102). I also saw a repeated \"some weight is positive\" block (the `by_contra!` argument) in Restrict.lean, Reduction.lean and the target. It is short, so I did not report it. I did not report the duplicated `Point.map` and `SubdivisionMap.point` definitions, because the rubric concerns repeated proof machinery. I could not compile anything. The proposed lemma and the rewrites are sketches that I did not check against Lean, and I invented no Mathlib lemma names. The only Mathlib lemmas relied on are `Finset.map_affineCombination` and `Finset.affineCombination_eq_linear_combination`, both of which the existing proofs already use.",
+  "findings": [
+    {
+      "declaration": "EGZ.ConvexFlag.ConvexCombination.map_on_polytope",
+      "start_line": 84,
+      "end_line": 102,
+      "excerpt": "(Finset.univ : Finset A).map_affineCombination z (fun i \u21a6 weight i) hs\n        (fibre result.base)",
+      "problem": "The final calc of `map_on_polytope` redoes a general fact: an affine map commutes with a finite sum weighted by coefficients that sum to 1. It does this by hand. The chain is `sum \u2192 Finset.affineCombination (affineCombination_eq_linear_combination) \u2192 map_affineCombination \u2192 back to sum (affineCombination_eq_linear_combination + rfl)`. The same chain appears in `ConvexCombination.coord_eq` (ConvexFlag/Basic.lean) with `(F.transition hy).real` as the map, and in `ConvexCombination.eval_eq` (ConvexFlag/WeakHull.lean) with `xi.toAffine` as the map. The three copies share the active-index subtype `A`, the proof `hs : \u2211 weight = 1`, the two `by simpa using hs` side conditions, and the `rfl` finishing step. Only the affine map and the final `Fintype.sum_congr` step differ. Any change to the active-subtype or weight handling has to be made in three places.",
+      "proposed_change": "Add one lemma in ConvexFlag/Basic.lean before `ConvexCombination.coord_eq`, so all three files see it. It would read roughly: `theorem EGZ.ConvexFlag.affineMap_sum_smul_of_sum_eq_one {A : Type*} [Fintype A] {V W : Type*} [AddCommGroup V] [Module \u211d V] [AddTorsor V V] ... (T : V \u2192\u1d43[\u211d] W) (z : A \u2192 V) (w : A \u2192 \u211d) (hs : \u2211 i, w i = 1) : T (\u2211 i, w i \u2022 z i) = \u2211 i, w i \u2022 T (z i)`. Here `V` and `W` stand for the `RealCoord` spaces, which are real vector spaces. The proof is the existing chain: `classical`, rewrite both sums with `Finset.affineCombination_eq_linear_combination _ _ _ hs`, apply `Finset.map_affineCombination` for `Finset.univ`, and close with `rfl` for the composed function. The three users then shrink. In `map_on_polytope`, the calc becomes `change fibre result.base result.val = _; rw [c.val_eq, affineMap_sum_smul_of_sum_eq_one (fibre result.base) z (fun i \u21a6 weight i) hs]; exact Fintype.sum_congr _ _ fun i \u21a6 congrArg (weight i \u2022 \u00b7) (hcomm (c.base_isLUB.1 i i.2) (points i).val (points i).val_mem)`. In `coord_eq`, the first four calc steps become `rw [show result.coord hy = _ from rfl, c.val_eq, affineMap_sum_smul_of_sum_eq_one (F.transition hy).real z _ hs]`, followed by its existing `Fintype.sum_congr` step. In `eval_eq`, the same lemma is applied with `xi.toAffine` and `c.coord_eq hxi`, followed by its existing congruence step.",
+      "benefit": "The proof of this fact (affine maps preserve sums whose weights total 1) is stated once instead of three times, and `map_on_polytope` shrinks from about 19 calc lines to a rewrite plus the one genuinely specific step, which is the commutation `hcomm`. A reader can see that the only new content is `hcomm` and the base-compatibility. A future change to the active-subtype handling needs one edit rather than three.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/ConvexFlag/Basic.lean",
+          "declaration": "EGZ.ConvexFlag.ConvexCombination.coord_eq",
+          "excerpt": "(Finset.univ : Finset A).map_affineCombination z (fun i \u21a6 weight i) hs\n        (F.transition hy).real"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/ConvexFlag/WeakHull.lean",
+          "declaration": "EGZ.ConvexFlag.ConvexCombination.eval_eq",
+          "excerpt": "(Finset.univ : Finset A).map_affineCombination z (fun i \u21a6 weight i) hs xi.toAffine"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ErdosGinzburgZiv/EGZ/ConvexFlag/Basic.lean",
+          "declaration": "EGZ.ConvexFlag.ConvexCombination",
+          "excerpt": "val_eq : result.val = \u2211 i : {i // 0 < weight i},\n    weight i \u2022 (points i).coord (base_isLUB.1 i i.property)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 28450,
+    "cache_read_input_tokens": 168666,
+    "output_tokens": 6553,
+    "output_tokens_details": {
+      "thinking_tokens": 2344
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28450,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2341,
+        "cache_read_input_tokens": 29604,
+        "cache_creation_input_tokens": 2775,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2775
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1962286,
+  "duration_ms": 51009,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-26T23:00:08",
+  "unit": "file",
+  "source_sha256": "6124869d8977dcff082ba7ad80a4f1408933261cf1005f277b45b3dc3e48ac99",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

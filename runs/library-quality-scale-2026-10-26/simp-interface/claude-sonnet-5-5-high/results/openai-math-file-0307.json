@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0307",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it depends on: `maps` in JointExperiment.lean, `slot` in AnchorTravel.lean, and the earlier uses in MetricService, PrefixAllocation and JointBudget. The file has no `@[simp]` attributes. Most simp calls are `simp only` with explicit lemmas, which is fine. The only real simp-interface gap I found is that the `d < L` / `d \u2265 L` branch of `maps`, and the corresponding branch of `selected`, is reduced by hand with `dite_eq_left hj` at many call sites. I did not run Lean. The proposed lemma names and shapes are untested. I did not recommend simp attributes for `key`, `anchor`, `b`, `u`, `c` or `present`, because no use in the file would benefit from unfolding them.",
+  "findings": [
+    {
+      "declaration": "cutoff_sum (and selected_term, heavy_eq_of_map_eq)",
+      "start_line": 285,
+      "end_line": 302,
+      "excerpt": "simpa only [maps,dite_eq_left hj] using hz)",
+      "problem": "The `d<L` / `d\u2265L` branch of `JointExperiment.maps` is unfolded by hand each time. Each call is `simpa only [maps,dite_eq_left hj]`, with `hj`, `hd` or `d.isLt` supplied as a proof argument. The same pattern appears at lines 289, 296, 300, 302 and 456, and in MetricService.lean and JointBudget.lean. `maps` has no branch lemmas, only `maps_adapted`. A reader has to unfold the definition each time, and a plain `simp [maps]` cannot discharge the `dite` without an explicit hypothesis.",
+      "proposed_change": "Next to `maps` in JointExperiment.lean, add two branch lemmas. `maps_of_lt (hd : d < L) : maps law hr s t \u03c9 d x = LevelKeys.map s law (hr \u27e8d,hd\u27e9).le \u03c9.val.1 (\u03c9.val.2 \u27e8d,hd\u27e9) t x` and `maps_of_not_lt (hd : \u00ac d < L) : maps law hr s t \u03c9 d x = Sum.inr x`. Mark them `@[simp]`: simp can discharge the `d < L` side condition from a hypothesis, and for `d.val` with `d : Fin L` through `Fin.is_lt`. Then the call sites become `simpa [maps_of_lt hj] using hz`, or an `rw` with the lemma, and none of them need to unfold `maps`.",
+      "benefit": "Call sites no longer unfold `maps` by hand. Any later proof about `maps` at a `Fin L` index gets a canonical rewrite. The lemma can also cover the explicit `Sum.inr` case at line 302.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KServer/JointExperiment.lean",
+          "declaration": "maps",
+          "excerpt": "if hd:d<L then LevelKeys.map s law (hr \u27e8d,hd\u27e9).le \u03c9.val.1 (\u03c9.val.2 \u27e8d,hd\u27e9) t y"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KServer/MetricService.lean",
+          "declaration": "anchors/maps unfolding in MetricService",
+          "excerpt": "(by simpa only [maps,dite_eq_left hd] using hx) (by simpa only [maps,dite_eq_left hd] using hy)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KServer/JointBudget.lean",
+          "declaration": "maps unfolding in JointBudget",
+          "excerpt": "simp only [JointExperiment.maps,dite_eq_left d.isLt,JointExperiment.hidden]"
+        }
+      ]
+    },
+    {
+      "declaration": "selected (selected_term)",
+      "start_line": 241,
+      "end_line": 256,
+      "excerpt": "simp only [selected,dite_eq_left d.isLt,HeavyAnchorDynamics.selected,key,anchor]",
+      "problem": "`selected` is a `dite` on `d<L` with default value `none`. It has no unfolding lemma for in-range `Fin L` indices, and the only bridge to `key`/`anchor` is a one-off `hs` inside `selected_term`. `cutoff_sum` also has to `unfold selected at ha; split_ifs at ha` twice (lines 286\u2013287 and 292\u2013293) because no lemma states the in-range value. The `hs` proof ends in `rfl` after `simp only`, which makes it fragile: it depends on the exact unfolding of `HeavyAnchorDynamics.selected`, `key` and `anchor`.",
+      "proposed_change": "Add `selected_of_lt (hd : d < L) : selected s law hr t \u03c9 y d = HeavyAnchorDynamics.selected s law (r \u27e8d,hd\u27e9) \u03c9.val.1 (\u03c9.val.2 \u27e8d,hd\u27e9).1 t y`. Add a Fin-indexed version `selected_fin (d : Fin L) : selected s law hr t \u03c9 y d.val = match key \u2026 d y with \u2026`, which is currently the local `hs`. Mark `selected_of_lt` `@[simp]`. Use these in `selected_term` and in the two `unfold selected at ha` blocks of `cutoff_sum`.",
+      "benefit": "`hs` becomes a reusable lemma. `selected_term` and `cutoff_sum` stop unfolding `selected` and splitting `if`s by hand.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/KServer/JointTravel.lean",
+          "declaration": "cutoff_sum",
+          "excerpt": "unfold selected at ha\n    split_ifs at ha with hj"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 49006,
+    "cache_read_input_tokens": 266437,
+    "output_tokens": 5110,
+    "output_tokens_details": {
+      "thinking_tokens": 1152
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 49006,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2144,
+        "cache_read_input_tokens": 52115,
+        "cache_creation_input_tokens": 904,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 904
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2737957,
+  "duration_ms": 49323,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T01:30:51",
+  "unit": "file",
+  "source_sha256": "95c26ec8579bdac7d42882bc88444fcedb2a85e4717ad3159623bdb9918cb309",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

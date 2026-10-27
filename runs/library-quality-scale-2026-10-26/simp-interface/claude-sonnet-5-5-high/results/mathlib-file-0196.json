@@ -1,0 +1,99 @@
+{
+  "id": "mathlib-file-0196",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, the `arrowMap`/`arrowSucc`/`restrictionLE` simp setup in Iteration/Basic.lean, and the uses of the file's lemmas in Iteration/Nonempty.lean. I didn't run Lean. The findings are modest: the file has no clear loop or competing-rule problem, and `map_id` is already simp. The weak point is the interface for `extendToSucc` on objects and on morphisms. The two `arrowMap`/`arrowSucc` proofs unfold private-style helper definitions and rely on a transparency option, which suggests a missing intermediate simp-form lemma. I can't tell without compiling whether adding the lemma would remove the `respectTransparency` options, so that part is uncertain.",
+  "findings": [
+    {
+      "declaration": "arrowMap_extendToSucc",
+      "start_line": 185,
+      "end_line": 190,
+      "excerpt": "simp [arrowMap, extendToSucc_map hj F \u03c4 i\u2081 i\u2082 hi hi\u2082,\n    extendToSuccObjIso, extendToSucc.objIso]",
+      "problem": "The `arrowMap`/`arrowSucc` lemmas about `extendToSucc` are proved by `simp` only after it unfolds the public `extendToSuccObjIso` and the internal `extendToSucc.objIso` down to `eqToIso`. They also need `set_option backward.isDefEq.respectTransparency false`. The existing lemmas `extendToSucc_map` and `extendToSucc_map_le_succ` are stated with `extendToSuccObjIso`/`extendToSuccObjSuccIso`, but there is no simp-normal form for the `.hom` and `.inv` of those isomorphisms. So the user has to expand the definitions to reach `eqToHom`, which leaks the implementation (`dite`/`eqToIso`) into every client proof.",
+      "proposed_change": "Add lemmas that give the canonical form of these isomorphisms. For example, state `(extendToSuccObjIso hj F \u03c4 i hi).hom = eqToHom (extendToSucc_obj_eq hj F \u03c4 i hi)` and the corresponding `inv`, and similarly for `extendToSuccObjSuccIso`. Tag them `@[simp]`, or use them as a small dedicated simp set. Then prove `arrowMap_extendToSucc` and `arrowSucc_extendToSucc` with `simp [arrowMap, extendToSucc_map ...]` without unfolding `extendToSucc.objIso`. This may also remove the need for the `respectTransparency false` options.",
+      "benefit": "The simp proofs stop depending on how `objIso` is defined. Clients can reason with a stable `eqToHom` normal form. The transparency workaround is likely to become unnecessary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/SmallObject/Iteration/ExtendToSucc.lean",
+          "declaration": "extendToSuccObjIso",
+          "excerpt": "extendToSucc.objIso F X \u27e8i, hi\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/SmallObject/Iteration/ExtendToSucc.lean",
+          "declaration": "extendToSucc.objIso",
+          "excerpt": "eqToIso (obj_eq _ _ _)"
+        }
+      ]
+    },
+    {
+      "declaration": "extendToSucc_obj_eq",
+      "start_line": 134,
+      "end_line": 136,
+      "excerpt": "(extendToSucc hj F \u03c4).obj \u27e8i, hi.trans (Order.le_succ j)\u27e9 = F.obj \u27e8i, hi\u27e9",
+      "problem": "The object-level equations `extendToSucc_obj_eq`, `extendToSucc_obj_succ_eq` and the morphism equations `extendToSucc_map` and `extendToSucc_map_le_succ` are the canonical computation rules for `extendToSucc`. They carry no `@[simp]` attribute, and neither does the lower-level `extendToSucc.map_eq`. The only declarations in this interface with simp attributes are `map_id` and the `simps!` lemmas of the restriction iso. The only downstream user, Nonempty.lean, has to invoke them by hand with `rw [extendToSucc_obj_eq hj iter.F (\u03a6.toSucc _) i hi\u2081.le]`. Note that `restrictionLE_obj` is already simp in Basic.lean, so these are the natural companions. Because the objects appear in morphism types, simp may not always be able to rewrite them.",
+      "proposed_change": "Consider tagging `extendToSucc_obj_eq` and `extendToSucc_obj_succ_eq` with `@[simp]`. Their LHS heads on `extendToSucc ... .obj \u27e8i, _\u27e9` and their RHS is simpler, so there is no cycle. Keep the morphism lemmas `extendToSucc_map` and `extendToSucc_map_le_succ` non-simp, or add them to a named simp set, because the RHS is longer. Check that the Nonempty.lean `rw` calls can then be turned into `simp`.",
+      "benefit": "This would give a consistent normal form for objects of the extended functor. Clients such as Nonempty.lean could simplify with `simp` instead of passing explicit proof arguments.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/SmallObject/Iteration/Nonempty.lean",
+          "declaration": "obj_bot",
+          "excerpt": "obj_bot := by rw [extendToSucc_obj_eq _ _ _ _ bot_le, obj_bot]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/SmallObject/Iteration/Basic.lean",
+          "declaration": "restrictionLE_obj",
+          "excerpt": "(restrictionLE F hi).obj \u27e8k, hk\u27e9 = F.obj \u27e8k, hk.trans hi\u27e9 := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 8199,
+    "cache_read_input_tokens": 13798,
+    "output_tokens": 3487,
+    "output_tokens_details": {
+      "thinking_tokens": 832
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 8199,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2930,
+        "cache_read_input_tokens": 9785,
+        "cache_creation_input_tokens": 2427,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2427
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0690538,
+  "duration_ms": 24025,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:20:58",
+  "unit": "file",
+  "source_sha256": "e670c87c64df6da5f840a3951c49c99a8ec0977f58c1c8f6dd09731b6dfb40de",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

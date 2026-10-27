@@ -1,0 +1,110 @@
+{
+  "id": "lean-pool-file-0311",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file. Focused on repeated proof blocks: frame_smooth_mono (twice), power-of-operator-norm bound (source_path_bounds / polynomial_affine_family), and the rate/length/exponential/bridge bookkeeping in referenceControl vs scaledControl. I did not check the definitions of PhaseConstruction in other files, so the exact shape of the proposed PhaseConstruction helper lemmas is a sketch; the lemmas are stated using only fields already used in the file (F.L, F.M, F.slot, F.interval, F.L_pos, D.scale, D.one_le_scale). I did not attempt to merge the two big structure-building definitions.",
+  "findings": [
+    {
+      "declaration": "frame_smooth_mono (ActualParticularControl) and the private frame_smooth_mono (ScaledActualParticularControl)",
+      "start_line": 1294,
+      "end_line": 1300,
+      "excerpt": "private theorem frame_smooth_mono {Q : Type} [NormedAddCommGroup Q] [NormedSpace \u211d Q]\n    {d : PrimaryODE.FrameData Q} {U V : Set (Q \u00d7 \u211d)} (h : d.SmoothOn U) (hVU : V \u2286 U) :\n    d.SmoothOn V :=",
+      "problem": "The restriction-to-a-subset lemma for the 13-field `FrameData.SmoothOn` structure is proved twice with the same statement and the same 13-component anonymous constructor. The first copy (lines 600\u2013606) is public in `NavierStokes.ActualParticularControl`. The second is a private copy in `NavierStokes.ScaledActualParticularControl`, which already has `open ActualParticularControl`, so the public lemma is in scope there. The two copies must be kept in step if `SmoothOn` gains or loses a field.",
+      "proposed_change": "Delete the private copy at 1294\u20131300. In `scaledControl`, `frame_smooth_mono (hcopy l n k) (prod_mono Subset.rfl (interval_contains F clock (l,n)))` then resolves to `ActualParticularControl.frame_smooth_mono` with no change at the call site. Better still, move the lemma into the file that defines `PrimaryODE.FrameData.SmoothOn`, as `FrameData.SmoothOn.mono`.",
+      "benefit": "One copy of the field-by-field restriction proof. Adding a field to `SmoothOn` then needs one edit, and the second namespace no longer shadows the first with an identical private declaration.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ScaledActualParticularControl.lean",
+          "declaration": "NavierStokes.ActualParticularControl.frame_smooth_mono",
+          "excerpt": "\u27e8h.beta.mono hVU, h.betaDot.mono hVU, h.rho.mono hVU, h.rhoDot.mono hVU,"
+        }
+      ]
+    },
+    {
+      "declaration": "referenceControl and scaledControl (length, exponential and bridge bookkeeping)",
+      "start_line": 732,
+      "end_line": 741,
+      "excerpt": "have he : ((F.E+4*F.C)/D.scale (l,n))*F.L (l,n) \u2264 (F.E+4*F.C)*F.M := by\n      calc\n        _ \u2264 ((F.E+4*F.C)/D.scale (l,n))*(F.M*D.scale (l,n)) :=\n          mul_le_mul_of_nonneg_left (hlength l n) h\u03bc\n        _ = _ := by field_simp",
+      "problem": "`referenceControl` and `scaledControl` rebuild the same analytic facts about the selected phase. (a) `hlength : F.L (l,n) \u2264 F.M*D.scale (l,n)` is proved by the same `simpa only [abs_of_pos ...] using F.slot ...` at 680\u2013683 and 1378\u20131380. (b) The exponential bound `((E+4C)/S)*L \u2264 (E+4C)*M` is derived by the same `hS`, `h\u03bc` and `calc ... field_simp` block at 732\u2013738 and 1449\u20131454. (c) The `hcopy`/`selected_copy_smooth` smoothness proof (`reindex_smoothOn` with `frameArgument \u03c7`), the `columns_smooth` proof and the `input_jets` tail (`J := |j|+1` plus the repacking lambda at 745\u2013750 and 1460\u20131465) are also near copies. Only the hypotheses differ: `selected_*` against `frame_jets`/`scaled`.",
+      "proposed_change": "Add two lemmas about `PhaseConstruction`. (1) `PhaseConstruction.length_le_M_scale (F) (i) : F.L i \u2264 F.M * D.scale i`, proved from `F.slot i (F.L i) (F.interval i \u27e8(F.L_pos i).le, le_rfl\u27e9)` and `abs_of_pos`. (2) `PhaseConstruction.error_rate_mul_length_le (F) (i) : ((F.E+4*F.C)/D.scale i) * F.L i \u2264 (F.E+4*F.C)*F.M`, using `F.E_nonneg`, `F.C_nonneg`, (1) and `div_nonneg`. The `exponential_bound` fields then become `(Real.exp_le_exp.mpr (error_rate_mul_length_le F (l,n))).trans ...` in `referenceControl`. In `scaledControl` the same lemma is used after `transported_exponential`. Further, factor out a lemma that turns `FrameJets T d` into `d.SmoothOn` on the neighborhood product and the column-smoothness fact. Both control constructions can then call it with their own domain (`selected_frame_jets F` against `hd`).",
+      "benefit": "The mathematical facts (length is at most M times the scale, and the modal error rate times the length is bounded) are stated and proved once. Each large structure literal then only contains what actually differs (clock rescaling), so a reader can see the real difference between the reference and scaled controls. A change to `PhaseConstruction.slot` or the error constants needs one edit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ScaledActualParticularControl.lean",
+          "declaration": "NavierStokes.ScaledActualParticularControl.scaledControl",
+          "excerpt": "have hlength (l : Label) (n : \u2115) : F.L (l,n) \u2264 F.M*D.scale (l,n) := by\n    simpa only [abs_of_pos (F.L_pos (l,n))] using F.slot (l,n) (F.L (l,n))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ScaledActualParticularControl.lean",
+          "declaration": "NavierStokes.ScaledActualParticularControl.scaledControl",
+          "excerpt": "mul_le_mul_of_nonneg_left (hlength l n) hmu\n      _ = _ := by field_simp"
+        }
+      ]
+    },
+    {
+      "declaration": "source_path_bounds / polynomial_affine_family (operator-norm power bound)",
+      "start_line": 846,
+      "end_line": 849,
+      "excerpt": "have hl : \u2016L i\u2016^j \u2264 A^N*T.scale i^(a*N) := by\n    rw [pow_mul, \u2190 mul_pow]\n    exact (pow_le_pow_left\u2080 (norm_nonneg _) (hlin i) j).trans\n      (pow_le_pow_right\u2080 (one_le_mul_of_one_le_of_one_le hA (one_le_pow\u2080 hS)) hj)",
+      "problem": "The same estimate is proved twice. From `\u2016T\u2016 \u2264 A * S^a`, `1 \u2264 A`, `1 \u2264 S` and `j \u2264 N`, both conclude `\u2016T\u2016^j \u2264 A^N * S^(a*N)`. They use the same four-step proof: `rw [pow_mul, \u2190 mul_pow]`, `pow_le_pow_left\u2080`, then `pow_le_pow_right\u2080` with `one_le_mul_of_one_le_of_one_le hA (one_le_pow\u2080 _)`. The proofs are `hpow` in `source_path_bounds` (276\u2013279) and `hl` in `polynomial_affine_family` (846\u2013849). A third variation is `hpow` in `uniform_parameter_pull` (481\u2013483). The exponent-bookkeeping lemma is a recurring ingredient of every jet-transport estimate in the file, and each copy fixes the shape of the later `pow_add ... ring` finish.",
+      "proposed_change": "Add a private lemma `norm_pow_le_of_poly {T A S : \u211d} {a j N : \u2115} (hA : 1 \u2264 A) (hS : 1 \u2264 S) (hT : T \u2264 A * S^a) (hT0 : 0 \u2264 T) (hj : j \u2264 N) : T^j \u2264 A^N * S^(a*N)`, with the existing four-line proof, stated for real `T`. The two sites become `norm_pow_le_of_poly hA hG hlin (norm_nonneg _) hj` and `norm_pow_le_of_poly hA hS (hlin i) (norm_nonneg _) hj`. `uniform_parameter_pull` could take the special case `a = 0`, `S = 1`.",
+      "benefit": "The exponent argument is stated once, with explicit hypotheses. The two long proofs lose about five lines each, and the structure `C * A^N * B^m` of the final calc becomes easier to read.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ScaledActualParticularControl.lean",
+          "declaration": "NavierStokes.ActualParticularControl.source_path_bounds",
+          "excerpt": "have hpow : \u2016CommonCoverClass.sourceLinear P G\u2016^j \u2264 A^N * s.growth n x.1^(a*N) := by\n    rw [pow_mul, \u2190 mul_pow]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 64958,
+    "cache_read_input_tokens": 197312,
+    "output_tokens": 6435,
+    "output_tokens_details": {
+      "thinking_tokens": 1315
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 64958,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3634,
+        "cache_read_input_tokens": 67299,
+        "cache_creation_input_tokens": 1588,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1588
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.34392920000000005,
+  "duration_ms": 44426,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T01:32:31",
+  "unit": "file",
+  "source_sha256": "5e310e0bef4ec909ca942b9ec156fbc5c3a2a1c3baa935c32a60e8b3636a6d23",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

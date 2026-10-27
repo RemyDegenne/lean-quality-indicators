@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0152",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, with a close read of the slicing section (lines 289\u2013483) and H_succ_slice (lines 895\u2013947). I also read the other proofs for repeated structure. I did not run Lean, so the proposed lemmas are untested sketches. Other near-duplicates exist: slice0_initSeg_eq and slice1_initSeg_eq, and the s/t symmetric blocks in cubeToNat_gShift_mono. I did not report them because they are short or are routine unfolding. I also did not check whether other files in the library already contain the decomposition lemma.",
+  "findings": [
+    {
+      "declaration": "slice0_neighborhood / slice1_neighborhood (decomposition of a vertex u of Cube (n+1) as embed0 w or embed1 w)",
+      "start_line": 399,
+      "end_line": 423,
+      "excerpt": "obtain \u27e8w, hw\u27e9 : \u2203 w : Cube n, u = embed1 w := by\n        use Finset.univ.filter (fun i => Fin.castSucc i \u2208 u)",
+      "problem": "The same fact is proved by hand four times, each time by extensionality over Fin.lastCases or a hand-built Fin witness. Every vertex with `Fin.last n \u2208 u` is `embed1 w`, and every vertex without it is `embed0 w`, with `w = univ.filter (fun i => castSucc i \u2208 u)`. The copies are at lines 401\u2013409 and 420\u2013423 in slice0_neighborhood, and at 443\u2013454 and 458\u2013462 in slice1_neighborhood. A fifth proof of the same split sits inside slice_card_add (lines 319\u2013338). The copies differ only in tactic style (`if hi' : ...` versus `or_iff_not_imp_left`, `simp [embed0]` versus `simp only`), so a reader has to compare them to see that they agree. Any change to embed0 or embed1 means editing every copy.",
+      "proposed_change": "Add two lemmas after `embed1`/`slice1` (before slice_card_add), proved once:\n`lemma exists_eq_embed1 {n : \u2115} {u : Cube (n+1)} (h : Fin.last n \u2208 u) : \u2203 w : Cube n, u = embed1 w`\n`lemma exists_eq_embed0 {n : \u2115} {u : Cube (n+1)} (h : Fin.last n \u2209 u) : \u2203 w : Cube n, u = embed0 w`\nThe witness is `w := Finset.univ.filter (fun i => Fin.castSucc i \u2208 u)`. The proof is `ext i; induction i using Fin.lastCases` and then simp, with `h` handling the `last` case and `Fin.castSucc_ne_last` handling the other.\nIn slice0_neighborhood, replace the two `obtain \u27e8w, hw\u27e9 \u2026` blocks with `obtain \u27e8w, hw\u27e9 := exists_eq_embed1 hlast` and `obtain \u27e8w, hw\u27e9 := exists_eq_embed0 hlast`. The following `simp_all` steps still see `hw : u = embed1 w` or `u = embed0 w`, so they are unchanged. Make the same replacement in slice1_neighborhood. The two cases of slice_card_add can use the same lemmas.",
+      "benefit": "About 25 lines of ad hoc Fin reasoning shrink to two one-line calls per theorem. The shared split lemma states directly that a vertex of the (n+1)-cube is determined by its last bit and an n-cube vertex, and it can be reused later in the Harper development. The surrounding neighborhood proofs then show only the distance argument that is specific to each case.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "slice1_neighborhood",
+          "excerpt": "obtain \u27e8w, hw\u27e9 : \u2203 w : Cube n, u = embed1 w := by\n        use Finset.univ.filter (fun i : Fin n => Fin.castSucc i \u2208 u)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "slice1_neighborhood",
+          "excerpt": "obtain \u27e8w, hw\u27e9 : \u2203 w : Cube n, u = embed0 w := by\n        use Finset.univ.filter (fun i => Fin.castSucc i \u2208 u)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "slice0_neighborhood",
+          "excerpt": "obtain \u27e8w, hw\u27e9 : \u2203 w : Cube n, u = embed0 w := by\n        use Finset.univ.filter (fun i => Fin.castSucc i \u2208 u)"
+        }
+      ]
+    },
+    {
+      "declaration": "H_succ_slice (the h0 and h1 blocks)",
+      "start_line": 910,
+      "end_line": 943,
+      "excerpt": "_ = (simplicialInitSeg n (H n (slice0 A).card) \u222a\n            simplicialInitSeg n (slice1 A).card).card := by\n            rw [neighborhood_initSeg_eq]",
+      "problem": "h0 and h1 are the same four-step argument with the roles of slice0 and slice1 swapped. First rewrite both slices as initial segments using hslice0 and hslice1 via `congrArg\u2082`. Then apply neighborhood_initSeg_eq to turn the neighborhood into `simplicialInitSeg n (H n a)`. Finally apply card_initSeg_union with `H_le_cube` and the bound on the other slice. Each block spells out the intermediate sets in full and runs about 17 lines, so the real content (a neighborhood of an initial segment unioned with an initial segment has size `max (H n a) b`) is buried in the bookkeeping.",
+      "proposed_change": "Prove the following lemma once, after card_initSeg_union and neighborhood_initSeg_eq:\n`lemma card_neighborhood_initSeg_union_initSeg {n a b : \u2115} (hb : b \u2264 2 ^ n) : (neighborhood 1 (simplicialInitSeg n a) \u222a simplicialInitSeg n b).card = max (H n a) b := by rw [neighborhood_initSeg_eq]; exact card_initSeg_union (H_le_cube _ _) hb`.\nThen in H_succ_slice, h0 is `by have := card_neighborhood_initSeg_union_initSeg (n := n) (a := (slice0 A).card) hcard1; rwa [\u2190 hslice0, \u2190 hslice1] at this`. h1 is the same with 0 and 1 swapped and hcard0. If the `rwa` is awkward because the slice terms occur inside the pattern, keep the existing `hsets`/`congrArg\u2082` step and discard only the calc. The hypotheses hslice0, hslice1, hcard0, hcard1 and the final `rw [neighborhood_succ A, h0, h1]` stay as they are.",
+      "benefit": "The repeated chain of three equalities, stated twice with long explicit sets, becomes one named lemma. H_succ_slice then reads as: slices are initial segments, so each term of neighborhood_succ is a max. The result is also reusable by any later induction step that needs the size of such a union.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "H_succ_slice (h1)",
+          "excerpt": "_ = (simplicialInitSeg n (H n (slice1 A).card) \u222a\n            simplicialInitSeg n (slice0 A).card).card := by\n            rw [neighborhood_initSeg_eq]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "card_initSeg_union",
+          "excerpt": "lemma card_initSeg_union {n a b : \u2115} (ha : a \u2264 2 ^ n) (hb : b \u2264 2 ^ n) :\n    (simplicialInitSeg n a \u222a simplicialInitSeg n b).card = max a b"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "neighborhood_initSeg_eq",
+          "excerpt": "neighborhood 1 (simplicialInitSeg n k) = simplicialInitSeg n (H n k)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 32684,
+    "cache_read_input_tokens": 97051,
+    "output_tokens": 5143,
+    "output_tokens_details": {
+      "thinking_tokens": 1378
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32684,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3903,
+        "cache_read_input_tokens": 33324,
+        "cache_creation_input_tokens": 3289,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3289
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1918871,
+  "duration_ms": 39189,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:12:29",
+  "unit": "file",
+  "source_sha256": "fdb666ac9b0aed9e0cf0335af67b6a3f0c169dcd1abe72983dae536eb7edbf8e",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

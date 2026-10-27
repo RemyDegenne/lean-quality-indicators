@@ -1,0 +1,140 @@
+{
+  "id": "lean-pool-file-0152",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked how the simp-related declarations are used here and in the sibling BooleanIsoperimetry files (Shadow, Macaulay, Cascade, Compression, KruskalKatona, Harper) with Grep. The only simp lemma in the file is `mem_neighborhood_iff`, which looks fine. I found no looping or competing-rule problems. The findings are all about missing canonical simp lemmas: membership of `simplicialInitSeg`, `slice0` and `slice1`; the embedding lemmas for `embed0` and `embed1`; and `H_zero` and `card_simplicialInitSeg`. I could not run Lean, so I don't claim any simp set was tested. I deliberately did not recommend `@[simp]` on `H_full`, because `2 ^ n` normalizes and the statement would rarely match syntactically. The suggested lemmas are stated in prose only, and I have not checked that they compile.",
+  "findings": [
+    {
+      "declaration": "simplicialInitSeg / slice0 / slice1 (missing membership lemmas)",
+      "start_line": 208,
+      "end_line": 211,
+      "excerpt": "Finset.univ.filter (fun x => rank x < k)",
+      "problem": "`simplicialInitSeg`, `slice0` and `slice1` are defined as `Finset.univ.filter \u2026`, but the file has no `mem_simplicialInitSeg`, `mem_slice0` or `mem_slice1` simp lemmas. Every proof about membership therefore unfolds the definition by hand with `simp only [simplicialInitSeg, Finset.mem_filter, Finset.mem_univ, true_and]`, or the `slice0`/`slice1` analogue. This happens in H_mono, initSeg_nested, slice0_initSeg_eq and slice1_initSeg_eq in this file. The same boilerplate recurs in Cascade, Compression, KruskalKatona, Macaulay and Shadow. Unfolding the definition exposes the `filter` encoding instead of the intended `rank x < k` normal form. `mem_neighborhood_iff` already has such a lemma, so the family is inconsistent.",
+      "proposed_change": "Add three simp lemmas right after the definitions. They are `mem_simplicialInitSeg : x \u2208 simplicialInitSeg n k \u2194 rank x < k`, `mem_slice0 : x \u2208 slice0 A \u2194 embed0 x \u2208 A`, and the analogue `mem_slice1` for `embed1`. Each is proved by `simp [def]`. Mark them `@[simp]`. The definitions stay unfolded only inside these lemmas. The existing `rank_lt_of_mem_simplicialInitSeg` becomes the `.mp` direction. Then replace the hand-written `simp only [simplicialInitSeg, Finset.mem_filter, \u2026]` calls with plain `simp` or `simp only [mem_simplicialInitSeg]`.",
+      "benefit": "Membership goals normalize to `rank x < k` and `embed0 x \u2208 A` in one step, with no dependence on how the definitions are implemented. About ten repeated, brittle `simp only` incantations in this file and its dependants shrink to a single named rule.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "H_mono",
+          "excerpt": "simp only [simplicialInitSeg, Finset.mem_filter, Finset.mem_univ, true_and] at hu \u22a2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "slice1_initSeg_eq",
+          "excerpt": "simp_all +decide only [slice1, simplicialInitSeg, Finset.mem_filter, Finset.mem_univ, true_and]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Macaulay.lean",
+          "declaration": "(proof near slice0)",
+          "excerpt": "simp only [slice0, Finset.mem_filter, Finset.mem_univ, true_and] at hv \u22a2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Compression.lean",
+          "declaration": "(proof near rank_empty)",
+          "excerpt": "simp only [simplicialInitSeg, Finset.mem_filter, Finset.mem_univ, true_and] at hy \u22a2"
+        }
+      ]
+    },
+    {
+      "declaration": "embed0_card, embed0_cubeToNat, embed1_card, embed1_cubeToNat, hDist_embed0_embed0, hDist_embed1_embed1, hDist_embed0_embed1",
+      "start_line": 831,
+      "end_line": 846,
+      "excerpt": "lemma embed0_card {n : \u2115} (x : Cube n) : (embed0 x).card = x.card := by",
+      "problem": "These are the canonical computation rules for the embeddings: `(embed0 x).card = x.card`, `(embed1 x).card = x.card + 1`, `cubeToNat (embed0 x) = cubeToNat x` and `cubeToNat (embed1 x) = cubeToNat x + 2 ^ n`. The three `hDist_embed*` lemmas near line 360 are similar. Each one rewrites a term built from `embed0`/`embed1` to a strictly simpler one, so none can loop. None of them is tagged `@[simp]`. Callers pass them by hand: `simp_all +decide [embed1_card, embed1_cubeToNat]` in embed1_mono, `simp_all +decide only [hDist_embed0_embed0, \u2026]` in slice0_neighborhood, and chains of `rw [embed1_card, embed0_card, embed1_cubeToNat, embed0_cubeToNat]` in Cascade.",
+      "proposed_change": "Mark `embed0_card`, `embed1_card`, `embed0_cubeToNat`, `embed1_cubeToNat`, `hDist_embed0_embed0`, `hDist_embed1_embed1` and `hDist_embed0_embed1` as `@[simp]`. Then reduce the explicit lists in embed0_mono, embed1_mono and the slice neighborhood proofs. The `rw` chains in Cascade can become `simp`. Reorder the declarations if needed so the simp lemmas are available before their first use. The `hDist_embed0_embed0` family sits at line 360, before `slice0_neighborhood`.",
+      "benefit": "Cardinality, binary value and Hamming distance of embedded vertices are computed automatically in order-comparison goals such as `simplicialLe (embed1 x) (embed1 y)`. Clients no longer need to remember which of the seven lemmas to supply, and they no longer need fragile `rw` sequences that depend on term order.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "embed1_mono",
+          "excerpt": "cases h <;> simp_all +decide [embed1_card, embed1_cubeToNat]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "slice1_neighborhood",
+          "excerpt": "simp_all +decide only [hDist_embed1_embed1, Finset.mem_union, mem_neighborhood_iff]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cascade.lean",
+          "declaration": "(proof near line 510)",
+          "excerpt": "rw [embed1_card, embed0_card, embed1_cubeToNat, embed0_cubeToNat]"
+        }
+      ]
+    },
+    {
+      "declaration": "H_zero and card_simplicialInitSeg",
+      "start_line": 494,
+      "end_line": 495,
+      "excerpt": "lemma H_zero (n : \u2115) : H n 0 = 0 := by",
+      "problem": "`H_zero` is a canonical zero lemma, and `card_simplicialInitSeg` (line 271) gives the cardinality of an initial segment as `min k (2 ^ n)`. Neither is tagged `@[simp]`. Downstream code writes `simp [H_zero]` or `simp [H_zero, H_one]` many times, e.g. in Harper.lean at 160, 622, 1372 and 1432, and `rw [H_zero]` elsewhere. Callers also write `rw [card_simplicialInitSeg, min_eq_left h]` at many call sites, and `simp +decide [card_simplicialInitSeg, hk]` in H_ge_self, so the lemma is always supplied by hand. `H n 0` therefore does not normalize automatically, although `H` is a bare `def` that should stay folded.",
+      "proposed_change": "Add `@[simp]` to `H_zero` and to `card_simplicialInitSeg`. Both right-hand sides are simpler and the rewrites terminate. `card_simplicialInitSeg` has no hypotheses, so it works as a conditionless simp lemma. The side-condition form `k \u2264 2^n \u2192 card = k` can stay as a separate non-simp corollary, since `min_eq_left` calls can then be handled by `simp [hk]`. Do not tag `H_full`. Its left side `H n (2 ^ n)` would rarely match after `2 ^ 0` normalizes, as in `simpa using H_full 0`.",
+      "benefit": "Terms such as `H n 0` and `(simplicialInitSeg n k).card` disappear automatically in `simp` and `simp_all` calls. The roughly twenty `simp [H_zero]` and `rw [card_simplicialInitSeg, min_eq_left \u2026]` sites get shorter, and the file stops depending on callers knowing these rules exist.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Harper.lean",
+          "declaration": "(proof near line 160)",
+          "excerpt": "\u00b7 simp [H_zero, boundaryCostH]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Compression.lean",
+          "declaration": "(proof near line 2519)",
+          "excerpt": "rw [card_simplicialInitSeg, min_eq_left hp]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BooleanIsoperimetry/Cube.lean",
+          "declaration": "H_ge_self",
+          "excerpt": "simp +decide [card_simplicialInitSeg, hk]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 34011,
+    "cache_read_input_tokens": 101816,
+    "output_tokens": 6756,
+    "output_tokens_details": {
+      "thinking_tokens": 1938
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 34011,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3872,
+        "cache_read_input_tokens": 35899,
+        "cache_creation_input_tokens": 2125,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2125
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2138016,
+  "duration_ms": 44957,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:12:38",
+  "unit": "file",
+  "source_sha256": "fdb666ac9b0aed9e0cf0335af67b6a3f0c169dcd1abe72983dae536eb7edbf8e",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

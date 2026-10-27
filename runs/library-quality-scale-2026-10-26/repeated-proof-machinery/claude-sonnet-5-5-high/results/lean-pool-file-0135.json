@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0135",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and looked for reasoning that is repeated across proofs. I checked `conjReflect_finset_sum` in Sobolev/ConvolutionAlgebra.lean to confirm that no \"sum of fixed sequences is fixed\" lemma already exists. I rejected several candidates as too short or routine: the repeated `hF/hU/hA/hB` setup in `vcoeff_Wfun` and `Wfun_smoothPeriodic`, the symmetric `hdi/hdj` and `hpr_i/hpr_j` blocks in `gunther_perturbation`, and the parallel structure of `isRapidDecay_Ub` and `conjReflect_Ub`. The two findings below are the strongest. I could not run Lean, so the proposed lemma statements and proofs are untested sketches. Unification may need explicit `(a := \u2026)` arguments at the call sites.",
+  "findings": [
+    {
+      "declaration": "vreal_gT (with conjReflect_dotConv and conjReflect_Ub)",
+      "start_line": 377,
+      "end_line": 399,
+      "excerpt": "    rw [conjReflect_finset_sum]",
+      "problem": "The same step is repeated five times: show that a finite sum of `conjReflect`-fixed sequences is `conjReflect`-fixed. Each time the proof is `rw [conjReflect_finset_sum]; funext m; exact Finset.sum_congr rfl fun _ _ => congrFun (<termwise fixedness>) m`. The copies are `hs1`, `hs2` and `hs3` in `vreal_gT` (377\u2013399), `h3` in `conjReflect_Ub` (345\u2013353), and `conjReflect_dotConv` (320\u2013327). Each copy restates the whole sum twice, which makes `vreal_gT` long and hard to read. `hs1` and `hs3` also share the same shape, `seqConv (c * fixed) (fixed)`.",
+      "proposed_change": "Add one lemma next to `conjReflect_seqConv_of_fixed`:\n\n```lean\nprivate lemma conjReflect_finset_sum_of_fixed {\u03b9 : Type*} (S : Finset \u03b9) {a : \u03b9 \u2192 Seq n}\n    (h : \u2200 i \u2208 S, conjReflect (a i) = a i) :\n    conjReflect (fun m => \u2211 i \u2208 S, a i m) = fun m => \u2211 i \u2208 S, a i m := by\n  rw [conjReflect_finset_sum]\n  funext m\n  exact Finset.sum_congr rfl fun i hi => congrFun (h i hi) m\n```\n\nThe uses then shrink to the termwise fact. The existing `exact \u2026` terms become `fun _ _ => \u2026` arguments.\n- `hs1 := conjReflect_finset_sum_of_fixed _ fun pq _ => conjReflect_seqConv_of_fixed (conjReflect_const_mul_of_real hhalf (hd.h_real pq.1 pq.2)) (hd.b_real pq.1 pq.2 \u03b1)`\n- `hs2 := conjReflect_finset_sum_of_fixed _ fun i _ => conjReflect_seqConv_of_fixed (conjReflect_Fb hv i) (hd.a_real i \u03b1)`\n- `hs3` is analogous, with `conjReflect_Ub hv pq.1 pq.2` in place of the `h_real` term.\n- `h3` in `conjReflect_Ub` becomes `conjReflect_finset_sum_of_fixed _ fun k _ => conjReflect_resolvent_dotConv \u2026`.\n- `conjReflect_dotConv` becomes `conjReflect_finset_sum_of_fixed (a := fun \u03b1 => seqConv (v \u03b1) (w \u03b1)) _ fun \u03b1 _ => conjReflect_seqConv_of_fixed (hv \u03b1) (hw \u03b1)`.\n\nThe `change` to the explicit-sum form is still needed in `conjReflect_dotConv`.",
+      "benefit": "This removes five copies of the sum-and-extensionality argument. The realness proofs shrink to the facts that are actually specific to each sum. A reader sees the real content of `vreal_gT`, which is that each summand is a product of fixed sequences. A later change to the `conjReflect` API needs one edit instead of five.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Torus/Perturbation/Main.lean",
+          "declaration": "conjReflect_Ub (h3)",
+          "excerpt": "    rw [conjReflect_finset_sum]\n    funext m\n    exact Finset.sum_congr rfl fun k _ => congrFun"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Torus/Perturbation/Main.lean",
+          "declaration": "conjReflect_dotConv",
+          "excerpt": "  rw [conjReflect_finset_sum]\n  funext m"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Sobolev/ConvolutionAlgebra.lean",
+          "declaration": "conjReflect_finset_sum",
+          "excerpt": "conjReflect (fun m => \u2211 i \u2208 S, a i m) = fun m => \u2211 i \u2208 S, conjReflect (a i) m"
+        }
+      ]
+    },
+    {
+      "declaration": "Wfun_dot_pderiv and Wfun_dot_pderiv_pderiv",
+      "start_line": 671,
+      "end_line": 712,
+      "excerpt": "  rw [add_dotProduct, neg_dotProduct, sum_dotProduct, sum_dotProduct]",
+      "problem": "The two lemmas have the same proof skeleton, and neither is a short calculation. Both specialise `dualFrame_dotProduct hfree` to extract the pairing of `dualA`/`dualB` with a frame vector. That means one `hA` and one `hB` each, using `simpa [dualA, frame]` and `simp [dualB, hle, this]` with the `pq.1 \u2264 pq.2` membership bookkeeping for `pairs n`. Both then run `unfold Wfun; rw [add_dotProduct, neg_dotProduct, sum_dotProduct, sum_dotProduct]`, followed by a `smul_dotProduct` simp. Only the Kronecker deltas differ: `dualA\u00b7\u2202\u1d62u = \u03b4` and `dualB\u00b7\u2202\u1d62u = 0` in the first lemma, `dualA\u00b7\u2202p\u2202q u = 0` and `dualB\u00b7\u2202p\u2202q u = \u03b4` in the second. The four pairing facts are stated twice inline and are not available as separate API.",
+      "proposed_change": "Extract the four dual-frame pairings as lemmas. Each is the existing `hA`/`hB` code with `x` and the frame index generalised:\n\n- `dualA_dot_pderiv (hfree) (k i) (x) : dualA u\u2080 k x \u2b1d\u1d65 pderiv i u\u2080 x = if k = i then 1 else 0`\n- `dualB_dot_pderiv (hfree) {pq} (hpq : pq.1 \u2264 pq.2) (i) (x) : dualB u\u2080 pq.1 pq.2 x \u2b1d\u1d65 pderiv i u\u2080 x = 0`\n- `dualA_dot_pderiv_pderiv (hfree) (k) {p q} (hpq : p \u2264 q) (x) : dualA u\u2080 k x \u2b1d\u1d65 pderiv p (pderiv q u\u2080) x = 0`\n- `dualB_dot_pderiv_pderiv (hfree) {pq} (hle : pq.1 \u2264 pq.2) {p q} (hpq : p \u2264 q) (x) : \u2026 = if pq = (p, q) then 1 else 0`\n\nAlso extract the expansion, proved once by `unfold Wfun; rw [add_dotProduct, neg_dotProduct, sum_dotProduct, sum_dotProduct]; simp only [smul_dotProduct, smul_eq_mul]`:\n\n```lean\nlemma Wfun_dotProduct (w : Fin N \u2192 \u211d) (x) :\n  Wfun n u\u2080 h v x \u2b1d\u1d65 w = -(\u2211 i, Ftil n v i x * (dualA u\u2080 i x \u2b1d\u1d65 w))\n    + \u2211 pq \u2208 pairs n, ((1/2:\u211d) * (Util n v pq.1 pq.2 x - h x pq.1 pq.2)) * (dualB u\u2080 pq.1 pq.2 x \u2b1d\u1d65 w)\n```\n\nBoth lemmas then reduce to rewriting with the pairing lemmas and applying `Finset.sum_ite_eq'` or `Finset.sum_eq_zero`.",
+      "benefit": "The dual-frame algebra and the unfolding of `Wfun` are written and maintained once. Each of the two lemmas shrinks to the part that differs, which is which delta survives. The four pairing lemmas can also be reused. The `Sum.inl`/`Sum.inr` and `frame` unfolding is isolated in them, so a change to `frame` or `dualB` no longer needs two parallel proofs repaired.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Torus/Perturbation/Main.lean",
+          "declaration": "Wfun_dot_pderiv_pderiv",
+          "excerpt": "    have := hd (Sum.inr \u27e8pq, hle\u27e9) (Sum.inr \u27e8(p, q), hpq\u27e9) x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NashEmbedding/NashEmbedding/Torus/Perturbation/Main.lean",
+          "declaration": "Wfun_dot_pderiv",
+          "excerpt": "    have := hd (Sum.inr \u27e8pq, hle\u27e9) (Sum.inl i) x"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 37258,
+    "cache_read_input_tokens": 101820,
+    "output_tokens": 6605,
+    "output_tokens_details": {
+      "thinking_tokens": 2342
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37258,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4647,
+        "cache_read_input_tokens": 34115,
+        "cache_creation_input_tokens": 7072,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 7072
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.22527999999999998,
+  "duration_ms": 46051,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-26T23:09:20",
+  "unit": "file",
+  "source_sha256": "5112af71e570e4e6f5d01b8c680d93da9f4a0724ced9412d0142709662c50423",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

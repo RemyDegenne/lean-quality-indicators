@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0119",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the relevant parts of Definitions.lean (`spatialDerivativeCLM`, `spatialDerivativeCLM_eq_slice`, and the initial-condition argument near lines 250\u2013260). A grep found no `@[simp]` lemmas or attributes anywhere in the TransportSolution directory. The file's simp calls therefore rely on unfolding `spatialDerivativeCLM` and `Function.uncurry` directly. I could not run Lean, so I make no claim about how simp behaves on these goals. The findings are modest interface suggestions, not defects that I observed.",
+  "findings": [
+    {
+      "declaration": "AVenhance.FaaDiBruno.transportSolution_spatialGradient_hasDerivAt_alongFlow",
+      "start_line": 81,
+      "end_line": 82,
+      "excerpt": "simpa [spatialDerivativeCLM, F, G, B, Function.uncurry,",
+      "problem": "`spatialDerivativeCLM` has no simp-normal-form lemma. Each time the file needs its value, it unfolds the definition inside simp, together with `Function.uncurry` and `ContinuousLinearMap.comp_apply`. This exposes the `.comp (inr ..)` representation. It also forces manual `(0, v)` bookkeeping, for example the `hEval` step and the `show ... by simp [\u03c8, L, ContinuousLinearMap.compL_apply]` step just above. `spatialDerivativeCLM_eq_slice` cannot serve as a simp lemma because it needs a `ContDiff` hypothesis. Nothing else gives simp a canonical evaluated form.",
+      "proposed_change": "In Definitions.lean, next to the definition, add an unconditional evaluation lemma such as `spatialDerivativeCLM_apply : spatialDerivativeCLM F t x v = fderiv \u211d F (t, x) (0, v)`. It would follow from `ContinuousLinearMap.comp_apply` and `ContinuousLinearMap.inr_apply`, and could be tagged `@[simp]`. It is terminating, has an unambiguous direction, and needs no hypotheses. With it, the final `simpa` and the `hEval` rewriting would not need `spatialDerivativeCLM` in their simp sets. The definition would stay opaque to simp elsewhere.",
+      "benefit": "Callers get one canonical form, `fderiv \u211d F (t, x) (0, v)`, which is also the form the transport-equation lemmas use. They no longer unfold the definition ad hoc in `simpa` calls, as here and in `spatialDerivativeCLM_eq_slice`'s own proof. This reduces fragile simp sets and lowers the risk of unwanted expansion.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/FaaDiBruno/TransportSolution/Definitions.lean",
+          "declaration": "AVenhance.FaaDiBruno.spatialDerivativeCLM",
+          "excerpt": "(fderiv \u211d F (t, x)).comp (ContinuousLinearMap.inr \u211d \u211d (Vec 2))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/FaaDiBruno/TransportSolution/Definitions.lean",
+          "declaration": "AVenhance.FaaDiBruno.spatialDerivativeCLM_eq_slice",
+          "excerpt": "simpa [spatialDerivativeCLM, Function.uncurry] using hcomp"
+        }
+      ]
+    },
+    {
+      "declaration": "AVenhance.FaaDiBruno.transportSolution_spatialGradient_norm_le_forward / _backward (hinitial blocks)",
+      "start_line": 125,
+      "end_line": 135,
+      "excerpt": "have hinitial : J 0 = 0 := by",
+      "problem": "The same fact is re-derived by hand three times: forward (~125\u2013135), backward (~190\u2013200), and in Definitions.lean (~250\u2013260). The fact is that `spatialDerivativeCLM (Function.uncurry Y) 0 z = 0` for a classical transport solution. Each derivation rewrites with `spatialDerivativeCLM_eq_slice`, builds `hzero : (fun z => Y 0 z) = fun _ => 0` by hand, and finishes with `change ...; rw [hzero]; simp`. Without a dedicated lemma, simp cannot reach `fderiv \u211d (Y 0) _ = 0` at all. The backward copy also needs an extra `simp only [neg_zero]` and a `change` to massage the shape.",
+      "proposed_change": "Add one lemma next to `IsClassicalTransportSolution`. A name like `IsClassicalTransportSolution.spatialDerivativeCLM_zero` would fit. Its statement would be `hY : IsClassicalTransportSolution b g Y \u2192 \u2200 x, spatialDerivativeCLM (Function.uncurry Y) 0 x = 0`. It cannot be `@[simp]` because of the hypothesis. It can be invoked as `simp [hY.spatialDerivativeCLM_zero]` or `rw`. A companion `Y 0 = fun _ => 0` lemma could be added as well. The two `hinitial` proofs then become `by simp [J, hY.spatialDerivativeCLM_zero]` (backward: after `neg_zero`).",
+      "benefit": "This removes about 30 duplicated lines, gives the initial-condition fact a stable name, and lets simp normalise `spatialDerivativeCLM _ 0 _` consistently. The `neg_zero` / `change` workarounds in the backward proof go away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/FaaDiBruno/TransportSolution/Definitions.lean",
+          "declaration": "transportSolution_spatialDerivative_isClassical (initial-condition branch)",
+          "excerpt": "have hconst : fderiv \u211d (Y 0) x = 0 := by rw [hslice]; simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/FaaDiBruno/TransportSolution/GradientEstimates.lean",
+          "declaration": "transportSolution_spatialGradient_norm_le_backward",
+          "excerpt": "simp only [neg_zero]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 6680,
+    "cache_read_input_tokens": 69329,
+    "output_tokens": 4614,
+    "output_tokens_details": {
+      "thinking_tokens": 1509
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 6680,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3428,
+        "cache_read_input_tokens": 20010,
+        "cache_creation_input_tokens": 1805,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1805
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.07980889999999999,
+  "duration_ms": 38297,
+  "turns": 6,
+  "attempts": 2,
+  "judged": "2026-10-26T23:06:41",
+  "unit": "file",
+  "source_sha256": "48f5c029bef863936cdaacf74db10ab934a586446ac9e3f2150141ba68c24624",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

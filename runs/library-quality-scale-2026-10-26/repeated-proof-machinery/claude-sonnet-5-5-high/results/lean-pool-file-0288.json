@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0288",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also checked the uses of the D and Q lemmas inside the file. I did not run Lean, so the proposed rewrites have not been compiled. The two reported findings are the only repeated proof machinery that I think justifies a shared lemma. The pair D_pow_le' and D_mul_Q_sq_pow_le also share a small pattern: take a 2^k-th root of an inequality. I judged that too short to report. Uncertainty: I did not check the exact simp normal forms needed for the `two_le_rpow_M` specialization (the cast of `n * 2^0`). I also did not check the `prod_le_prod` variant that the existing code relies on.",
+  "findings": [
+    {
+      "declaration": "D_pow_le (and D_mul_Q_sq_pow_two_pow)",
+      "start_line": 204,
+      "end_line": 225,
+      "excerpt": "have : n * 2 ^ (i - 1) = n * 2 ^ j * 2 ^ (i - 1 - j) := by",
+      "problem": "`D_mul_Q_sq_pow_two_pow` (lines 169-194) and `D_pow_le` (lines 204-225) repeat the same argument. Each splits `D i ^ (n*2^k)` into `\u220f j \u2208 Ico 1 i, (Q j ^ (n*2^j)) ^ (2^(k-j))` and then bounds each factor by `q ^ (2^(k-j))`. The splitting uses `rw [D, \u2190 prod_pow]` and `prod_congr`. The bounding uses `prod_le_prod fun j _ \u21a6 pow_le_pow_left' (Q_pow_le hn j) _`. `D_pow_le` also re-proves the exponent splitting `n*2^k = n*2^j*2^(k-j)` by an inline calc. That calc is exactly `Q_pow_mul_exp` (lines 159-167) with `i := i-1`, which is why `Q_pow_mul_exp` exists. The `hsplit` and `hprod` blocks differ only in k (`i` versus `i-1`).",
+      "proposed_change": "Add one lemma that proves the bound for every k with i \u2264 k+1:\n\n```lean\ntheorem D_pow_two_pow_le_prod (hn : 1 \u2264 n) {i k : \u2115} (hk : i \u2264 k + 1) :\n    D n q i ^ (n * 2 ^ k) \u2264 \u220f j \u2208 Ico 1 i, q ^ (2 ^ (k - j)) := by\n  rw [D, \u2190 prod_pow]\n  refine prod_le_prod fun j hj \u21a6 ?_   -- same step as the existing `hprod`\n  have hjk : j \u2264 k := by have := (mem_Ico.1 hj).2; omega\n  rw [Q_pow_mul_exp hjk]\n  exact pow_le_pow_left' (Q_pow_le hn j) _\n```\n\nProof sketch: split each `Q j ^ (n*2^k)` with `Q_pow_mul_exp` (valid since j < i \u2264 k+1). Then apply `Q_pow_le` to each factor.\n\nUse 1, `D_pow_le`: take k = i-1, which satisfies `i \u2264 i-1+1` by `omega`. The proof becomes `(D_pow_two_pow_le_prod hn (k := i-1) (by omega)).trans (by rw [prod_pow_eq_pow_sum, sum_two_pow_pred hi])`. The inline calc and `hsplit` disappear.\n\nUse 2, `D_mul_Q_sq_pow_two_pow`: rewrite the left side with `mul_pow` as `D i ^ (n*2^i) * (Q i ^ (n*2^i))^2`. Bound the first factor with the lemma at k = i and the second with `hQi`. Keep the existing `hsum` and `Nat.mul_le_mul`. The `Q_pow_mul_exp` split and `prod_congr` block go away.\n\nBoth uses keep their hypotheses (`hn : 1 \u2264 n`, `hi : 1 \u2264 i`) and need no new imports.",
+      "benefit": "The product-splitting and per-factor bounding argument is written and maintained once. The duplicated exponent-splitting calc in `D_pow_le` disappears, so `Q_pow_mul_exp` is used where it applies. Both theorems shrink to the geometric-sum bookkeeping that is specific to each.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Nikodym/Nikodym/Construction/Parameters.lean",
+          "declaration": "Q_pow_mul_exp",
+          "excerpt": "Q n q j ^ (n * 2 ^ i) = (Q n q j ^ (n * 2 ^ j)) ^ (2 ^ (i - j))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Nikodym/Nikodym/Construction/Parameters.lean",
+          "declaration": "D_mul_Q_sq_pow_two_pow",
+          "excerpt": "prod_le_prod fun j _ \u21a6 pow_le_pow_left' (Q_pow_le hn j) _"
+        }
+      ]
+    },
+    {
+      "declaration": "two_le_rpow_M (duplicates two_le_rpow_Q)",
+      "start_line": 356,
+      "end_line": 377,
+      "excerpt": "    _ \u2264 (2 : \u211d) ^ (2 ^ (h - 1)) := pow_le_pow_right\u2080 one_le_two h1",
+      "problem": "`two_le_rpow_M` repeats the whole 5-step calc of `two_le_rpow_Q` (lines 336-354). The chain is `2 \u2264 2^(2^e) = 2^(N/k) = (2^N)^(1/k) \u2264 q^(1/k)`, with `N = n*2^(h-1)` and `k = n*2^i`. It uses the same `rpow_mul`, `rpow_natCast` and `rpow_le_rpow` steps. `two_le_rpow_M` is the case i = 0, since `(n:\u211d) * 2^0 = n`. The `two_le_rpow_Q` hypothesis `i \u2264 h-1` holds at i = 0 for every h. So the separate proof, with its own `hn0`, `hhi` and `h1` side computations, is redundant. Its hypothesis `hh : 2 \u2264 h` is also unnecessary; it is used only to derive `h1`.",
+      "proposed_change": "Prove `two_le_rpow_M` by specializing `two_le_rpow_Q`:\n\n```lean\ntheorem two_le_rpow_M {h : \u2115} (hn : 1 \u2264 n)\n    (hq : 2 ^ (n * 2 ^ (h - 1)) \u2264 q) :\n    (2 : \u211d) \u2264 (q : \u211d) ^ (1 / (n : \u211d)) := by\n  simpa using two_le_rpow_Q (i := 0) hn hq (Nat.zero_le _)\n```\n\nThe `simpa` step rewrites `2^0 = 1` and `n * 1 = n`. Optionally keep `hh` in the signature to leave callers (`two_le_M`, `M_ge_half_rpow`) untouched. The sketch is the same chain written once, with `Q_exp_inv` supplying the exponent form. Alternatively, state a single lemma with a general `k \u2223 n * 2^(h-1)` exponent and derive both cases from it.",
+      "benefit": "This removes about 20 lines of duplicated real-analysis reasoning. A change to the threshold argument is then made in one place. The relation between `M` and `Q 0` becomes explicit, and the unused hypothesis `hh` can be dropped.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Nikodym/Nikodym/Construction/Parameters.lean",
+          "declaration": "two_le_rpow_Q",
+          "excerpt": "_ = ((2 : \u211d) ^ (n * 2 ^ (h - 1))) ^ (1 / ((n : \u211d) * 2 ^ i)) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/Nikodym/Nikodym/Construction/Parameters.lean",
+          "declaration": "two_le_rpow_M",
+          "excerpt": "_ = ((2 : \u211d) ^ (n * 2 ^ (h - 1))) ^ (1 / (n : \u211d)) := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 25219,
+    "cache_read_input_tokens": 24400,
+    "output_tokens": 5674,
+    "output_tokens_details": {
+      "thinking_tokens": 2293
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25219,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3083,
+        "cache_read_input_tokens": 20471,
+        "cache_creation_input_tokens": 8677,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 8677
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.16006399999999998,
+  "duration_ms": 38199,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T01:08:17",
+  "unit": "file",
+  "source_sha256": "6c0fd68911047243085d0e1773e9c32d8ebf1cbd9dc2cf262e8b16b4268ce58c",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

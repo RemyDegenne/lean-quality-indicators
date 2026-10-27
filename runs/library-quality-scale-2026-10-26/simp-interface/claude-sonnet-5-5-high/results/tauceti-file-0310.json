@@ -1,0 +1,109 @@
+{
+  "id": "tauceti-file-0310",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file, plus the uses of f4OppositeRootIndex, f4Length_opposite and f4OppositeRootIndex_eq_reflectionPerm in the Algebra/Lie/F4 files, and the Length.lean lemmas. I did not run Lean. The existing simp lemmas f4OppositeRootIndex_f4OppositeRootIndex and f4OppositeRootIndex_castAdd look fine: both orient toward simpler forms and neither creates a cycle. I did not check whether Mathlib already has a general simp lemma for the root at a reflectionPerm-self index, and my grep for one was inconclusive. The findings concern missing simp coverage, so how much downstream simp behaviour changes is uncertain.",
+  "findings": [
+    {
+      "declaration": "f4Length_opposite",
+      "start_line": 68,
+      "end_line": 70,
+      "excerpt": "theorem f4Length_opposite (\u03b1 : Fin 48) :\n    f4Length (f4OppositeRootIndex \u03b1) = f4Length \u03b1 := by",
+      "problem": "This is the canonical normal-form lemma for `f4Length \u2218 f4OppositeRootIndex`. It is not tagged `@[simp]`, although the other lemmas about the same operation are: `f4OppositeRootIndex_f4OppositeRootIndex`, `f4KillingRoot_f4OppositeRootIndex` and `f4ModularCoroot_f4OppositeRootIndex`. Callers therefore name it by hand, either in `rw [..., f4Length_opposite, ...]` or in `simp only [..., f4Length_opposite]`. The `simp only` call in Exponential.lean already treats it as a simp rewrite. Plain `simp` cannot eliminate `f4Length (f4OppositeRootIndex _)` anywhere else.",
+      "proposed_change": "Mark it `@[simp] theorem f4Length_opposite`. The LHS is strictly larger than the RHS, so the rewrite terminates. It does not overlap with `f4OppositeRootIndex_castAdd`, which rewrites the inner argument to a `Fin.addNat` term; simp rewrites inside-out, so `f4Length_opposite` cannot match after that step.",
+      "benefit": "Calls like `rw [h\u03b2, f4Length_opposite, h\u03b1] at hlen` and the `simp only [..., f4Length_opposite]` pre-processing in Exponential.lean can use the default simp set. A user then no longer has to remember which length lemma to cite. The `@[simp]` set for `f4OppositeRootIndex` also becomes consistent across the F4 development.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/F4/ShortRoot/Quotient/Exponential.lean",
+          "declaration": "isogenyExponent lemma (short simple root case)",
+          "excerpt": "f4Length_opposite] at hk <;> rw [f4Length_def] at hk <;> decide +revert"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/F4/ShortRoot/Quotient/Action.lean",
+          "declaration": "hopp proof in Action.lean",
+          "excerpt": "rw [h\u03b2, f4Length_opposite, h\u03b1] at hlen"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/F4/ChevalleyAction.lean",
+          "declaration": "f4KillingRoot_f4OppositeRootIndex",
+          "excerpt": "@[simp] theorem f4KillingRoot_f4OppositeRootIndex (\u03b1 : Fin 48) :"
+        }
+      ]
+    },
+    {
+      "declaration": "f4OppositeRootIndex / f4OppositeRootIndex_eq_reflectionPerm / ne_f4OppositeRootIndex_comm",
+      "start_line": 32,
+      "end_line": 47,
+      "excerpt": "theorem f4OppositeRootIndex_eq_reflectionPerm (\u03b1 : Fin 48) :\n    f4OppositeRootIndex \u03b1 = f4SimplyConnectedRootDatum.reflectionPerm \u03b1 \u03b1 := (rfl)",
+      "problem": "The file never states the fact that makes `f4OppositeRootIndex` useful in simp normal form: the pinned root at the opposite index is the negative, `f4SimplyConnectedRootDatum.root (f4OppositeRootIndex \u03b1) = -f4SimplyConnectedRootDatum.root \u03b1`. `f4Length_opposite` re-derives it as a local `hroot`, written as `root \u03b1 + (-2) \u2022 root \u03b1`. Downstream code reaches the negation fact by unfolding to `reflectionPerm` with `simpa only [f4OppositeRootIndex_eq_reflectionPerm]` and `root_eq_neg_iff`. That unfolding is repeated at two sites in ChevalleyAction.lean. The definition is not reducible, so `simp` cannot see through it, and the only bridge lemma, `f4OppositeRootIndex_eq_reflectionPerm`, is an unfolding lemma that is not intended as simp.",
+      "proposed_change": "Add `@[simp] theorem f4SimplyConnectedRootDatum_root_f4OppositeRootIndex (\u03b1 : Fin 48) : f4SimplyConnectedRootDatum.root (f4OppositeRootIndex \u03b1) = -f4SimplyConnectedRootDatum.root \u03b1`. Prove it from `f4OppositeRootIndex_eq_reflectionPerm`, `root_reflectionPerm` and `reflection_apply_self`, the same simp-only set already used in `f4Length_opposite`. Then derive the `root \u03b2 \u2260 -root \u03b1 \u2194 \u03b2 \u2260 f4OppositeRootIndex \u03b1` form once, so that `hneg` is `by simpa using hopp` or an `injective`/`iff` lemma. Also use it in `f4Length_opposite` in place of the `hroot` block. The RHS is a smaller term, so the rewrite is cycle-free.",
+      "benefit": "The repeated `simpa only [f4OppositeRootIndex_eq_reflectionPerm] using ...root_eq_neg_iff.mp h` blocks collapse to a single lemma. Goals with `root (f4OppositeRootIndex \u03b1)` normalise to `-root \u03b1` by default, matching how `f4KillingRoot_f4OppositeRootIndex` already behaves for the Killing roots.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/F4/ChevalleyAction.lean",
+          "declaration": "hneg proofs near line 588",
+          "excerpt": "exact hopp (by simpa only [f4OppositeRootIndex_eq_reflectionPerm] using\n        f4SimplyConnectedRootDatum.root_eq_neg_iff.mp h)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/RootSystem/SimplyConnectedRootDatum/F4/RootString.lean",
+          "declaration": "f4Length_opposite",
+          "excerpt": "f4SimplyConnectedRootDatum.root \u03b1 +\n        (-2 : \u2124) \u2022 f4SimplyConnectedRootDatum.root \u03b1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/Algebra/Lie/F4/ChevalleyAction.lean",
+          "declaration": "f4KillingRoot_f4OppositeRootIndex",
+          "excerpt": "f4KillingRoot (f4OppositeRootIndex \u03b1) = -f4KillingRoot \u03b1"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 23745,
+    "cache_read_input_tokens": 81334,
+    "output_tokens": 5063,
+    "output_tokens_details": {
+      "thinking_tokens": 795
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23745,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2925,
+        "cache_read_input_tokens": 24223,
+        "cache_creation_input_tokens": 3535,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3535
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1537634,
+  "duration_ms": 38214,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T01:32:05",
+  "unit": "file",
+  "source_sha256": "9f1d6a643d5f64c95b15195603151758ca2dd0856f4e924c0bce5d73d874b74c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

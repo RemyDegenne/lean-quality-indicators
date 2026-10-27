@@ -1,0 +1,120 @@
+{
+  "id": "lean-pool-file-0215",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. The only @[simp] lemmas are the two block-vector round-trip lemmas, and they look fine. I then grepped the sibling files (NewtonSystem, LocalNeighborhoodEstimates, FixedYTMTheory, GeneratedConvergence) to see how addStep, ones, bbar, cbar and toHSDirection are actually used. The findings are about missing canonical simp lemmas. I did not recommend simp lemmas for matVec, tMatVec, dot, mu or gap. Those would unfold sums or divisions and would compete with the existing matVec_smul_apply / dot_smul_right style lemmas. I could not run Lean, so I make no claim about observed simp behaviour or loops. I did not check whether the sibling files already define lemmas such as addStep_x. The grep for 'addStep' shows only dsimp [addStep] / unfold uses.",
+  "findings": [
+    {
+      "declaration": "addStep",
+      "start_line": 156,
+      "end_line": 160,
+      "excerpt": "kappa := w.kappa + \u03b1 * d.dkappa }",
+      "problem": "`addStep` returns a structure, but the file gives no simp lemmas for its projections. Downstream proofs about `(addStep w d \u03b1).x i`, `.tau`, `.s i` and `.kappa` have to unfold the definition by hand. The sibling files do this about ten times with `dsimp [addStep]` and several times with `unfold gap addStep hdot`. Because `mu` and `gap` are also unfolded by hand, these proofs expand `addStep` and the surrounding definitions together instead of rewriting through a stable normal form.",
+      "proposed_change": "Add field-projection simp lemmas proved by `rfl`: `@[simp] addStep_x (w d \u03b1 i) : (addStep w d \u03b1).x i = w.x i + \u03b1 * d.dx i`, and likewise `addStep_tau`, `addStep_s` and `addStep_kappa`. The right-hand sides are strictly smaller expressions, so there is no cycle. Calls like `dsimp [addStep]` can then become plain `simp`/`simp only [addStep_x, \u2026]`.",
+      "benefit": "Users reason about `addStep` through its four component identities rather than through its definition body. Proof scripts such as `corrector_component_product_full_step` become shorter and more robust, and `addStep` no longer has to be unfolded by name at each use site.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/HSDInteriorPointLP/LocalNeighborhoodEstimates.lean",
+          "declaration": "corrector_component_product_full_step",
+          "excerpt": "dsimp [addStep]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/HSDInteriorPointLP/NewtonSystem.lean",
+          "declaration": "gap_addStep (gap of addStep identity)",
+          "excerpt": "unfold gap addStep hdot"
+        }
+      ]
+    },
+    {
+      "declaration": "ones / bbar / cbar",
+      "start_line": 249,
+      "end_line": 257,
+      "excerpt": "def cbar {m n : Nat} (P : LPData m n) : Vec n :=\n  fun j => P.c j - 1",
+      "problem": "`ones`, `bbar` and `cbar` are defined as bare lambdas, and no applied-form simp lemmas exist for them. `simp` therefore cannot rewrite `(ones : Vec n) i` to `1`, `cbar P j` to `P.c j - 1`, or `bbar P i` to `P.b i - matVec P.A ones i`. The consequence is visible in `NewtonSystem.lean`. The proof of the Schur-complement step uses `unfold dot ones`, then writes out the intermediate `1 * tMatVec \u2026` terms in a calc. A later step needs `unfold zbar cbar dot ones` before `simp [Finset.sum_sub_distrib]` can proceed. Without a canonical form for `ones i`, `1 * _` residues must be cleaned up by hand.",
+      "proposed_change": "Add `@[simp] theorem ones_apply {n} (i : Fin n) : (ones : Vec n) i = 1 := rfl` and `@[simp] theorem cbar_apply (P) (j) : cbar P j = P.c j - 1 := rfl`. Optionally add `bbar_apply (P) (i) : bbar P i = P.b i - matVec P.A ones i := rfl`, and keep `bbar_apply` non-simp if expanding `bbar` is not wanted. Do not make `matVec_apply` or `dot` simp lemmas. Those would unfold sums and compete with the existing `matVec_smul_apply` and `dot_smul_right` rules.",
+      "benefit": "The vector `ones` and the shifted cost `cbar` get one canonical simp normal form, so `simp` reduces `dot ones (cbar P)` style goals through `one_mul` and `Finset.sum_sub_distrib` without `unfold` of several definitions. This removes the hand-unfolding and the manual `1 * \u2026` calc steps in the nondegeneracy proof of the HLP block system.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/HSDInteriorPointLP/NewtonSystem.lean",
+          "declaration": "hdual_sum (inside the Schur/nondegeneracy proof)",
+          "excerpt": "unfold dot ones"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/HSDInteriorPointLP/NewtonSystem.lean",
+          "declaration": "hcoef (inside the Schur/nondegeneracy proof)",
+          "excerpt": "unfold zbar cbar dot ones"
+        }
+      ]
+    },
+    {
+      "declaration": "HLPFullDirection.toHSDirection",
+      "start_line": 281,
+      "end_line": 285,
+      "excerpt": "def HLPFullDirection.toHSDirection {m n : Nat} (D : HLPFullDirection m n) : HSDirection n :=",
+      "problem": "This is another structure-valued projection map, and it has no `@[simp]` field lemmas. Uses must either unfold it by name (`unfold HLPFullDirection.toHSDirection hdot`) or pass it to `simpa [HLPFullDirection.toHSDirection, hdot]`. Both forms rely on the definition body rather than a simp interface, even though the file already gives `@[simp]` round-trip lemmas for the sibling conversion `toBlockVector`/`ofBlockVector`.",
+      "proposed_change": "Add `@[simp] theorem HLPFullDirection.toHSDirection_dx (D) : D.toHSDirection.dx = D.dx := rfl`, and likewise for `dtau`, `ds` and `dkappa`. Alternatively, mark the definition `@[simps]`. The right-hand sides are plain projections, so there is no cycle risk.",
+      "benefit": "The reduced-direction conversion is as simp-friendly as the block-vector conversion in the same file. Callers can use `simp [hdot]` or `simp only [toHSDirection_dx, \u2026]` instead of unfolding the definition, and goals about `hdot D.toHSDirection.dx \u2026` reduce to expressions in the full-direction fields.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/HSDInteriorPointLP/NewtonSystem.lean",
+          "declaration": "(cross-zero proof for the reduced direction)",
+          "excerpt": "simpa [HLPFullDirection.toHSDirection, hdot] using hcross"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/HSDInteriorPointLP/PrimalDualData.lean",
+          "declaration": "HLPFullDirection.of_toBlockVector",
+          "excerpt": "@[simp] theorem HLPFullDirection.of_toBlockVector"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 21895,
+    "cache_read_input_tokens": 118590,
+    "output_tokens": 5864,
+    "output_tokens_details": {
+      "thinking_tokens": 1266
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21895,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2842,
+        "cache_read_input_tokens": 25236,
+        "cache_creation_input_tokens": 672,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 672
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.158107,
+  "duration_ms": 45797,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-27T00:31:02",
+  "unit": "file",
+  "source_sha256": "aa6c4b8a38f25e842545e4cd12d96da2ef54dd8933bacc72af6aa2909e3a055c",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

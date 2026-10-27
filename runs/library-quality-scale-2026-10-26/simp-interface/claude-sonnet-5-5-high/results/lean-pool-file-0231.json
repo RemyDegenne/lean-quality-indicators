@@ -1,0 +1,130 @@
+{
+  "id": "lean-pool-file-0231",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions it depends on: `PolygonCell.side`, `ofCircle`, `sideAngle` and `radialHomeomorph_ofCircle` in PolygonalQuotient.lean and PolygonCellRadial.lean, plus the `Quotient.mk''` definitions in Mathlib. I checked whether any simp lemma unfolds `PolygonCell.side` or its `.val` and found none (grep for side_apply, coe_side, val_ofCircle and similar). I did not run Lean, so the remarks about simp behaviour (for example how `Complex.ofReal_inv` fires) are inferences from the lemma statements, not observed failures. I found no loop or competing-rule problem among the existing @[simp] lemmas. The `@Quotient.mk''` left-hand sides in `baseChildGluingMap_mk` and `childGluingBaseHomeomorph_mk` are fine, because `Quotient.mk''` is an abbrev for `\u27e6a\u27e7`. Suggesting @[simp] on the digon-side lemmas needs care: `Circle.coe_exp` would also rewrite their right-hand sides. The proposals therefore keep them as named `rw`/`simp` lemmas or target the `.re`/`.im` projections.",
+  "findings": [
+    {
+      "declaration": "P2DegenerateDisk.side_zero_digon_val (pattern repeated in side_one_digon_val, collarCirclePoint_side_one_digon, rightCellHomeomorph_fresh/old, sourceCellHomeomorph_side)",
+      "start_line": 427,
+      "end_line": 437,
+      "excerpt": "  change\n    (Circle.exp\n        (PolygonCell.sideAngle (0 : Fin 2) t) : \u2102) =\n      (Circle.exp (Real.pi * (t : \u211d)) : \u2102)",
+      "problem": "There is no unfolding lemma for `PolygonCell.side`. `side i t` is a bundled `C(unitInterval, PolygonCell n)` applied via DFunLike, so simp cannot see that `(side i t).val = Circle.exp (sideAngle i t)` or that `side i t = ofCircle n (Circle.exp (sideAngle i t))`. As a result the file repeatedly uses fragile `change` blocks that spell out the unfolded term by hand (lines ~430, 1331, 1394, 1467, 1690, 1710, 1731). `radialHomeomorph_ofCircle` is already @[simp], but it cannot fire on `side` terms until they are manually exposed as `ofCircle`.",
+      "proposed_change": "In PolygonalQuotient.lean, add a rfl lemma `PolygonCell.side_apply : side i t = ofCircle n (Circle.exp (sideAngle i t))`. Add a companion lemma `(side i t : \u2102) = Circle.exp (sideAngle i t)`, and a simp lemma for the `ofCircle` coercion if one is missing. Use them in `simp only`/`rw` in place of the `change` blocks. Tag the `side_apply` rewrite @[simp] only if its interaction with `reversedSide_one` and `side_zero_eq_side_one_monogon` is checked. Otherwise keep it as a named `rw` lemma.",
+      "benefit": "The `change` blocks go away, along with the need to restate the cell index and sideAngle by hand. Together with `radialHomeomorph_ofCircle` the radial-homeomorph lemmas then reduce by `simp`/`rw`. The digon-side coordinate lemmas become short, uniform proofs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/PolygonalQuotient.lean",
+          "declaration": "PolygonCell.side",
+          "excerpt": "toFun t := ofCircle n (Circle.exp (sideAngle i t))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/PolygonCellRadial.lean",
+          "declaration": "PolygonCell.radialHomeomorph_ofCircle",
+          "excerpt": "radialHomeomorph h (ofCircle n z) = ofCircle m (h z)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "P2DegenerateDisk.rightCellHomeomorph_fresh",
+          "excerpt": "PolygonCell.radialHomeomorph\n        (rightBoundaryHomeomorph r hr)\n        (PolygonCell.ofCircle (r + 1)"
+        }
+      ]
+    },
+    {
+      "declaration": "P2DegenerateDisk.lowerChordValue_im / lowerChordValue_re (with collarCircleValue_norm)",
+      "start_line": 669,
+      "end_line": 675,
+      "excerpt": "theorem lowerChordValue_im (z : PolygonCell 2) :\n    (lowerChordValue z).im = -chordHeight z := by\n  simp [lowerChordValue]",
+      "problem": "The two projection lemmas `lowerChordValue_im` and `lowerChordValue_re` are closed by plain `simp`, but they are neither tagged @[simp] nor available where the same expression is first needed. `collarCircleValue` is defined by writing out the body of `lowerChordValue` (lines 245-246). `collarCircleValue_norm` then recomputes the re/im parts with a long hand-written `simp only [... Complex.mul_re ... zero_sub]` list (lines 254-258). Later uses go through `rw [lowerChordValue_im, ...]` or `simpa only [lowerChordValue_re]`. The reader has no normal form for `lowerChordValue` projections.",
+      "proposed_change": "Move `lowerChordValue` before `collarCircleValue` and define `collarCircleValue z := lowerChordValue z ^ 2`, so `collarCircleValue_eq_lowerChordValue_sq` is by definition and needs no separate statement. Mark `lowerChordValue_re` and `lowerChordValue_im` @[simp] as the canonical projection lemmas. Shorten `collarCircleValue_norm` to use them, and let `simpa`/`simp` handle the rw-chains at lines ~689 and ~711.",
+      "benefit": "There is one canonical form for the lower chord point and its re/im parts. The duplicated manual `simp only` unfolding in `collarCircleValue_norm` and `teardropMap_collarCirclePoint` disappears. Later steps no longer need hand-ordered `rw` chains.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "P2DegenerateDisk.collarCircleValue",
+          "excerpt": "((z.val.re : \u2102) - (chordHeight z : \u2102) * Complex.I) ^ 2"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "P2DegenerateDisk.collarCircleValue_norm",
+          "excerpt": "simp only [a, Complex.sub_re, Complex.ofReal_re,\n      Complex.mul_re, Complex.ofReal_im, Complex.I_re,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "P2DegenerateDisk.collarCircleValue_eq_lowerChordValue_sq",
+          "excerpt": "collarCircleValue z = lowerChordValue z ^ 2 :=\n  rfl"
+        }
+      ]
+    },
+    {
+      "declaration": "P2DegenerateDisk.monogonMap",
+      "start_line": 187,
+      "end_line": 188,
+      "excerpt": "(((2 : \u211d)\u207b\u00b9 : \u211d) : \u2102) * teardropMap z",
+      "problem": "The scalar is stored as `((2\u207b\u00b9 : \u211d) : \u2102)`, which is not simp-normal. As I read the lemmas, `Complex.ofReal_inv` and the numeral cast lemmas rewrite it to `(2 : \u2102)\u207b\u00b9`. Every downstream use then needs ad hoc normalisation, such as the repeated side goal `((((2 : \u211d)\u207b\u00b9 : \u211d) : \u2102)) \u2260 0 := by norm_num` (lines 986 and 1092) and the `norm_num; ring` bridges (line ~1029 calc and `collarMap_eq_monogonMap_collarCirclePoint_of_im_eq`). The cast form was chosen only so that `smul_teardropMap_mem_range` (stated for a real scalar `(s : \u2102)`) can be applied with `s := 2\u207b\u00b9`.",
+      "proposed_change": "Define `monogonMap z := (2 : \u2102)\u207b\u00b9 * teardropMap z`, or `teardropMap z / 2`. Add one unfolding lemma `monogonMap_eq : monogonMap z = ((2\u207b\u00b9 : \u211d) : \u2102) * teardropMap z` for the single place that uses `smul_teardropMap_mem_range`. Add `monogonMap_ne_zero_iff`/a cancellation lemma so `monogonMap_injective` and `eq_monogon_basepoint_of_monogonMap_eq_zero` do not each re-prove `(2\u207b\u00b9 : \u2102) \u2260 0`.",
+      "benefit": "The definition is already in simp-normal form, so `simp`/`push_cast` neither change it nor leave cast goals. The duplicated `\u2260 0` side conditions and the norm_num/ring bridging disappear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "P2DegenerateDisk.monogonMap_injective",
+          "excerpt": "((((2 : \u211d)\u207b\u00b9 : \u211d) : \u2102)) \u2260 0 := by norm_num"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/P2DegenerateDisk.lean",
+          "declaration": "P2DegenerateDisk.eq_monogon_basepoint_of_monogonMap_eq_zero",
+          "excerpt": "((((2 : \u211d)\u207b\u00b9 : \u211d) : \u2102)) \u2260 0 := by norm_num"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 58470,
+    "cache_read_input_tokens": 576587,
+    "output_tokens": 12760,
+    "output_tokens_details": {
+      "thinking_tokens": 5582
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 58470,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3951,
+        "cache_read_input_tokens": 61126,
+        "cache_creation_input_tokens": 1357,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1357
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4191867000000001,
+  "duration_ms": 93177,
+  "turns": 17,
+  "attempts": 1,
+  "judged": "2026-10-27T00:36:40",
+  "unit": "file",
+  "source_sha256": "3bd124fc12c29b6ee245aa151246b5c6de9e1afe6596625586d301e084af7ad3",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

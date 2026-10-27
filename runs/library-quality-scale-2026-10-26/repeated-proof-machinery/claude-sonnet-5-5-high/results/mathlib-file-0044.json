@@ -1,0 +1,99 @@
+{
+  "id": "mathlib-file-0044",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the relevant Mathlib API (`meromorphicOrderAt_zpow`, `meromorphicOrderAt_finprod_ne_top`, `divisor_prod`). I looked for repeated reasoning in these places: the two zpow-order blocks, the two trailing-coefficient/log lemmas, the preperfect-closure side goals, and the two trivial R \u2264 0 branches. Most of these are short or too different to justify a shared lemma, so I only report the two best candidates. The first (the zpow-order block) is small but identical. The second is weaker: it is mostly shared setup, so it may fall under the rubric's \"insufficient\" cases. I cannot compile, so the proposed lemmas are untested.",
+  "findings": [
+    {
+      "declaration": "canonicalDecomposition_aux\u2082 / canonicalDecomposition_aux\u2083",
+      "start_line": 292,
+      "end_line": 308,
+      "excerpt": "rw [meromorphicOrderAt_zpow (meromorphic_canonicalFactor R z x)]\n    lift (meromorphicOrderAt (canonicalFactor R z) x) to \u2124 using\n      (meromorphicOrderAt_canonicalFactor_ne_top z (pos_of_mem_ball hx)) with \u2113\n    simp [\u2190 WithTop.coe_mul]",
+      "problem": "The side goal at lines 292-296 of `canonicalDecomposition_aux\u2082` is the same argument as lines 304-308 of `canonicalDecomposition_aux\u2083`. Both prove that an integer power of a canonical factor has meromorphic order \u2260 \u22a4. Both rewrite with `meromorphicOrderAt_zpow`, lift the order of the canonical factor to \u2124 using `meromorphicOrderAt_canonicalFactor_ne_top`, and close with `simp [\u2190 WithTop.coe_mul]`. The goal is stated twice with different variable names, so any change to the order API has to be made in two places.",
+      "proposed_change": "In the `Orders and Divisors` section, after `meromorphicOrderAt_canonicalFactor_ne_top`, add\n```\ntheorem meromorphicOrderAt_canonicalFactor_zpow_ne_top {z : \u2102} {R : \u211d} (w : \u2102) (n : \u2124) (hR : 0 < R) :\n    meromorphicOrderAt (canonicalFactor R w ^ n) z \u2260 \u22a4 := by\n  rw [meromorphicOrderAt_zpow (meromorphic_canonicalFactor R w z)]\n  lift meromorphicOrderAt (canonicalFactor R w) z to \u2124 using\n    (meromorphicOrderAt_canonicalFactor_ne_top w hR) with \u2113\n  simp [\u2190 WithTop.coe_mul]\n```\nThen the third bullet of `aux\u2082` becomes `\u00b7 intro z hz x hx; exact meromorphicOrderAt_canonicalFactor_zpow_ne_top z _ (pos_of_mem_ball hx)`. In `aux\u2083` the second argument of `meromorphicOrderAt_finprod_ne_top` becomes `fun c \u21a6 meromorphicOrderAt_canonicalFactor_zpow_ne_top c _ hR`, and the `intro c \u2026 simp` block is removed. The hypotheses are unchanged: `0 < R` in both uses, and `pos_of_mem_ball hx` supplies it in `aux\u2082`. The lemma needs no new imports.",
+      "benefit": "The \u22a4-order argument for powers of canonical factors is proved once and has a descriptive name. Both auxiliary lemmas lose their lift/simp boilerplate, so they read as plain applications of `divisor_prod` and `meromorphicOrderAt_finprod_ne_top`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Complex/CanonicalDecomposition.lean",
+          "declaration": "canonicalDecomposition_aux\u2083",
+          "excerpt": "rw [meromorphicOrderAt_zpow (meromorphic_canonicalFactor R c z)]\n  lift meromorphicOrderAt (canonicalFactor R c) z to \u2124 using\n    (meromorphicOrderAt_canonicalFactor_ne_top c hR) with \u2113\n  simp [\u2190 WithTop.coe_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Meromorphic/Order.lean",
+          "declaration": "meromorphicOrderAt_finprod_ne_top",
+          "excerpt": "(h\u2081 : \u2200 c, MeromorphicAt (F c) x) (h\u2082 : \u2200 c, meromorphicOrderAt (F c) x \u2260 \u22a4) :"
+        }
+      ]
+    },
+    {
+      "declaration": "ECanonicalDecomp.eq_smul_meromorphicTrailingCoeffAt / ECanonicalDecomp.log_norm_eq",
+      "start_line": 533,
+      "end_line": 563,
+      "excerpt": "lift (divisor f S\u2080R).support to Finset \u2102 using divisor_sphere_support_finite with t\u2081 ht\u2081\n  lift (divisor f B\u2080R).support to Finset \u2102 using D.meromorphicOn.divisor_ball_support_finite\n    with t\u2082 ht\u2082",
+      "problem": "`eq_smul_meromorphicTrailingCoeffAt` (lines 533-538, 559-563) and `log_norm_eq` (lines 629-634, 642-644) repeat the same setup. Both introduce `B\u2080R` and `S\u2080R` and lift the two divisor supports to Finsets `t\u2081` and `t\u2082`. Both then convert finprods over the ball and sphere divisors to Finset products with `finprod_eq_prod_of_mulSupport_subset` and `mulSupport_pow_subset_support`. The only differences are the base functions, which are trailing coefficients in one lemma and values of `canonicalFactor R i w` and `w - i` in the other. The `log_norm_eq` proof additionally re-derives its own value form from the first lemma.",
+      "proposed_change": "Add a private lemma for a general `F : \u2102 \u2192 E'` and `n : \u2102 \u2192 \u2124` with finite support `t`:\n```\nprivate lemma finprod_zpow_eq_prod {M : Type*} [CommGroupWithZero M] (F : \u2102 \u2192 M) (n : \u2102 \u2192  \u2124) (t : Finset \u2102) (ht : n.support = \u2191t) : \u220f\u1da0 i, F i ^ n i = \u220f i \u2208 t, F i ^ n i\n```\nIts proof is `finprod_eq_prod_of_mulSupport_subset _ (by simpa [ht] using mulSupport_pow_subset_support F n)`. The two finprod-to-Finset steps in each lemma would then be single `rw [finprod_zpow_eq_prod \u2026]` calls. The trailing-coefficient lemma works in a field, and the codomain of the values would have to be \u2102 (or a `CommGroupWithZero`). The `-divisor` exponent needs the matching support equation, which is `locallyFinsuppWithin.support_neg`.",
+      "benefit": "The Finset-conversion plumbing and its finiteness side goals would be written once, so the two companion lemmas show only their distinct algebra: trailing coefficients in one and logs of norms in the other. This is a modest gain, and I flag it as lower confidence.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Complex/CanonicalDecomposition.lean",
+          "declaration": "ECanonicalDecomp.log_norm_eq",
+          "excerpt": "rw [finprod_eq_prod_of_mulSupport_subset (s := t\u2082) _ _,\n        finprod_eq_prod_of_mulSupport_subset (s := t\u2081) _ _]\n      <;> simpa [ht\u2081, ht\u2082] using mulSupport_pow_subset_support .."
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/Complex/CanonicalDecomposition.lean",
+          "declaration": "mulSupport_pow_subset_support",
+          "excerpt": "(fun x \u21a6 f x ^ g x).mulSupport \u2286 g.support"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 29615,
+    "cache_read_input_tokens": 79050,
+    "output_tokens": 5368,
+    "output_tokens_details": {
+      "thinking_tokens": 1534
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29615,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3623,
+        "cache_read_input_tokens": 27398,
+        "cache_creation_input_tokens": 6146,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6146
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.180061,
+  "duration_ms": 38834,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T22:52:55",
+  "unit": "file",
+  "source_sha256": "37cc3f284c8d5e97781f8139f105279b083521d889a793d0d0e1d4ce6438f6df",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

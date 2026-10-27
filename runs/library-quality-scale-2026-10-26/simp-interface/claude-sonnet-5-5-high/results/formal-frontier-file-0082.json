@@ -1,0 +1,115 @@
+{
+  "id": "formal-frontier-file-0082",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related StandardChartScheme lemmas, and I looked at Mathlib's `openCoverOfLeft` (Pullbacks.lean) and the pullback `lift_fst` lemma family. The file declares no simp attributes at all. The findings concern the hand-written rewriting that results: the cover-component equations are not simp/reassoc lemmas, so a 45-line `calc` stands in for `simp`, and the same `simpa` coherence is repeated four times. I did not run Lean. The proposed lemma statements and `@[reassoc (attr := simp)]` annotations are untested. Because the lemmas are private and local, some uncertainty remains about whether a global simp attribute is wanted; a local `simp [...]` set would also work. I found no rewrite cycle or unwanted-expansion problem.",
+  "findings": [
+    {
+      "declaration": "pullbackOpenCoverOfLeft_fst / pullbackOpenCoverOfLeft_snd (used in hti of isIntegral_standardCoordinatePullback)",
+      "start_line": 209,
+      "end_line": 227,
+      "excerpt": "(Scheme.Pullback.openCoverOfLeft C f g).f i \u226b pullback.fst f g =\n      pullback.fst (C.f i \u226b f) g \u226b C.f i",
+      "problem": "The two component equations for `openCoverOfLeft` are plain private theorems. They have no `@[reassoc (attr := simp)]` (or `simp`) attribute, and no reassociated forms. `Scheme.Pullback.openCoverOfLeft` is `@[simps! I\u2080 X f]`, so `.f i` is not unfolded to `pullback.map` under a plain `simp`. As a result `hti` (lines 272-318) cannot be closed by `pullback.hom_ext <;> simp`. It is a hand-written `calc` of about 45 lines, built from `Category.assoc` and `congrArg (fun k \u21a6 ti i \u226b k)` steps, to push `ti i \u226b C.f i \u226b pullback.fst p y` through. This is the usual job of reassoc-simp lemmas.",
+      "proposed_change": "State the lemmas as `@[reassoc (attr := simp)] theorem pullbackOpenCoverOfLeft_fst ...` and the same for `_snd` (they are local, so a local simp set is also fine). Then prove `hti` as `apply pullback.hom_ext <;> simp [ti, t, hl]`, using `pullback.lift_fst` / `pullback.lift_snd` and the generated `_assoc` forms. The remaining side goals would be `hl i` and `Category.comp_id`.",
+      "benefit": "Replaces the opaque `calc` and its explicit `congrArg` lambdas with a short `simp` proof. It also gives the project a canonical normal form for `openCover.f i \u226b pullback.fst/snd`, so later uses with the same cover need no new `calc`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/AlgebraicGeometry/Pullbacks.lean",
+          "declaration": "AlgebraicGeometry.Scheme.Pullback.openCoverOfLeft",
+          "excerpt": "@[simps! I\u2080 X f]\ndef openCoverOfLeft"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/CategoryTheory/Limits/Shapes/Pullback/PullbackCone.lean",
+          "declaration": "CategoryTheory.Limits.PullbackCone.IsLimit.lift_fst",
+          "excerpt": "@[reassoc (attr := simp)]\nlemma IsLimit.lift_fst"
+        }
+      ]
+    },
+    {
+      "declaration": "allOnesProjPoint_toSpec (and its four uses in isIntegral_standardCoordinatePullback)",
+      "start_line": 182,
+      "end_line": 186,
+      "excerpt": "allOnesProjPoint R K \u03c3 \u226b polynomialProjToSpec R \u03c3 =\n      Spec.map (CommRingCat.ofHom (algebraMap R K))",
+      "problem": "This coherence equation is not a `reassoc` lemma. The main proof needs it in several shapes and rebuilds it each time with `simpa [s, p, y] using allOnesProjPoint_toSpec R K \u03c3`. That happens at lines 266, 269, 303 and 318, and each time the `let`-bound `s, p, y` must be unfolded by hand. At line 268 the proof first does `rw [\u2190 Category.assoc, hl]` to reach the same equation. The unfolding of local abbreviations and the missing `_assoc` form are what make the `simpa` step necessary.",
+      "proposed_change": "Mark it `@[reassoc]` (and `simp` if the local simp set is used), so `allOnesProjPoint_toSpec_assoc` exists. Prove the `pullback.lift` obligation once, for example as a named `have hcomm : s \u226b p = \ud835\udfd9 _ \u226b y`, and reuse it in `t`, `hli` and the `lift_fst` / `lift_snd` steps. Alternatively avoid the `let`-bound `s p y` (use `set` or explicit terms) so that `simp` and the lemma match syntactically.",
+      "benefit": "Removes four repeated `simpa [s, p, y]` calls and the manual `rw [\u2190 Category.assoc, hl]`. Rewriting then works uniformly on `allOnesProjPoint \u2026 \u226b polynomialProjToSpec \u2026 \u226b h` and does not depend on the proof-local abbreviations.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-space/ProjectiveSpace/GeometricallyIntegral.lean",
+          "declaration": "isIntegral_standardCoordinatePullback",
+          "excerpt": "pullback.lift s (\ud835\udfd9 _) (by simpa [s, p, y] using allOnesProjPoint_toSpec R K \u03c3)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-space/ProjectiveSpace/StandardChartScheme.lean",
+          "declaration": "standardCoordinateChartMap_toSpec",
+          "excerpt": "@[reassoc]\ntheorem standardCoordinateChartMap_toSpec"
+        }
+      ]
+    },
+    {
+      "declaration": "standardCoordinateChartPullbackIso_inv_fst / standardCoordinateChartPullbackIso_inv_snd",
+      "start_line": 137,
+      "end_line": 151,
+      "excerpt": "(standardCoordinateChartPullbackIso R K \u03c3 i).inv \u226b pullback.fst _ _ =",
+      "problem": "These are the only simp-style interface lemmas for the private chart-pullback isomorphism. They are stated without `@[reassoc]` or `simp`, and nothing in the file uses them (the proof of `isIntegral_standardCoordinatePullback` only uses `.inv` as an `IsIso` witness). They are a half-built interface: the `inv \u226b fst/snd` normal form is stated, but without the `_assoc` variants that composite morphisms need. The same applies to the `_isPullback` coefficient triangles.",
+      "proposed_change": "Either delete the two unused lemmas, or finish the interface. For the second option, tag them `@[reassoc (attr := simp)]` (or use them via `simp [standardCoordinateChartPullbackIso]`), with the `inv \u226b fst/snd` orientation as the canonical form for rewriting a morphism out of the affine-space chart into the pullback.",
+      "benefit": "Dead private declarations are removed. Otherwise the isomorphism gets a simp interface that can actually be used, instead of lemmas that could never fire in a composite.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/projective-space/ProjectiveSpace/GeometricallyIntegral.lean",
+          "declaration": "isIntegral_standardCoordinatePullback",
+          "excerpt": "exact IsIntegral.of_isIso (standardCoordinateChartPullbackIso R K \u03c3 i).inv"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 30065,
+    "cache_read_input_tokens": 107118,
+    "output_tokens": 5295,
+    "output_tokens_details": {
+      "thinking_tokens": 1213
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30065,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3057,
+        "cache_read_input_tokens": 32605,
+        "cache_creation_input_tokens": 1473,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1473
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1839418,
+  "duration_ms": 38288,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T22:59:19",
+  "unit": "file",
+  "source_sha256": "37c889abaa768efc5bb512d86954e8df8cfbe3370623dd1108034b373053a667",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

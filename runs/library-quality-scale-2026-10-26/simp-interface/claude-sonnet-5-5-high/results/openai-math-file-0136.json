@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0136",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and searched the repository for the related simp lemmas. That covered `emitTapes_*`, `tokenBits_append`, `encodeWords_append`, `encodeWord_length`, and the definitions of `tokenBits`, `tokenWords` and `Token.words`. The `@[simp]` set is small: `emitTapes_reversed`, `emitTapes_count`, `tokenBits_append` and `compareSlots_apply`. I found no loop or competing-rule problem among them. `tokenBits_append` has a non-simp twin in the `OrClosure` namespace of ValidityMachine.lean, but the two live in different namespaces, so I did not report them. The findings below are about missing normal-form lemmas that force definition unfolding in proofs. I could not run Lean, so the effect of the proposed lemmas is untested. I did not confirm which of the several `tokenBits`/`Token.words` copies in the repository this file resolves to; the PositionLemmas.lean and CircuitEncodingBridge.lean copies are identical in shape.",
+  "findings": [
+    {
+      "declaration": "lookupTailTrace (finish step)",
+      "start_line": 307,
+      "end_line": 308,
+      "excerpt": "cases tape <;> simp [moved, emitTapes, tokenBits, tokenWords, Token.words,\n      encodeWords, encodeWord, haddress, List.reverse_append, List.append_assoc]",
+      "problem": "The proof unfolds `emitTapes`, `tokenBits`, `tokenWords`, `Token.words`, `encodeWords` and `encodeWord` all the way down to the bit level to evaluate `emitTapes base [.input wire]`. This bypasses the file's own simp lemmas `emitTapes_reversed` and `emitTapes_count`. No simp lemma gives a canonical form for `tokenBits` of a singleton or of `[]`. So every proof that emits a literal token has to expand through `encodeWord`, which is the \"unwanted expansion\" the rubric describes. The same unfold-`emitTapes` idiom appears at lines 74\u201376 and 95.",
+      "proposed_change": "Add simp lemmas for the canonical forms of `tokenBits` on small lists. Examples: `tokenBits [] = []`, `tokenBits [.input w] = encodeWord 5 ++ encodeWord w`, and a general `tokenBits (t :: ts) = encodeWords t.words ++ tokenBits ts` (or a `tokenBits_cons` lemma). `tokenBits_append` already exists. Then the goal can be closed by `simp [moved, haddress, ...]` without `emitTapes`, `tokenWords`, `Token.words` or `encodeWord` in the simp set. That lets `emitTapes_reversed` and `emitTapes_count` fire.",
+      "benefit": "The normal form of an emitted tape becomes `(encodeWord w).reverse ++ (encodeWord 5).reverse ++ base .reversed`, which is exactly the shape in `moved`. The proof no longer depends on the bit-level definitions of `encodeWord`, so it is shorter and less fragile. It also gives later emitter proofs a canonical rewrite for literal tokens.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/PerfectCompleteness/Machines/PositionLemmas.lean",
+          "declaration": "tokenBits",
+          "excerpt": "def tokenBits (tokens : List Token) : List Bool := encodeWords (tokenWords tokens)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/PerfectCompleteness/Machines/PositionLemmas.lean",
+          "declaration": "Token.words",
+          "excerpt": "| .input wire => [5, wire]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/BinPacking/CookLevin/TermMachine.lean",
+          "declaration": "emitTapes_reversed",
+          "excerpt": "emitTapes base tokens .reversed = (tokenBits tokens).reverse ++ base .reversed"
+        }
+      ]
+    },
+    {
+      "declaration": "emitTapes_other / Frame.emit",
+      "start_line": 66,
+      "end_line": 78,
+      "excerpt": "  \u00b7 simpa [emitTapes] using frame.cursorWord\n  \u00b7 simpa [emitTapes] using frame.capacityWord\n  \u00b7 simpa [emitTapes] using frame.rootsWord",
+      "problem": "The simp interface for `emitTapes` covers only the two tapes it modifies (`.reversed`, `.count`). Reads of the other tapes go through `emitTapes_other`, which has no `@[simp]` attribute and carries two inequality hypotheses. Callers such as `Frame.emit` therefore unfold `emitTapes` into nested `Function.update` and rely on simp's `Function.update_apply` and `ne` reasoning. There are no per-tape lemmas like `emitTapes_cursor`. The sibling file TransitionIteration.lean declares `emitTapes_cursor` for its own `emitTapes`, which shows the pattern is wanted.",
+      "proposed_change": "Keep `emitTapes_other`, and add `@[simp]` per-tape lemmas for the frame tapes read in this file: `emitTapes base tokens .cursor = base .cursor`, and likewise for `.capacity`, `.roots`, `.address`, `.value`, `.scratch`, `.copy` and `.position`. Each is provable by `emitTapes_other` with `by decide`. Alternatively, mark `emitTapes_other` `@[simp]` with `by decide`-dischargeable side conditions. Then the first three bullets of `Frame.emit` reduce to `simpa using frame.cursorWord` and similar.",
+      "benefit": "Proofs about `emitTapes` states can use `simp` without unfolding the definition. This keeps `emitTapes` opaque to the simplifier and removes the repeated `simp [emitTapes]` calls. Lookups of untouched tapes then normalize directly to `base tape`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/BinPacking/CookLevin/TermMachine.lean",
+          "declaration": "emitTapes_other",
+          "excerpt": "emitTapes base tokens tape = base tape := by\n  simp [emitTapes, hc, ho]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/BinPacking/CookLevin/TransitionIteration.lean",
+          "declaration": "emitTapes_cursor (usage)",
+          "excerpt": "emitTapes_cursor, cursorTapes_twice, emitTapes_append, Nat.add_assoc] using total"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 41123,
+    "cache_read_input_tokens": 250302,
+    "output_tokens": 6716,
+    "output_tokens_details": {
+      "thinking_tokens": 2246
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 41123,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2691,
+        "cache_read_input_tokens": 44503,
+        "cache_creation_input_tokens": 633,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 633
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.25671420000000006,
+  "duration_ms": 54376,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-10-26T23:09:45",
+  "unit": "file",
+  "source_sha256": "057572ab7a919b6edae6d291d6395cf6570dc7a2de869763a4805980d03f3d43",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

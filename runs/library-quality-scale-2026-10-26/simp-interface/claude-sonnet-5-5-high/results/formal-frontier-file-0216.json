@@ -1,0 +1,120 @@
+{
+  "id": "formal-frontier-file-0216",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and checked Mathlib's IsLimit.fac attributes and the repo's downstream use (only the PublicRoot test references the stage lemmas). I could not run Lean, so I did not test the proposed lemmas or the simp-set interactions. The existing @[simp] lemmas (quotientTransition_mk, toContinuousHom_mk, toContinuousHom_ofContinuousHom, the two equiv lemmas, toHom_ofHom, ofHom_toHom) look well oriented and not circular. The findings are all about missing apply and unfolding lemmas.",
+  "findings": [
+    {
+      "declaration": "homStageMap / stageToContinuousHom / kernelFiniteQuotientMap (missing apply lemmas)",
+      "start_line": 88,
+      "end_line": 130,
+      "excerpt": "toFun a := a.comp (quotientTransition",
+      "problem": "The central constructions have no simp or apply lemmas. `homStageMap G F U V h a` is a `HomStageHom` coerced through a hand-written FunLike, so simp cannot unfold it to `a.comp (quotientTransition _)`. `stageToContinuousHom G F U a g` has no lemma giving `a (QuotientGroup.mk g)`. `kernelFiniteQuotientMap q (QuotientGroup.mk g)` has no lemma giving `q g`. The only simp lemma in this family, `quotientTransition_mk`, therefore cannot fire where it is needed. The proofs of `stageToContinuousHom_compat`, `toContinuousHom_ofContinuousHom` and `HomLimit.ofHom` all fall back on `ext g; rfl` or a hand-built `congrArg a (quotientTransition_mk _ g).symm`.",
+      "proposed_change": "Add `@[simp]` apply lemmas. First, `homStageMap_apply : homStageMap G F U V h a = a.comp (quotientTransition _)`. Second, `stageToContinuousHom_apply : stageToContinuousHom G F U a g = a (QuotientGroup.mk g)`, which is rfl. Third, `kernelFiniteQuotientMap_mk : kernelFiniteQuotientMap q (QuotientGroup.mk g) = q g`. The `stageToContinuousHom_compat` proof can then be `ext g; simp`. A `coe_toFun`-style lemma for the `FunLike` instance on `HomStageHom` would also help.",
+      "benefit": "Users and later proofs get a canonical normal form in terms of `QuotientGroup.mk` and `quotientTransition_mk`. Proofs no longer depend on definitional unfolding with `rfl`, and the existing simp lemma `quotientTransition_mk` becomes reachable.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/FiniteQuotientHom.lean",
+          "declaration": "stageToContinuousHom_compat",
+          "excerpt": "exact congrArg a (quotientTransition_mk _ g).symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/FiniteQuotientHom.lean",
+          "declaration": "kernelFiniteQuotientMap",
+          "excerpt": "QuotientGroup.kerLift q.toMonoidHom"
+        }
+      ]
+    },
+    {
+      "declaration": "HomLimit.cone / HomLimit.toHom_fac / HomLimit.ofHom_toHom",
+      "start_line": 269,
+      "end_line": 340,
+      "excerpt": "x.toHom \u226b ProfiniteGrp.proj V = x.cone.\u03c0.app V",
+      "problem": "`HomLimit.cone` has no simp lemmas for `cone_pt` or `cone_\u03c0_app`, and `toHom_fac` is not simp. `toHom_fac` is the analogue of Mathlib's `IsLimit.fac`, which is `reassoc (attr := simp)`, but it is not tagged `@[simp]`. As a result `HomLimit.ofHom_toHom` has to bridge the gap with two identical `change ... at h` and `change` steps. `toHom_ofHom` also needs a manual `let f'` with `change` to force the cone point to unify.",
+      "proposed_change": "Add `@[simp] cone_\u03c0_app : x.cone.\u03c0.app V = ConcreteCategory.ofHom (HomColimit.toContinuousHom G (H.diagram.obj V) (x.1 V))`. Add `cone_pt : x.cone.pt = G` if useful. Add `@[reassoc (attr := simp)]` to `toHom_fac` once the RHS is normalised through `cone_\u03c0_app`. Add a simp lemma `proj_comp_toHom_hom`, giving `(proj V).hom.comp x.toHom.hom = toContinuousHom ...`. This would shorten `ofHom_toHom` to `simp`-style or `exact`, without the duplicated `change`.",
+      "benefit": "This gives a canonical simp normal form for projections of an assembled homomorphism. It removes the `change` workarounds and matches the simp attribute of the Mathlib lemma `toHom_fac` mirrors.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/CategoryTheory/Limits/IsLimit.lean",
+          "declaration": "IsLimit.fac",
+          "excerpt": "attribute [reassoc (attr := simp)] IsLimit.fac IsColimit.fac"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/FiniteQuotientHom.lean",
+          "declaration": "HomLimit.ofHom_toHom",
+          "excerpt": "change (ProfiniteGrp.proj V).hom.comp x.toHom.hom ="
+        }
+      ]
+    },
+    {
+      "declaration": "homEquivHomLimit",
+      "start_line": 347,
+      "end_line": 352,
+      "excerpt": "noncomputable def homEquivHomLimit (G H : ProfiniteGrp.{u}) :",
+      "problem": "The main equivalence has no `_apply` or `_symm_apply` simp lemmas. The analogous `HomColimit.continuousHomEquiv` in the same file does have them. A goal containing `homEquivHomLimit G H f` or `(homEquivHomLimit G H).symm x` cannot be rewritten to `HomLimit.ofHom f` or `HomLimit.toHom x`, so the simp lemmas `toHom_ofHom` and `ofHom_toHom` are unreachable from the equivalence.",
+      "proposed_change": "Add `@[simp] theorem homEquivHomLimit_apply (f : G \u27f6 H) : homEquivHomLimit G H f = HomLimit.ofHom f := rfl` and `@[simp] theorem homEquivHomLimit_symm_apply (x : HomLimit G H) : (homEquivHomLimit G H).symm x = x.toHom := rfl`. Alternatively, mark the def with `@[simps]` and adjust the generated names. This matches the convention used for `continuousHomEquiv`.",
+      "benefit": "Simp can then unfold the headline equivalence into the two directions and reach the existing round-trip simp lemmas. The simp interface becomes consistent across the file's two equivalences.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/FiniteQuotientHom.lean",
+          "declaration": "HomColimit.continuousHomEquiv_symm_apply",
+          "excerpt": "(HomColimit.continuousHomEquiv G F).symm q =\n      HomColimit.ofContinuousHom G F q :=\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/FiniteQuotientHom.lean",
+          "declaration": "HomLimit.toHom_ofHom",
+          "excerpt": "(HomLimit.ofHom f).toHom = f"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 12668,
+    "cache_read_input_tokens": 45018,
+    "output_tokens": 5726,
+    "output_tokens_details": {
+      "thinking_tokens": 1667
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12668,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2921,
+        "cache_read_input_tokens": 15372,
+        "cache_creation_input_tokens": 1309,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1309
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1124498,
+  "duration_ms": 37674,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:31:10",
+  "unit": "file",
+  "source_sha256": "dd8f713f1b19db9475487d2b3f91afab1522b6fd896cfac450fd27b39557a1a0",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

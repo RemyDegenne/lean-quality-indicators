@@ -1,0 +1,94 @@
+{
+  "id": "flt-anthropic-file-0291",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the Mathlib `Matrix.GeneralLinearGroup.map_det` and `RingHom.map_det` API. I also looked at the sibling file that proves the same det_fst/det_snd facts in a shorter way. I did not run Lean, so the rewrites below are untested. The two findings are modest. The strongest is the det_fst_apply / det_snd_eq pair. The hlo/hhi pair is weaker: the duplication is dual-shaped and the blocks are short. archUnit/finUnit and hNsA/hNsB are mirror-image but short or definitional, so I did not report them.",
+  "findings": [
+    {
+      "declaration": "SiegelSlab.det_fst_apply and SiegelSlab.det_snd_eq",
+      "start_line": 29,
+      "end_line": 53,
+      "excerpt": "rw [h1, \u2190 RingHom.mapMatrix_apply, \u2190 RingHom.map_det, Matrix.GeneralLinearGroup.val_det_apply]",
+      "problem": "The two proofs have the same structure. Each shows that a component of the unit-valued determinant equals the determinant of the matrix mapped by a ring homomorphism out of the adele ring. In both, an `h1 : component matrix = (g : Matrix _ _ _).map \u03c6` is proved by `ext i j; rfl`. Then the identical chain `rw [h1, \u2190 RingHom.mapMatrix_apply, \u2190 RingHom.map_det, Matrix.GeneralLinearGroup.val_det_apply]; rfl` finishes. The determinant-commutes-with-ring-hom reasoning is written out twice with only \u03c6 changed. In `det_snd_eq`, \u03c6 is the odd-looking `(RingHom.snd _ _).comp (RingHom.id _)`, which is only there to mirror the first proof.",
+      "proposed_change": "Add one private helper inside `namespace SiegelSlab`: `theorem coe_det_eq_det_map {R : Type*} [CommRing R] (\u03c6 : AdeleRing (\ud835\udcde K) K \u2192+* R) (g : AdelicGL2 (\ud835\udcde K) K) : \u03c6 ((Matrix.GeneralLinearGroup.det g : (AdeleRing (\ud835\udcde K) K)\u02e3) : AdeleRing (\ud835\udcde K) K) = ((g : Matrix (Fin 2) (Fin 2) (AdeleRing (\ud835\udcde K) K)).map \u03c6).det`. Its proof is `rw [\u2190 RingHom.mapMatrix_apply, \u2190 RingHom.map_det, Matrix.GeneralLinearGroup.val_det_apply]`. It could instead follow `Matrix.GeneralLinearGroup.map_det` after `GL.map`. Then `det_fst_apply` becomes `(coe_det_eq_det_map K ((Pi.evalRingHom _ w).comp (RingHom.fst _ _)) g).trans (by congr 1)`, or `exact` after the entrywise `rfl` identification. `det_snd_eq` becomes the same with `RingHom.snd _ _`, without the `RingHom.id` composite. A cleaner option is to restate both through `adeleArch`/`adeleFin` as in the sibling file's `det_fst_eq`/`det_snd_eq`, which need only `RingHom.map_det` and `rfl`.",
+      "benefit": "The determinant-versus-ring-hom argument lives in one place. Each lemma reduces to naming the homomorphism and checking entries by `rfl`. The artificial `RingHom.id` composite disappears. A future change to `AdelicGL2` or `val_det_apply` needs one fix instead of two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_forall_integral_maximalCompact_norm_sq_deriv_axis_continuation_weylIntertwiningIntegral_le_and_norm_sq_sub_le_of_flat_of_ne_bot.lean",
+          "declaration": "det_snd_eq",
+          "excerpt": "show (adeleFin (\ud835\udcde K) K) ((g : Matrix (Fin 2) (Fin 2) (AdeleRing (\ud835\udcde K) K)).det) = _\n  rw [RingHom.map_det]\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/LinearAlgebra/Matrix/GeneralLinearGroup/Defs.lean",
+          "declaration": "Matrix.GeneralLinearGroup.map_det",
+          "excerpt": "protected lemma map_det (g : GL n R) : Matrix.GeneralLinearGroup.det (map f g) ="
+        }
+      ]
+    },
+    {
+      "declaration": "solution (hlo and hhi inside the proof)",
+      "start_line": 153,
+      "end_line": 167,
+      "excerpt": "Finset.prod_le_prod (fun y _ => (lt_min one_pos (hn0 y)).le) (fun y _ => by",
+      "problem": "`hlo` and `hhi` are dual proofs of the same fact: for x \u2208 T, a product over T of terms bounded by `(if y = x then n x else 1)` collapses to `n x`. Both use `calc` through `\u220f y \u2208 T, (if y = x then n x else 1)`. Both repeat `rw [Finset.prod_ite_eq' T x (fun _ => n x)]; simp [hxT]`. Both then do a pointwise `Finset.prod_le_prod` with `split_ifs` on `y = x` and `h \u25b8` of a min/max lemma. The collapse step and the case analysis are written twice, and the `split_ifs <;> first | \u2026` nonnegativity side goal in `hhi` is awkward.",
+      "proposed_change": "Factor out one local lemma for positive `n`. For example, a private theorem `prod_ite_eq_self (T : Finset \u03b1) (x : \u03b1) (a : \u211d) (hx : x \u2208 T) : \u220f y \u2208 T, (if y = x then a else 1) = a`, proved by `rw [Finset.prod_ite_eq']; simp [hx]`. Better, state `min_prod_le_le_max_prod (T : Finset \u03b1) (n : \u03b1 \u2192 \u211d) (hn : \u2200 y, 0 < n y) (x) (hx : x \u2208 T) : \u220f y \u2208 T, min 1 (n y) \u2264 n x \u2227 n x \u2264 \u220f y \u2208 T, max 1 (n y)`, using the shared collapse lemma for both halves. `solution` then calls it once as `obtain \u27e8hlo, hhi\u27e9 := min_prod_le_le_max_prod T n hn0 x hxT`.",
+      "benefit": "The main proof drops about 15 lines of finset bookkeeping and reads as the interval argument (norm of s times a bounded constant). The `T`-product bound becomes a named, reusable fact. The `prod_ite_eq'` + `simp [hxT]` step is stated once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_AutomorphicForm_exists_iUnion_image_mul_centreCutSiegelSet_subset_setOf_ideleNorm_det_mem_Icc.lean",
+          "declaration": "solution (hhi)",
+          "excerpt": "calc n x = \u220f y \u2208 T, (if y = x then n x else 1) := by rw [Finset.prod_ite_eq' T x (fun _ => n x)]; simp [hxT]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 16324,
+    "cache_read_input_tokens": 45667,
+    "output_tokens": 5417,
+    "output_tokens_details": {
+      "thinking_tokens": 1583
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 16324,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2962,
+        "cache_read_input_tokens": 16729,
+        "cache_creation_input_tokens": 3524,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3524
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.12404869999999998,
+  "duration_ms": 40700,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T01:12:23",
+  "unit": "file",
+  "source_sha256": "4732e70d8aa9c95ebe49b8ceb5210e520c0c382bdfdfa423d87f18f5ffb986ba",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

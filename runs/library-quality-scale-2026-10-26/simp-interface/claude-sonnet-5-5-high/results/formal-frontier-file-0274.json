@@ -1,0 +1,115 @@
+{
+  "id": "formal-frontier-file-0274",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the simp lemmas it depends on in ProcyclicPowerIndex.lean and ProcyclicPowerLimit.lean. I did not run Lean, so the findings come from reading the rule shapes (subterm-first rewriting, overlapping left-hand sides) and are not simp traces. I did not flag the type-level `_obj` simp lemmas or the `map_id`/`map_apply` overlap. They look benign or too speculative to support. I did not confirm whether Mathlib's `Iso.inv_hom_id_apply` is simp. Finding 2 therefore says the lemma may be redundant.",
+  "findings": [
+    {
+      "declaration": "ProfiniteGrp.continuousMulEquivSupportedResidueLimit_apply / ProfiniteGrp.continuousMulEquivSupportedResidueLimit_generator",
+      "start_line": 332,
+      "end_line": 376,
+      "excerpt": "(residuePowerQuotientNatIsoOfInfiniteSupport G hG g hg\n        {p | hG.exponents p = \u22a4} (Set.Subset.rfl)).inv.app n\n        (QuotientGroup.mk' (powerImage G hG n.val : Subgroup G) x)",
+      "problem": "The simp normal form for a residue coordinate stops at `(NatIso).inv.app n (mk' _ x)`. The file has simp lemmas for the component (`residuePowerQuotientComponent_inv_apply`) and for `residuePowerQuotientNatIso_hom_apply`. It has no simp lemma that unfolds `.inv.app n` of `residuePowerQuotientNatIso` or of `\u2026OfInfiniteSupport`. Both are irreducible defs, so simp cannot see through them. `_apply` and `_generator` also both match `(\u2026 g).val n`. `_apply` has the more general left-hand side. If it fires first, the coordinate of the generator is stuck at `inv.app n (mk' g)`. The `_generator` proof has to bypass simp with `change` and `congrArg ULift.up` for this reason.",
+      "proposed_change": "Add `@[simp] residuePowerQuotientNatIso_inv_apply` with the same shape as the existing `_hom_apply`, with right-hand side `ULift.up ((powerImage_zmodContinuousMulEquiv \u2026 (hindex n)).symm q)`. Add a matching lemma for `\u2026OfInfiniteSupport`, or make that def `abbrev`/reducible. Then `_apply` rewrites to `ULift.up (equiv.symm (mk' x))`. The existing simp lemma `powerImage_zmodContinuousMulEquiv_symm_apply_generator` closes the generator case, so `_generator` no longer competes with `_apply` and follows by `simp`.",
+      "benefit": "One canonical coordinate normal form (`ULift.up (equiv.symm \u2026)`) replaces the stuck `inv.app`. The generator coordinate then simplifies to `ULift.up (ofAdd 1)` whichever lemma fires first.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/ProcyclicResidueLimit.lean",
+          "declaration": "residuePowerQuotientComponent_inv_apply",
+          "excerpt": "ULift.up ((powerImage_zmodContinuousMulEquiv G hG g hg n.val n.pos hindex).symm q)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/ProcyclicPowerIndex.lean",
+          "declaration": "powerImage_zmodContinuousMulEquiv_symm_apply_generator",
+          "excerpt": "@[simp] theorem powerImage_zmodContinuousMulEquiv_symm_apply_generator"
+        }
+      ]
+    },
+    {
+      "declaration": "ProfiniteGrp.continuousMulEquivSupportedResidueLimit_quotient_apply",
+      "start_line": 349,
+      "end_line": 359,
+      "excerpt": "((continuousMulEquivSupportedResidueLimit G hG hfree g hg x).val n) =\n        QuotientGroup.mk' (powerImage G hG n.val : Subgroup G) x",
+      "problem": "The left-hand side `\u2026.hom.app n (( \u2026 x).val n)` contains the left-hand side of the simp lemma `continuousMulEquivSupportedResidueLimit_apply` as a proper subterm. Simp rewrites inner subterms first, so `_apply` turns the argument into `\u2026.inv.app n (mk' _ x)` before this lemma is tried. This lemma is then unlikely ever to fire. The simp set effectively proves it by `_apply` followed by `Iso.inv_hom_id_apply`, which is exactly the lemma's own proof, so it adds nothing to the simp set. It is either dead as a simp lemma or redundant.",
+      "proposed_change": "Drop `@[simp]` from `continuousMulEquivSupportedResidueLimit_quotient_apply` and keep it as a plain lemma for `rw`. Alternatively, delete it if `simp` closes the goal using `_apply` plus the categorical `inv_hom_id` simp lemma.",
+      "benefit": "The simp set contains only rules that can fire. It no longer has an unreachable rule that overlaps `_apply`, and the normal form for residue coordinates stays unambiguous.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/ProcyclicResidueLimit.lean",
+          "declaration": "continuousMulEquivSupportedResidueLimit_apply",
+          "excerpt": "(continuousMulEquivSupportedResidueLimit G hG hfree g hg x).val n ="
+        }
+      ]
+    },
+    {
+      "declaration": "ProfiniteGrp.residuePowerQuotientComponent_hom_one",
+      "start_line": 186,
+      "end_line": 194,
+      "excerpt": "@[simp] theorem residuePowerQuotientComponent_hom_one (G : ProfiniteGrp.{u})",
+      "problem": "This simp lemma is a specialisation of the simp lemma `residuePowerQuotientComponent_hom_apply` at `a = 1`. Its proof is `rw [hom_apply, powerImage_zmodContinuousMulEquiv_apply_one]`, and the second lemma is already `@[simp]`. Both lemmas match `hom (up (ofAdd 1))`. Simp is therefore already confluent without it, and the extra rule only adds a competing path to the same normal form.",
+      "proposed_change": "Remove `@[simp]` from `residuePowerQuotientComponent_hom_one`, and keep it as a named convenience lemma or delete it.",
+      "benefit": "A smaller, non-overlapping simp set that is easier to reason about. No simp behaviour is lost, because `hom_apply` followed by `apply_one` gives the same result.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/ProcyclicPowerIndex.lean",
+          "declaration": "powerImage_zmodContinuousMulEquiv_apply_one",
+          "excerpt": "@[simp] theorem powerImage_zmodContinuousMulEquiv_apply_one"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/profinite-groups/ProfiniteGroups/ProcyclicResidueLimit.lean",
+          "declaration": "residuePowerQuotientComponent_hom_apply",
+          "excerpt": "powerImage_zmodContinuousMulEquiv G hG g hg n.val n.pos hindex\n        (Multiplicative.ofAdd a) := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 22064,
+    "cache_read_input_tokens": 85002,
+    "output_tokens": 6790,
+    "output_tokens_details": {
+      "thinking_tokens": 2865
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22064,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2792,
+        "cache_read_input_tokens": 23538,
+        "cache_creation_input_tokens": 2539,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2539
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1646762,
+  "duration_ms": 48179,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T00:48:14",
+  "unit": "file",
+  "source_sha256": "7fd8c9e2b8ca64493a1223e10c4efd802f45c33512f3c2a000d77fc048c84918",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,114 @@
+{
+  "id": "mathlib-file-0351",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I looked for repeated nontrivial arguments and found two. The first is the same preimage-of-image `Opens` equality proof, written inline at eight sites. The second is the SheafedSpace `fst_of_right` instance, which copies the whole `snd_of_left` argument where the file already uses a symmetry shortcut for the same fact in other categories. I considered but did not report other pairs because they are short or are already left/right symmetry wrappers: `hasLimit_cospan_forget_of_left/right`, `forgetCreatesPullbackOfLeft/Right`, and the repeated `Set.range`/`pullback_snd_isIso_of_range_subset` blocks. I cannot run Lean, so the proposed rewrites are untested. In the `map_functor_eq'` rewrite, the `eqToHom` proof terms for `invApp` and its lemmas may need a `simpa`/`Opens.map_def` adjustment to match the stated type. Hypotheses and imports for the `fst_of_right` rewrite look compatible: `pullbackSymmetry_hom_comp_snd` is already used in this file for the other categories, and `of_isIso`/`comp` exist for SheafedSpace.",
+  "findings": [
+    {
+      "declaration": "PresheafedSpace.IsOpenImmersion.invApp / inv_invApp / invApp_app (and the SheafedSpace and LocallyRingedSpace restatements)",
+      "start_line": 177,
+      "end_line": 177,
+      "excerpt": "X.presheaf.map (eqToHom (by simp [Opens.map_def, Set.preimage_image_eq _ H.base_open.injective]))",
+      "problem": "The fact `(Opens.map f.base).obj ((opensFunctor f).obj U) = U` is reproved inline at least eight times. These are lines 124, 177, 199, 207, 253, 821, 827, and the longer `have := Set.preimage_image_eq U.1 ...; dsimp at this; simp [...]` blocks at 1235 and 1245. Each is the same set-level argument that preimage of image equals the set for an injective map. The proofs sit inside `eqToHom` arguments in statements and definitions, so the same `by simp [Opens.map_def, ...]` text is copied into each lemma statement. The LocallyRingedSpace copies use a different, longer proof of the same fact. Mathlib already has `TopologicalSpace.Opens.map_functor_eq'` for exactly this equality.",
+      "proposed_change": "Use the existing lemma `TopologicalSpace.Opens.map_functor_eq' f.base H.base_open U : (Opens.map f.base).obj (H.base_open.functor.obj U) = U` (it takes `f : U \u27f6 X` and `hf : IsOpenEmbedding f`). Replace each inline proof with `eqToHom (Opens.map_functor_eq' _ H.base_open U)`, and in `isoRestrict`/`ofRestrict` with `Opens.ext`/`Opens.map_functor_eq' _ hf _`. If the repeated term is still too bulky, add one local lemma such as `map_opensFunctor_obj (U : Opens X) : (Opens.map f.base).obj ((opensFunctor f).obj U) = U := Opens.map_functor_eq' _ H.base_open U`. Then `invApp`, `inv_invApp`, `invApp_app` and their SheafedSpace and LocallyRingedSpace copies all write `eqToHom (map_opensFunctor_obj f U)`. The two LocallyRingedSpace blocks at 1235 and 1245 then become identical to the others.",
+      "benefit": "This removes about eight copies of the set-level argument and the `simp` call that must match its exact form. The `eqToHom` in each statement becomes visibly the same morphism across the three layers (Presheafed, Sheafed, LocallyRinged). A change in how `Opens.map`/`functor` unfold would need one fix instead of many.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Topology/Category/TopCat/Opens.lean",
+          "declaration": "TopologicalSpace.Opens.map_functor_eq'",
+          "excerpt": "theorem map_functor_eq' {X U : TopCat.{u}} (f : U \u27f6 X) (hf : IsOpenEmbedding f) (V) :\n    ((Opens.map f).obj <| hf.functor.obj V) = V :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Geometry/RingedSpace/OpenImmersion.lean",
+          "declaration": "PresheafedSpace.IsOpenImmersion.inv_invApp",
+          "excerpt": "(eqToHom (by simp [Opens.map_def, Set.preimage_image_eq _ H.base_open.injective])) := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Geometry/RingedSpace/OpenImmersion.lean",
+          "declaration": "LocallyRingedSpace.IsOpenImmersion.invApp_app",
+          "excerpt": "have := Set.preimage_image_eq U.1 H.base_open.injective"
+        }
+      ]
+    },
+    {
+      "declaration": "SheafedSpace.IsOpenImmersion.sheafedSpace_pullback_fst_of_right",
+      "start_line": 726,
+      "end_line": 735,
+      "excerpt": "have : _ = (pullback.fst g f).hom := preservesLimitIso_hom_\u03c0 forget (cospan g f) left",
+      "problem": "`sheafedSpace_pullback_fst_of_right` repeats the whole proof of `sheafedSpace_pullback_snd_of_left` (lines 713\u2013723). Both rewrite along `preservesLimitIso_hom_\u03c0`, then along `HasLimit.isoOfNatIso_hom_\u03c0` with `diagramIsoCospan`, then `dsimp`, `Category.comp_id`, `rw \u2190 this`, and `infer_instance`. The only change is swapping `right` for `left` and `f g` for `g f`. Both also carry the same two `set_option`s. The same file proves the corresponding right-hand statements for PresheafedSpace (`pullbackFstOfRight`) and LocallyRingedSpace (`pullback_fst_of_right`) by a two-line symmetry argument, without repeating the limit-comparison argument.",
+      "proposed_change": "Replace the body with the pattern used elsewhere in the file: `instance sheafedSpace_pullback_fst_of_right : SheafedSpace.IsOpenImmersion (pullback.fst g f) := by rw [\u2190 pullbackSymmetry_hom_comp_snd]; infer_instance`. This should work because `pullbackSymmetry_hom_comp_snd` rewrites `pullback.fst g f` to `(pullbackSymmetry g f).hom \u226b pullback.snd f g`. The instances `sheafedSpace_pullback_snd_of_left` (needs `H`), `SheafedSpace.IsOpenImmersion.of_isIso` (for the symmetry iso), and `comp` supply the rest. The two `set_option`s on this instance can then be dropped.",
+      "benefit": "This removes a roughly 10-line duplicate of the only nontrivial limit-comparison argument and makes the three layers (Presheafed, Sheafed, LocallyRinged) prove `fst_of_right` the same way. Future changes to the transparency and defeq options need to be made in one proof only.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Geometry/RingedSpace/OpenImmersion.lean",
+          "declaration": "SheafedSpace.IsOpenImmersion.sheafedSpace_pullback_snd_of_left",
+          "excerpt": "have : _ = (pullback.snd f g).hom := preservesLimitIso_hom_\u03c0 forget (cospan f g) right"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Geometry/RingedSpace/OpenImmersion.lean",
+          "declaration": "PresheafedSpace.IsOpenImmersion.pullbackFstOfRight",
+          "excerpt": "rw [\u2190 pullbackSymmetry_hom_comp_snd]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Geometry/RingedSpace/OpenImmersion.lean",
+          "declaration": "LocallyRingedSpace.IsOpenImmersion.pullback_fst_of_right",
+          "excerpt": "rw [\u2190 pullbackSymmetry_hom_comp_snd]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/CategoryTheory/Limits/Shapes/Pullback/HasPullback.lean",
+          "declaration": "pullbackSymmetry_hom_comp_snd",
+          "excerpt": "theorem pullbackSymmetry_hom_comp_snd [HasPullback f g] :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 36779,
+    "cache_read_input_tokens": 152651,
+    "output_tokens": 6232,
+    "output_tokens_details": {
+      "thinking_tokens": 2018
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36779,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3506,
+        "cache_read_input_tokens": 39861,
+        "cache_creation_input_tokens": 847,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 847
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2247211,
+  "duration_ms": 51214,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:56:01",
+  "unit": "file",
+  "source_sha256": "2aba3a1508237632cca4ff6430e3b69212c16ae8f935fb8533e9539316cfe8ff",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

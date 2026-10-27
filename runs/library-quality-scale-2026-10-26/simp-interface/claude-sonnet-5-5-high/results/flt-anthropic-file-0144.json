@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0144",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, focusing on simp attributes (only coe_restrictMF, coe_restrictCF, val_zetaUnit are tagged; they look fine) and on places where simp/unfold is used manually. I checked Mathlib's Submonoid/Subsemigroup defs for existing simp coverage of subtype mk/1/mul (MulMemClass.mk_mul_mk is simp low; OneMemClass.one_def is not simp). I did not compile anything, so the proposed lemmas are untested. I found no rewrite loop or competing rules.",
+  "findings": [
+    {
+      "declaration": "ubar (and ubar_ne_zero, ubar_mul, ubar_inv, ubar_inv_pow)",
+      "start_line": 552,
+      "end_line": 577,
+      "excerpt": "def ubar (\u2113 : \u2115) (\u03ba : Type) [Field \u03ba] [CharP \u03ba \u2113] (u : (ZMod \u2113)\u02e3) : \u03ba :=",
+      "problem": "`ubar` is a bare function with no simp interface. Its only API is `ubar_mul` and `ubar_inv`, neither tagged `simp`. There are no lemmas for the constants and casts that downstream proofs need: `ubar 1`, `ubar (-1)`, and `ubar` of `ZMod.unitOfCoprime p _`. Every consumer therefore unfolds the definition by hand with `unfold ubar` or `simp [ubar]` (lines 556, 565, 572, 576, 620, 663, 693) and redoes the `castHom` computation. Unfolding exposes `ZMod.castHom (dvd_refl \u2113) \u03ba \u2191u`, which is not a normal form the rest of the file uses.",
+      "proposed_change": "Make `ubar` a `MonoidHom (ZMod \u2113)\u02e3 \u2192* \u03ba\u02e3`, or `(ZMod \u2113)\u02e3 \u2192* \u03ba`, so that `map_mul`, `map_one` and `map_inv` fire under simp. Otherwise, keep the function and add simp lemmas: `ubar_one : ubar \u2113 \u03ba 1 = 1`, `ubar_neg_one : ubar \u2113 \u03ba (-1) = -1`, and `ubar_unitOfCoprime : ubar \u2113 \u03ba (ZMod.unitOfCoprime p h) = (p : \u03ba)`. Also mark `ubar_mul` and `ubar_inv` `@[simp]`, keeping `ubar_inv` oriented as `(ubar u)\u207b\u00b9 = ubar u\u207b\u00b9` so inverses are pushed inside. Then `h1` at line 620, `hneg` in `teich_odd`, and `hub` in `map_teich_natCast_mul` become `simp` calls with no `unfold ubar`.",
+      "benefit": "Callers stop unfolding `ubar` and re-deriving the `castHom` identities. One canonical form, `ubar` applied to a unit, is kept, and proofs such as `teichUnitHom.map_one'` and `teich_odd` shorten and survive a change to the definition.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_DeligneSerre_exists_weightTwo_hecke_eigen_reduction_eq_of_weightOne_hecke_eigen.lean",
+          "declaration": "teichUnitHom (map_one')",
+          "excerpt": "have h1 : (ubar \u2113 \u03ba 1)\u207b\u00b9 = 1 := by simp [ubar]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_DeligneSerre_exists_weightTwo_hecke_eigen_reduction_eq_of_weightOne_hecke_eigen.lean",
+          "declaration": "teich_odd",
+          "excerpt": "have hneg : (ubar \u2113 \u03ba (-1))\u207b\u00b9 = -1 := by\n    unfold ubar"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_DeligneSerre_exists_weightTwo_hecke_eigen_reduction_eq_of_weightOne_hecke_eigen.lean",
+          "declaration": "map_teich_natCast_mul",
+          "excerpt": "have hub : ubar \u2113 \u03ba (ZMod.unitOfCoprime p hcop) = (p : \u03ba) := by\n    unfold ubar"
+        }
+      ]
+    },
+    {
+      "declaration": "locKer / locKerExt / locKerHom section (mem_locKer_of_mem, locKerExt_of_mem, locKerHom_of_mem, map_mul_mk)",
+      "start_line": 172,
+      "end_line": 237,
+      "excerpt": "have : (\u27e8(1 : \u2102), one_mem R\u27e9 : R) = 1 := rfl",
+      "problem": "The section has no simp lemma for the basic facts `\u03c6 \u27e81, one_mem R\u27e9 = 1` and `\u03c6 \u27e80, zero_mem R\u27e9 = 0`, nor for `locKerHom \u27e8z, _\u27e9 = \u03c6 \u27e8z, hz\u27e9`. The existing `locKerHom_of_mem` and `locKerExt_of_mem` are not tagged. Every use re-proves `(\u27e8(1 : \u2102), one_mem R\u27e9 : R) = 1 := rfl` and then does `rw [this, map_one]`. This happens at lines 172, 183, 222, 226, 237 and 1162 (in `solution`), with the `0` analogue in `map_zero'`. Likewise `map_mul_mk` is a custom statement that must be rewritten with explicit arguments, instead of the subtype-product rewrite being left to `simp`, where `MulMemClass.mk_mul_mk` is available at low priority.",
+      "proposed_change": "Add small lemmas, for example `map_mk_one : \u03c6 \u27e8(1 : \u2102), one_mem R\u27e9 = 1` and `map_mk_zero : \u03c6 \u27e8(0 : \u2102), zero_mem R\u27e9 = 0`, tagged `@[simp]`. Tag `locKerHom_of_mem` `@[simp]`, since its LHS is `locKerHom \u27e8z, _\u27e9` and the RHS is the simpler `\u03c6 \u27e8z, hz\u27e9`. This is safe because the LHS head is the new `locKerHom`, so no existing rule competes. Then replace the repeated `have : \u2026 = 1 := rfl; rw [this, map_one]` blocks with `simp` or `map_mk_one`.",
+      "benefit": "This removes about eight copies of the same rfl-and-rewrite boilerplate. It also gives the `locKer` API a canonical normal form, `\u03c6` applied to a subtype element, so later arguments about `R\u2082 = locKer R\u2081 \u03c6\u2081` can use `simp` instead of manual `Subtype` bookkeeping.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_DeligneSerre_exists_weightTwo_hecke_eigen_reduction_eq_of_weightOne_hecke_eigen.lean",
+          "declaration": "locKer (algebraMap_mem')",
+          "excerpt": "rw [this, map_one]; exact one_ne_zero"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_DeligneSerre_exists_weightTwo_hecke_eigen_reduction_eq_of_weightOne_hecke_eigen.lean",
+          "declaration": "locKerHom_of_mem",
+          "excerpt": "locKerHom (\u27e8z, mem_locKer_of_mem hz\u27e9 : locKer R \u03c6) = \u03c6 \u27e8z, hz\u27e9 :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/Algebra/Group/Submonoid/Defs.lean",
+          "declaration": "OneMemClass.one_def",
+          "excerpt": "theorem one_def : (1 : S') = \u27e81, OneMemClass.one_mem S'\u27e9"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 43096,
+    "cache_read_input_tokens": 132925,
+    "output_tokens": 7218,
+    "output_tokens_details": {
+      "thinking_tokens": 3004
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 43096,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3615,
+        "cache_read_input_tokens": 45761,
+        "cache_creation_input_tokens": 1348,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1348
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2578725,
+  "duration_ms": 56544,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:11:20",
+  "unit": "file",
+  "source_sha256": "640dd29fc1122e2769de02c4e6bd4eebb2d9a58692b1ed10d01500c02627e8f5",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,114 @@
+{
+  "id": "openai-math-file-0146",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it relies on: unitAngle, blendedAngle, baseAngle and the existing lemmas unitAngle_zero and unitAngle_half. I also looked at the other files that unfold these definitions inside simp: CalibratedControlledAngle, CalibratedJetAngle, CalibratedCollarFamily and SmallCollarAngle. The target file has no simp attributes of its own, so both findings concern a missing simp interface. Neither is a claim of a loop or a simp failure; I did not run Lean. The proposals are untested, and I have not checked which unfolding lemma shape would actually compile. The two-step unfolding concern in finding 2 is a design suggestion, not an observed fault. I found no competing rules and no cycle risk in this file.",
+  "findings": [
+    {
+      "declaration": "ClosedSurfaceR4.CollarVelocity.unitAngle_periodic",
+      "start_line": 20,
+      "end_line": 22,
+      "excerpt": "simp [unitAngle, blendedAngle, baseAngle, mul_add, Real.cos_add_two_pi]",
+      "problem": "The periodicity proof gets a normal form by unfolding three definitions (unitAngle, blendedAngle, baseAngle) down to arctan and cos. It also needs mul_add to expose cos (2\u03c0 t + 2\u03c0). The natural statement is that blendedAngle and baseAngle are 2\u03c0-periodic, so unitAngle is periodic by composition. No such simp-usable interface exists for blendedAngle or baseAngle. blendedAngle_zero and blendedAngle_pi are not simp lemmas, and no blendedAngle_add_two_pi lemma exists. Every consumer has to unfold the whole stack. Unfolding also produces a larger expression than the proof needs, so it is fragile when the definitions change.",
+      "proposed_change": "Next to the blendedAngle and baseAngle definitions, add small periodicity lemmas such as `baseAngle_add_two_pi (a t) : baseAngle a (t + 2 * Real.pi) = baseAngle a t` and `blendedAngle_add_two_pi`. Tag them @[simp] if the team wants them in the default set. Then prove unitAngle_periodic with `simp [unitAngle, mul_add, blendedAngle_add_two_pi]`, which unfolds only unitAngle. Better, state the periodic form as a lemma about blendedAngle and derive unitAngle_periodic from it by rewriting. Downstream proofs then never need to see arctan or cos.",
+      "benefit": "Periodicity is stated once at the right abstraction level. The proof stops depending on the internal shape of baseAngle and blendedAngle. Other files can use the periodicity lemmas without unfolding the definitions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/VelocityAngleInterpolation.lean",
+          "declaration": "blendedAngle",
+          "excerpt": "h + (1 - s) * baseAngle a t + s * (A * Real.cos t)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Whitney/CollarVelocityAngle.lean",
+          "declaration": "baseAngle",
+          "excerpt": "def baseAngle (a t : \u211d) : \u211d := 2 * Real.arctan (a * Real.cos t)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/BlendedReparamTurns.lean",
+          "declaration": "unitAngle",
+          "excerpt": "def unitAngle (a A s h t : \u211d) : \u211d := blendedAngle a A s h (2 * Real.pi * t)"
+        }
+      ]
+    },
+    {
+      "declaration": "ClosedSurfaceR4.CollarVelocity.normalizedAngle",
+      "start_line": 16,
+      "end_line": 18,
+      "excerpt": "PositiveDensity.reparametrize \u03c1\n    (fun z => unitAngle (a z.1) (A z.1) (s z.1) (h z.1) z.2)",
+      "problem": "normalizedAngle is a plain def with no pointwise unfolding lemma, simp lemma or specialization lemma. Downstream, the same long simp set is pasted wherever a pointwise value is needed: `simp [\u03b1, normalizedAngle, PositiveDensity.reparametrize, unitAngle, blendedAngle, baseAngle, hbz, ...]`. The jet and collar variants repeat it with jetAngle. Each use fully unfolds the reparametrization, unitAngle, blendedAngle and baseAngle in one go. The goal then becomes a raw arctan/cos expression, and the intended rewrites, which set a = 0, h = 0 and read off s, depend on the expanded shape. The definitions are exposed to the simplifier instead of a canonical lemma such as `unitAngle a A s h t = h` when a = 0 and s = 0.",
+      "proposed_change": "Add a lemma `normalizedAngle_apply : normalizedAngle \u03c1 a A s h (b, t) = unitAngle (a b) (A b) (s b) (h b) (PositiveDensity.inverseClock \u03c1 b t)`. Check that it holds by rfl first. Add a specialization lemma for the degenerate case, e.g. `unitAngle_of_a_zero_h_zero (hA : A \u2260 0 \u2228 s = 0) ... : unitAngle 0 A s 0 t = s * (A * Real.cos (2 * \u03c0 * t))`. The calibrated files can then call simp with these lemmas, or rw, instead of unfolding four definitions. Mark the pointwise lemma @[simp] only if simp then reduces normalizedAngle consistently. Otherwise call it with simp [normalizedAngle_apply].",
+      "benefit": "The consumers' simp calls become short and stable under changes to blendedAngle and baseAngle. The reduced form is stated once, with explicit hypotheses, rather than rediscovered through definition unfolding in each of the three files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/CalibratedControlledAngle.lean",
+          "declaration": "calibrated controlled angle proof (the simp after hbz)",
+          "excerpt": "simp [\u03b1, normalizedAngle, PositiveDensity.reparametrize, unitAngle,\n      blendedAngle, baseAngle, hbz, (hw x hx).2.1, hz x hx]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/CalibratedJetAngle.lean",
+          "declaration": "calibrated jet angle proof (the simp after hbz)",
+          "excerpt": "simp [\u03b1, jetAngle, PositiveDensity.reparametrize, unitAngle,\n      blendedAngle, baseAngle, hbz, (hw j hj).2.1, hz j hj]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Whitney/CalibratedCollarFamily.lean",
+          "declaration": "calibrated collar family proof (the simp after hbz)",
+          "excerpt": "simp [\u03b1,jetAngle,PositiveDensity.reparametrize,unitAngle,blendedAngle,baseAngle,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/SurfaceImmersion/Primitive/BlendedSpatialTurns.lean",
+          "declaration": "unitAngle_zero",
+          "excerpt": "simpa only [unitAngle, mul_zero, blendedAmplitude] using blendedAngle_zero a A s h"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 23078,
+    "cache_read_input_tokens": 80234,
+    "output_tokens": 5402,
+    "output_tokens_details": {
+      "thinking_tokens": 1178
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23078,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3490,
+        "cache_read_input_tokens": 24223,
+        "cache_creation_input_tokens": 2868,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2868
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1543754,
+  "duration_ms": 36168,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T23:11:22",
+  "unit": "file",
+  "source_sha256": "016b9f6da917521fb3fa261bf1c95b9d987ab596adf092e40227ca5719cfc74e",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

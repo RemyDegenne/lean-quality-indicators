@@ -1,0 +1,130 @@
+{
+  "id": "lean-pool-file-0044",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file, including the structural-morphism definitions, the six iso proofs, the naturality, pentagon and triangle proofs, and the entrywise composition lemmas. I did not read other files that use these declarations. I also did not search Mathlib for an existing diagonal-matrix API. The lemma names and sketches below are untested, because I could not run Lean. I did not check whether the proposed `simp` calls close every goal. The `matDiag` refactor is the largest proposed change. Making `simp` unfold the dependent `eqToHom` casts may need some adjustment.",
+  "findings": [
+    {
+      "declaration": "matAssoc_hom_inv, matAssoc_inv_hom, mat_associator_naturality, mat_pentagon, mat_triangle (off-diagonal tuple case split)",
+      "start_line": 166,
+      "end_line": 174,
+      "excerpt": "have h : \u00ac(i = a \u2227 j = b \u2227 k = c) :=\n      by rintro \u27e8rfl, rfl, rfl\u27e9; exact hne rfl\n    rcases not_and_or.mp h with h1 | h1\n    \u00b7 simp [h1, zero_comp]\n    \u00b7 rcases not_and_or.mp h1 with h2 | h2",
+      "problem": "Seven proofs repeat the same step. Each has a `Finset.sum_eq_single_of_mem` side goal `(a,b,c) \u2260 (i,j,k)`. Each time the proof (1) rebuilds the negated conjunction with `rintro \u27e8rfl,\u2026\u27e9; exact hne rfl` and (2) splits it with nested `rcases not_and_or.mp \u2026 with h | h`. The sites are lines 168-174, 191-197, 365-369, 371-375, 460-466, 475-481 and 509-510, and the pentagon's inner case at 469-472 does the same split by hand with `by_contra`/`Prod.ext`. Only the arity (2, 3 or 4) and the final `simp` set vary. The nesting depth is hand-matched to each tuple shape, so every new coherence proof repeats this boilerplate.",
+      "proposed_change": "Add one private lemma that turns tuple inequality into a disjunction of coordinate inequalities, for the right-nested `Prod.mk` shape used here:\n`private lemma prod3_ne_cases {\u03b1 \u03b2 \u03b3} {i a : \u03b1} {j b : \u03b2} {k c : \u03b3} (h : (a, b, c) \u2260 (i, j, k)) : i \u2260 a \u2228 j \u2260 b \u2228 k \u2260 c`.\nProof: `by_contra hc; push Not at hc; obtain \u27e8h1,h2,h3\u27e9 := hc; exact h (by rw [h1,h2,h3])`.\nAdd analogous `prod2_ne_cases` and `prod4_ne_cases`, or a left-nested variant for the `((a,b),c)` shapes.\nThen each side goal becomes, for example, `intro \u27e8a,b,c\u27e9 _ hne; rcases prod3_ne_cases hne with h | h | h <;> simp [h, zero_comp]`. At lines 190-197 the same is written with the shape `\u27e8\u27e8a,b\u27e9,c\u27e9`, using the left-nested variant. The flip `i \u2260 a` versus `a \u2260 i` matches the existing `h.symm` usage. Where the goal has the form `(a,b,c) \u2260 (j\u2081,j\u2082,j\u2083)` (lines 370-375), instantiate the lemma with the roles swapped. The hypotheses are only `Finset.mem_univ` and `ne`, so no new imports are needed.",
+      "benefit": "This removes about 40 lines of duplicated case analysis. The shape-matching `rcases` pyramids become one line each. A reader can see that every off-diagonal term vanishes because some coordinate differs, instead of checking nesting depth by hand. Future structural isomorphisms or coherence proofs reuse the lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Novel/Envelope/MatMonoidal.lean",
+          "declaration": "mat_pentagon",
+          "excerpt": "rcases not_and_or.mp h2 with h3 | h3 <;> simp [h3]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Novel/Envelope/MatMonoidal.lean",
+          "declaration": "mat_associator_naturality",
+          "excerpt": "rcases not_and_or.mp h1 with h2 | h2 <;> simp [h2, zero_comp]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Novel/Envelope/MatMonoidal.lean",
+          "declaration": "mat_triangle",
+          "excerpt": "rcases not_and_or.mp h with h1 | h1 <;> simp [h1, zero_comp]"
+        }
+      ]
+    },
+    {
+      "declaration": "matAssoc_hom_inv / matAssoc_inv_hom / matLeftUnitor_hom_inv / matLeftUnitor_inv_hom / matRightUnitor_hom_inv / matRightUnitor_inv_hom (and the corresponding sum collapses in mat_associator_naturality, mat_leftUnitor_naturality, mat_rightUnitor_naturality)",
+      "start_line": 151,
+      "end_line": 261,
+      "excerpt": "rw [Finset.sum_eq_single_of_mem (i, (j, k)) (Finset.mem_univ _)]",
+      "problem": "The six isomorphism proofs and the three naturality proofs all do the same thing. They compose two matrices that are 'diagonal up to an index equivalence', collapse the intermediate sum to the single term at the matching index, and then do a `by_cases` on index equality. The nonzero case is closed by `Iso.hom_inv_id`, `Iso.inv_hom_id` or a naturality square, and the zero case by `simp`. The assoc proofs at 152-174 and 177-197 are literally mirror images, differing only in `hom_inv_id` versus `inv_hom_id`. The left and right unitor proofs (200-261) and naturality proofs (378-413) are mirror images as well, with `PUnit` on the other side of the pair. The file's own docstring already describes the general principle ('given an equivalence of index types, the entry at (i, e i) is the corresponding structural morphism'). That principle is never stated as a lemma, so it is re-proved nine times.",
+      "proposed_change": "Introduce a generic 'reindexing diagonal' matrix and prove its composition law once.\n`def matDiag {M N : Mat_ C} (e : M.\u03b9 \u2243 N.\u03b9) (\u03c6 : \u2200 i, M.X i \u27f6 N.X (e i)) : M \u27f6 N := fun i j => if h : e i = j then \u03c6 i \u226b eqToHom (by subst h; rfl) else 0`\n`lemma matDiag_comp (e : M.\u03b9 \u2243 N.\u03b9) (e' : N.\u03b9 \u2243 P.\u03b9) \u03c6 \u03c8 : matDiag e \u03c6 \u226b matDiag e' \u03c8 = matDiag (e.trans e') (fun i => \u03c6 i \u226b \u03c8 (e i))`\nProve `matDiag_comp` once with `Finset.sum_eq_single_of_mem (e i)`, using `e.injective` for the off-diagonal terms. Add a companion `matDiag_id` and a lemma for composing with an arbitrary `f` on the left or right, giving `f \u226b matDiag e \u03c6` entry-wise. Redefine `matAssocHom` as `matDiag (Equiv.prodAssoc _ _ _) (fun _ => (\u03b1_ _ _ _).hom)`, and likewise for the inverse and the unitors, using `Equiv.punitProd` and `Equiv.prodPUnit`. The docstring already names these. The six iso statements then reduce to `matDiag_comp` plus `Iso.hom_inv_id`, and the unitor and associator naturality proofs to a single entrywise lemma plus the `C`-level naturality. This needs only the imports already used (`Mat_`, `Finset.sum_eq_single_of_mem`). The degenerate cases (empty index types, `PUnit`) are covered because `e` is an equivalence.",
+      "benefit": "About 110 lines of near-identical proofs collapse into one reusable composition lemma, so each structural iso needs only a one-line proof. The mirrored hom/inv and left/right copies can no longer drift apart, and the stated 'diagonal \u226b diagonal' idea in the section docstring becomes a named, checkable lemma. This also shortens the pentagon and triangle collapses, which are chains of the same single-term sum reductions.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Novel/Envelope/MatMonoidal.lean",
+          "declaration": "matLeftUnitor_hom_inv",
+          "excerpt": "rw [Finset.sum_eq_single_of_mem i (Finset.mem_univ _)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Novel/Envelope/MatMonoidal.lean",
+          "declaration": "matRightUnitor_hom_inv",
+          "excerpt": "rw [Finset.sum_eq_single_of_mem i (Finset.mem_univ _)]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Novel/Envelope/MatMonoidal.lean",
+          "declaration": "matAssoc_inv_hom",
+          "excerpt": "rw [Finset.sum_eq_single_of_mem ((i, j), k) (Finset.mem_univ _)]"
+        }
+      ]
+    },
+    {
+      "declaration": "mat_leftUnitor_naturality and mat_rightUnitor_naturality",
+      "start_line": 377,
+      "end_line": 413,
+      "excerpt": "rw [Finset.sum_eq_single_of_mem i (Finset.mem_univ _)]\n    \u00b7 simp only [dite_true, eqToHom_refl, id_comp, Mat_.id_apply_self]\n      rw [id_tensorHom]; exact leftUnitor_naturality (f i j)",
+      "problem": "These two theorems have line-for-line identical proof scripts. Both do `Mat_.hom_ext`, then collapse the left sum at `(\u27e8\u27e9, j)` or `(j, \u27e8\u27e9)`, then collapse the right sum at `i`, then finish with the `C`-level naturality square and the off-diagonal `simp [hb.symm]` / `simp [this]`. The only differences are the pair order and the use of `id_tensorHom` versus `tensorHom_id` and `leftUnitor_naturality` versus `rightUnitor_naturality`. A fix to one (for example, to the off-diagonal side goals) must be copied by hand to the other.",
+      "proposed_change": "Handle both cases with the shared diagonal machinery from the previous finding (a `matDiag`-style entrywise lemma). The two theorems then become the one-line `C`-level naturality squares for `\u03bb_` and `\u03c1_`. Alternatively, factor out a private lemma saying that for `g : M \u27f6 N` and a diagonal `\u03c6`, `(matTensorHom (\ud835\udfd9 matTensorUnit) f \u226b D).apply = \u2026` reduces to a `C`-level square, and instantiate it with `id_tensorHom` and `leftUnitor_naturality` for one case and `tensorHom_id` and `rightUnitor_naturality` for the other.",
+      "benefit": "This halves the code for the unit-side naturality conditions and keeps the left and right versions consistent.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Novel/Envelope/MatMonoidal.lean",
+          "declaration": "mat_rightUnitor_naturality",
+          "excerpt": "rw [tensorHom_id]; exact rightUnitor_naturality (f i j)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/RegtsSevenster/RS/Novel/Envelope/MatMonoidal.lean",
+          "declaration": "mat_leftUnitor_naturality",
+          "excerpt": "rw [id_tensorHom]; exact leftUnitor_naturality (f i j)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 23921,
+    "cache_read_input_tokens": 42942,
+    "output_tokens": 6400,
+    "output_tokens_details": {
+      "thinking_tokens": 1638
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23921,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5861,
+        "cache_read_input_tokens": 21180,
+        "cache_creation_input_tokens": 6670,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6670
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.16399019999999997,
+  "duration_ms": 49866,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T22:53:08",
+  "unit": "file",
+  "source_sha256": "e0fc340c67bb8cc00fa6d7fb1f6b8e650e28f0cc34a33fb006669011fa17dcd9",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

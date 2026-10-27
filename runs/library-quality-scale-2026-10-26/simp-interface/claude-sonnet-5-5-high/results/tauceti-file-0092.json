@@ -1,0 +1,109 @@
+{
+  "id": "tauceti-file-0092",
+  "lib": "tauceti",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file, Mathlib's Algebra/Ring/NegOnePow.lean (simp set for Int.negOnePow, incl. coe_negOnePow), and the uses of negOnePowCast across TauCeti (GradedCoderivation, Loop, Brace, Shift). Did not run Lean, so the proposals are untested; the interaction of a reverse-direction simp lemma with `Int.coe_negOnePow` would need priority/confluence checking. I found no looping or clearly misoriented simp lemma in the file; the issues are interface gaps. The existing simp lemmas (zero, one, neg, two_mul, mul_self, the smul involution and smul_eq_zero_iff) look reasonable.",
+  "findings": [
+    {
+      "declaration": "TauCeti.negOnePowCast_eq_intCast",
+      "start_line": 46,
+      "end_line": 48,
+      "excerpt": "theorem negOnePowCast_eq_intCast (e : \u2124) : negOnePowCast R e = ((e.negOnePow : \u2124) : R) :=\n  (rfl)",
+      "problem": "The only bridge between `negOnePowCast R e` and the Mathlib cast `((e.negOnePow : \u2124) : R)` is a non-simp lemma, oriented from the new definition to the raw cast. Mathlib's `@[simp] Int.coe_negOnePow` rewrites any such raw cast to `(-1) ^ e.natAbs`. So simp turns the raw cast into a form that none of the `negOnePowCast_*` lemmas (`_add`, `_sum`, `_two_mul`, `_mul_self`) can see. Downstream code therefore folds by hand with `\u2190 negOnePowCast_eq_intCast`, often twice in one `rw`/`simp only` call, before any sign lemma applies.",
+      "proposed_change": "Add a folding-direction simp lemma, e.g. `@[simp] theorem intCast_negOnePow (e : \u2124) : ((e.negOnePow : \u2124) : R) = negOnePowCast R e := rfl`. Give it higher priority than `Int.coe_negOnePow`, or otherwise ensure that the cast normalises to `negOnePowCast`. Keep `negOnePowCast_eq_intCast` as the unfolding lemma. Then replace the manual `\u2190 negOnePowCast_eq_intCast` rewrites in the callers with plain simp. The priority interaction with `Int.coe_negOnePow` needs checking in Lean.",
+      "benefit": "There is one canonical simp normal form for the ground-ring sign. `simp` can then combine `negOnePowCast_*` lemmas on terms that arrive as raw casts, such as `(((q * deg x).negOnePow : \u2124) : R)`. The `\u2190` fold steps disappear from the callers.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Algebra/Ring/NegOnePow.lean",
+          "declaration": "Int.coe_negOnePow",
+          "excerpt": "lemma coe_negOnePow (R : Type*) [Ring R] (n : \u2124) :\n    (n.negOnePow : R) = (-1 : R) ^ n.natAbs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/GradedCoderivation.lean",
+          "declaration": "manual fold in the Gerstenhaber commutator proof",
+          "excerpt": "hh\u2082.map_koszulTwist_comp p, hh\u2081.map_koszulTwist_comp q, \u2190 negOnePowCast_eq_intCast,\n    \u2190 negOnePowCast_eq_intCast, mul_comm q p"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/LinearAlgebra/TensorCoalgebra/GradedCoderivation.lean",
+          "declaration": "graded coderivation Taylor expansion proof",
+          "excerpt": "simp only [\u2190 negOnePowCast_eq_intCast, Finset.mul_sum, negOnePowCast_sum]"
+        }
+      ]
+    },
+    {
+      "declaration": "TauCeti.negOnePowCast_two_mul / negOnePowCast_even / negOnePowCast_odd (incomplete simp coverage of parity)",
+      "start_line": 64,
+      "end_line": 78,
+      "excerpt": "theorem negOnePowCast_two_mul (a : \u2124) : negOnePowCast R (2 * a) = 1 := by",
+      "problem": "Mathlib's simp set for `Int.negOnePow` includes `negOnePow_two_mul`, `negOnePow_two_mul_add_one`, `negOnePow_mul_self`, and `negOnePow_succ` is a ready rewrite. The cast interface mirrors only `two_mul`, `zero`, `one` and `neg`. It has no counterpart for `2 * a + 1`, `a + 1` or `a * a`. `negOnePowCast_even` and `negOnePowCast_odd` are not simp, so concrete exponents such as `negOnePowCast k 2` and `negOnePowCast k 3` are not simplified. The Loop proof builds `h\u2082` and `h\u2083` by hand from `negOnePowCast_two_mul 1` and `negOnePowCast_odd (by decide)` and feeds them to `simp only`.",
+      "proposed_change": "Add `@[simp] negOnePowCast_two_mul_add_one (a : \u2124) : negOnePowCast R (2 * a + 1) = -1`, proved like the existing lemmas. Also add `negOnePowCast_succ : negOnePowCast R (a + 1) = -negOnePowCast R a` (possibly non-simp), and a simp lemma `negOnePowCast R (n * n) = negOnePowCast R n` mirroring `Int.negOnePow_mul_self`. Consider a simp lemma or simproc for numerals so the local `h\u2082`/`h\u2083` in Loop.lean are unnecessary. This needs checking in Lean, because a numeral such as `3` does not syntactically match `2 * a + 1`.",
+      "benefit": "Parity and sign computations in the cast interface get the same automation as `Int.negOnePow`. Callers no longer need ad hoc `have`s to evaluate small exponents.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Algebra/Ring/NegOnePow.lean",
+          "declaration": "Int.negOnePow_two_mul_add_one",
+          "excerpt": "lemma negOnePow_two_mul_add_one (n : \u2124) : (2 * n + 1).negOnePow = -1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-22c725c48122/Mathlib/Algebra/Ring/NegOnePow.lean",
+          "declaration": "Int.negOnePow_mul_self",
+          "excerpt": "lemma negOnePow_mul_self (n : \u2124) : (n * n).negOnePow = n.negOnePow"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/tauceti/TauCeti/RepresentationTheory/Quiver/Zigzag/AInfinity/Loop.lean",
+          "declaration": "stasheff proof at lines 255-256",
+          "excerpt": "have h\u2083 : negOnePowCast k (3 : \u2124) = -1 := negOnePowCast_odd (by decide)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 14563,
+    "cache_read_input_tokens": 42073,
+    "output_tokens": 6918,
+    "output_tokens_details": {
+      "thinking_tokens": 3191
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14563,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4562,
+        "cache_read_input_tokens": 16124,
+        "cache_creation_input_tokens": 2452,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2452
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1316553,
+  "duration_ms": 47732,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:01:04",
+  "unit": "file",
+  "source_sha256": "d79cbe264f6f47143ced7da77fbc0a137248120d65a3aaa6ec2f5dcac590ecf6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

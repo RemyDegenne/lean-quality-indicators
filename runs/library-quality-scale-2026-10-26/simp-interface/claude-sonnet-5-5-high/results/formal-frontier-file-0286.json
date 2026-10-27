@@ -1,0 +1,109 @@
+{
+  "id": "formal-frontier-file-0286",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and compared it with TopRepUlift.lean and Mathlib's TopRep.lean and ContCohomology/Basic.lean. The file declares no simp lemmas of its own. I found two simp-interface problems. First, the definitions and equation lemmas are unfolded by hand with repeated `simp only` lists. Second, three private lemmas restate generic functor laws as `ofHom`-level equations, so the proofs rewrite by hand in both directions. I did not run Lean, so I have not checked that the proposed replacements compile or that every `rw` would turn into a clean `simp` call. The other private lemmas (`uliftMap_coind\u2081Map_comp_coind\u2081UliftIso`, `invariantsUliftIso_naturality`) are specific compatibility facts, and I did not flag them. I also found no rewrite cycle.",
+  "findings": [
+    {
+      "declaration": "resolutionUliftIsoSameUniverse / resolutionUliftIsoSameUniverse_naturality / resolutionUliftIsoSameUniverse_d_comm / homogeneousCochainsUliftXIsoSameUniverse_comm / homogeneousCochainsUliftIsoSameUniverse_naturality",
+      "start_line": 242,
+      "end_line": 247,
+      "excerpt": "simp only [resolutionUliftIsoSameUniverse,\n        Iso.trans_hom, Functor.mapIso_hom]",
+      "problem": "The recursive isomorphism `resolutionUliftIsoSameUniverse` and the degreewise isomorphism `homogeneousCochainsUliftXIsoSameUniverse` have no simp or equation lemmas. Each proof that uses them unfolds the definition by hand with `simp only [def, Iso.trans_hom, Functor.mapIso_hom]`. The same list appears at lines 224, 242, 246, 275 and 313, and at 313 it is extended with `isoOfComponents_hom_f`. In `_d_comm` the unfolding is done twice, once on `ih` and once on the goal. The simp-normal form of `.hom` is therefore not recorded anywhere. Every downstream user, for example any later file that uses these isos, must repeat the unfolding, and it relies on the definition's internal `\u226a\u226b`/`mapIso` structure.",
+      "proposed_change": "Add explicit equation lemmas next to the definitions. For `resolutionUliftIsoSameUniverse` this is `_zero_hom : (resolutionUliftIsoSameUniverse X 0).hom = \ud835\udfd9 _`, plus a `_succ_hom` lemma that states `.hom` as `(coind\u2081UliftIso X.resolutionX n).hom \u226b (coind\u2081Functor k (ULift G)).map (resolutionUliftIsoSameUniverse X n).hom`. For `homogeneousCochainsUliftXIsoSameUniverse` add `_hom`, stating `.hom` as the `invariantsUliftIso` hom followed by `(invariantsFunctor ..).map (resolutionUliftIsoSameUniverse X (n+1)).hom`. Mark them `@[simp]`. Then replace the repeated `simp only [def, Iso.trans_hom, Functor.mapIso_hom]` calls with these lemmas.",
+      "benefit": "The unfolding is recorded once in a stable form. The five proof sites shrink and no longer depend on how `\u226a\u226b` and `mapIso` are layered. Later files that use these isos can call `simp` without copying the unfolding list.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/HomogeneousCochainsUlift.lean",
+          "declaration": "resolutionUliftIsoSameUniverse_naturality",
+          "excerpt": "simp only [resolutionUliftIsoSameUniverse, Iso.trans_hom, Functor.mapIso_hom]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/HomogeneousCochainsUlift.lean",
+          "declaration": "homogeneousCochainsUliftXIsoSameUniverse_comm",
+          "excerpt": "simp only [homogeneousCochainsUliftXIsoSameUniverse,\n    Iso.trans_hom, Functor.mapIso_hom]"
+        }
+      ]
+    },
+    {
+      "declaration": "coind\u2081Map_comp, invariantsMap_comp, uliftMap_sub (private)",
+      "start_line": 128,
+      "end_line": 140,
+      "excerpt": "private lemma coind\u2081Map_comp {X Y Z : TopRep.{v} k (ULift.{v} G)}",
+      "problem": "These private lemmas restate generic functor laws in non-canonical raw `ofHom` form, and none is tagged `@[simp]`. In Mathlib, `coind\u2081Functor` is an abbrev whose `map \u03c6` is `ofHom <| ContRepresentation.coind\u2081Map \u03c6.hom`. So `coind\u2081Map_comp` is `(coind\u2081Functor k _).map_comp f g`, read backwards. `invariantsFunctor` has `map f := TopModuleCat.ofHom f.hom.mapInvariants`, so `invariantsMap_comp` is `(invariantsFunctor k _).map_comp`. `TopRep.uliftFunctor` has `map := uliftMap` and an `Additive` instance, so `uliftMap_sub` is `Functor.map_sub`. The rewrite orientation is awkward: `_d_comm` uses `rw [..., coind\u2081Map_comp, ih', \u2190 coind\u2081Map_comp, ...]`, which applies the same lemma forwards and then backwards. The goals are written at the `ofHom (coind\u2081Map ..)` level instead of `Functor.map`, so the standard simp lemmas `Functor.map_comp` and `Functor.map_sub` cannot fire. The whole step needs a hand-ordered rewrite chain with `Category.assoc` and `\u2190 Category.assoc`.",
+      "proposed_change": "Delete the three private lemmas. State the intermediate goals with `(coind\u2081Functor k (ULift.{v} G)).map`, `(invariantsFunctor k (ULift.{v} G)).map` and `uliftFunctor.map`. Then discharge them with `Functor.map_comp`, `Functor.map_sub` and `Preadditive` simp lemmas. If a raw-`ofHom` form is needed, add one `@[simp]` lemma `coind\u2081Functor.map_eq : (coind\u2081Functor k G).map f = ofHom (coind\u2081Map f.hom)`, or use `(coind\u2081Functor k _).map_comp` directly in the `rw`. The `uliftMap_coind\u2081Map_comp_coind\u2081UliftIso` lemma can also be stated with `(coind\u2081Functor ..).map`, so it composes with `ih'` under a single normal form.",
+      "benefit": "The proofs use the canonical functor lemmas instead of duplicate private ones. The back-and-forth `coind\u2081Map_comp` rewriting in `resolutionUliftIsoSameUniverse_d_comm` and `invariantsMap_comp` in `homogeneousCochainsUliftXIsoSameUniverse_comm` goes away. The statements also match the form of `TopRep.d_succ` and `homogeneousCochains.d_eq`, which Mathlib already states with `(coind\u2081Functor k G).map` and `(invariantsFunctor k G).map`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RepresentationTheory/Continuous/TopRep.lean",
+          "declaration": "TopRep.coind\u2081Functor",
+          "excerpt": "map \u03c6 := ofHom <| ContRepresentation.coind\u2081Map \u03c6.hom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RepresentationTheory/Continuous/TopRep.lean",
+          "declaration": "TopRep.invariantsFunctor",
+          "excerpt": "map f := TopModuleCat.ofHom f.hom.mapInvariants"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/TopRepUlift.lean",
+          "declaration": "TopRep.instAdditiveUliftFunctor",
+          "excerpt": "instance instAdditiveUliftFunctor"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/continuous-group-cohomology/ContinuousGroupCohomology/HomogeneousCochainsUlift.lean",
+          "declaration": "resolutionUliftIsoSameUniverse_d_comm",
+          "excerpt": "rw [Category.assoc, coind\u2081Map_comp, ih', \u2190 coind\u2081Map_comp,"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 22,
+    "cache_creation_input_tokens": 14650,
+    "cache_read_input_tokens": 212950,
+    "output_tokens": 7947,
+    "output_tokens_details": {
+      "thinking_tokens": 1563
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14650,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3272,
+        "cache_read_input_tokens": 25516,
+        "cache_creation_input_tokens": 962,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 962
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.15940900000000002,
+  "duration_ms": 62095,
+  "turns": 18,
+  "attempts": 2,
+  "judged": "2026-10-27T01:06:39",
+  "unit": "file",
+  "source_sha256": "7686107a60e1c46d6c84ef54cd7ac2e83ef760758227d43042547582a8266a60",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

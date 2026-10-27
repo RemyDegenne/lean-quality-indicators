@@ -1,0 +1,88 @@
+{
+  "id": "lean-pool-file-0317",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the relevant definitions in SpectralMeasure/Construction.lean (`specProjection`, `specProjection_def`, `specProjection_compl`, `specProjection_apply_domain`) and in ProjValMeasure/Basic.lean (`proj_inter`, `proj_congr`, `proj_compl`). I also checked Mathlib's `mul_apply_eq_comp`, which is already `@[simp]`. The file adds no simp lemmas and has no loop or competing-rule risk. The only simp-interface problem I found is that `specProjection` has no lemma layer of its own. Proofs therefore unfold to `spectralPVM.proj` with `specProjection_def`, which is not simp, and then re-fold by hand. I did not run Lean, so I have not confirmed that the suggested lemma and its use compile. I am also unsure whether the simp-normal form should be a product or an intersection. I deliberately did not recommend `@[simp]` on `specProjection_def`, because unfolding it would expose `spectralPVM` everywhere.",
+  "findings": [
+    {
+      "declaration": "specProjection_Ici_apply_eq_self_of_Iic_apply_eq_zero (and its twin specProjection_Iic_apply_eq_self_of_Ici_apply_eq_zero)",
+      "start_line": 91,
+      "end_line": 131,
+      "excerpt": "simp only [specProjection_def, \u2190 hP] at hz",
+      "problem": "The `specProjection` interface has no rewrite lemmas of its own for intersections or complements. The existing lemma `specProjection_compl` is never used in this file. Each proof therefore does `set P := spectralPVM hA`, unfolds with the non-simp `specProjection_def` (`simp only [specProjection_def, \u2190 hP] at hz`), and finishes with `rw [mul_apply_eq_comp, hz, map_zero]`. The complement step is an eight-line `calc` through `P.proj_congr hcompl.symm ...` and `P.proj_compl`, even though `specProjection_compl` states `specProjection hA B\u1d9c hB.compl = id - specProjection hA B hB` directly. This repeats the unfold-and-refold detour in `tendsto_specProjection_inter_of_fix` (`simp only [specProjection_def]`, `symm`, `P.proj_congr`, `P.proj_inter`) and in both theorems. The `\u2190 hP` fold-back is a workaround for `set` abbreviating `spectralPVM hA`. The same shape appears in other files, such as `SpectralFormBounds.lean` (`rw [show specProjection hA S hS = (spectralPVM hA).proj S hS from by rw [specProjection_def]`).",
+      "proposed_change": "1. Add a `specProjection`-level product lemma next to `specProjection_compl` in Construction.lean: `specProjection hA S hS * specProjection hA T hT = specProjection hA (S \u2229 T) (hS.inter hT)`, proved from `(spectralPVM hA).proj_inter`. Optionally add a `specProjection_congr` for set equalities, proved by `subst` as `ProjValMeasure.proj_congr` is. 2. Rewrite the two `*_apply_eq_self_*` lemmas so the complement step reads `rw [\u2190 Set.compl_Iio, specProjection_compl hA _ measurableSet_Iio]` followed by `sub_apply`, `id_apply`, `hIio`, `sub_zero`. 3. Derive `hIio` from the new product lemma without `set P` or `\u2190 hP`. 4. The inner goal `Set.Iio c \u2229 Set.Iic c = Set.Iio c` can use `Set.inter_eq_left.mpr Set.Iio_subset_Iic_self` (both lemmas exist in Mathlib) instead of `ext`/`simp only`/`constructor`. Keep `specProjection_def` non-simp so `spectralPVM` is not exposed everywhere.",
+      "benefit": "Proofs stay at the `specProjection` level instead of unfolding to `spectralPVM.proj` and folding back. This removes the `set ... with hP` / `\u2190 hP` workaround and the hand-written complement `calc`, which is duplicated across the Ici/Iic twins. It also makes the existing `specProjection_compl` the single canonical complement rewrite, and downstream files such as SpectralFormBounds.lean and RayleighRitz.lean can use the same lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/ForTauCeti/Analysis/InnerProductSpace/LinearPMap/SpectralMeasure/Construction.lean",
+          "declaration": "specProjection_compl",
+          "excerpt": "specProjection hA B\u1d9c hB.compl =\n      ContinuousLinearMap.id \u2102 H - specProjection hA B hB"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/ForTauCeti/Analysis/InnerProductSpace/LinearPMap/SpectralMeasure/Construction.lean",
+          "declaration": "specProjection_def",
+          "excerpt": "specProjection hA B hB = (spectralPVM hA).proj B hB := (rfl)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/ForTauCeti/Analysis/InnerProductSpace/ProjValMeasure/Basic.lean",
+          "declaration": "ProjValMeasure.proj_inter",
+          "excerpt": "proj B\u2081 hB\u2081 * proj B\u2082 hB\u2082 = proj (B\u2081 \u2229 B\u2082) (hB\u2081.inter hB\u2082)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Data/FunLike/IsApply.lean",
+          "declaration": "mul_apply_eq_comp",
+          "excerpt": "alias mul_apply_eq_comp := IsMulApplyEqComp.mul_apply_eq_comp"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 36665,
+    "cache_read_input_tokens": 311851,
+    "output_tokens": 8362,
+    "output_tokens_details": {
+      "thinking_tokens": 2663
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36665,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2532,
+        "cache_read_input_tokens": 37573,
+        "cache_creation_input_tokens": 3105,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3105
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.26151309999999994,
+  "duration_ms": 77703,
+  "turns": 18,
+  "attempts": 1,
+  "judged": "2026-10-27T01:35:12",
+  "unit": "file",
+  "source_sha256": "aeddfffd3098e10983894bedae7c40cf0bb7d1d4a308f33b3e5baa3ce582e833",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

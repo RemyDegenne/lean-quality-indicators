@@ -1,0 +1,114 @@
+{
+  "id": "openai-math-file-0328",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and compared it with Mathlib's Mathlib/Algebra/Polynomial/Bivariate.lean. That file has the `R[X][Y]` notation, `evalEval`, `evalEvalRingHom`, `aevalAeval`, `Bivariate.swap` and `Bivariate.equivMvPolynomial`. I also grepped the Jacobsthal directory and found that PrimitiveResultant.lean defines another `Bivariate` abbrev and `pointEvalHom`. I could not run Lean, so the replacement proofs are untested. The two evaluation orders in `nestedEvalHom` and `evalEvalRingHom` differ syntactically, but Mathlib has a lemma connecting them (line 162, `(p.map <| evalRingHom x).eval y = p.evalEval x y`). I did not report `nestedX` as a duplicate, because it uses the other variable orientation and Mathlib has no direct named equivalent. Whether `nestedX` is still needed is uncertain, since the callers I saw mostly use `nestedY`.",
+  "findings": [
+    {
+      "declaration": "OAI.Erdos970.ErdosCriticalGeometry.nestedEvalHom",
+      "start_line": 44,
+      "end_line": 45,
+      "excerpt": "noncomputable def nestedEvalHom (x y : R) : Nested R \u2192+* R :=\n  (Polynomial.evalRingHom y).comp (Polynomial.mapRingHom (Polynomial.evalRingHom x))",
+      "problem": "`nestedEvalHom R x y` is the ring homomorphism that evaluates a bivariate polynomial `Polynomial (Polynomial R)` at the point (x, y). Mathlib already has this as `Polynomial.evalEvalRingHom x y`, with the function version `Polynomial.evalEval x y`, and a large lemma set (`evalEval_C`, `evalEval_X`, `evalEval_add`, `evalEval_mul`, `evalEval_pow`, `evalEval_map_C`, and others). It also has `Polynomial.map_mapRingHom_evalEval` and `Polynomial.eval_map_evalRingHom`-style bridge lemmas (the lemma at line 162 states `(p.map <| evalRingHom x).eval y = p.evalEval x y`). The local def is only a composition in the other order, and the file reproves the two basic simp lemmas `nestedEvalHom_C` and `nestedEvalHom_X`. The same project also has a third copy, `ErdosBivariateResultant.pointEvalHom` and `beval` in Harmonic/PrimitiveResultant.lean, so there are now several competing bivariate-evaluation notions that need conversions between them.",
+      "proposed_change": "Drop `nestedEvalHom` and state `eval_nestedY` and `eval_nestedX` with `Polynomial.evalEval x y (nestedY R Q)` (or `Polynomial.evalEvalRingHom x y`). The existing lemma `Polynomial.evalEval_C` and the bivariate `evalEval_X` lemma (Mathlib `Polynomial.evalEval_X`) replace `nestedEvalHom_C` and `nestedEvalHom_X`. If the old name is wanted, keep a thin `abbrev nestedEvalHom := Polynomial.evalEvalRingHom`. Unify `pointEvalHom` and `beval` in PrimitiveResultant.lean the same way.",
+      "benefit": "Callers get the existing `evalEval_*` API and the existing interaction lemmas with `map` and `aevalAeval` without conversions. There is one canonical notion of bivariate evaluation across the Jacobsthal files.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Polynomial/Bivariate.lean",
+          "declaration": "Polynomial.evalEvalRingHom",
+          "excerpt": "@[simps!] abbrev evalEvalRingHom (x y : R) : R[X][Y] \u2192+* R :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Polynomial/Bivariate.lean",
+          "declaration": "Polynomial.evalEval",
+          "excerpt": "abbrev evalEval (x y : R) (p : R[X][Y]) : R := eval x (eval (C y) p)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Harmonic/PrimitiveResultant.lean",
+          "declaration": "OAI.Erdos970.ErdosBivariateResultant.pointEvalHom",
+          "excerpt": "noncomputable def pointEvalHom (x y : \u2102) : Bivariate \u2192+* \u2102 :="
+        }
+      ]
+    },
+    {
+      "declaration": "OAI.Erdos970.ErdosCriticalGeometry.nestedY (with abbrevs MV and Nested)",
+      "start_line": 13,
+      "end_line": 22,
+      "excerpt": "abbrev Nested := Polynomial (Polynomial R)",
+      "problem": "`nestedY R : MvPolynomial (Fin 2) R \u2243\u2090[R] Polynomial (Polynomial R)` is built from `renameEquiv` with a swap followed by `finSuccEquiv` and `mapAlgEquiv`. It sends `X 0` to `C X`, `X 1` to `X` and `C c` to `C (C c)`. That is exactly the inverse of Mathlib's `Polynomial.Bivariate.equivMvPolynomial R : R[X][Y] \u2243\u2090[R] MvPolynomial (Fin 2) R`, whose simp lemmas are `equivMvPolynomial_symm_X_0 : ... (.X 0) = C X`, `equivMvPolynomial_symm_X_1 : ... (.X 1) = X` and `equivMvPolynomial_symm_C`. The local simp lemmas `nestedY_C`, `nestedY_X_zero` and `nestedY_X_one` repeat these. The alias `Nested R` also competes with Mathlib's `R[X][Y]` notation (`Polynomial.Bivariate` scope), and PrimitiveResultant.lean introduces yet another alias `Bivariate := Polynomial (Polynomial \u2102)`. Mathlib's equivalence additionally comes with `pderiv_zero_equivMvPolynomial` and `pderiv_one_equivMvPolynomial`, which the local equivalence lacks. This is relevant to the derivative or partial-derivative files that use these coordinates.",
+      "proposed_change": "Define `nestedY R := (Polynomial.Bivariate.equivMvPolynomial R).symm` (as a `def` or `abbrev` if the name is worth keeping), or use it directly. Derive `nestedY_C`, `nestedY_X_zero` and `nestedY_X_one` from the `equivMvPolynomial_symm_*` lemmas. Replace `Nested R` and `Bivariate` with `R[X][Y]` or one shared alias. Keep `nestedX`, defined as the swap-composed version, only if callers genuinely need that orientation. It could then be written as `nestedY` composed with `Polynomial.Bivariate.swap` and a `rename` swap, or stated via those.",
+      "benefit": "The project reuses Mathlib's equivalence and its derivative lemmas instead of keeping a parallel construction. There are no conversions between the two equivalences or between the different bivariate type aliases. The file also needs fewer hand-proved simp lemmas.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Polynomial/Bivariate.lean",
+          "declaration": "Polynomial.Bivariate.equivMvPolynomial",
+          "excerpt": "def equivMvPolynomial : R[X][Y] \u2243\u2090[R] MvPolynomial (Fin 2) R :="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Polynomial/Bivariate.lean",
+          "declaration": "Polynomial.Bivariate.equivMvPolynomial_symm_X_0",
+          "excerpt": "lemma equivMvPolynomial_symm_X_0 : (equivMvPolynomial R).symm (.X 0) = C X := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Algebra/Polynomial/Bivariate.lean",
+          "declaration": "Polynomial.Bivariate.equivMvPolynomial_symm_X_1",
+          "excerpt": "lemma equivMvPolynomial_symm_X_1 : (equivMvPolynomial R).symm (.X 1) = X := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Jacobsthal/Harmonic/PrimitiveResultant.lean",
+          "declaration": "OAI.Erdos970.ErdosBivariateResultant.Bivariate",
+          "excerpt": "abbrev Bivariate := Polynomial (Polynomial \u2102)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 22226,
+    "cache_read_input_tokens": 169443,
+    "output_tokens": 6367,
+    "output_tokens_details": {
+      "thinking_tokens": 800
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22226,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3402,
+        "cache_read_input_tokens": 32554,
+        "cache_creation_input_tokens": 667,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 667
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1695503,
+  "duration_ms": 43416,
+  "turns": 13,
+  "attempts": 3,
+  "judged": "2026-10-27T01:38:21",
+  "unit": "file",
+  "source_sha256": "080e6d649bfe21f26ef4573a72d09fb70975c3fbe31eef43719f2ffc004350bd",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

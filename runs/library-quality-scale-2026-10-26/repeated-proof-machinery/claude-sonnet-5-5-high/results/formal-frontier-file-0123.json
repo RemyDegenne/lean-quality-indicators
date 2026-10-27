@@ -1,0 +1,130 @@
+{
+  "id": "formal-frontier-file-0123",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the Mathlib Kan-extension API (Pointwise.lean) near pointwiseLeftKanExtension_map. I searched the formal-frontier sources for uses of oldPointwiseModule and pointwiseModule_eq_old. The only hits are in this file, so the old copy has no other users. I could not run Lean, so I did not check that the proposed rewrites compile. In particular, the generic lemma's universe and instance requirements (Category.{v} C, HasColimits C, ConcreteCategory C) are patterned on the existing `pointwiseToPullback` signature. I also noticed `ringGenerator`/`groupGenerator` (lines 102\u2013118) and the two `pointwiseMap_id`/`comp` proofs. I judged those thin wrappers or short routine proofs, so I did not report them.",
+  "findings": [
+    {
+      "declaration": "ring_map_\u03b9 and group_map_\u03b9",
+      "start_line": 225,
+      "end_line": 246,
+      "excerpt": "erw [Functor.pointwiseLeftKanExtension_map, colimit.\u03b9_desc]",
+      "problem": "The two theorems have identical statements and proofs. Both do a `change \u2026 \u226b \u2026 .hom r = _`, then `erw [Functor.pointwiseLeftKanExtension_map, colimit.\u03b9_desc]`, then `rfl`. The only difference is that one uses the presheaf `R` in `RingCat` and the other uses `M.presheaf` in `AddCommGrpCat`. The real fact is the categorical identity that `colimit.\u03b9` composed with the Kan-extension map along `g` is `colimit.\u03b9` at `(CostructuredArrow.map g).obj i`. That fact does not depend on the target category. Each copy re-proves it and carries its own fragile `erw`.",
+      "proposed_change": "Add one generic lemma. Take `C : Type (v+1)` with `[Category.{v} C] [HasColimits C]`, `F : Y.Presheaf C`, `g : op U \u27f6 op V` and `i : index f U`. Its statement is `colimit.\u03b9 (CostructuredArrow.proj (Opens.map f).op (op U) \u22d9 F) i \u226b ((Opens.map f).op.pointwiseLeftKanExtension F).map g = colimit.\u03b9 (CostructuredArrow.proj (Opens.map f).op (op V) \u22d9 F) ((CostructuredArrow.map g).obj i)`. Prove it once by `erw [Functor.pointwiseLeftKanExtension_map, colimit.\u03b9_desc]; rfl`, as in the current bodies. Then `ring_map_\u03b9` is `ConcreteCategory.congr_hom (thatLemma f R g i) r` and `group_map_\u03b9` is `ConcreteCategory.congr_hom (thatLemma f M.presheaf g i) m`. The same pattern is used in `pointwiseMap`'s naturality proof and `pointwiseMap_\u03b9`, so those can reuse the categorical lemma too.",
+      "benefit": "The non-trivial colimit/Kan-extension unfolding is proved once, in the form Mathlib itself uses in `Pointwise.lean`. The ring and group versions become one-line corollaries. A future change in how `pointwiseLeftKanExtension_map` unfolds then needs one fix, not two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "group_map_\u03b9",
+          "excerpt": "erw [Functor.pointwiseLeftKanExtension_map, colimit.\u03b9_desc]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/CategoryTheory/Functor/KanExtension/Pointwise.lean",
+          "declaration": "pointwiseLeftKanExtensionUnit naturality",
+          "excerpt": "pointwiseLeftKanExtension_map, colimit.\u03b9_desc, CostructuredArrow.map_mk]"
+        }
+      ]
+    },
+    {
+      "declaration": "pointwiseModule (duplicate of oldPointwiseModule)",
+      "start_line": 130,
+      "end_line": 190,
+      "excerpt": "pointwiseModule f R M U = oldPointwiseModule f R M U := rfl",
+      "problem": "`pointwiseModule` repeats the whole construction of `oldPointwiseModule`, about 40 lines. The copy re-inlines the `IsFiltered` instance (already given at lines 151\u2013161 of the same file as `meetIndex`, `meetLeft` and `meetRight`) and the `InitiallySmall` instance. It also re-inlines `indexProj`, `indexedRing`, `indexedModule`, `ringIso` and `groupIso` as local `let`s. The final `Module` structure (`AddEquiv.module` followed by `Module.compHom`) is the same. The file itself proves the two are `rfl`-equal in `pointwiseModule_eq_old`. Two copies of the nontrivial transport construction must be kept in sync, and `pointwiseModule_eq_old` exists only to witness the redundancy. A grep of the formal-frontier sources finds no other use of `oldPointwiseModule` or `pointwiseModule_eq_old`.",
+      "proposed_change": "Keep one body, the helper-based one at lines 130\u2013143. Make the public `pointwiseModule` that body, either by renaming the helper or by `:= oldPointwiseModule f R M U` with the `@[instance_reducible]` attribute. Delete the inlined copy at lines 150\u2013186 and delete `pointwiseModule_eq_old`. The private `IsFiltered` and `InitiallySmall` instances are in scope for this definition. If the public instance must not mention private declarations, make `meetIndex`, `meetLeft`, `meetRight`, `ringIso` and `groupIso` non-private or add the needed `public` exports. I have not compiled this.",
+      "benefit": "This removes about 60 lines of duplicated construction and the `rfl` bridge theorem. The module structure is then defined in exactly one place, so later changes to the scalar action cannot make the two copies drift apart.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "oldPointwiseModule",
+          "excerpt": "exact Module.compHom _ (ringIso f R U).symm.ringCatIsoToRingEquiv.toRingHom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "pointwiseModule",
+          "excerpt": "exact Module.compHom _ ringComparison.symm.ringCatIsoToRingEquiv.toRingHom"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "instIsFiltered (index f U)",
+          "excerpt": "cocone_objs i j := \u27e8meetIndex f i j, meetLeft f i j, meetRight f i j, trivial\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "restriction_smul and pointwiseMap_smul",
+      "start_line": 269,
+      "end_line": 352,
+      "excerpt": "obtain \u27e8i, a, b, ha, hb\u27e9 := pointwise_jointly_surjective f R M U r m",
+      "problem": "Both proofs of 'a map commutes with scalar multiplication' use the same reduction to generators. They get generators from `pointwise_jointly_surjective`, rewrite `r` and `m` with `erw [\u2190 ha, \u2190 hb]`, and then rewrite `r \u2022 m` as a generator with `erw [\u2190 pointwise_smul_\u03b9 f R M U i a b]`. Only after that do they apply their own naturality lemmas (`group_map_\u03b9`/`ring_map_\u03b9`, or `pointwiseMap_\u03b9`). The reduction is the same argument in both places, and both depend on fragile `erw` rewrites with instances selected by `letI`.",
+      "proposed_change": "Add one lemma that packages the generator reduction. For `r` and `m` in the pointwise Kan colimits at `U`, it gives `\u2203 (i : index f U) (a : R.obj i.left) (b : M.obj i.left), colimit.\u03b9 _ i a = r \u2227 colimit.\u03b9 _ i b = m \u2227 pointwiseSmul f R M U r m = colimit.\u03b9 _ i (a \u2022 b)`. Prove it by `pointwise_jointly_surjective`, then `subst`, then `(pointwiseSmul_eq \u2026)`/`pointwise_smul_\u03b9`. Both theorems then start with `obtain \u27e8i, a, b, rfl, rfl, h\u27e9 := \u2026`. They can use `pointwiseSmul` consistently instead of re-selecting instances with `letI`, and then finish with the one lemma specific to each (the `group_map_\u03b9`/`ring_map_\u03b9` step or `pointwiseMap_\u03b9`). This is a modest refactor. The shared part is the instance-sensitive `erw` setup rather than a long calculation.",
+      "benefit": "The instance-sensitive rewriting is localized in a single lemma. The two main proofs shrink to the facts specific to each: restriction maps for one, `pointwiseMap` for the other. Any further proofs of 'X commutes with the Kan scalar action' could then reuse it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "restriction_smul",
+          "excerpt": "erw [\u2190 pointwise_smul_\u03b9 f R M U i a b]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "pointwiseMap_smul",
+          "excerpt": "erw [pointwiseMap_\u03b9 f \u03c6 U i (a \u2022 b), pointwiseMap_\u03b9 f \u03c6 U i b]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/ringed-spaces/RingedSpaces/Modules/PresheafInverseImage.lean",
+          "declaration": "pointwiseSmul_eq",
+          "excerpt": "(pointwise_smul_\u03b9 f R M U i r m).symm"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 21217,
+    "cache_read_input_tokens": 85084,
+    "output_tokens": 7562,
+    "output_tokens_details": {
+      "thinking_tokens": 2683
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21217,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5478,
+        "cache_read_input_tokens": 24213,
+        "cache_creation_input_tokens": 933,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 933
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1690164,
+  "duration_ms": 60680,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:07:09",
+  "unit": "file",
+  "source_sha256": "3e65984a235a5a25eedf734c7a6ec449aec9fd3ca66588cfc272b785d640e7c1",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

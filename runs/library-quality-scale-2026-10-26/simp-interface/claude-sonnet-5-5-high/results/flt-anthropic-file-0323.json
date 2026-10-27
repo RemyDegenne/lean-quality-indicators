@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0323",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the ideleNorm definitions in Definitions/Def_NumberField_TateGlobalZeta.lean and Def_NumberField_NormPowChar.lean. The file has no @[simp] lemmas. Its simp calls are all `simp only` with hand-passed rules. I found two issues. The first is that `logNorm` has no unfolding lemma, so it is unfolded by name in several places. The second is that the algebraic rules for `logNorm` and `ideleNorm` are never tagged @[simp], even though the file itself uses them as simp rules. I did not claim any loop or simp failure. I did not check how the scoped instances or the p2m_reactivate lines affect simp. I did not look for downstream users outside this file. A separate point is that `ideleNorm_one` is also proved in Definitions/Def_NumberField_NormPowChar.lean. That is a duplication question, not a simp one, so I left it out. I could not confirm that this file imports that module.",
+  "findings": [
+    {
+      "declaration": "S30ShellLaw.logNorm (definition without an unfolding/simp lemma)",
+      "start_line": 36,
+      "end_line": 37,
+      "excerpt": "noncomputable def logNorm (y : (AdeleRing (\ud835\udcde M) M)\u02e3) : \u211d :=\n  Real.log (NumberField.TateGlobal.ideleNorm M y)",
+      "problem": "`logNorm` has no equation lemma such as `logNorm_apply : logNorm M y = Real.log (ideleNorm M y)`. Callers therefore unfold the definition by name, either inside `simp only [..., logNorm, ...]` or as a final `rw [..., S30ShellLaw.logNorm]`. This happens at line 254 in `shell_law` (inside `simp only`), at lines 453 and 463 in `solution` (`rw`), and at line 492 (`simp only`). Each of these unfolds the whole definition and exposes `Real.log (ideleNorm ..)` to the surrounding rewrites. No rule says when this should happen, and nothing keeps `logNorm` as the normal form elsewhere. The one-line `unfold logNorm` in `logNorm_mul` and `logNorm_prin` is the same pattern.",
+      "proposed_change": "Add `theorem logNorm_apply (y) : logNorm M y = Real.log (NumberField.TateGlobal.ideleNorm M y) := rfl`. Do not tag it @[simp], so `logNorm` stays folded by default. Use it explicitly in the sites listed above, in place of the bare definition name. Alternatively, make `logNorm` irreducible and route every unfolding through this one lemma.",
+      "benefit": "Unfolding becomes an explicit, named rewrite instead of delta-unfolding the constant inside `simp only`. The proofs of `hA`, `hB` and `hset` become more robust to later changes in how `logNorm` is defined.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_NumberField_AdelicHeight_exists_forall_measureReal_inter_ideleNorm_mem_Icc_eq_mul_log_and_setIntegral_weight_comp_eq.lean",
+          "declaration": "S30ShellLaw.shell_law",
+          "excerpt": "simp only [Set.mem_setOf_eq, Set.mem_Icc, Set.mem_preimage, logNorm, Real.log_le_log_iff ha hy,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_NumberField_AdelicHeight_exists_forall_measureReal_inter_ideleNorm_mem_Icc_eq_mul_log_and_setIntegral_weight_comp_eq.lean",
+          "declaration": "solution",
+          "excerpt": "lt_div_iff\u2080 hepos, S30ShellLaw.logNorm]"
+        }
+      ]
+    },
+    {
+      "declaration": "S30ShellLaw.logNorm_mul / logNorm_prin / ideleNorm_prin / ideleNorm_inv (no simp attributes)",
+      "start_line": 83,
+      "end_line": 90,
+      "excerpt": "theorem logNorm_mul (u y : (AdeleRing (\ud835\udcde M) M)\u02e3) : logNorm M (u * y) = logNorm M u + logNorm M y := by",
+      "problem": "The file's own proofs use `logNorm_mul`, `logNorm_prin`, `ideleNorm_prin` and `ideleNorm_inv` as rewrite rules for normalising expressions, but none of them is tagged @[simp]. `preimage_smul_prin` has to list `logNorm_mul, logNorm_prin, zero_add` by hand, and `preimage_mul_eq` lists `logNorm_mul`. `ideleNorm_prin` is also only used with `rw` (in `logNorm_prin`). `ideleNorm_inv` is only used with `rw` (at the end of `adelicHeight_adelicWeyl_mul_diagOne_mul`). Anyone who needs `logNorm M (c * y)` for a principal idele `c` must rediscover and list these rules each time.",
+      "proposed_change": "Mark `logNorm_prin` and `ideleNorm_prin` as @[simp]. Both are conditional-free rewrites to a constant, and the right-hand sides are smaller. Mark `logNorm_mul` as @[simp] as well. It is a standard homomorphism-style rule that pushes `logNorm` inside a product. It terminates because the product shrinks, and the only competing rule would be a `logNorm_apply` that is kept non-simp. Consider @[simp] on `ideleNorm_inv` too, since the target `(ideleNorm u)\u207b\u00b9` is the canonical form that `adelicHeight_adelicWeyl_mul_diagOne_mul` states. Check for simp-set conflicts first, because `logNorm_mul` and `ideleNorm_mul` target different heads. Alternatively, bundle `logNorm` as a MonoidHom into `Multiplicative \u211d` or `Additive`, so the generic `map_mul` simp lemma applies.",
+      "benefit": "Calls like `simp [logNorm_mul]` and the proofs of `preimage_smul_prin` and `preimage_mul_eq` can shrink to plain `simp`, with no hand-listed rules. Later results about shells and translations get the same normal form (additive in the product, zero on principal ideles) without repeating the rule list.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_NumberField_AdelicHeight_exists_forall_measureReal_inter_ideleNorm_mem_Icc_eq_mul_log_and_setIntegral_weight_comp_eq.lean",
+          "declaration": "S30ShellLaw.preimage_smul_prin",
+          "excerpt": "simp only [Set.mem_preimage, Subgroup.smul_def, smul_eq_mul, logNorm_mul, logNorm_prin, zero_add]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_NumberField_AdelicHeight_exists_forall_measureReal_inter_ideleNorm_mem_Icc_eq_mul_log_and_setIntegral_weight_comp_eq.lean",
+          "declaration": "S30ShellLaw.logNorm_prin",
+          "excerpt": "rw [ideleNorm_prin, Real.log_one]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_NumberField_TateGlobalZeta.lean",
+          "declaration": "NumberField.TateGlobal.ideleNorm_mul",
+          "excerpt": "theorem ideleNorm_mul (x y : (AdeleRing (\ud835\udcde F) F)\u02e3) : ideleNorm F (x * y) = ideleNorm F x * ideleNorm F y := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 28499,
+    "cache_read_input_tokens": 110724,
+    "output_tokens": 5163,
+    "output_tokens_details": {
+      "thinking_tokens": 1123
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28499,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2877,
+        "cache_read_input_tokens": 31240,
+        "cache_creation_input_tokens": 1272,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1272
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1767184,
+  "duration_ms": 44998,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T01:36:16",
+  "unit": "file",
+  "source_sha256": "647343d2d73263e4c0b1794f3e11e1520e5276c5306ddd345f15ed363c741eea",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

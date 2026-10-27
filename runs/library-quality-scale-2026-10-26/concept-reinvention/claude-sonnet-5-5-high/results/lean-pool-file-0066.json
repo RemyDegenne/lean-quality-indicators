@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0066",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I compared its definitions with Mathlib's Monoid instance on `LinearIsometry`, with the Group instances on `LinearIsometryEquiv` and `AffineIsometryEquiv`, and with `LinearIsometry.toLinearIsometryEquiv`. I did not check how the other OS files use `E`, `act` or `O4` beyond a count and a partial grep. That is the main uncertainty for the `E` finding. I did not flag `euclideanPullback`, `euclideanAction`, `euclideanActionReal`, `euclideanActionL2` or `euclideanActionCLM`: they are named, specialised wrappers around Mathlib's `compCLM` and `Lp.compMeasurePreserving`. The rubric also says not to flag standalone lemma duplication, and I did not.",
+  "findings": [
+    {
+      "declaration": "QFT.LinearIsometry.inv (with comp_apply, one_apply, one_comp, comp_one, inv_apply, inv_comp, comp_inv)",
+      "start_line": 74,
+      "end_line": 107,
+      "excerpt": "noncomputable def inv (g : O4) : O4 :=\n  ((g.toLinearIsometryEquiv rfl).symm).toLinearIsometry",
+      "problem": "The file defines its own inverse on `LinearIsometry` and a family of simp lemmas around it. It does this inside a new `QFT.LinearIsometry` namespace. Mathlib already has both pieces. `LinearIsometryEquiv` has a `Group` instance whose inverse is `symm`, with `mul_inv_cancel` and `inv_mul_cancel`. `LinearIsometry E E` already has a `Monoid` instance (`mul := comp`, `one := id`) with `coe_one`, `coe_mul`, `one_def`, `mul_def`, `id_comp` and `comp_id`. The file's `inv` is just `symm` pushed back through `toLinearIsometry`. The ad hoc `comp_inv` and `inv_comp` proofs convert to the equivalence and then re-prove cancellation by hand, coordinate-wise. Because the namespace is `QFT.LinearIsometry`, these names also sit beside the root `LinearIsometry.*` API and can shadow or confuse it.",
+      "proposed_change": "Define `O4` as `SpaceTime \u2243\u2097\u1d62[\u211d] SpaceTime`, which is Mathlib's group. Use `LinearIsometryEquiv.symm` (the group `\u207b\u00b9`) and Mathlib's `mul_inv_cancel` and `inv_mul_cancel` for the group laws. Then `inv`, `inv_apply`, `inv_comp`, `comp_inv`, `one_comp`, `comp_one`, `one_apply` and `comp_apply` can be deleted. If `LinearIsometry` is kept, use Mathlib's `Monoid` lemmas (`one_def`, `mul_def`, `coe_one`, `id_comp`, `comp_id`) instead of the local ones. Keep only the `inv` definition, with an honest name, if the `LinearIsometry` representation is retained.",
+      "benefit": "This removes about 35 lines of parallel API and the `toLinearIsometryEquiv rfl` round-trips. The inverse and cancellation lemmas for `E` then come from Mathlib's group structure, and downstream code needs no conversions between `symm` and the local `inv`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Normed/Operator/LinearIsometry.lean",
+          "declaration": "LinearIsometryEquiv.instGroup",
+          "excerpt": "instance instGroup : Group (E \u2243\u2097\u1d62[R] E) where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Normed/Operator/LinearIsometry.lean",
+          "declaration": "LinearIsometry.instMonoid",
+          "excerpt": "instance instMonoid : Monoid (E \u2192\u2097\u1d62[R] E) where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Normed/Operator/LinearIsometry.lean",
+          "declaration": "LinearIsometry.mul_def",
+          "excerpt": "theorem mul_def (f g : E \u2192\u2097\u1d62[R] E) : (f * g : E \u2192\u2097\u1d62[R] E) = f.comp g :="
+        }
+      ]
+    },
+    {
+      "declaration": "QFT.E (structure) with its Mul/One/Inv/Div/Group instances and act",
+      "start_line": 43,
+      "end_line": 54,
+      "excerpt": "structure E where\n  /-- Orthogonal linear part of the Euclidean motion. -/\n  R : O4",
+      "problem": "`E` is a hand-rolled semidirect product \u27e8R, t\u27e9 acting by `x \u21a6 R x + t`. The Euclidean group of rigid motions of a Euclidean space already exists in Mathlib as `SpaceTime \u2243\u1d43\u2071[\u211d] SpaceTime`. It is a `Group` (`AffineIsometryEquiv.instGroup`), with the action by function application, and it has `linearIsometryEquiv`, `coe_mul`, `coe_one` and `symm` API. The file re-proves the group axioms (`mul_assoc`, `one_mul`, `inv_mul_cancel`) and the action laws (`act_mul_general`, `act_inv_general`). It also has an `ext` lemma and a `Div` instance, all of which come with Mathlib's version. The semidirect-product law `(g*h).t = g.R h.t + g.t` is re-derived by hand, and the `Group` structure of `E` is incompatible with Mathlib's lemmas about isometries. Note: I only partly checked uses elsewhere in the project, so keeping `E` as a named structure may be a deliberate choice.",
+      "proposed_change": "Either define `E` as an `abbrev` for `SpaceTime \u2243\u1d43\u2071[\u211d] SpaceTime` and drop the custom `Mul`, `One`, `Inv`, `Div`, `Group` instances and `act_*_general` lemmas. Or keep the structure but provide a `MulEquiv` or `MonoidHom` to `SpaceTime \u2243\u1d43\u2071[\u211d] SpaceTime`, or define `act` through it, so that Mathlib's group and measure-preservation API applies. `act g x` would then be `g x`, and the `act_one`, `act_mul` and `act_inv` lemmas would collapse to the existing `coe_one`, `coe_mul` and `symm_apply_apply`.",
+      "benefit": "The file would reuse Mathlib's group laws and isometry lemmas instead of maintaining a parallel Euclidean group. Results about `AffineIsometryEquiv` would then apply to `E`, and users would not have to convert between two Euclidean-group types.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Normed/Affine/Isometry.lean",
+          "declaration": "AffineIsometryEquiv.instGroup",
+          "excerpt": "instance instGroup : Group (P \u2243\u1d43\u2071[\ud835\udd5c] P) where"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/OSforGFF/Spacetime/Euclidean.lean",
+          "declaration": "QFT.instGroupE",
+          "excerpt": "instance : Group E where\n  mul := (\u00b7 * \u00b7)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 17544,
+    "cache_read_input_tokens": 66935,
+    "output_tokens": 5506,
+    "output_tokens_details": {
+      "thinking_tokens": 1008
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17544,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2789,
+        "cache_read_input_tokens": 19526,
+        "cache_creation_input_tokens": 2099,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2099
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1319495,
+  "duration_ms": 40300,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-26T22:56:36",
+  "unit": "file",
+  "source_sha256": "3eb6e9829b718d28928eea2ef42d674f1256cbf241ff5e856e5686566dd352d5",
+  "rubric": "concept-reinvention",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

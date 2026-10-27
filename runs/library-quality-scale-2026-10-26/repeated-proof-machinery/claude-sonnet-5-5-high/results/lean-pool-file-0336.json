@@ -1,0 +1,83 @@
+{
+  "id": "lean-pool-file-0336",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I compared it with `TM.seqTM_reachesIn_of_reachesIn` (Combinators/Internal/Seq.lean), `TM.phaseTransition_eq_self_of_reads_ne_start` (Hoare.lean), `TM.phaseTransition_of_parked` (Registers.lean) and `TM.seqTM_hoareTime`. I also read the near-identical `DenseDecisionProof.lean` and grepped for other uses of `phaseTransition_eq_self_of_reads_ne_start`. There are about 50 call sites across the library, many in the same shape. The `*_ramRun_internal` theorem has no meaningful repetition. Uncertainty: I could not compile anything. In the second use, `htailReach` starts at `phase1Wrap ...` and the helper's `hreach\u2082` expects the literal `qstart` config. The original closes that gap with `simpa ... using!`, so the rewritten call may still need `by simpa using! htailReach` or `convert`. The helper's rewrite step may also need a `Cfg` extensionality step. A helper stated with `Parked` hypotheses would instead reuse `TM.phaseTransition_of_parked`.",
+  "findings": [
+    {
+      "declaration": "programDecisionTM_hoareTime_run_internal (houtputReach' / htailReach' seam blocks)",
+      "start_line": 85,
+      "end_line": 134,
+      "excerpt": "obtain \u27e8hi, hw, ho\u27e9 := TM.phaseTransition_eq_self_of_reads_ne_start",
+      "problem": "The proof crosses a `seqTM` seam twice (loop\u2192output at lines 85\u201398, init\u2192(loop;output) at lines 116\u2013134) with the same reasoning. Each time it (1) shows the three tape-read facts, (2) calls `phaseTransition_eq_self_of_reads_ne_start`, (3) uses `simpa only [hi, hw, ho]` to rewrite the `transitionInput`/`transitionTape` start config of the second machine to the raw tapes, and (4) feeds the result to `seqTM_reachesIn_of_reachesIn`. Each seam also restates a long `{ state := ... qstart, input := TM.transitionInput ..., work := fun i => TM.transitionTape ..., output := ... }` literal. `DenseDecisionProof.lean` repeats the same blocks (lines 93\u2013142), and the library has about 50 further call sites of `phaseTransition_eq_self_of_reads_ne_start` in the same shape. The seam-crossing argument is therefore copied rather than named, and any change to the seam representation has to be made in every copy.",
+      "proposed_change": "Add one lemma next to `seqTM_reachesIn_of_reachesIn` (it can live in Hoare.lean, which has both ingredients):\n\ntheorem TM.seqTM_reachesIn_of_reachesIn_of_reads_ne_start (tm\u2081 tm\u2082 : TM n) {t\u2081 t\u2082 : \u2115} {c\u2081_start c\u2081_end : Cfg n tm\u2081.Q} {c\u2082_end : Cfg n tm\u2082.Q} (hreach\u2081 : tm\u2081.reachesIn t\u2081 c\u2081_start c\u2081_end) (hhalt\u2081 : c\u2081_end.state = tm\u2081.qhalt) (hinp : c\u2081_end.input.read \u2260 \u0393.start) (hwork : \u2200 i, (c\u2081_end.work i).read \u2260 \u0393.start) (hout : c\u2081_end.output.read \u2260 \u0393.start) (hreach\u2082 : tm\u2082.reachesIn t\u2082 { state := tm\u2082.qstart, input := c\u2081_end.input, work := c\u2081_end.work, output := c\u2081_end.output } c\u2082_end) : (seqTM tm\u2081 tm\u2082).reachesIn (t\u2081 + 1 + t\u2082) (phase1Wrap tm\u2081 tm\u2082 c\u2081_start) (phase2Wrap tm\u2081 tm\u2082 c\u2082_end)\n\nProof sketch: `obtain \u27e8hi, hw, ho\u27e9 := phaseTransition_eq_self_of_reads_ne_start hinp hwork hout`, then `exact seqTM_reachesIn_of_reachesIn tm\u2081 tm\u2082 hreach\u2081 hhalt\u2081 (by rw [hi, hw, ho]; exact hreach\u2082)`.\n\nRewritten uses here:\n1. Lines 85\u201398 become `have htailReach := TM.seqTM_reachesIn_of_reachesIn_of_reads_ne_start (programLoopTM tapes program) (programOutputTM tapes) hloopReach hloopHalt hloopInputParked.read_ne_start (fun i => (hloopReady.control.lookup.scanner.parked i).read_ne_start) hloopOutputParked.read_ne_start houtputReach`. The `houtputReach'` literal disappears.\n2. Lines 116\u2013134 become `have hreach := TM.seqTM_reachesIn_of_reachesIn_of_reads_ne_start (programInitTM tapes) (TM.seqTM (programLoopTM tapes program) (programOutputTM tapes)) hinitReach hinitHalt hinitInputParked.read_ne_start (fun i => (hinitWorkParked i).read_ne_start) hinitOutputParked.read_ne_start (by simpa using! htailReach)`. The `by simpa using!` argument stands in for the original `htailReach'`, because `htailReach` starts at `phase1Wrap` of the loop config. The `htailReach'` literal disappears.\n\nThe same lemma also replaces the duplicated blocks in `DenseDecisionProof.lean`.",
+      "benefit": "This removes two roughly 15-line blocks with large config literals from this proof, and the same two blocks from the dense version. It leaves the real content visible: loop, then output, with every tape parked at the seams. It also gives one place to maintain the seam argument. It is more than a thin wrapper, because it fuses the `phaseTransition` identification with the start-config rewrite and the `seqTM` reachability, and these steps currently appear together in every such proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/RandomAccessMachine/Simulation/RegisterStore/Machine/Program/DenseDecisionProof.lean",
+          "declaration": "denseProgramDecisionTM_hoareTime_run (same block repeated)",
+          "excerpt": "obtain \u27e8hi, hw, ho\u27e9 := TM.phaseTransition_eq_self_of_reads_ne_start\n      hinitInputParked.read_ne_start"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Combinators/Internal/Seq.lean",
+          "declaration": "TM.seqTM_reachesIn_of_reachesIn",
+          "excerpt": "input := transitionInput c\u2081_end.input,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Hoare.lean",
+          "declaration": "TM.phaseTransition_eq_self_of_reads_ne_start",
+          "excerpt": "transitionInput inp = inp \u2227"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 27344,
+    "cache_read_input_tokens": 105215,
+    "output_tokens": 6704,
+    "output_tokens_details": {
+      "thinking_tokens": 2325
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27344,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4072,
+        "cache_read_input_tokens": 28624,
+        "cache_creation_input_tokens": 2649,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2649
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1869615,
+  "duration_ms": 47555,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T01:38:58",
+  "unit": "file",
+  "source_sha256": "e23e6d20333d0203a0e9059d8b14853d96a193afd6a4730273ce0ffdfc704575",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

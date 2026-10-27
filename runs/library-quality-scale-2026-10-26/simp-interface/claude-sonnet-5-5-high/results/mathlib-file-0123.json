@@ -1,0 +1,105 @@
+{
+  "id": "mathlib-file-0123",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I grepped Mathlib for uses of the simp-relevant lemmas (lift_toCoprod_*, mk_eq_one_iff, equivPresentedGroup_*, toGroup.of). I checked QuotientGroup.eq_one_iff and mk_mul in QuotientGroup/Defs.lean. I did not run Lean, so I have not checked that the proposed attributes or restatements compile or that they cause no simp-set conflicts. Within the file, `lift_toCoprod_eq_one` is the only use of the Coprod simp lemmas. Outside the file, the only use of `PresentedGroup.toGroup.of` is a `rw` in Coxeter/Basic.lean.",
+  "findings": [
+    {
+      "declaration": "PresentedGroup.mk_eq_one_iff",
+      "start_line": 70,
+      "end_line": 72,
+      "excerpt": "mk rels x = 1 \u2194 x \u2208 Subgroup.normalClosure rels :=",
+      "problem": "`PresentedGroup.mk` is a new bundled hom, so the simp lemma `QuotientGroup.eq_one_iff` (which is `@[simp]`) does not fire on `mk rels x = 1`. No simp lemma rewrites this statement to membership in the normal closure, even though `mk_eq_one_iff` is exactly the PresentedGroup version of that simp lemma. The file's own proof of `one_of_mem` rewrites with it manually.",
+      "proposed_change": "Mark `mk_eq_one_iff` with `@[simp]`, matching `QuotientGroup.eq_one_iff`. The RHS `x \u2208 Subgroup.normalClosure rels` is simpler and has no loop risk, since `mk` does not occur on the RHS. Optionally add a simp lemma `mk_of : mk rels (FreeGroup.of x) = of x` (true by `rfl`) so that `mk` applied to a generator reaches the normal form `of x` that `toGroup.of` expects.",
+      "benefit": "Goals of the form `mk rels x = 1` simplify to a membership goal about the normal closure without a manual `rw [mk_eq_one_iff]`. The presented-group API then follows the same simp conventions as the quotient-group API it wraps.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/QuotientGroup/Defs.lean",
+          "declaration": "QuotientGroup.eq_one_iff",
+          "excerpt": "theorem eq_one_iff {N : Subgroup G} [N.Normal] (x : G) : (x : G \u29f8 N) = 1 \u2194 x \u2208 N"
+        }
+      ]
+    },
+    {
+      "declaration": "PresentedGroup.equivPresentedGroup_apply_of / equivPresentedGroup_symm_apply_of",
+      "start_line": 162,
+      "end_line": 168,
+      "excerpt": "equivPresentedGroup rels e (PresentedGroup.of x) =",
+      "problem": "These two `rfl` lemmas are the evaluation rules of `equivPresentedGroup` on generators, and they are the simp-normal-form lemmas for it. `equivPresentedGroup` is a def with no unfolding simp lemmas, and neither lemma is tagged `@[simp]`. Simp therefore cannot evaluate `equivPresentedGroup rels e (of x)` or its `symm`. Compare `toGroup.of`, which is `@[simp]`. The LHS head is a specific equivalence applied to `of x`, and the RHS is a simpler `of (e x)`, so the rules are terminating and canonical.",
+      "proposed_change": "Add `@[simp]` to both `equivPresentedGroup_apply_of` and `equivPresentedGroup_symm_apply_of`.",
+      "benefit": "Computations with the isomorphism on generators can be closed by `simp`, consistent with the other generator-evaluation lemma `toGroup.of`. Users no longer need to cite these lemmas by name.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/PresentedGroup.lean",
+          "declaration": "PresentedGroup.toGroup.of",
+          "excerpt": "@[simp]\ntheorem toGroup.of (h : \u2200 r \u2208 rels, FreeGroup.lift f r = 1) {x : \u03b1} : toGroup h (of x) = f x"
+        }
+      ]
+    },
+    {
+      "declaration": "PresentedGroup.lift_toCoprod_inl_eq_inl_mk / lift_toCoprod_inr_eq_inr_mk",
+      "start_line": 185,
+      "end_line": 193,
+      "excerpt": "lemma lift_toCoprod_inl_eq_inl_mk : (FreeGroup.lift (toCoprod rels\u2081 rels\u2082)).comp",
+      "problem": "These are `@[simp]` lemmas whose LHS is a `MonoidHom.comp` of two bundled homs. Simp normal forms are usually pointwise (applied) statements, and `comp` terms are rare in goals. The only in-file use is `lift_toCoprod_eq_one`, which has to run `simp [\u2190 MonoidHom.comp_apply, one_of_mem hr]` to turn the applied goal into the `comp` shape these lemmas match. That reverses the simp-set lemma `MonoidHom.comp_apply`, which suggests the lemmas are stated in a form that does not match how they are used.",
+      "proposed_change": "State the simp lemmas in applied form, for example `FreeGroup.lift (toCoprod rels\u2081 rels\u2082) (FreeGroup.map Sum.inl x) = Monoid.Coprod.inl (mk rels\u2081 x)`, and likewise for `inr`. Either keep the `comp` forms as non-simp ext-style lemmas or derive them from the applied ones. The proof of `lift_toCoprod_eq_one` can then be `simp [one_of_mem hr]` without `\u2190 MonoidHom.comp_apply`.",
+      "benefit": "Simp fires on the actual terms that appear when evaluating `FreeGroup.lift (toCoprod ..)` on mapped elements. The `\u2190 comp_apply` workaround, which fights the default simp set, becomes unnecessary.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/GroupTheory/PresentedGroup.lean",
+          "declaration": "PresentedGroup.lift_toCoprod_eq_one",
+          "excerpt": "simp [\u2190 MonoidHom.comp_apply, one_of_mem hr]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 9388,
+    "cache_read_input_tokens": 13712,
+    "output_tokens": 4304,
+    "output_tokens_details": {
+      "thinking_tokens": 1574
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 9388,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3433,
+        "cache_read_input_tokens": 9699,
+        "cache_creation_input_tokens": 3702,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3702
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0819712,
+  "duration_ms": 29296,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:06:40",
+  "unit": "file",
+  "source_sha256": "61928768ce8d869b8bbc4e874c530045b9e23065e414bbeb2cba959db2dd9924",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

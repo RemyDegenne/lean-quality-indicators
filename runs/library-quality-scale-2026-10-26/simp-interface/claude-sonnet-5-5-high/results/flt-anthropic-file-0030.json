@@ -1,0 +1,125 @@
+{
+  "id": "flt-anthropic-file-0030",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the definitions it depends on: `thetaL` and `thetaL_apply` in Definitions/Def_ModularCurve_QExpansionDiff.lean, and the simp status of `coeffMap_coeff`, `coeffMap_single` and `coeffMap_id` in Def_ModularCurve_LaurentCoeff.lean. I could not open the source of `theta_coeff` and `theta_mul`, but their statements are in Theorems/Thm_ModularCurve_theta_*.lean. I did not run Lean, so the suggested simp attributes are untested. I did not check whether any downstream file uses these file-local lemmas, so I made no claim about downstream effects. The proposed simp lemmas are all terminating and non-looping on their face: `thetaL_coeff'` rewrites to a product, `thetaL_one` and `thetaL_C` rewrite to 0, and the single case rewrites to a smul. I found no competing rules or cycles. The findings are modest interface gaps, not defects that block anything.",
+  "findings": [
+    {
+      "declaration": "thetaL_coeff'",
+      "start_line": 29,
+      "end_line": 30,
+      "excerpt": "theorem thetaL_coeff' (f : LaurentSeries k) (n : \u2124) : (thetaL k f).coeff n = (n : k) * f.coeff n := by",
+      "problem": "`(thetaL k f).coeff n` has no canonical simp normal form. The only rewrite to coefficient level is the unlabelled `thetaL_coeff'`, and the definitional `thetaL_apply` is not simp either. Every use is a manual `rw [thetaL_coeff', \u2026]`, including a duplicated `thetaL_coeff', thetaL_coeff'` at line 424. A `simp` call that meets `(thetaL k x).coeff n` cannot make progress, and the name's prime suffix suggests a stand-in for a missing unprimed lemma.",
+      "proposed_change": "Mark `thetaL_coeff'` with `@[simp]`, or give it an unprimed name such as `coeff_thetaL`. Its right side `(n : k) * f.coeff n` is a normal form with no loop risk, because it is not a `thetaL` term. Then `coeffMap_thetaL` (line 421) can be proved by `ext n; simp`, and the `rw [thetaL_coeff', HahnSeries.coeff_smul, \u2026]` chain in `thetaL_single` and the one in `IsPS.thetaL` shorten.",
+      "benefit": "Coefficient computations through `thetaL` become `simp`-reducible. The repeated manual rewrite chains disappear, and the primed name is no longer needed to avoid a clash.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_coeff_inv_mul_thetaL_mul_char_eq_pow.lean",
+          "declaration": "coeffMap_thetaL",
+          "excerpt": "rw [coeffMap_coeff, thetaL_coeff', thetaL_coeff', coeffMap_coeff, map_mul, map_intCast]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_ModularCurve_LaurentCoeff.lean",
+          "declaration": "coeffMap_coeff",
+          "excerpt": "(coeffMap f x).coeff k = f (x.coeff k)"
+        }
+      ]
+    },
+    {
+      "declaration": "thetaL_single / thetaL_C / thetaL_one",
+      "start_line": 35,
+      "end_line": 46,
+      "excerpt": "theorem thetaL_one : thetaL k (1 : LaurentSeries k) = 0 := by",
+      "problem": "The evaluation lemmas for `thetaL` on `single`, `C` and `1` are not simp. `thetaL_one` and `thetaL_C` are the canonical evaluations on constants, and `thetaL_single` is the same kind of rule for monomials. Without them, goals involving `thetaL k (1 - single 1 a)` need a hand-written chain of seven rewrites. Because `thetaL` is a linear map, `map_sub`, `map_add` and `map_smul` are already simp, so adding these three lemmas would make this kind of goal fully `simp`-solvable.",
+      "proposed_change": "Add `@[simp]` to `thetaL_one` and `thetaL_C`, which rewrite to 0 and cannot loop. Add it to `thetaL_single` too, since its right side is a smul of the original `single` and contains no `thetaL`. Then `h\u03b8` can be `by simp`, or `simp [thetaL_single]` if `thetaL_single` is left unattributed. Check that `Int.cast_one` and `one_smul` then close the goal.",
+      "benefit": "Computations of `thetaL` on constants and monomials, such as the `h\u03b8` step in `coeff_dlog_one_sub` and later `dlog_*` goals, stop needing hand-ordered rewrite chains. Rewrites would also no longer break if `rw` argument order changes.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_coeff_inv_mul_thetaL_mul_char_eq_pow.lean",
+          "declaration": "coeff_dlog_one_sub",
+          "excerpt": "rw [map_sub, thetaL_one, thetaL_single, Int.cast_one, one_smul, zero_sub]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/Definitions/Def_ModularCurve_QExpansionDiff.lean",
+          "declaration": "thetaL",
+          "excerpt": "def thetaL : LaurentSeries L \u2192\u2097[L] LaurentSeries L where"
+        }
+      ]
+    },
+    {
+      "declaration": "dlog",
+      "start_line": 27,
+      "end_line": 27,
+      "excerpt": "def dlog (f : LaurentSeries k) : LaurentSeries k := f\u207b\u00b9 * thetaL k f",
+      "problem": "`dlog` has no unfolding lemma and no simp lemmas. Its API (`dlog_mul`, `dlog_C`, `dlog_one`, `coeffMap_dlog`) is not tagged, and every proof reaches it by `unfold dlog`. That call appears at lines 49, 54, 57, 64, 139, 297 and 428. The same expression `f\u207b\u00b9 * thetaL k f` is also written out in the final theorem `main` and in `solution`. It is not marked `@[reducible]`, so `simp`, `rw` and `exact` against the final statement need `unfold` or `change` (as in `coeff_dlog_mul_char`, which uses `change \u2026 (dlog f).coeff m` to bridge). The public interface is therefore not simp-friendly.",
+      "proposed_change": "Add `theorem dlog_def (f : LaurentSeries k) : dlog f = f\u207b\u00b9 * thetaL k f := rfl` and use `rw [dlog_def]` in place of `unfold dlog`. Also tag the structural rules as simp: `dlog_C` and `dlog_one`, which rewrite to 0, and `coeffMap_dlog`, which pushes `coeffMap` through `dlog`. Keep `dlog_mul` unattributed because it has hypotheses. Alternatively mark `dlog` as `@[simp]`-unfoldable only if downstream use prefers the expanded form. Do not make `dlog_def` simp, because the unfolded form would then compete with `dlog_mul`.",
+      "benefit": "One named bridge between `dlog f` and the `f\u207b\u00b9 * thetaL k f` form used in `main` and `solution` replaces seven `unfold` calls and the `change` casts. The tagged rules let `simp` normalise `dlog` of constants and of `coeffMap` images.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_coeff_inv_mul_thetaL_mul_char_eq_pow.lean",
+          "declaration": "dlog_one",
+          "excerpt": "unfold dlog; rw [thetaL_one, mul_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_coeff_inv_mul_thetaL_mul_char_eq_pow.lean",
+          "declaration": "coeffMap_dlog",
+          "excerpt": "rw [map_mul, map_inv\u2080, coeffMap_thetaL]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_coeff_inv_mul_thetaL_mul_char_eq_pow.lean",
+          "declaration": "coeff_dlog_mul_char",
+          "excerpt": "change (dlog f).coeff 0 = _ at hzero"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 27623,
+    "cache_read_input_tokens": 150796,
+    "output_tokens": 6665,
+    "output_tokens_details": {
+      "thinking_tokens": 1698
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27623,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3518,
+        "cache_read_input_tokens": 28750,
+        "cache_creation_input_tokens": 2886,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2886
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19224960000000002,
+  "duration_ms": 51411,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-26T22:49:49",
+  "unit": "file",
+  "source_sha256": "4bffde0f87c7b57fa3725a8156a756bf7bf5116fd360a2ae8d3b57493392a2f8",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,93 @@
+{
+  "id": "lean-pool-file-0345",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and then searched the Leray directory for repeated proof blocks. Within the file, the only repeated reasoning that is not trivial is the proof that a coordinate L\u00b2 field is L\u00b2 on the Euclidean carrier `L2Vec3` (`hU2`, lines 248\u2013253). The same three-step block appears in at least a dozen other proofs: `RegTailsEstimates.lean:44`, `RegTailsTimeEnergyContract.lean:106`, `LerayHopfLimitPropPairingModulus.lean:228` and `LerayLimitCompactness.lean:133`, among others. The other local blocks, `hUcont`/`hDcont`/`hPcont` and the `hslice` helper, are short wrappers, so I did not report them. I did not check whether `regUniformVelocitySlice u \u03c4` unfolds to `regUniformSpatialField (fun x => u (x, \u03c4))` by `rfl` for elaboration, but other files already use `change` for exactly this step, so it should hold. I could not run Lean, so the proposed lemma and rewrites are untested. The new lemma has to live in `RegUniformEnergy.lean` (or another file upstream of `RegTailsEstimates`) to be visible to the target file and to the other call sites, because the existing copy is `private`.",
+  "findings": [
+    {
+      "declaration": "CKN.Leray.regTailsFinal_compact_weight_bound (local `hU2`)",
+      "start_line": 248,
+      "end_line": 253,
+      "excerpt": "(hSlice \u03c4 h\u03c4).comp_measurePreserving (PiLp.volume_preserving_ofLp (Fin 3))",
+      "problem": "The `hU2` proof is a three-step argument. It transports `MemLp` along `PiLp.volume_preserving_ofLp`, then applies `continuousLinearMap_comp` with the symmetric `PiLp.continuousLinearEquiv` to land in `L2Vec3`. This exact argument is copy-pasted in many other proofs. The slice version appears in `LerayHopfLimitPropPairingModulus.lean` and `LerayLimitCompactness.lean`. The version for `regUniformSpatialField` appears in `RegTailsEstimates.lean` (as a private theorem), `RegTailsTimeEnergyContract.lean`, `LerayLimitPropFinal.lean`, `LerayLimitMain.lean`, `LerayHopfLimitPropEnergy.lean`, `RegularisedInitialData.lean`, `RegularisedMildInitialData.lean` and others. The only existing named lemma for it, `regTails_spatialField_memLp`, is `private`, so every other file reproves it inline. `regUniformVelocitySlice u t` is definitionally `regUniformSpatialField (fun x => u (x, t))`, so the slice and field versions are the same fact.",
+      "proposed_change": "Add one public lemma next to the definition of `regUniformSpatialField` in `RegUniformEnergy.lean`. That file is already imported transitively by the target and by the other call sites.\n\n```lean\ntheorem regUniformSpatialField_memLp {f : Vec3 \u2192 Vec3}\n    (hf : MemLp f 2 volume) : MemLp (regUniformSpatialField f) 2 volume := by\n  have hcoord : MemLp (fun x : L2Vec3 => f (WithLp.ofLp x)) 2 volume :=\n    hf.comp_measurePreserving (PiLp.volume_preserving_ofLp (Fin 3))\n  exact hcoord.continuousLinearMap_comp\n    (PiLp.continuousLinearEquiv 2 \u211d (fun _ : Fin 3 => \u211d)).symm.toContinuousLinearMap\n```\n\nThe proof is the body of `regTails_spatialField_memLp` made public. A slice corollary is optional: `regUniformVelocitySlice_memLp (hu : MemLp (fun x => u (x, t)) 2 volume) : MemLp (regUniformVelocitySlice u t) 2 volume := regUniformSpatialField_memLp hu`.\n\nThe rewritten uses are:\n- Target `hU2`: `have hU2 : \u2200 \u03c4 : \u211d, 0 \u2264 \u03c4 \u2192 MemLp (regUniformVelocitySlice u \u03c4) 2 volume := fun \u03c4 h\u03c4 => regUniformSpatialField_memLp (hSlice \u03c4 h\u03c4)`. Use the slice corollary or a `show` if elaboration needs it.\n- `RegTailsTimeEnergyContract.lean:106`: `have hFieldMem : MemLp (regUniformSpatialField a) 2 volume := regUniformSpatialField_memLp ha.1`.\n- `RegTailsEstimates.lean:44`: delete the private copy and use the public lemma.\n- `LerayLimitCompactness.lean:133`: `hS := regUniformSpatialField_memLp hbarSlice`.\n- The remaining sites that repeat the block change in the same way.",
+      "benefit": "About a dozen copies of the same six-line argument collapse into one tested lemma, and each call site becomes one line. The `hU2` block in this 296-line proof stops obscuring the main flux-estimate argument. If the Euclidean-carrier encoding changes (for example the `PiLp` equivalence or the measure-preserving map), only one proof needs updating. The private duplicate in `RegTailsEstimates.lean` also goes away.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/RegTailsEstimates.lean",
+          "declaration": "CKN.Leray.regTails_spatialField_memLp",
+          "excerpt": "ha.comp_measurePreserving (PiLp.volume_preserving_ofLp (Fin 3))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/RegTailsTimeEnergyContract.lean",
+          "declaration": "hFieldMem (local, inside a proof)",
+          "excerpt": "ha.1.comp_measurePreserving (PiLp.volume_preserving_ofLp (Fin 3))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/LerayLimitCompactness.lean",
+          "declaration": "lerayLimit_piecewise_vector_slice_bound",
+          "excerpt": "hbarSlice.comp_measurePreserving (PiLp.volume_preserving_ofLp (Fin 3))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/RegUniformEnergy.lean",
+          "declaration": "regUniformSpatialField",
+          "excerpt": "fun x => WithLp.toLp 2 (f (WithLp.ofLp x))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/RegUniformEnergy.lean",
+          "declaration": "regUniformVelocitySlice",
+          "excerpt": "fun x => WithLp.toLp 2 (u (WithLp.ofLp x, t))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 46554,
+    "cache_read_input_tokens": 192128,
+    "output_tokens": 6740,
+    "output_tokens_details": {
+      "thinking_tokens": 1352
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 46554,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3288,
+        "cache_read_input_tokens": 47599,
+        "cache_creation_input_tokens": 2884,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2884
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2728608,
+  "duration_ms": 65068,
+  "turns": 16,
+  "attempts": 1,
+  "judged": "2026-10-27T01:52:00",
+  "unit": "file",
+  "source_sha256": "5ec38655471a17d4c3b291a2d829b0840fce57d5a4db3191a7b9754a8bceeacd",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

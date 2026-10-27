@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0202",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. It has no simp attributes of its own. I read the Submodule.reflectionOperator API in ForTauCeti/.../Projection/Blocks.lean, where `reflectionOperator_apply` is @[simp] and unfolds to `2 \u2022 P x - x`. I also read downstream uses of reflectionDefect in DoubleAngleSpectrum, ReflectedDefectDoubling and ReflectionRestriction. Both findings are about missing simp-interface lemmas (a pointwise unfolding lemma and an involution lemma). I did not run Lean, so I make no claim about what simp actually does. The suggestion for finding 2 is the less certain of the two: I could not confirm whether simp already closes the double-reflection goal through other simp lemmas about starProjection.",
+  "findings": [
+    {
+      "declaration": "reflectionDefect",
+      "start_line": 24,
+      "end_line": 27,
+      "excerpt": "U.reflectionOperator \u2218L A \u2218L U.reflectionOperator - A",
+      "problem": "`reflectionDefect` is a bare def with no simp-friendly unfolding lemma. Each proof about it either does `simp only [reflectionDefect, comp_apply, sub_apply, ...]` (lines 42, 60) or uses `unfold reflectionDefect` followed by `ext`/`change`. Downstream files do the same: `unfold reflectionDefect` in DoubleAngleSpectrum, ReflectedDefectDoubling and ReflectionRestriction, plus an explicit `change ... - A x = ...` at line 130 here and `change` at DoubleAngleSpectrum 211. Without a pointwise rule, the simp normal form of `reflectionDefect V A x` is either an opaque application or a fully unfolded term, depending on the caller.",
+      "proposed_change": "Add a pointwise lemma, tagged @[simp] if the project wants `reflectionDefect V A x` to normalise to the pointwise form: `theorem reflectionDefect_apply (U) [U.HasOrthogonalProjection] (A) (x : E) : reflectionDefect U A x = U.reflectionOperator (A (U.reflectionOperator x)) - A x`. Proof: `rfl`, or `simp [reflectionDefect]`. Optionally also add `reflectionDefect_def` for the operator-level unfolding. Then `reflectionOperator_comp_reflectionDefect`, `reflectionDefect_eq_zero_of_reduces` and the `change` on line 130 can use `simp only [reflectionDefect_apply, ...]` or `rw [reflectionDefect_apply]` instead of unfolding the definition or restating the goal. Do not make the full unfolding simp, so that `reflectionDefect` stays folded in operator-level goals.",
+      "benefit": "Callers get one stable pointwise form. This replaces `unfold`, `change` and `simp only [reflectionDefect]` boilerplate across at least five proofs in this file and downstream. It also avoids the unwanted expansion that comes from unfolding the definition together with the @[simp] `reflectionOperator_apply`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/DavisKahan/BoundedOperator/Reflection.lean",
+          "declaration": "reflectionDefect_eq_zero_of_reduces",
+          "excerpt": "simp only [reflectionDefect, ContinuousLinearMap.comp_apply, sub_apply,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/DavisKahan/InfiniteDimensional/DoubleAngleSpectrum.lean",
+          "declaration": "conjByReflection_sub_eq_reflectionDefect",
+          "excerpt": "unfold reflectionDefect"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/DavisKahan/Sources/DavisKahan1970/SineTheta/ReflectedDefectDoubling.lean",
+          "declaration": "isSelfAdjoint_reflectionDefect",
+          "excerpt": "unfold reflectionDefect"
+        }
+      ]
+    },
+    {
+      "declaration": "reflectionOperator_comp_reflectionDefect (local hinvol)",
+      "start_line": 37,
+      "end_line": 41,
+      "excerpt": "have hinvol (y : E) :\n      U.reflectionOperator (U.reflectionOperator y) = y := by",
+      "problem": "The pointwise involution `J (J y) = y` has no canonical simp lemma. Only the operator-level `reflectionOperator_involutive` exists, and `reflectionOperator_apply` is @[simp] and rewrites `J y` to `2 \u2022 P y - y`. So plain `simp` on `J (J y)` expands it into a nested projection expression instead of returning `y`. The file therefore re-derives the pointwise fact inside two proofs: as `hinvol` here and as `hinvol` at lines 57\u201359 of `reflectionDefect_eq_zero_of_reduces`. Both are built by `congrArg` plus `simpa only [comp_apply, id_apply]`, and then used with `rw`.",
+      "proposed_change": "In Projection/Blocks.lean, next to `reflectionOperator_involutive`, add a pointwise lemma `reflectionOperator_reflectionOperator (U) [U.HasOrthogonalProjection] (y : E) : U.reflectionOperator (U.reflectionOperator y) = y`. Prove it from `U.reflection_reflection`, as `reflectionOperator_involutive` already does. Tag it @[simp] if the project wants it to fire first. Because `reflectionOperator_apply` is also @[simp], the project would need to check which rule simp applies to `J (J y)`. Simp rewrites inner subterms first, so the outer `J (J y)` pattern might not be tried. If that turns out to be a problem, give the new lemma higher priority or drop the @[simp] on `reflectionOperator_apply` in favour of explicit `simp [reflectionOperator_apply]`. Then replace both local `hinvol` blocks with the lemma.",
+      "benefit": "Removes the duplicated local proofs and gives downstream simp calls a canonical normal form for double reflections. Without the lemma, simp's only available rule for reflections is the expansion `2 \u2022 P x - x`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/ForTauCeti/Analysis/InnerProductSpace/Projection/Blocks.lean",
+          "declaration": "Submodule.reflectionOperator_apply",
+          "excerpt": "U.reflectionOperator x = (2 : \ud835\udd5c) \u2022 U.starProjection x - x"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/ForTauCeti/Analysis/InnerProductSpace/Projection/Blocks.lean",
+          "declaration": "Submodule.reflectionOperator_involutive",
+          "excerpt": "U.reflectionOperator \u2218L U.reflectionOperator =\n      ContinuousLinearMap.id \ud835\udd5c E"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/DavisKahan/BoundedOperator/Reflection.lean",
+          "declaration": "reflectionDefect_eq_zero_of_reduces",
+          "excerpt": "have hinvol := congrArg (fun T : E \u2192L[\ud835\udd5c] E => T x)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 31102,
+    "cache_read_input_tokens": 91992,
+    "output_tokens": 6033,
+    "output_tokens_details": {
+      "thinking_tokens": 1817
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31102,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2741,
+        "cache_read_input_tokens": 31500,
+        "cache_creation_input_tokens": 3615,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3615
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1939572,
+  "duration_ms": 47859,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-10-27T00:23:00",
+  "unit": "file",
+  "source_sha256": "4b7b22d69aa5de823d39e92cd1bb55b9e748a55cbfb5b7f7542a6dc66c435f50",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,141 @@
+{
+  "id": "openai-math-file-0164",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read growthRegularityComplexity and its simp lemmas in OrderedRemovalAssembly.lean (lines 766-835). The uses of the tower, iteration and layer-bound definitions are all in the target file. I checked the other simp lemmas (canonical hierarchy last/zero, selected hierarchy last) and found no problem. I could not run Lean, so the competing-rule and expansion points below are reasoned from the definitions and rule shapes, not observed.",
+  "findings": [
+    {
+      "declaration": "growthRegularityComplexity_succ_eq_oneStep",
+      "start_line": 469,
+      "end_line": 477,
+      "excerpt": "theorem growthRegularityComplexity_succ_eq_oneStep\n    (k j initialBound n : \u2115) (F : NatGrowthFunction) :\n    growthRegularityComplexity\n        k j initialBound F (n + 1) =",
+      "problem": "This @[simp] lemma has the same left-hand side, growthRegularityComplexity k j initialBound F (n+1), as the existing @[simp] lemma growthRegularityComplexity_succ in OrderedRemovalAssembly.lean. The two rewrite it to different normal forms. The older rule gives (2^(j+1))^growthRegularityBudget \u2026 * complexity n, and the simp lemma growthRegularityBudget_eq then expands the budget to Nat.ceil(card / tol^2)+1. The new rule gives the opaque growthRegularityOneStep k j F (complexity n). Which form simp reaches depends on rule order and priority. Both rules are proved by rfl and agree definitionally, so the dependence on order is easy to miss. In this file the only use is an explicit `rw` at line 678.",
+      "proposed_change": "Remove @[simp] from growthRegularityComplexity_succ_eq_oneStep and keep it as a plain lemma used with `rw`. Alternatively, make it the only simp rule for the successor case by removing @[simp] from growthRegularityComplexity_succ. If the oneStep form is the intended canonical form, also change growthRegularityOneStep so that growthRegularityComplexity_succ is stated through it.",
+      "benefit": "Simp then rewrites complexity (n+1) to one predictable form. It avoids a silent switch between the budget/ceil expansion and the oneStep form, and downstream `simp` calls on complexity bounds behave consistently.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/OrderedRemovalAssembly.lean",
+          "declaration": "growthRegularityComplexity_succ",
+          "excerpt": "theorem growthRegularityComplexity_succ\n    (k j initialBound n : \u2115) (F : NatGrowthFunction) :\n    growthRegularityComplexity\n        k j initialBound F (n + 1) ="
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/OrderedRemovalAssembly.lean",
+          "declaration": "growthRegularityBudget_eq",
+          "excerpt": "Nat.ceil\n          ((Fintype.card\n              (OrderedFace k (j + 1)) : \u211d) /"
+        }
+      ]
+    },
+    {
+      "declaration": "towerDominatingGrowth_apply / towerDominatingGrowthIteration_succ",
+      "start_line": 576,
+      "end_line": 585,
+      "excerpt": "theorem towerDominatingGrowth_apply\n    (k r : \u2115) (F : NatGrowthFunction) (M : \u2115) :\n    towerDominatingGrowth k r F M =\n      max (M + 1)",
+      "problem": "Both lemmas are @[simp] and they chain. towerDominatingGrowthIteration_succ (line 625) rewrites iteration (stage+1) M to towerDominatingGrowth k r (iteration stage) M. towerDominatingGrowth_apply then expands that to max (M+1) (max (iteration stage M) (finiteRankGrowthRegularityOneStepMaximum \u2026)). So a simp call on any term that mentions the iteration at a successor stage unfolds it into a large max expression. The theorems in this file state their bounds in terms of towerDominatingGrowthIteration \u2026 (stage+1), and none of them uses the expanded form. The proofs at 589 and 604 call `rw [towerDominatingGrowth_apply]` explicitly, so the simp attribute is not needed there.",
+      "proposed_change": "Drop @[simp] from towerDominatingGrowth_apply, so that towerDominatingGrowth k r F M stays folded and the lemma is used only through `rw` or `simp only`. Keep towerDominatingGrowthIteration_succ as the unfolding rule if desired. Alternatively, keep the _apply rule but drop @[simp] from the iteration succ rule.",
+      "benefit": "The abstract tower growth function stays folded under simp, so goals about iterated growth stay readable. It also avoids producing max/finite-rank-maximum terms that the monotonicity and domination lemmas cannot match directly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/TowerDominatingGrowth.lean",
+          "declaration": "towerDominatingGrowthIteration_succ",
+          "excerpt": "towerDominatingGrowthIteration k r F (stage + 1) =\n      towerDominatingGrowth k r\n        (towerDominatingGrowthIteration k r F stage) :=\n  rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/TowerDominatingGrowth.lean",
+          "declaration": "le_towerDominatingGrowth",
+          "excerpt": "rw [towerDominatingGrowth_apply]"
+        }
+      ]
+    },
+    {
+      "declaration": "selectedRankTowerHierarchy_zero",
+      "start_line": 817,
+      "end_line": 831,
+      "excerpt": "theorem selectedRankTowerHierarchy_zero",
+      "problem": "This @[simp] lemma has the right-hand side towerDominatingGrowthIteration k r F (stage + 1) (selectedGrowthCoarseComplexityBound \u2026). That term is not in simp normal form: towerDominatingGrowthIteration_succ is @[simp] and rewrites it, and towerDominatingGrowth_apply then expands it further. As a simp lemma it therefore produces a term that is rewritten again, so the user does not get the stated clean form. The only use, at line 840, is an explicit `rw [selectedRankTowerHierarchy_zero]` followed by an exact match against the folded form.",
+      "proposed_change": "Either remove @[simp] from selectedRankTowerHierarchy_zero and use it only with `rw`, or resolve the two rules above so that the iteration at successor stage is the normal form. The second option means dropping the simp attribute from towerDominatingGrowthIteration_succ and towerDominatingGrowth_apply. The same concern applies to selectedRankTowerHierarchy_last, whose right-hand side mentions the iteration only at stage, not stage+1, so that one is fine.",
+      "benefit": "The simp set stays consistent: a simp lemma's right-hand side is then a normal form. The lemma cannot silently turn level 0 into an expanded max expression, which would not match selectedFineComplexity_le_nextGrowthIteration.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/TowerDominatingGrowth.lean",
+          "declaration": "selectedFineComplexity_le_selectedRankTowerHierarchy",
+          "excerpt": "rw [selectedRankTowerHierarchy_zero]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/TowerDominatingGrowth.lean",
+          "declaration": "towerDominatingGrowthIteration_succ",
+          "excerpt": "@[simp]\ntheorem towerDominatingGrowthIteration_succ"
+        }
+      ]
+    },
+    {
+      "declaration": "selectedGrowthCoarseLayerComplexityBound / selectedGrowthFineLayerComplexityBound",
+      "start_line": 128,
+      "end_line": 150,
+      "excerpt": "Fin.lastCases\n    (initialBound (Fin.last r))\n    (fun j =>\n      selectedGrowthCoarseComplexityBound",
+      "problem": "These two definitions are built with Fin.lastCases, but there are no simp lemmas for the Fin.last and Fin.castSucc cases. Every use unfolds the definitions by hand and adds Fin.lastCases_castSucc. The pattern `simp only [selectedGrowth\u2026LayerComplexityBound, selectedGrowth\u2026ComplexityBound, Fin.lastCases_castSucc]` appears at lines 275-277, 282-284, 413-416 and 449-452. `simpa [selectedGrowth\u2026LayerComplexityBound] using hinitial (Fin.last r) e` appears at lines 390 and 426. This duplicates the unfolding and exposes the lastCases encoding in client proofs. It also forces the proof at lines 277 and 284 to use `convert h using 1`.",
+      "proposed_change": "Add four simp lemmas, proved by `simp [selectedGrowthCoarseLayerComplexityBound]` or by Fin.lastCases_castSucc / Fin.lastCases_last. For the coarse bound they are selectedGrowthCoarseLayerComplexityBound \u2026 (Fin.last r) = initialBound (Fin.last r) and selectedGrowthCoarseLayerComplexityBound \u2026 j.castSucc = selectedGrowthCoarseComplexityBound \u2026 j. The two fine-bound lemmas are stated the same way. Then the call sites become `simp` with these lemmas, and the two definitions need not be unfolded.",
+      "benefit": "The values on the last and cast layers become canonical simp lemmas. The four repeated unfolding blocks shrink, and client proofs no longer depend on the Fin.lastCases implementation.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/TowerDominatingGrowth.lean",
+          "declaration": "GrowthFunctionOrderedComplexRegularityCertificate.localCertificate",
+          "excerpt": "simp only [selectedGrowthCoarseLayerComplexityBound,\n      selectedGrowthCoarseComplexityBound,\n      Fin.lastCases_castSucc] at h"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Combinatorics/Progressions/FixedDensity/TowerDominatingGrowth.lean",
+          "declaration": "GrowthFunctionOrderedComplexRegularityCertificate.nonempty",
+          "excerpt": "simpa [selectedGrowthCoarseLayerComplexityBound] using\n          hinitial (Fin.last r) e"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 30342,
+    "cache_read_input_tokens": 90341,
+    "output_tokens": 6623,
+    "output_tokens_details": {
+      "thinking_tokens": 1978
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30342,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4010,
+        "cache_read_input_tokens": 32284,
+        "cache_creation_input_tokens": 2071,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2071
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1966481,
+  "duration_ms": 45128,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T23:15:05",
+  "unit": "file",
+  "source_sha256": "e028c8e0f545b91bfa76d4c5718ba98eb6eb26e5a0de59a31e2eb9bc8e341fc6",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

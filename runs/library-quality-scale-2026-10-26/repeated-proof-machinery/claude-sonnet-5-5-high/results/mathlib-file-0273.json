@@ -1,0 +1,93 @@
+{
+  "id": "mathlib-file-0273",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and looked for reasoning repeated across proofs. I also read SimpleFunc.induction in SimpleFunc.lean and the surrounding code. Candidates I dropped as too short or routine: the toSimpleFunc add/neg/sub/smul filter_upwards blocks; norm_approxOn_y\u2080_le and norm_approxOn_zero_le, which have the same short simpa proof; the repeated `rw [\u2190 eLpNorm_neg, neg_sub]`; and the two `convert! continuous_rpow_const\u2026` calls inside one proof. The one finding I kept is the three-way repetition of the SimpleFunc.induction scaffolding. I did not compile the proposed lemma. The proposed signatures and proof sketch follow the existing blocks, so some minor elaboration details (the dependent motive and the `convert`/`ext` steps) may need adjusting.",
+  "findings": [
+    {
+      "declaration": "MeasureTheory.Lp.simpleFunc.induction (also MeasureTheory.MemLp.induction and MeasureTheory.MemLp.induction_dense)",
+      "start_line": 642,
+      "end_line": 653,
+      "excerpt": "  apply SimpleFunc.induction\n  \u00b7 intro c s hs hf\n    by_cases hc : c = 0\n    \u00b7 convert indicatorConst 0 MeasurableSet.empty (by simp) using 1\n      ext1\n      simp [hc]\n    exact indicatorConst c hs\n      (SimpleFunc.measure_lt_top_of_memLp_indicator hp_pos hp_ne_top hc hs hf)",
+      "problem": "Three proofs (lines 642\u2013653, 847\u2013855, 892\u2013914) each redo the same argument. They apply SimpleFunc.induction to a statement guarded by `MemLp f p \u03bc`. In the indicator case they split on `c = 0`, replace the piecewise function by the indicator of `\u2205` using `convert \u2026 ext; simp`, and otherwise get `\u03bc s < \u221e` from `measure_lt_top_of_memLp_indicator`. In the additive case they split `MemLp (f + g)` into `MemLp f \u2227 MemLp g` with `memLp_add_of_disjoint hfg f.aestronglyMeasurable`. Only the final application of the user's hypotheses differs. The `c = 0` special case and the disjoint-support MemLp splitting are the nontrivial parts, and they are maintained in three places. induction_dense even handles `c = 0` separately in its own way, so the three copies have already drifted.",
+      "proposed_change": "Add one lemma in `namespace SimpleFunc`, next to `measure_lt_top_of_memLp_indicator`:\n\n```lean\nprotected theorem induction_memLp (hp_pos : p \u2260 0) (hp_ne_top : p \u2260 \u221e)\n    {motive : \u2200 f : \u03b1 \u2192\u209b E, MemLp f p \u03bc \u2192 Prop}\n    (indicator : \u2200 (c : E) {s : Set \u03b1} (hs : MeasurableSet s) (h\u03bcs : \u03bc s < \u221e)\n      (h : MemLp ((const \u03b1 c).piecewise s hs (const \u03b1 0)) p \u03bc),\n      motive ((const \u03b1 c).piecewise s hs (const \u03b1 0)) h)\n    (add : \u2200 \u2983f g : \u03b1 \u2192\u209b E\u2984 (hf : MemLp f p \u03bc) (hg : MemLp g p \u03bc),\n      Disjoint (support f) (support g) \u2192 motive f hf \u2192 motive g hg \u2192\n      motive (f + g) (hf.add hg))\n    (f : \u03b1 \u2192\u209b E) (hf : MemLp f p \u03bc) : motive f hf\n```\n\nProof sketch: apply `SimpleFunc.induction` to `fun f => \u2200 hf, motive f hf`.\n- Indicator case: `by_cases hc : c = 0`. If `c = 0`, `convert indicator 0 MeasurableSet.empty (by simp) _ using 1; ext1; simp [hc]`. Otherwise use `indicator c hs (measure_lt_top_of_memLp_indicator hp_pos hp_ne_top hc hs h) h`.\n- Additive case: `(memLp_add_of_disjoint hfg f.aestronglyMeasurable).mp` gives `hf'` and `hg'`, then `add hf' hg' hfg (ihf hf') (ihg hg')`.\n\nUses:\n- `Lp.simpleFunc.induction`: after the `suffices`, `exact SimpleFunc.induction_memLp hp_pos hp_ne_top (motive := fun f hf => P (toLp f hf)) (fun c s hs h\u03bcs _ => indicatorConst c hs h\u03bcs) (fun f g hf hg hfg ihf ihg => add hf hg hfg ihf ihg) f hf`. The indicator case is defeq to `Lp.simpleFunc.indicatorConst` by proof irrelevance. The add case is defeq via `toLp_add`, which is `rfl`.\n- `MemLp.induction`: use `motive := fun f _ => motive f`, with `indicator c hs h\u03bcs` and `add hfg hf hg`. The local `hp_pos` stays, derived from `_i`.\n- `MemLp.induction_dense`: use `motive := fun f _ => \u2200 \u03b4 \u2260 0, \u2203 g, eLpNorm (\u21d1f - g) p \u03bc \u2264 \u03b4 \u2227 P g`. The indicator case becomes `h0P c hs h\u03bcs h\u03b4` plus `rw [\u2190 eLpNorm_neg, neg_sub]`, with no separate `c = 0` branch because `h0P` already accepts every `c`. The additive case keeps only the `exists_Lp_half` and `h1P` argument.",
+      "benefit": "The `c = 0` reduction and the MemLp-splitting of disjoint sums, which are the only subtle steps, would be proved once instead of three times. Each induction principle would shrink to the lines that are specific to it (the Lp, MemLp and approximation versions). Future changes to `SimpleFunc.induction` or to the MemLp/disjoint-support API would then need one edit instead of three, and the `c = 0` handling in `induction_dense` would stop differing from the other two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/MeasureTheory/Function/SimpleFuncDenseLp.lean",
+          "declaration": "MeasureTheory.MemLp.induction",
+          "excerpt": "      \u00b7 subst hc; convert indicator 0 MeasurableSet.empty (by simp) using 1; ext; simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/MeasureTheory/Function/SimpleFuncDenseLp.lean",
+          "declaration": "MeasureTheory.MemLp.induction",
+          "excerpt": "      rw [SimpleFunc.coe_add, memLp_add_of_disjoint hfg f.aestronglyMeasurable] at int_fg"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/MeasureTheory/Function/SimpleFuncDenseLp.lean",
+          "declaration": "MeasureTheory.MemLp.induction_dense",
+          "excerpt": "    \u00b7 have : \u03bc s < \u221e := SimpleFunc.measure_lt_top_of_memLp_indicator hp_pos hp_ne_top hc hs Hs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/MeasureTheory/Function/SimpleFuncDenseLp.lean",
+          "declaration": "MeasureTheory.MemLp.induction_dense",
+          "excerpt": "    rw [SimpleFunc.coe_add, memLp_add_of_disjoint hff' f.aestronglyMeasurable] at int_ff'"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/MeasureTheory/Function/SimpleFunc.lean",
+          "declaration": "MeasureTheory.SimpleFunc.induction",
+          "excerpt": "protected theorem induction {\u03b1 \u03b3} [MeasurableSpace \u03b1] [AddZeroClass \u03b3]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 31045,
+    "cache_read_input_tokens": 97698,
+    "output_tokens": 7417,
+    "output_tokens_details": {
+      "thinking_tokens": 3486
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31045,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5024,
+        "cache_read_input_tokens": 33472,
+        "cache_creation_input_tokens": 1502,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1502
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.20813579999999998,
+  "duration_ms": 51079,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:47:59",
+  "unit": "file",
+  "source_sha256": "795dab91fb594bd1baf2841288b3eb9cd2d9698289f4740786342792c8ede889",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

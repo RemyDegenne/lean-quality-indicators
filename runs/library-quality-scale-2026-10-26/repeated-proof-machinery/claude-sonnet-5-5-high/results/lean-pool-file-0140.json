@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0140",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole target file and the three smallerRadius bound lemmas in GevreyCorrectionSourceBounds.lean (they share the hypothesis list: N, hNP, hN, t, r, hr, hrR, E, DE, e, he, hde). I did not inspect the definitions of Budget.reducedRadius or fieldTower_* beyond how they are used. The proposals are untested and the repeated blocks are modest in size. The main residual uncertainty is whether each rewrite elaborates, in particular the `change` and `rw` steps that stay specific to each theorem.",
+  "findings": [
+    {
+      "declaration": "Budget.rawSourceTower_reducedNorm / Budget.pressureTower_reducedNorm / Budget.timeDerivativeTower_reducedNorm",
+      "start_line": 121,
+      "end_line": 176,
+      "excerpt": "  have hrR : B.reducedRadius period \u2264 B.radius t := by\n    have h := B.reducedRadius_le_half period t\n    have hp := (B.spatial q hq).full.radius_pos t\n    linarith",
+      "problem": "The three reduced-norm theorems repeat the same proof skeleton. Each one derives `hrR : reducedRadius \u2264 radius t` from `reducedRadius_le_half` and `radius_pos`, using an identical 4-line block. Each one then calls a `*_smallerRadius_bound` lemma with the same ten-line argument list, and that list includes the two `fieldTower_reduced*Norm` facts at `(q+3)` and `(q+2)`. Finally, each one finishes with the same `rw [tower_weightedNorm_eq ...]; exact h`. Only the bound lemma, the `change` target, and the `rw` identifying the tower differ. A change to the radius convention, the cutoff indices (`q+3`, `q+2`), or the field-tower hypotheses must be made in three places.",
+      "proposed_change": "Add a private lemma `Budget.reducedRadius_le_radius (B : Budget period hT A) (q : \u2115) (hq : 6 \u2264 q) (t : Icc (0:\u211d) T) : B.reducedRadius period \u2264 (B.spatial q hq).full.R t`. Its proof is the existing block: `have h := B.reducedRadius_le_half period t; have hp := (B.spatial q hq).full.radius_pos t; linarith`. It must be stated at whatever radius function the `.full` spatial budget uses; the current `hrR` states it against `B.radius t`, which the later `smallerRadius` calls accept, so keep that form. Also add a lemma bundling the shared inputs, e.g. `Budget.reducedInputs`, returning `(hrR, he, hde)` as a conjunction for `(B.fieldTower period).realization (q+3) t` at `(B.correctionSize period)` and `((8/B.initialRadius)*B.correctionSize period)`. Each theorem then becomes `obtain \u27e8hrR, he, hde\u27e9 := B.reducedInputs period q hq N hNq t; have h := X_smallerRadius_bound period (B.spatial q hq).full N (by omega) (by omega) t _ (B.reducedRadius_pos period) hrR _ _ _ he hde`, followed by its own `change`/`rw` and the `tower_weightedNorm_eq` step. Optionally, a generic transfer lemma `tower_weightedNorm_le` would fold the final `rw [tower_weightedNorm_eq \u2026]; exact h` into one call.",
+      "benefit": "The radius comparison and the field-tower input hypotheses are proved once. Each theorem then shows only what distinguishes it (the bound lemma and the tower identification). Changing an index or the radius convention is a one-place edit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/AllOrderDriftPressureBounds.lean",
+          "declaration": "Budget.pressureTower_reducedNorm",
+          "excerpt": "(B.fieldTower_reducedNorm period (q+3) N (by omega) t)\n    (B.fieldTower_reducedDerivativeNorm period (q+2) N (by omega) t)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/AllOrderDriftPressureBounds.lean",
+          "declaration": "Budget.timeDerivativeTower_reducedNorm",
+          "excerpt": "(B.fieldTower_reducedNorm period (q+3) N (by omega) t)\n    (B.fieldTower_reducedDerivativeNorm period (q+2) N (by omega) t)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/GevreyCorrectionSourceBounds.lean",
+          "declaration": "timeSource_smallerRadius_bound",
+          "excerpt": "(r : \u211d) (hr : 0 < r) (hrR : r \u2264 R t) (E DE : \u211d)"
+        }
+      ]
+    },
+    {
+      "declaration": "Budget.pressureTower_reducedNorm_delta / Budget.timeDerivativeTower_reducedNorm_delta",
+      "start_line": 190,
+      "end_line": 213,
+      "excerpt": "    ((mul_le_mul_of_nonneg_left (B.sourceSize_le_delta period q hq) (by positivity)).trans_eq\n      (by unfold Budget.pressureCost; ring))",
+      "problem": "Both theorems have the same shape. They take a `*_reducedNorm` bound `\u2264 c * sourceSize`, multiply `sourceSize_le_delta` by a nonnegative constant `c`, and use `ring` after unfolding the cost definition to turn `c * (sourceCost * delta)` into `cost * delta`. Each proof separately derives the nonnegativity of `c` (via `hM`, and `hB` for the time-derivative case) for `positivity`. The `positivity` calls depend on these hypotheses being in context, so the dependency is implicit. The `c \u2265 0` argument and the scaling step are duplicated.",
+      "proposed_change": "Add a lemma `Budget.le_cost_mul_delta_of_le_mul_sourceSize (B) (q hq) {x c : \u211d} (hc : 0 \u2264 c) (h : x \u2264 c * B.sourceSize period q hq) : x \u2264 (c * B.sourceCost period q hq) * B.delta`. Its proof is `h.trans ((mul_le_mul_of_nonneg_left (B.sourceSize_le_delta period q hq) hc).trans_eq (mul_assoc _ _ _).symm)`. Better still, define `pressureCost` and `timeDerivativeCost` to literally be `c * sourceCost`. They already are, up to parenthesisation, so the `ring` goes away. Then `pressureTower_reducedNorm_delta` becomes `B.le_cost_mul_delta_of_le_mul_sourceSize period q hq (by positivity) (B.pressureTower_reducedNorm \u2026)`. The time-derivative version is the same with its own `0 \u2264 1+2*M*(448*B+1)` proof.",
+      "benefit": "The linear-in-delta propagation is stated once, and a future third bound (say, one for the correction itself) can reuse it. The two delta theorems become one-line applications, and the `unfold \u2026 ring` steps disappear.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/AllOrderDriftPressureBounds.lean",
+          "declaration": "Budget.timeDerivativeTower_reducedNorm_delta",
+          "excerpt": "(by unfold Budget.timeDerivativeCost; ring))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/AllOrderDriftPressureBounds.lean",
+          "declaration": "Budget.sourceSize_le_delta",
+          "excerpt": "B.sourceSize period q hq \u2264 B.sourceCost period q hq*B.delta"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 12247,
+    "cache_read_input_tokens": 29700,
+    "output_tokens": 4018,
+    "output_tokens_details": {
+      "thinking_tokens": 640
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12247,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2954,
+        "cache_read_input_tokens": 15155,
+        "cache_creation_input_tokens": 1021,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1021
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.09215000000000001,
+  "duration_ms": 29176,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:10:00",
+  "unit": "file",
+  "source_sha256": "b49ed66c947d278b1a627787e2b8b641ff01ffd69067f90e74525c89eeefd123",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

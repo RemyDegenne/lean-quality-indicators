@@ -1,0 +1,130 @@
+{
+  "id": "lean-pool-file-0200",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the State.lean simp setup (ket_apply is simp). I grepped LeanQuantumAlg for uses of the apply, ofPerm, mul_apply and conjTranspose lemmas. I have not run Lean, so the simp-priority claims come from reading the lemma statements, not from observed simplifier behaviour. The linear-algebra simp lemmas (applyVec_add, applyVec_smul and similar) are consistent and look fine. The compatibility aliases apply_add and its siblings are not simp lemmas, so they cause no competing-rule problem. The three findings are real but low-to-moderate severity.",
+  "findings": [
+    {
+      "declaration": "QuantumAlg.Gate.ofPerm_apply / QuantumAlg.Gate.ofPerm_apply_ket (together with the @[simp] QuantumAlg.Gate.apply_apply)",
+      "start_line": 339,
+      "end_line": 351,
+      "excerpt": "theorem ofPerm_apply (\u03c3 : Equiv.Perm (Fin (2 ^ n))) (\u03c8 : PureState n)\n    (i : Fin (2 ^ n)) : (ofPerm \u03c3).apply \u03c8 i = \u03c8 (\u03c3 i) := by",
+      "problem": "`apply_apply` is `@[simp]` and rewrites every `G.apply \u03c8 i` to a sum `\u2211 j, G i j * \u03c8 j`. The canonical pointwise lemmas for the permutation gate, `ofPerm_apply` (`(ofPerm \u03c3).apply \u03c8 i = \u03c8 (\u03c3 i)`) and `ofPerm_apply_ket`, are not simp. There is also no simp lemma giving the matrix entries of `ofPerm \u03c3`; `ofPerm` is a plain `def` and no `coe_ofPerm` exists. So `simp` turns `(ofPerm \u03c3).apply \u03c8 i` into an opaque sum over `(ofPerm \u03c3) i j`. The desired normal form `\u03c8 (\u03c3 i)` is unreachable, and the same happens to `(ofPerm \u03c3).apply (ket x)`. The downstream uses show the cost. SwapTest and Oracle use `rw [\u2026 ofPerm_apply \u2026]` and `rw [xorOracle, ofPerm_apply_ket]` by hand. BellPair resorts to `simp +decide [\u2026 Gate.apply_apply, CNOT, Gate.ofPerm, Fin.sum_univ_four]`, which unfolds the permutation down to `permMatrix`.",
+      "proposed_change": "Tag `ofPerm_apply` and `ofPerm_apply_ket` with `@[simp]`. Also add a lemma such as `coe_ofPerm : ((ofPerm \u03c3 : Gate n) : HilbertOperator n) = \u03c3.permMatrix \u2102 := rfl`, so matrix-entry goals are not stuck either. Because `apply_apply` and `ofPerm_apply` both match `(ofPerm \u03c3).apply \u03c8 i`, give `ofPerm_apply` higher priority (e.g. `@[simp high]`) or make `apply_apply` non-simp. That way the pointwise permutation form wins deterministically over the generic sum expansion.",
+      "benefit": "Goals like `(swapRegisters n).apply (psi.tensor phi) i` or `(xorOracle f).apply \u03c8 i` would simplify to the one-term form `\u03c8 (\u03c3 i)` instead of an unwanted `permMatrix` sum. Proofs such as SwapTest and Oracle could use `simp` instead of manual `rw` chains.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Core/Gate.lean",
+          "declaration": "QuantumAlg.Gate.apply_apply",
+          "excerpt": "theorem apply_apply (G : Gate n) (\u03c8 : PureState n) (i : Fin (2 ^ n)) :\n    G.apply \u03c8 i = \u2211 j, G i j * \u03c8 j"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/SwapTest.lean",
+          "declaration": "swapRegisters apply theorem",
+          "excerpt": "rw [swapRegisters, ofPerm_apply, PureState.tensor_apply,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/BellPair.lean",
+          "declaration": "bell proof",
+          "excerpt": "PureState.tensor_apply, PureState.ket_apply, Gate.apply_apply, CNOT,\n      Gate.ofPerm, Fin.sum_univ_four]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Core/Components/Oracle.lean",
+          "declaration": "xorOracle_apply_ket",
+          "excerpt": "rw [xorOracle, ofPerm_apply_ket]"
+        }
+      ]
+    },
+    {
+      "declaration": "QuantumAlg.HilbertOperator.mul_applyVec and QuantumAlg.Gate.mul_applyVec / QuantumAlg.Gate.mul_apply",
+      "start_line": 99,
+      "end_line": 102,
+      "excerpt": "theorem mul_applyVec (A B : HilbertOperator n) (\u03c8 : StateVector n) :\n    applyVec (A * B) \u03c8 = applyVec A (applyVec B \u03c8) := by",
+      "problem": "The action of operators and gates on vectors has a simp set for `+`, `-`, `\u2022`, negation, `1` and operator addition and scalar action (`applyVec_add`, `applyVec_smul`, `add_applyVec`, `smul_applyVec`, `one_applyVec`, `Gate.one_apply`). The remaining generator, multiplication, has no simp lemma in any of its three forms: `HilbertOperator.mul_applyVec`, `Gate.mul_applyVec` and `Gate.mul_apply`. A term like `applyVec (A * B) \u03c8` or `(G * K).apply \u03c8` is therefore a simp-stuck normal form. Instead, because `applyVec_apply` and `apply_apply` are simp, a pointwise goal `(G * K).apply \u03c8 i` is expanded to a sum over `(G * K) i j`. The simp set is not closed under composition even though `1` is covered.",
+      "proposed_change": "Mark `HilbertOperator.mul_applyVec`, `Gate.mul_applyVec` and `Gate.mul_apply` as `@[simp]`, oriented as they already are (product on the left, nested application on the right). The right-hand side is strictly smaller in multiplication depth, so this is terminating. `coe_mul` has a different head and does not conflict. The existing reverse rewrites `\u2190 Gate.mul_applyVec` use `rw`, so they are unaffected.",
+      "benefit": "Circuit-composition goals such as `(G * K).apply \u03c8` normalise to nested application, consistent with the other linearity lemmas. Users no longer need hand-written `rw [Gate.mul_applyVec, Gate.mul_applyVec, \u2026]` chains, as in ControlledTransform and HadamardTest. Nor do they need the `pow_succ'` / `Gate.mul_apply` rewriting seen in AmplitudeAmplification.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/ControlledTransform.lean",
+          "declaration": "qppYZZYZ proof",
+          "excerpt": "rw [qppYZZYZ_concat, Gate.mul_applyVec, Gate.mul_applyVec,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/HadamardTest.lean",
+          "declaration": "hadamardTest_applyVec_ket0_tensor",
+          "excerpt": "rw [HilbertOperator.mul_applyVec, HilbertOperator.mul_applyVec, tensor_H_one_applyVec_ket0,"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Primitives/AmplitudeAmplification.lean",
+          "declaration": "amplitude amplification iteration",
+          "excerpt": "rw [pow_succ', Gate.mul_apply, ih, amplitudeAmplificationStep_apply_state]"
+        }
+      ]
+    },
+    {
+      "declaration": "QuantumAlg.Gate.instInv / QuantumAlg.Gate.coe_conjTranspose",
+      "start_line": 236,
+      "end_line": 242,
+      "excerpt": "instance : Inv (Gate n) := \u27e8conjTranspose\u27e9",
+      "problem": "The gate inverse is provided through `Inv (Gate n)` as `\u27e8conjTranspose\u27e9`, but the only simp lemma about it, `coe_conjTranspose`, is stated for `G.conjTranspose`. The notation `G\u207b\u00b9` is a different head symbol. Because `Inv.inv` is not unfolded by simp, `((G\u207b\u00b9 : Gate n) : HilbertOperator n)` is stuck and `coe_conjTranspose` never fires on it. There is also no lemma relating `G\u207b\u00b9` to `conjTranspose`, and no `inv_applyVec` or `inv_mul` facts. A user who writes `G\u207b\u00b9` (the natural notation for the `Inv` instance) gets no simp support. The two spellings of the same gate are separate normal forms.",
+      "proposed_change": "Add `@[simp] theorem coe_inv (G : Gate n) : ((G\u207b\u00b9 : Gate n) : HilbertOperator n) = (G : HilbertOperator n).conjTranspose := rfl`. Optionally add `inv_def : G\u207b\u00b9 = G.conjTranspose := rfl` as a non-simp bridge. Alternatively, state `coe_conjTranspose` for `G\u207b\u00b9` and keep `conjTranspose` as the internal construction. Pick one canonical form so simp has a single normal form for the adjoint gate.",
+      "benefit": "Matrix-level goals involving `G\u207b\u00b9` reduce to `(G : HilbertOperator n)\u1d34` under `simp`. This removes the ambiguity between `G\u207b\u00b9` and `G.conjTranspose`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/LeanQuantumAlg/Core/Gate.lean",
+          "declaration": "QuantumAlg.Gate.coe_conjTranspose",
+          "excerpt": "((G.conjTranspose : Gate n) : HilbertOperator n)\n      = (G : HilbertOperator n).conjTranspose := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 35978,
+    "cache_read_input_tokens": 136529,
+    "output_tokens": 9072,
+    "output_tokens_details": {
+      "thinking_tokens": 3859
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35978,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3887,
+        "cache_read_input_tokens": 38943,
+        "cache_creation_input_tokens": 1048,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1048
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2483089,
+  "duration_ms": 70273,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T00:23:04",
+  "unit": "file",
+  "source_sha256": "9ca6d0dd85923156753ef835bf7bbc80b04520711f1b3fb7ffe8b70fc5d36884",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

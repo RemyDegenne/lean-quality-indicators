@@ -1,0 +1,104 @@
+{
+  "id": "lean-pool-file-0369",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the supporting lemmas contDiffOn_foldr_axisDeriv, axisDeriv_congr_on and multiPartial_slice. I also checked MultiPartialOrderShift.lean, which has related slice-to-foldr rewriting. The two big proofs, multiPartial_add and multiPartial_const_smul, are line-for-line parallel. The proposed lemmas are untested sketches. Their hypotheses (open s, ContDiffOn \u22a4 on s) match the actual hypotheses of both theorems. I did not execute Lean, so exact simp behaviour is uncertain.",
+  "findings": [
+    {
+      "declaration": "CIV.multiPartial_add / CIV.multiPartial_const_smul (inductive EqOn claim over List.foldr axisDeriv)",
+      "start_line": 58,
+      "end_line": 96,
+      "excerpt": "induction l with\n    | nil =>\n        intro x' _; rfl\n    | cons j l' ih =>",
+      "problem": "Both theorems prove the same list induction: pushing a linear operation through `List.foldr axisDeriv ... l` on an open set. The steps are the same in each. Use `ih` as an `EqOn`, lift it with `axisDeriv_congr_on`, and get differentiability of the inner foldr from `contDiffOn_foldr_axisDeriv` followed by `contDiffAt` and `differentiableAt`. Then apply the pointwise rule (`axisDeriv_add` or `axisDeriv_const_smul`) and finish with `simpa [List.foldr]`. About 35 lines are duplicated (lines 58\u201396 and 123\u2013150), differing only in the operation. The differentiability block is itself copied three times, once for h\u2081, once for h\u2082 and once for h. The `set l ... with hl` setup and the final `calc` chain (97\u2013109 and 151\u2013163) are also copies, and most of those `calc` steps are `rfl`. A fix in one proof, for example if `axisDeriv` changes, must be mirrored in the other.",
+      "proposed_change": "Add generic lemmas before the two theorems, all with `hs : IsOpen s`, \u211d-valued functions on `Vec3`, and `ContDiffOn \u211d (\u22a4 : \u2115\u221e) \u00b7 s` hypotheses:\n1. `foldr_axisDeriv_add_eqOn (hs) (F G) (hF : ContDiffOn \u211d \u22a4 F s) (hG : ContDiffOn \u211d \u22a4 G s) (l : List (Fin 3)) : Set.EqOn (List.foldr axisDeriv (fun y => F y + G y) l) (fun y => List.foldr axisDeriv F l y + List.foldr axisDeriv G l y) s`\n2. `foldr_axisDeriv_const_mul_eqOn (hs) (F) (hF) (c : \u211d) (l) : Set.EqOn (List.foldr axisDeriv (fun y => c * F y) l) (fun y => c * List.foldr axisDeriv F l y) s`\n\nIntroduce a small helper `differentiableAt_foldr_axisDeriv (hs) (hF : ContDiffOn \u211d \u22a4 F s) (l) (hx : x \u2208 s) : DifferentiableAt \u211d (List.foldr axisDeriv F l) x`. It is `((contDiffOn_foldr_axisDeriv s hs F hF l).contDiffAt (hs.mem_nhds hx)).differentiableAt (by simp)`. Both lemmas are then `induction l`: the `nil` case is `fun _ _ => rfl`, and the `cons` case is `axisDeriv_congr_on` applied to `ih`, then `axisDeriv_add` or `axisDeriv_const_smul` with the helper, then `simpa [List.foldr]`. Each theorem body then reduces to: rewrite both sides by the slice-to-foldr identity (see the next finding) and apply `foldr_axisDeriv_add_eqOn hs _ _ hG\u2081 hG\u2082 l hx` or `foldr_axisDeriv_const_mul_eqOn hs _ hG c l hx`. If more linear operations are wanted, a single lemma parametrised by an operation with an `axisDeriv` rule could cover both.",
+      "benefit": "This removes about 70 duplicated lines and the thrice-copied differentiability block. The mathematical content (induction commuting a linear operation with iterated derivatives on an open set) is stated once as a lemma that is useful on its own. Each of the two theorems becomes a short rewrite, and later linear-operation lemmas, such as subtraction, can be added cheaply.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Reduction/MultiPartialLinearity.lean",
+          "declaration": "CIV.multiPartial_const_smul",
+          "excerpt": "    induction l with\n    | nil =>\n        intro x' _; rfl\n    | cons j l' ih =>\n        intro x' hx'\n        have h_eq_on : Set.EqOn\n            (List.foldr axisDeriv (fun y => c * h (y, t)) l')"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Reduction/AxisDerivSymm.lean",
+          "declaration": "CIV.contDiffOn_foldr_axisDeriv",
+          "excerpt": "theorem contDiffOn_foldr_axisDeriv (s : Set Vec3) (hs : IsOpen s) (G : Vec3 \u2192 \u211d)\n    (hG : ContDiffOn \u211d (\u22a4 : \u2115\u221e) G s) (l : List (Fin 3)) :\n    ContDiffOn \u211d (\u22a4 : \u2115\u221e) (List.foldr axisDeriv G l) s"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Reduction/AxisDerivSymm.lean",
+          "declaration": "CIV.axisDeriv_congr_on",
+          "excerpt": "theorem axisDeriv_congr_on (s : Set Vec3) (hs : IsOpen s) (F G : Vec3 \u2192 \u211d)\n    (a : Fin 3) (h : Set.EqOn F G s) :\n    Set.EqOn (axisDeriv a F) (axisDeriv a G) s"
+        }
+      ]
+    },
+    {
+      "declaration": "CIV.multiPartial_add / CIV.multiPartial_const_smul (list `l` and `h_multi_eq`)",
+      "start_line": 49,
+      "end_line": 54,
+      "excerpt": "have h_multi_eq (h : ParabolicPoint \u2192 \u211d) :\n      (fun (x' : Vec3) => multiPartial h \u03b1 (x', t)) =\n      List.foldr axisDeriv (fun (x' : Vec3) => h (x', t)) l := by\n    simpa [l, List.foldr_append, foldr_axisDeriv_replicate] using multiPartial_slice h \u03b1 t",
+      "problem": "Both theorems (lines 49\u201354 and 115\u2013120) restate the same slice-to-foldr identity, rewriting `multiPartial` as a foldr over `replicate (\u03b1 0) 0 ++ replicate (\u03b1 1) 1 ++ replicate (\u03b1 2) 2`. The same pattern also appears in MultiPartialOrderShift.lean: `h_fun_eq` in `axisDeriv_multiPartial_slice_eq`, and `h_target_eq` and `h_eq` in that file. Each proof re-derives it from `multiPartial_slice` with a `simpa` over `foldr_axisDeriv_replicate` and `List.foldr_append`.",
+      "proposed_change": "Prove once, next to `multiPartial_slice` in AxisDeriv.lean, a lemma such as `multiPartial_slice_eq_foldr (h) (\u03b1) (t) : (fun x : Vec3 => multiPartial h \u03b1 (x, t)) = List.foldr axisDeriv (fun x : Vec3 => h (x, t)) (List.replicate (\u03b1 0) 0 ++ List.replicate (\u03b1 1) 1 ++ List.replicate (\u03b1 2) 2)`. The proof is the existing `by simpa [List.foldr_append, foldr_axisDeriv_replicate] using multiPartial_slice h \u03b1 t`. Use it in both theorems here and in MultiPartialOrderShift.lean in place of the local `h_multi_eq`, `h_fun_eq`, `h_target_eq` and `h_eq`. Together with the previous finding, the final `calc` chains (97\u2013109 and 151\u2013163) become `rw`/`congrFun` applications of this lemma and the EqOn lemma.",
+      "benefit": "The list-of-indices encoding of `multiPartial` is unfolded in one place, so a change to the representation touches one lemma. The theorem proofs no longer start with a repeated `set l ... with hl` block.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Reduction/MultiPartialLinearity.lean",
+          "declaration": "CIV.multiPartial_const_smul",
+          "excerpt": "have h_multi_eq (h' : ParabolicPoint \u2192 \u211d) :\n      (fun (x' : Vec3) => multiPartial h' \u03b1 (x', t)) =\n      List.foldr axisDeriv (fun (x' : Vec3) => h' (x', t)) l := by\n    simpa [l, List.foldr_append, foldr_axisDeriv_replicate] using multiPartial_slice h' \u03b1 t"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CIVAxisymmetric/Reduction/MultiPartialOrderShift.lean",
+          "declaration": "CIV.axisDeriv_multiPartial_slice_eq",
+          "excerpt": "    rw [multiPartial_slice h \u03b1 t]\n    simp [l, foldr_axisDeriv_replicate, List.foldr_append]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 13387,
+    "cache_read_input_tokens": 28038,
+    "output_tokens": 4760,
+    "output_tokens_details": {
+      "thinking_tokens": 557
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13387,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3610,
+        "cache_read_input_tokens": 14589,
+        "cache_creation_input_tokens": 2727,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2727
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1039638,
+  "duration_ms": 42735,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-27T02:09:18",
+  "unit": "file",
+  "source_sha256": "df97847b012af12139d3da1086992625766ba601c982f482462883fc45b8fb82",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

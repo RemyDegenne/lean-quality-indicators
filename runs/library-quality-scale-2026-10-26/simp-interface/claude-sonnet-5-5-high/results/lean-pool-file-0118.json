@@ -1,0 +1,99 @@
+{
+  "id": "lean-pool-file-0118",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the cylinder membership lemmas in Parabolic/Basic.lean and Heat/Cylinder.lean. I grepped downstream uses of `centeredBackwardHeatTest` in Core/Caccioppoli. I did not run Lean, so the suggestions are untested. I found no loop or competing-rule problems. The two findings are about missing or private simp interface lemmas. I rate them low to moderate severity. They are based on repeated downstream unfolding, not on observed simp failures.",
+  "findings": [
+    {
+      "declaration": "centeredBackwardHeatTest",
+      "start_line": 40,
+      "end_line": 42,
+      "excerpt": "def centeredBackwardHeatTest (x\u2080 : Vec3) (t\u2080 r : \u211d) (z : ParabolicPoint) : \u211d :=\n  backwardHeatTestFunction r (z.1 - x\u2080) (z.2 - t\u2080)",
+      "problem": "The definition has no unfolding or simp lemma in the point-evaluation form `centeredBackwardHeatTest x\u2080 t\u2080 r z = backwardHeatTestFunction r (z.1 - x\u2080) (z.2 - t\u2080)`. It has no such lemma for the gradient-norm variant either. Every consumer unfolds the definition by name with `simpa only [centeredBackwardHeatTest] using \u2026`. This happens four times in this file (lower, upper, annulus and gradient-norm bounds) and again in CaccioppoliEnergy, CaccioppoliEnergyLower, RawI4 and CaccioppoliRHS. Each time the result is converted by hand to the `backwardHeatTestFunction r (w.1 - x\u2080) (w.2 - t\u2080)` form. The simp normal form of the centered function is therefore left implicit.",
+      "proposed_change": "Add an equation lemma such as `theorem centeredBackwardHeatTest_apply (x\u2080 t\u2080 r z) : centeredBackwardHeatTest x\u2080 t\u2080 r z = backwardHeatTestFunction r (z.1 - x\u2080) (z.2 - t\u2080) := rfl`. Add a matching one for `centeredBackwardHeatTestGradientNorm`. Mark them `@[simp]` only if downstream goals should normalize to the `backwardHeatTestFunction` form. Otherwise cite them as `simpa only [centeredBackwardHeatTest_apply]`. Both options give an explicit, stable rewrite direction, and the name `centeredBackwardHeatTest_apply` is a suggestion only. The `rfl` proof is safe because the rewrite is terminating (it only unfolds one definition layer).",
+      "benefit": "Downstream proofs stop depending on the definition's body. A later change to the definition would then need only one edit. The orientation is documented and uniform across the lower, upper, annulus and gradient bounds.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Caccioppoli/CaccioppoliEnergyLower.lean",
+          "declaration": "Caccioppoli energy lower bound proof",
+          "excerpt": "simpa only [centeredBackwardHeatTest] using\n          centeredBackwardHeatTest_lower_on_cylinder hr hxQ"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Core/Caccioppoli/RawI4.lean",
+          "declaration": "RawI4 proof",
+          "excerpt": "simpa only [centeredBackwardHeatTest] using\n        (centeredBackwardHeatTest_upper_on_cylinder"
+        }
+      ]
+    },
+    {
+      "declaration": "mem_parabolicCylinder_sub_center",
+      "start_line": 50,
+      "end_line": 59,
+      "excerpt": "private lemma mem_parabolicCylinder_sub_center {x\u2080 : Vec3} {t\u2080 r : \u211d}\n    {z : ParabolicPoint} :\n    z \u2208 parabolicCylinder x\u2080 t\u2080 r \u2194\n      (z.1 - x\u2080, z.2 - t\u2080) \u2208 parabolicCylinder 0 0 r",
+      "problem": "The only simp lemma for cylinder membership is stated for explicit pairs `(y, s) \u2208 parabolicCylinder x t r`. For a variable `z : ParabolicPoint` it gives no canonical form for the shifted-to-origin membership. The file works around this with two private, non-simp translation lemmas, one for the cylinder and one for the annulus `Cyl(\u03c1) \\ Cyl(\u03c1/2)`. Other files that need the same reduction cannot reuse them. Both are used only through explicit `.mp` calls. Nothing normalizes `z \u2208 parabolicCylinder x\u2080 t\u2080 r` and its centered translate to a common form.",
+      "proposed_change": "Make the translation lemma public and put it next to `mem_parabolicCylinder` in Parabolic/Basic.lean, with a name that does not clash with existing ones. Also provide a coordinate form for a variable `z`, for example `z \u2208 parabolicCylinder x t r \u2194 vec3EuclideanNorm (z.1 - x) < r \u2227 t - r ^ 2 < z.2 \u2227 z.2 \u2264 t`, which can be `@[simp]`. The annulus version is already derivable from the cylinder version. Use `Set.mem_diff` and the public translation lemma so that `simp` closes it, and drop the hand-written second private lemma.",
+      "benefit": "This removes the duplicated private translation lemmas and gives simp a canonical rewrite for membership of a variable point. Other cylinder files can reuse it without redoing the `linarith` shifts.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Parabolic/Basic.lean",
+          "declaration": "mem_parabolicCylinder",
+          "excerpt": "@[simp] lemma mem_parabolicCylinder {x y : Vec3} {t s r : \u211d} :\n    (y, s) \u2208 parabolicCylinder x t r \u2194"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Foundation/Heat/CylinderCentered.lean",
+          "declaration": "mem_parabolicCylinder_diff_sub_center",
+          "excerpt": "private lemma mem_parabolicCylinder_diff_sub_center {x\u2080 : Vec3} {t\u2080 \u03c1 : \u211d}"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 20642,
+    "cache_read_input_tokens": 79828,
+    "output_tokens": 6310,
+    "output_tokens_details": {
+      "thinking_tokens": 667
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20642,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2439,
+        "cache_read_input_tokens": 21904,
+        "cache_creation_input_tokens": 2751,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2751
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1536708,
+  "duration_ms": 52595,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-26T23:06:05",
+  "unit": "file",
+  "source_sha256": "712ff9e9260982777dbff0a37270aececd9d154da90ef3cc410d13b2a84c94a7",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

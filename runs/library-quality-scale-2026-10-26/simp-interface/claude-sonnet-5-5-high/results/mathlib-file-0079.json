@@ -1,0 +1,104 @@
+{
+  "id": "mathlib-file-0079",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and grepped Mathlib for uses of the integrand lemmas. The only external use is in this file; Order.lean was not checked in detail. The simp interface is small: one @[simp] lemma (rpowIntegrand\u2080\u2081_zero_right) and two unfolding definitions. I found no loops or competing rules. The weaker findings are about missing or unused boundary-case simp lemmas that lead to repeated `unfold`/`simp [rpowIntegrand\u2080\u2081]` in proofs. These are modest and based on reading the proofs, not on running Lean.",
+  "findings": [
+    {
+      "declaration": "Real.rpowIntegrand\u2080\u2081_zero_left (and the t = 0 boundary case in its callers)",
+      "start_line": 78,
+      "end_line": 79,
+      "excerpt": "lemma rpowIntegrand\u2080\u2081_zero_left (hp : 0 < p) : rpowIntegrand\u2080\u2081 p 0 x = 0 := by\n  simp [rpowIntegrand\u2080\u2081, Real.zero_rpow hp.ne']",
+      "problem": "The t = 0 boundary lemma is not a simp lemma and is never used. The same fact is re-proved by unfolding the definition and supplying `Real.zero_rpow` by hand at line 114 (`simp [rpowIntegrand\u2080\u2081, ht', hp.1.ne', hp\u2082]`) and, for the x = 0 case, at line 290 (`simp [rpowIntegrand\u2080\u2081, Real.zero_rpow hp.1.ne']`). Line 290 does not need the unfolding, because the existing simp lemma `rpowIntegrand\u2080\u2081_zero_right` already rewrites `rpowIntegrand\u2080\u2081 p t 0`. Unfolding gives simp a `t ^ p * (t\u207b\u00b9 - (t + x)\u207b\u00b9)` term to normalise instead of the intended boundary rewrite. Because `rpowIntegrand\u2080\u2081_zero_left` is unused, the interface for the boundary values is split inconsistently between `_zero_right` (simp) and `_zero_left` (neither simp nor used).",
+      "proposed_change": "Mark `rpowIntegrand\u2080\u2081_zero_left` as `@[simp]`. Its hypothesis `0 < p` is a plain side condition that simp can discharge from hypotheses such as `hp.1` when they are supplied. Then use it in the proofs that currently unfold the definition: write `simp [rpowIntegrand\u2080\u2081_zero_left hp.1, ...]` at line 114 and drop `rpowIntegrand\u2080\u2081` from the simp sets at lines 163 and 290. If the attribute is not wanted, at least use the existing lemma in those places instead of leaving it dead.",
+      "benefit": "Callers get a consistent pair of boundary rewrites (`t = 0`, `x = 0`) and no longer need to unfold `rpowIntegrand\u2080\u2081` in simp calls, so the proofs depend on the definition's body less. The lemma stops being dead code.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/ContinuousFunctionalCalculus/Rpow/IntegralRepresentation.lean",
+          "declaration": "Real.rpowIntegrand\u2080\u2081_zero_right",
+          "excerpt": "lemma rpowIntegrand\u2080\u2081_zero_right : rpowIntegrand\u2080\u2081 p t 0 = 0 := by simp [rpowIntegrand\u2080\u2081]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/ContinuousFunctionalCalculus/Rpow/IntegralRepresentation.lean",
+          "declaration": "Real.rpowIntegrand\u2080\u2081_eq_pow_div",
+          "excerpt": "simp [rpowIntegrand\u2080\u2081, ht', hp.1.ne', hp\u2082]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/ContinuousFunctionalCalculus/Rpow/IntegralRepresentation.lean",
+          "declaration": "Real.integral_rpowIntegrand\u2080\u2081_eq_rpow_mul_const",
+          "excerpt": "\u00b7 simp [rpowIntegrand\u2080\u2081, Real.zero_rpow hp.1.ne']"
+        }
+      ]
+    },
+    {
+      "declaration": "CFC.monotoneOn_cfc\u2099_rpowIntegrand\u2080\u2081 (and Real.rpowIntegrand\u2080\u2081_eqOn_mul_rpowIntegrand\u2080\u2081_one)",
+      "start_line": 609,
+      "end_line": 610,
+      "excerpt": "unfold rpowIntegrand\u2080\u2081\n      simp only [Real.one_rpow, one_mul, inv_one]",
+      "problem": "There is no simp-normal form for the specialization `rpowIntegrand\u2080\u2081 p 1 x`, which the file uses as the base case of the scaling argument. It appears in `rpowIntegrand\u2080\u2081_eqOn_mul_rpowIntegrand\u2080\u2081_one`, the cfc\u2099 scaling lemma (lines 463\u2013466), and the monotonicity proof. Each time the definition is unfolded by hand: `unfold rpowIntegrand\u2080\u2081; simp only [Real.one_rpow, one_mul, inv_one]` at lines 609\u2013610, and `simp [mul_comm, smul_eq_mul, rpowIntegrand\u2080\u2081]` at line 231. After the unfolding, the goal is no longer in terms of `rpowIntegrand\u2080\u2081` at all, and the reader must re-derive that it equals `1 - (1 + x)\u207b\u00b9` to match `monotoneOn_one_sub_one_add_inv_real`.",
+      "proposed_change": "Add a lemma such as `rpowIntegrand\u2080\u2081_one_left : rpowIntegrand\u2080\u2081 p 1 x = 1 - (1 + x)\u207b\u00b9`, proved by `simp [rpowIntegrand\u2080\u2081]`, and make it `@[simp]`. It is unconditional and terminates, since the right side contains no `rpowIntegrand\u2080\u2081`. It would not conflict with `rpowIntegrand\u2080\u2081_zero_right`, because the two rules fire on different arguments (t = 1 and x = 0) and agree on the overlap (1 - (1+0)\u207b\u00b9 = 0). Then replace the `unfold`/`simp only` pair at lines 609\u2013610 by `simp only [rpowIntegrand\u2080\u2081_one_left]`, and replace `rpowIntegrand\u2080\u2081` in the simp set at line 231.",
+      "benefit": "Callers get a canonical, human-readable form of the `t = 1` integrand without exposing the definition's body. The proof at lines 609\u2013610 becomes a rewrite rather than an unfold-and-cleanup step, and the link to `monotoneOn_one_sub_one_add_inv_real` is explicit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/ContinuousFunctionalCalculus/Rpow/IntegralRepresentation.lean",
+          "declaration": "Real.rpowIntegrand\u2080\u2081_eqOn_mul_rpowIntegrand\u2080\u2081_one",
+          "excerpt": "_ = _ := by simp [mul_comm, smul_eq_mul, rpowIntegrand\u2080\u2081]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/ContinuousFunctionalCalculus/Rpow/IntegralRepresentation.lean",
+          "declaration": "CFC.monotoneOn_cfc\u2099_rpowIntegrand\u2080\u2081",
+          "excerpt": "refine CFC.monotoneOn_one_sub_one_add_inv_real"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 24474,
+    "cache_read_input_tokens": 54500,
+    "output_tokens": 5851,
+    "output_tokens_details": {
+      "thinking_tokens": 2606
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24474,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2838,
+        "cache_read_input_tokens": 27139,
+        "cache_creation_input_tokens": 1348,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1348
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.161868,
+  "duration_ms": 38674,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T22:58:43",
+  "unit": "file",
+  "source_sha256": "7c771850e280fea13718d400a51e596dac4c8d6b3e57c579fefe707632509ff1",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

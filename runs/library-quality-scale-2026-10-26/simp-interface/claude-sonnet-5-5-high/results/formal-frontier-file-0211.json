@@ -1,0 +1,104 @@
+{
+  "id": "formal-frontier-file-0211",
+  "lib": "formal-frontier",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I checked every `simp`/`simpa` call against Mathlib's simp attributes: `coeff_zero_eq_constantCoeff`, `coeff_subst_X_pow`, `constantCoeff_subst_X_pow`, `coeff_rescale`, `binomialSeries_coeff`. I also checked `coeff_zero_negXLogDeriv` in UnitLogDerivative. I did not find any credible rewrite loop. The only concrete problems are the direction clash around `coeff 0` and `constantCoeff`, and the `abbrev` definitions that interact badly with `simp [name]`. I could not run Lean, so I make no claim that either change compiles. Both findings are about proof-engineering quality in private declarations, so their impact is modest.",
+  "findings": [
+    {
+      "declaration": "PowerSeries.constantCoeff_eulerFactor (and PowerSeries.constantCoeff_eulerSeries, PowerSeries.le_order_one_sub_eulerFactor)",
+      "start_line": 83,
+      "end_line": 85,
+      "excerpt": "simp [eulerFactor, hn, \u2190 coeff_zero_eq_constantCoeff]",
+      "problem": "Mathlib's simp normal form is `coeff 0 = constantCoeff`, because `coeff_zero_eq_constantCoeff` is a `@[simp]` lemma. Line 85 removes that lemma from the simp set and adds its reverse, so `constantCoeff` becomes `coeff 0`, to make `coeff_subst_X_pow` and `coeff_rescale` fire. Line 111 does the opposite with `simp [coeff_zero_eq_constantCoeff, constantCoeff_eulerFactor hn]`. Lines 155\u2013158 use `simpa only [coeff_zero_eq_constantCoeff]` twice to move between the two forms. The cause is that no simp lemma computes `constantCoeff` of `rescale a f` or of `binomialSeries`. The file works around the gap by reversing a global simp lemma in one place, while forward use of the same lemma is spread through the other proofs.",
+      "proposed_change": "Keep the global direction (`coeff 0` to `constantCoeff`) and do not use `\u2190` in simp sets. For line 85, use the existing simp lemma `constantCoeff_subst_X_pow hn`, then `\u2190 coeff_zero_eq_constantCoeff_apply` once, and then `coeff_rescale` and `binomialSeries_coeff`. Alternatively, state one private lemma for the constant coefficient of `rescale (-1) (binomialSeries \u211a r)`, with `Ring.choose_zero_right` doing the rest. For `constantCoeff_eulerSeries`, add a lemma `coeff_zero_eulerSeries : coeff 0 (eulerSeries p) = constantCoeff (eulerPrefix p 0)`. That removes the two `simpa only [coeff_zero_eq_constantCoeff]` conversions.",
+      "benefit": "All simp calls in the file use one normal form for degree-zero coefficients. Readers no longer have to track which proofs flip Mathlib's simp lemma. The proofs also stop depending on a locally reversed global simp rule.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/PowerSeries/Basic.lean",
+          "declaration": "PowerSeries.coeff_zero_eq_constantCoeff",
+          "excerpt": "theorem coeff_zero_eq_constantCoeff : \u21d1(coeff (R := R) 0) = constantCoeff"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-83abb3e776bd/Mathlib/RingTheory/PowerSeries/Substitution.lean",
+          "declaration": "PowerSeries.constantCoeff_subst_X_pow",
+          "excerpt": "theorem constantCoeff_subst_X_pow {k : \u2115} (hk : k \u2260 0) (f : PowerSeries R) :"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/formal-power-series/FormalPowerSeries/ArtinHasseEulerProduct.lean",
+          "declaration": "PowerSeries.le_order_one_sub_eulerFactor",
+          "excerpt": "simp [coeff_zero_eq_constantCoeff, constantCoeff_eulerFactor hn]"
+        }
+      ]
+    },
+    {
+      "declaration": "PowerSeries.eulerFactor / PowerSeries.eulerPrefix (abbrevs), used in coeff_eulerPrefix_eq and coeff_artinHasseExp_eq_prod",
+      "start_line": 75,
+      "end_line": 81,
+      "excerpt": "private noncomputable abbrev eulerFactor (n : \u2115) : PowerSeries \u211a :=",
+      "problem": "`eulerFactor` and `eulerPrefix` are `abbrev`s, so they are reducible and the simplifier and unifier see through them. Passing the name to simp (`simp [eulerFactor, ...]` at line 85, `simpa [eulerPrefix, s, mul_comm]` at line 137) therefore does not give a controlled unfolding step. The simp set also cannot treat `eulerFactor n` as an opaque head symbol. Any simp lemma stated about `coeff j (eulerFactor n)` would have its left side keyed on the unfolded `subst`/`rescale`/`binomialSeries` expression. The public theorem has to bridge with `change coeff k (artinHasseExp p) = coeff k (eulerPrefix p N)`. Line 137 expands `eulerPrefix` and the `s` abbreviation and also adds `mul_comm`, which makes it hard to predict which normal form the simp call reached.",
+      "proposed_change": "Make `eulerFactor` and `eulerPrefix` plain private `def`s. Add `eulerFactor_def`-style unfolding via `unfold`/`rw`, or a single private `@[simp]` lemma `coeff_eulerFactor_of_pos_of_lt`-type facts stated for the folded name. Then replace the `simpa [eulerPrefix, s, mul_comm]` at line 137 with `rw [eulerPrefix, ...]` using `Finset.prod_sdiff` directly. Alternatively, keep `abbrev` but drop `eulerFactor`/`eulerPrefix` from the simp argument lists, since they are already unfolded there.",
+      "benefit": "The simp interface for the Euler-prefix lemmas becomes explicit. Lemmas apply to the folded name, and the unfolding steps are visible. The proofs stop relying on reducible unfolding combined with `mul_comm` inside `simpa`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/formal-power-series/FormalPowerSeries/ArtinHasseEulerProduct.lean",
+          "declaration": "PowerSeries.coeff_eulerPrefix_eq",
+          "excerpt": "simpa [eulerPrefix, s, mul_comm] using (Finset.prod_sdiff (f := eulerFactor) hsub).symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/formal-frontier/formal-power-series/FormalPowerSeries/ArtinHasseEulerProduct.lean",
+          "declaration": "PowerSeries.coeff_artinHasseExp_eq_prod",
+          "excerpt": "change coeff k (artinHasseExp p) = coeff k (eulerPrefix p N)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 25744,
+    "cache_read_input_tokens": 109659,
+    "output_tokens": 6979,
+    "output_tokens_details": {
+      "thinking_tokens": 2752
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25744,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3004,
+        "cache_read_input_tokens": 28173,
+        "cache_creation_input_tokens": 1584,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1584
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18375590000000003,
+  "duration_ms": 50882,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:29:41",
+  "unit": "file",
+  "source_sha256": "fcca56c4417c9a64402c4aa4e33f8ef71b8dc77bd3407b46d5115fc7644031ca",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

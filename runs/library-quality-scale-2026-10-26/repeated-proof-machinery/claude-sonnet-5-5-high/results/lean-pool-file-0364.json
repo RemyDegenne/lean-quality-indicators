@@ -1,0 +1,89 @@
+{
+  "id": "lean-pool-file-0364",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the two repeated proof pairs, lines 212\u2013254 and lines 52\u201370, against the surrounding declarations. I did not search for existing Mathlib lemmas that already give the idempotent commutation identity. The proposed replacements have not been compiled. The first finding is the strong one. The `noncomm_ring` identity and the `rw [hp, hq]`/`simp` cleanup are character-for-character identical in both proofs, apart from the single use of `p` or `q`. The second finding is weaker: the two calc blocks are short and symmetric.",
+  "findings": [
+    {
+      "declaration": "commute_sinAngleOperatorC_starProjection / commute_sinAngleOperatorC_starProjection_right",
+      "start_line": 212,
+      "end_line": 254,
+      "excerpt": "    have key : (p - q) * (p - q) * q - q * ((p - q) * (p - q)) =\n        ((p * p - p) * q - q * (p * p - p)) + ((q * q - q) * p - p * (q * q - q)) := by\n      noncomm_ring\n    rw [hp, hq] at key\n    simp only [sub_self, zero_mul, mul_zero, add_zero] at key\n    exact sub_eq_zero.mp key",
+      "problem": "The two theorems repeat the same algebraic argument. Both set up `p`, `q`, `hp`, `hq`. Both prove `key` by `noncomm_ring`, where the right-hand side is the same defect expression in `p*p-p` and `q*q-q`. Both then cancel the idempotent defects with `rw [hp, hq]`, `simp only [...]` and `sub_eq_zero.mp`. They also repeat the final `rw [sinAngleOperatorC, ContinuousLinearMap.modulus_def]; exact Commute.cfc\u2099_nnreal hgram _`. The only difference is whether the commutant element is `p` or `q`. The identity `(p-q)\u00b2p = p(p-q)\u00b2` for idempotents is the mathematical content the section docstring describes, yet it is proved twice inline.",
+      "proposed_change": "Add a ring-level lemma and use it in both theorems:\n\n```lean\ntheorem commute_sub_mul_self_of_isIdempotentElem {A : Type*} [Ring A] {p q : A}\n    (hp : IsIdempotentElem p) (hq : IsIdempotentElem q) :\n    Commute ((p - q) * (p - q)) p \u2227 Commute ((p - q) * (p - q)) q := by\n  -- hp : p * p = p, hq : q * q = q\n  -- (p-q)(p-q)p - p(p-q)(p-q) = ((p*p-p)*q - q*(p*p-p)) + ((q*q-q)*p - p*(q*q-q)) by noncomm_ring,\n  -- and the same right-hand side works for q; then rewrite with hp, hq, simp, sub_eq_zero.\n  ...\n```\n\nOptionally also add a Gram-operator lemma for the pair `U, V`:\n\n```lean\nlemma commute_gram_starProjection_sub (U V : Submodule \u2102 E) [U.HasOrthogonalProjection] [V.HasOrthogonalProjection] :\n    Commute ((U.starProjection - V.starProjection : E \u2192L[\u2102] E).adjoint \u2218L (U.starProjection - V.starProjection)) U.starProjection \u2227\n    Commute (same gram) V.starProjection\n```\n\nThis lemma is proved by `rw [adjoint_starProjection_sub]` followed by `commute_sub_mul_self_of_isIdempotentElem U.isIdempotentElem_starProjection V.isIdempotentElem_starProjection`. Each of the two theorems then becomes `rw [sinAngleOperatorC, ContinuousLinearMap.modulus_def]; exact Commute.cfc\u2099_nnreal (commute_gram_starProjection_sub U V).1 _`, using `.2` for the right-hand version. The `ContinuousLinearMap` composition `\u2218L` and `*` coincide definitionally in `E \u2192L[\u2102] E`, which the current `change` already relies on. If `set`/`change` is awkward, `(p - q) * (p - q)` can be stated in terms of `\u2218L`.",
+      "benefit": "The only nontrivial algebra is proved once, in a general ring where `noncomm_ring` has no projection coercions to unfold. The two commute theorems become two-line wrappers. A change to `sinAngleOperatorC` or its `modulus_def` unfolding is then made in one place instead of two. The lemma is also reusable for other idempotent pairs, such as the real and finite-dimensional variants mentioned in the docstring.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/DavisKahan/Geometry/Angle/AngleFunctionalCalculus.lean",
+          "declaration": "commute_sinAngleOperatorC_starProjection",
+          "excerpt": "    change (p - q) * (p - q) * p = p * ((p - q) * (p - q))"
+        }
+      ]
+    },
+    {
+      "declaration": "norm_sinAngleOperatorC_le_one",
+      "start_line": 52,
+      "end_line": 70,
+      "excerpt": "      \u2016(1 - V.starProjection) \u2218L U.starProjection\u2016\n          \u2264 \u20161 - V.starProjection\u2016 * \u2016U.starProjection\u2016 :=\n        ContinuousLinearMap.opNorm_comp_le _ _",
+      "problem": "The two `max_le` branches are the same argument with `U` and `V` swapped. Each bounds `\u2016(1 - P_B) \u2218L P_A\u2016` by `\u20161 - P_B\u2016 * \u2016P_A\u2016`. Each then rewrites `1 - P_B` as the projection onto `B\u15ee` via `starProjection_orthogonal'` and bounds both norms by 1. This is about nine lines duplicated.",
+      "proposed_change": "Extract a lemma:\n\n```lean\ntheorem norm_one_sub_starProjection_comp_starProjection_le_one (A B : Submodule \u2102 E)\n    [A.HasOrthogonalProjection] [B.HasOrthogonalProjection] :\n    \u2016(1 - B.starProjection) \u2218L A.starProjection\u2016 \u2264 1\n```\n\nIts proof is the existing calc: `opNorm_comp_le`, then rewrite `1 - B.starProjection = B\u15ee.starProjection`, then `mul_le_mul` with `starProjection_norm_le`, then `1 * 1 = 1`. The main proof becomes `exact max_le (norm_one_sub_starProjection_comp_starProjection_le_one U V) (norm_one_sub_starProjection_comp_starProjection_le_one V U)` after the `rw [Submodule.norm_starProjection_sub_eq_max]`.",
+      "benefit": "It removes the duplicated calc blocks and makes the symmetry of the bound explicit. Any future change to the norm estimate is made once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/DavisKahan/DavisKahan/Geometry/Angle/AngleFunctionalCalculus.lean",
+          "declaration": "norm_sinAngleOperatorC_le_one",
+          "excerpt": "      \u2016(1 - U.starProjection) \u2218L V.starProjection\u2016\n          \u2264 \u20161 - U.starProjection\u2016 * \u2016V.starProjection\u2016 :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 11454,
+    "cache_read_input_tokens": 16103,
+    "output_tokens": 3558,
+    "output_tokens_details": {
+      "thinking_tokens": 502
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 11454,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3159,
+        "cache_read_input_tokens": 12174,
+        "cache_creation_input_tokens": 3209,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3209
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0830143,
+  "duration_ms": 23504,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-27T02:05:05",
+  "unit": "file",
+  "source_sha256": "7dfe9925058ea8a40efcf54f35d60ab07ac861b844ea8f5e7ca74e008c6cb12e",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

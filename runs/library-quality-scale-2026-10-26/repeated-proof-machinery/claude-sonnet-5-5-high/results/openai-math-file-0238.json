@@ -1,0 +1,88 @@
+{
+  "id": "openai-math-file-0238",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file (one theorem). I compared its proof with the same tactic skeleton in MovingAmplitudeSymmetrizedCost.lean, MovingAmplitudeFullHarmonicCost.lean and InitialMovingEarlyCost.lean. A grep for `mul_le_mul_of_nonneg_left hcost` shows the same pattern in MovingAmplitudeHarmonicCost, MovingAmplitudeSupportedCost and MovingAmplitudeSupportedFullCost. I did not open those last three, so the total of seven copies is inferred from the grep. I also read the helper moving_harmonic_full_counterpart_le and the signature of the live diagonal lemmas. I could not run Lean, so the proposed lemma is a sketch and has not been compiled. The remaining uncertainty is mainly whether `convert \u2026 using 1 <;> ring` closes the generic goal once the shared lemma abstracts `C`; that needs checking when implementing. The other rubric concerns (long hypothesis lists, repeated `movingAmplitudePrior` unfolding) are tied to the same pattern, so I report one finding.",
+  "findings": [
+    {
+      "declaration": "movingAmplitude_symmetrized_full_harmonic_cost_live (proof body)",
+      "start_line": 43,
+      "end_line": 84,
+      "excerpt": "  by_cases hu : (\u220f i, \u03bc n (u i)) = 0\n  \u00b7 simp only [hu, zero_mul, mul_zero, Finset.sum_const_zero, le_refl]",
+      "problem": "The proof is a generic \"pointwise bound on the amplitude weight \u03b8 lifts to a bound on the weighted diagonal sum\" argument. It does five things. (1) It unfolds the energy and pushes `K *` inside with `Finset.mul_sum`. (2) It runs `sum_le_sum` over u, p and a. (3) It splits off the cases \u220f\u03bc = 0, \u03b1 a = 0 and coefficient = 0, each by a `simp only [... zero_mul, mul_zero, le_refl]` block. (4) It recovers `h\u03bd` from `\u03b1 a \u2260 0` with `prod_ne_zero_iff` and `right_ne_zero_of_mul`. (5) It multiplies the pointwise cost `hcost` by the nonnegative weight (U\u00b7\u03c6\u00b7\u03b1\u00b7\u2016c\u00b7T\u2016\u00b2) and closes with `dsimp`/`simp [Nat.cast_prod]`/`convert \u2026 using 1 <;> ring`. Only the one line that obtains `hcost` depends on the coefficient (here `moving_harmonic_full_counterpart_le` applied to `hproduct`). Everything else is copied verbatim, up to the name of the coefficient, in at least MovingAmplitudeSymmetrizedCost.lean (lines 64\u2013104), MovingAmplitudeFullHarmonicCost.lean (lines 45\u201385) and InitialMovingEarlyCost.lean (lines 49\u201392). A grep shows the same `hcost'` construction in MovingAmplitudeHarmonicCost, MovingAmplitudeSupportedCost and MovingAmplitudeSupportedFullCost. That is about seven copies of a ~40-line argument. The variants differ only in which coefficient is used (`movingTemplateCoefficient` with `movingRestoreSample`, or `movingSymmetrizedTemplateCoefficient`) and in the live/non-live diagonal lemma. A fix to the algebra, or a change to `movingAmplitudePrior`, must be made in every copy.",
+      "proposed_change": "Add one lemma next to `movingAmplitudeSymmetrizedRegularEnergy`, for example `movingAmplitude_diagonal_le_of_weight_le`. It abstracts the coefficient as `C : (TreeLeafIndex n \u00d7 Fin 4 \u2192 P) \u2192 \u2115 \u2192 MovingAmplitudeIndex P Pg n r m V \u2192 \u2102`.\n\nIts hypotheses are:\n- `hdiag : D \u2264 \u2211 u, (\u220f i, \u03bc n (u i)) * (\u220f i, (u i : \u2115) : \u2115) * \u2211 p \u2208 I, \u03c6 (Real.log p - G (n+1)) * \u2211 a, \u03b1 a * \u03b8 a * \u2016C u p a * primeProductTransform greg (p * (\u220f i, (u i : \u2115)) * outside.prod * (a.1 : \u2115)) (\u220f i, (a.2.1 i : \u2115)) a.2.2.val\u2016 ^ 2`. Here `\u03b1 a = movingAmplitudePrior \u2026` and `\u03b8 a` is the harmonic weight already written out in `movingAmplitude_symmetrized_harmonic_diagonal_live`.\n- `h\u03bc0`, `h\u03c60`, and nonnegativity of the priors.\n- `h\u03b8 : \u2200 u, (\u220f i, \u03bc n (u i)) \u2260 0 \u2192 \u2200 p a, (\u2200 i, primeSubsetPrior P (Q i) (a.2.1 i) \u2260 0) \u2192 smoothGiantPrior Pg \u03c6 (G (n+1)) a.1 \u2260 0 \u2192 C u p a \u2260 0 \u2192 \u03b8 a \u2264 K`.\n\nThe conclusion is `D \u2264 K * (same sum with the \u03b8 a factor removed)`, with `K \u2265 0` where needed. The proof is the current lines 44\u201368 and 73\u201384, with `hcost` replaced by `h\u03b8`. Add a small helper that turns `movingAmplitudePrior \u2026 a \u2260 0` into the pair (`smoothGiantPrior \u2026 a.1 \u2260 0`, `\u2200 i, primeSubsetPrior \u2026 \u2260 0`), replacing the `h\u03bd` and `left_ne_zero_of_mul` steps.\n\nThen the target theorem becomes: `hdiag := movingAmplitude_symmetrized_harmonic_diagonal_live \u2026`; `exact movingAmplitude_diagonal_le_of_weight_le \u2026 (C := fun u p a => movingSymmetrizedTemplateCoefficient Subtype.val outside \u03bc childBound pivotBound V F \u03c6 G n r m a.2.2.val u a.2.1 p a.1) hdiag (fun u hu p a h\u03bd h\u03b1 hc => moving_harmonic_full_counterpart_le \u2026 (hX a.1 h\u03b1) (hproduct u hu a h\u03bd p hc))`. The `unfold movingAmplitudeSymmetrizedRegularEnergy` step may need a `show` or `simpa`.\n\nMovingAmplitudeSymmetrizedCost uses the same call with `movingSymmetrizedTemplateCoefficient_full_harmonic_cost_le`. MovingAmplitudeFullHarmonicCost and InitialMovingEarlyCost use `C := fun u p a => movingTemplateCoefficient \u2026 (movingRestoreSample n r m u a.2.1) p a.1` with their respective cost lemmas. The remaining three files with the same pattern would do likewise.",
+      "benefit": "About seven ~40-line proofs shrink to about 5\u20138 lines each: derive `hdiag`, then supply the pointwise weight bound. The case-splitting and `convert \u2026 <;> ring` algebra is maintained and debugged once. A reader sees that the files differ only in the coefficient and in how `\u03b8 a \u2264 K` is proved, instead of diffing near-identical tactic blocks.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingAmplitudeSymmetrizedCost.lean",
+          "declaration": "movingAmplitude_symmetrized_full_harmonic_cost_le",
+          "excerpt": "  by_cases hu : (\u220f i, \u03bc n (u i)) = 0\n  \u00b7 simp only [hu, zero_mul, mul_zero, Finset.sum_const_zero, le_refl]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingAmplitudeFullHarmonicCost.lean",
+          "declaration": "movingAmplitude_full_harmonic_cost_le",
+          "excerpt": "  have hcost' := mul_le_mul_of_nonneg_left hcost\n    (mul_nonneg (mul_nonneg hpos h\u03b1) (sq_nonneg"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Construction/InitialMovingEarlyCost.lean",
+          "declaration": "movingAmplitude_initial_regular_harmonic_cost",
+          "excerpt": "  have h\u03bd i : primeSubsetPrior P (Q i) (a.2.1 i) \u2260 0 :=\n    Finset.prod_ne_zero_iff.mp (right_ne_zero_of_mul ha) i (Finset.mem_univ i)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/NumberTheory/Ostmann/Arithmetic/MovingFullHarmonicCost.lean",
+          "declaration": "moving_harmonic_full_counterpart_le",
+          "excerpt": "    (hy : Real.exp (totalLower) \u2264 ((\u220f i, y i : \u2115) : \u211d)) :"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 42136,
+    "cache_read_input_tokens": 123954,
+    "output_tokens": 6583,
+    "output_tokens_details": {
+      "thinking_tokens": 2087
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 42136,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3354,
+        "cache_read_input_tokens": 42394,
+        "cache_creation_input_tokens": 3671,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3671
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2467934,
+  "duration_ms": 50795,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T00:37:57",
+  "unit": "file",
+  "source_sha256": "e218e875f8b69bf320427118788c6dd9bb544b088767f17d5ba7a5680c8eed68",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

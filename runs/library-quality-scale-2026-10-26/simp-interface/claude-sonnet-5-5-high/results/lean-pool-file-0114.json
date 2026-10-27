@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0114",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file and the related curve files: CurveOperators, CurveLocalSmoothness, CurveJetOperators and the rest of the Amnr directory. I searched for existing apply/eval simp lemmas for amnrCurveCompose, amnrCurveJointCompose and amnrCurveOperatorMap and found none. Only amnrCurveOperator has @[simp] amnrCurveOperator_apply. The target file has no simp attributes of its own, so the findings are about the missing simp interface for its definition and for the neighbouring ones it uses. I did not run Lean. The rfl-ness of the proposed lemmas is inferred from the definitions, so it is likely but unchecked. The proposed lemmas would also need the right argument order, and the CurveOperators lemma would live in a different file.",
+  "findings": [
+    {
+      "declaration": "amnrCurveJointCompose",
+      "start_line": 24,
+      "end_line": 28,
+      "excerpt": "def amnrCurveJointCompose (f : \u211d \u00d7 E \u2192 F) (hf : Continuous f) (\u03b7 : C(K, \u211d)) :\n    C(K, E) \u2192 C(K, F) :=\n  amnrCurveCompose (fun t x => f (\u03b7 t, x))",
+      "problem": "The definition has no pointwise evaluation lemma, simp or otherwise: nothing says `amnrCurveJointCompose f hf \u03b7 u t = f (\u03b7 t, u t)`. The same holds for the underlying `amnrCurveCompose`. The sibling `amnrCurveOperator` does have `@[simp] amnrCurveOperator_apply`, so the interface is inconsistent. Without a lemma, users unfold the definition by hand with `change` or `rfl`. For example, `change f (\u03b7 t, v t) = \u03c7 (\u03b7 t, v t) \u2022 f (\u03b7 t, v t)` in CurveLocalSmoothness, and `have he : P \u2218 N = (fun x => f (\u03b7 t, x)) \u2218 S := rfl`. The target's own `hderiv` proof also ends in a bare `rfl`.",
+      "proposed_change": "Add `@[simp] theorem amnrCurveCompose_apply (f hf u t) : amnrCurveCompose f hf u t = f t (u t) := rfl` next to the definition in CurveOperators. Then add `@[simp] theorem amnrCurveJointCompose_apply (f hf \u03b7 u t) : amnrCurveJointCompose f hf \u03b7 u t = f (\u03b7 t, u t) := rfl` right after the definition in this file. The direction is the natural normal form: the right-hand side is strictly smaller, with no definition left to unfold and no cycle. The `change`/`rfl` steps in downstream proofs, such as the `hnear` proof, can then become `simp` or `rw`.",
+      "benefit": "Evaluating a substituted curve at a time `t` becomes a canonical, discoverable simp step. It no longer depends on definitional unfolding through `change`, which is brittle if the definition is ever refactored. The API also becomes consistent with `amnrCurveOperator_apply`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/Amnr/CurveLocalSmoothness.lean",
+          "declaration": "amnrCurveJointCompose_contDiff_infty_local",
+          "excerpt": "change f (\u03b7 t, v t) = \u03c7 (\u03b7 t, v t) \u2022 f (\u03b7 t, v t)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/Amnr/CurveLocalSmoothness.lean",
+          "declaration": "amnrCurveJointCompose_fderiv_eval_local",
+          "excerpt": "have he : P \u2218 N = (fun x => f (\u03b7 t, x)) \u2218 S := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/Amnr/CurveOperators.lean",
+          "declaration": "amnrCurveOperator_apply",
+          "excerpt": "amnrCurveOperator A u t = A t (u t) := rfl"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/Amnr/CurveOperators.lean",
+          "declaration": "amnrCurveCompose",
+          "excerpt": "\u27e8fun t => f t (u t), hf.comp (continuous_id.prodMk u.continuous)\u27e9"
+        }
+      ]
+    },
+    {
+      "declaration": "amnrCurveJointCompose_contDiff_nat",
+      "start_line": 67,
+      "end_line": 70,
+      "excerpt": "convert (amnrCurveOperatorMap (K := K) (E := E) (F := F)).contDiff.comp hcurve using 1\n      rfl",
+      "problem": "`amnrCurveOperatorMap` has no `@[simp]` coe/apply lemma saying `amnrCurveOperatorMap A = amnrCurveOperator A`. In the `succ` case the target therefore needs `convert \u2026 using 1` followed by a bare `rfl` to identify `fun u => amnrCurveOperator (\u2026)` with `amnrCurveOperatorMap \u2218 \u2026`. Its own definition proves `map_add'` and `map_smul'` by `simp`, which only works because of `amnrCurveOperator_apply`. A user cannot reduce `amnrCurveOperatorMap A u t` through simp without unfolding.",
+      "proposed_change": "In CurveOperators, add `@[simp] theorem amnrCurveOperatorMap_apply (A : C(K, E \u2192L[\u211d] F)) : amnrCurveOperatorMap A = amnrCurveOperator A := rfl`. The orientation is canonical, since it eliminates the wrapper map and leaves the lemma `amnrCurveOperator_apply` to finish the evaluation. Then the `convert \u2026 using 1; rfl` step can be replaced by a `simp`/`Function.comp_def`-based `exact`.",
+      "benefit": "This removes definitional-unfolding steps from the proof and lets simp normalize `amnrCurveOperatorMap` terms to the already-simp-normal `amnrCurveOperator`. Later bundled-map uses then rewrite uniformly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/Amnr/CurveOperators.lean",
+          "declaration": "amnrCurveOperatorMap",
+          "excerpt": "map_add' := by intro A B; ext u t; simp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/AnomalousDiffusion/AVenhance/Infra/Section4/Amnr/CurveOperators.lean",
+          "declaration": "amnrCurveOperator_apply",
+          "excerpt": "amnrCurveOperator A u t = A t (u t) := rfl"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 12361,
+    "cache_read_input_tokens": 58548,
+    "output_tokens": 4258,
+    "output_tokens_details": {
+      "thinking_tokens": 435
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12361,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2839,
+        "cache_read_input_tokens": 16728,
+        "cache_creation_input_tokens": 2848,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2848
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.09789880000000001,
+  "duration_ms": 35476,
+  "turns": 9,
+  "attempts": 2,
+  "judged": "2026-10-26T23:05:42",
+  "unit": "file",
+  "source_sha256": "724cc86ae51687ef7bab636a21a9f708a06b43ee1331f6c2b9dfa9d8d56c35ca",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

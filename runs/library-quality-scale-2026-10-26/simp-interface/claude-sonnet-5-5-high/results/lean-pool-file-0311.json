@@ -1,0 +1,125 @@
+{
+  "id": "lean-pool-file-0311",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked its @[simp] lemmas: frameArgument_apply, copyFrame_coefficient, copyFrame_synthesis, copyFrame_forcingLinear, transportArgument_apply, transported_synthesis, withSource_real and withSource_imag. They are rfl-style lemmas with terminating, non-overlapping left-hand sides, and I saw no loop or competing rule. The simp copyFrame_normal, copyFrame_normalMotion and copyFrame_ambient lemmas in ParticularWaveBounds do not conflict with them. The weaknesses I found are in the transportedFrame interface. It has no field-level simp lemmas, and the derived transported_* identities are not exposed to simp even though transported_synthesis is. I could not run Lean. The claim that the proposed lemmas would normalize the downstream proofs is based on reading those proofs, not on a test. A possible non-termination risk is that the proposed transported_normal and transported_normalMotion rewrites are not guarded. The transported_coefficient lemma reduces an expression and introduces no new redex, so I expect it to terminate.",
+  "findings": [
+    {
+      "declaration": "transportedFrame (and its field lemmas)",
+      "start_line": 861,
+      "end_line": 874,
+      "excerpt": "  shear z := rate \u2022 d.shear (\u03c6 z.1,shift+rate*z.2)",
+      "problem": "`transportedFrame` is a 12-field structure with no field-projection simp lemmas. Every proof about it unfolds the whole definition with `simp only [transportedFrame, ...]`. Examples are `transported_errors`, `transported_coefficient`, `transported_kinematics`, `frameTangentData_transport` and `nativeFrame_transport`. Each of these has to re-derive field-wise facts such as `(transportedFrame d \u03c6 s r n).eigenvalue z = r * d.eigenvalue (\u03c6 z.1, s+r*z.2)`. Only `synthesisColumn` has a simp lemma (`transported_synthesis`), so the interface is inconsistent. A reader cannot tell which transported quantities normalise automatically.",
+      "proposed_change": "Add field lemmas, for example by marking `transportedFrame` with `@[simps]` or writing `transportedFrame_beta`, `transportedFrame_eigenvalue` and so on. Their right-hand sides are the existing expressions `normalScale * d.beta (\u03c6 z.1, shift + rate*z.2)` and the like. Mark them `@[simp]`. The field lemmas rewrite a projection of `transportedFrame` into projections of the base frame, so they terminate. The `simp only [transportedFrame, ...]` calls can then name specific field lemmas and avoid unfolding the whole structure.",
+      "benefit": "The proofs of transported_errors, transported_coefficient, transported_kinematics and frameTangentData_transport would depend on a stable set of rewrite rules. They would no longer depend on unfolding the full structure literal, and downstream files could reuse the same rules.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ScaledActualParticularControl.lean",
+          "declaration": "nativeFrame_transport",
+          "excerpt": "simp only [transportedFrame,nativeFrame,PrimaryCopyBridge.reindex,h\u03c7]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ScaledActualParticularControl.lean",
+          "declaration": "transported_errors",
+          "excerpt": "simp only [transportedFrame, PrimaryODE.FrameData.error11, PrimaryODE.FrameData.error12,"
+        }
+      ]
+    },
+    {
+      "declaration": "transported_coefficient / transported_normal / transported_normalMotion",
+      "start_line": 944,
+      "end_line": 1005,
+      "excerpt": "      (normalScale*rate) \u2022 d.normalMotion (\u03c6 z.1,shift+rate*z.2) := by",
+      "problem": "These are the canonical rewrite identities for the derived quantities `coefficient`, `normal` and `normalMotion` of a transported frame. Unlike `transported_synthesis`, they are not `@[simp]`, so the same fact is rediscovered by hand. `transported_energy` uses `rw [transported_coefficient, ...]`. ActualParticularStageControls does `change (transportedFrame ...).normal ...` followed by `rw [transported_normal]`. `frameTangentData_transport` proves its normal and normalMotion fields with explicit `exact transported_normal ...`. The simp interface for the object is therefore incomplete: the synthesis column normalises automatically, but the coefficient, normal and normal motion do not.",
+      "proposed_change": "Mark `transported_coefficient`, `transported_normal` and `transported_normalMotion` as `@[simp]`, or at least consider doing so. Their left-hand sides are rooted at `transportedFrame` and the right-hand sides contain only base-frame terms, so I do not expect the rewrite to loop. Keep `transported_errors` as a plain lemma, because its conjunction form is not suited to simp. If stating these as simp rules is judged too aggressive for the copy-frame simp set, state them via a `@[simp]` `transportedFrame_*` family instead. Then the `change ...; rw [transported_normal]` call sites can become `simp`.",
+      "benefit": "Normalisation of expressions mentioning a transported frame becomes uniform, because coefficient, normal, normal motion and synthesis column all reduce to the base frame. Call sites no longer need `change` followed by an explicit `rw`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ScaledActualParticularControl.lean",
+          "declaration": "transported_synthesis",
+          "excerpt": "@[simp] theorem transported_synthesis (d : PrimaryODE.FrameData P) (\u03c6 : Q \u2192 P)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ActualParticularStageControls.lean",
+          "declaration": "call site (around line 1020)",
+          "excerpt": "rw [transported_normal]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ParticularWaveBounds.lean",
+          "declaration": "copyFrame_normal",
+          "excerpt": "@[simp] theorem copyFrame_normal {P : Type} (d : PrimaryODE.FrameData (P \u00d7 \u211d))"
+        }
+      ]
+    },
+    {
+      "declaration": "length / envelope / interval / geometry / frame (scaled-target definitions)",
+      "start_line": 1227,
+      "end_line": 1229,
+      "excerpt": "noncomputable def length (F : PhaseConstruction D) (clock : ActualSignedControl.PositiveScale Label)",
+      "problem": "The scaled-control definitions `length`, `envelope`, `interval`, `geometry` and `frame` are plain non-reducible defs with no unfolding or application lemma. Their docstrings say 'given by ...', but the proofs repeatedly use `change` to expose the unfolded form. `scaledControl` has `change F.L (l,n)/clock.value l n \u2264 K*s.slow n` and `change Real.exp ((clock.value l n*((F.E+4*F.C)/D.scale (l,n)))*(F.L (l,n)/clock.value l n)) \u2264 K`. Such `change` calls are brittle and cannot be combined with simp. The targetDomain and interval membership goals have the same issue.",
+      "proposed_change": "Add rfl-proved simp equation lemmas, such as `length F clock l n = F.L (l,n) / clock.value l n` and `envelope F clock l n v = referenceP (F.lam (l,n)) (F.u (l,n)) (F.L (l,n)) (clock.value l n * v)`. Also add `mem_interval : v \u2208 interval F clock i \u2194 clock.value i.1 i.2 * v \u2208 F.V i`. Mark the first two `@[simp]`: their right-hand sides use only base-frame and clock terms, so there is no cycle. The `change` steps in `scaledControl` can then be replaced by `rw [length]` or `simp only [...]`.",
+      "benefit": "Proofs stop depending on definitional unfolding inside `change`. The statements `clock_mem`, `interval_contains` and `patch_envelope` can be normalised by simp. If the defs are later refactored, the proofs will not fail inside `change`.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ScaledActualParticularControl.lean",
+          "declaration": "scaledControl",
+          "excerpt": "change F.L (l,n)/clock.value l n \u2264 K*s.slow n"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/NavierStokes/ScaledActualParticularControl.lean",
+          "declaration": "envelope",
+          "excerpt": "referenceP (F.lam (l,n)) (F.u (l,n)) (F.L (l,n)) (clock.value l n*v)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 71096,
+    "cache_read_input_tokens": 403072,
+    "output_tokens": 7966,
+    "output_tokens_details": {
+      "thinking_tokens": 2441
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 71096,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3372,
+        "cache_read_input_tokens": 71957,
+        "cache_creation_input_tokens": 3152,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3152
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.4043792,
+  "duration_ms": 59138,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-27T01:32:54",
+  "unit": "file",
+  "source_sha256": "5e310e0bef4ec909ca942b9ec156fbc5c3a2a1c3baa935c32a60e8b3636a6d23",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

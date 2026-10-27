@@ -1,0 +1,104 @@
+{
+  "id": "openai-math-file-0167",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definition of Transitive in TransitiveNameModel.lean. I did not run Lean, so the rewrites below are untested. I considered the ext-and-transitivity argument in pair_mem, union_mem and sep_mem, and the environment-extension membership proof that appears four times. I did not report internal_power (it does not use the pattern) or the eval_* lemmas (they are different small ext arguments).",
+  "findings": [
+    {
+      "declaration": "pair_mem / union_mem / sep_mem",
+      "start_line": 68,
+      "end_line": 138,
+      "excerpt": "have hc' : c = ({a,b} : ZFSet.{u}) := by\n    apply ZFSet.ext\n    intro x\n    constructor",
+      "problem": "Three theorems repeat one argument. Each gets a witness b \u2208 M whose M-members are described, then proves b = target by ZFSet.ext, and finally transports membership with \u25b8. In every proof, x \u2208 b gives x \u2208 M by transitivity, and the description then gives x \u2208 target. In the other direction, x \u2208 target is first shown to lie in M, and then the description gives x \u2208 b. Only the step that places elements of the target in M differs: ha/hb for pair, hM a ha / hM y hyM for union, and hM a ha for sep. The ext/constructor/\u25b8 skeleton is copied three times.",
+      "proposed_change": "Add a lemma before pair_mem:\n\ntheorem mem_of_mem_iff (M : ZFSet.{u}) (hM : Transitive M) {b s : ZFSet.{u}} (hb : b \u2208 M)\n    (hsM : \u2200 x \u2208 s, x \u2208 M) (h : \u2200 x \u2208 M, x \u2208 b \u2194 x \u2208 s) : s \u2208 M := by\n  have : b = s := ZFSet.ext fun x => \u27e8fun hx => (h x (hM b hb x hx)).mp hx, fun hx => (h x (hsM x hx)).mpr hx\u27e9\n  exact this \u25b8 hb\n\nThen rewrite the three uses with it:\n- pair_mem: obtain \u27e8c,hc,hcdef\u27e9 := hP a ha b hb; exact mem_of_mem_iff M hM hc (fun x hx => (ZFSet.mem_pair.mp hx).elim (fun h => h \u25b8 ha) (fun h => h \u25b8 hb)) (fun x hx => (hcdef x hx).trans ZFSet.mem_pair.symm).\n- union_mem: the hsM argument is fun x hx => by obtain \u27e8y,hy,hxy\u27e9 := ZFSet.mem_sUnion.mp hx; exact hM y (hM a ha y hy) x hxy. The iff argument rewrites hbdef x hx with ZFSet.mem_sUnion and the fact that y \u2208 a implies y \u2208 M.\n- sep_mem: the hsM argument is fun x hx => hM a ha x (ZFSet.mem_sep.mp hx).1. The iff argument combines hbdef x hx with \u03c6.absolute M hM (cons x env), using the shared environment-extension fact from the next finding.",
+      "benefit": "The transitivity/extensionality reasoning is written once, and each closure theorem reduces to the one fact specific to it: why the target's elements lie in M, and the axiom's description. Later closure lemmas, such as one for ZFSet.range or image, would also reuse the helper. Readers no longer have to compare three near-identical 15-line ext proofs to see what differs.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/Syntax/BoundedSetTheory.lean",
+          "declaration": "union_mem",
+          "excerpt": "have he : b = ZFSet.sUnion a := by\n    apply ZFSet.ext\n    intro x\n    constructor"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/Syntax/BoundedSetTheory.lean",
+          "declaration": "sep_mem",
+          "excerpt": "have heq : b = ZFSet.sep (fun x => \u03c6.Eval (cons x env)) a := by\n    apply ZFSet.ext\n    intro x\n    constructor"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/SetModels/TransitiveNameModel.lean",
+          "declaration": "Transitive",
+          "excerpt": "def Transitive (M : ZFSet.{u}) : Prop := \u2200 x \u2208 M, \u2200 y \u2208 x, y \u2208 M"
+        }
+      ]
+    },
+    {
+      "declaration": "Formula.absolute / sep_mem",
+      "start_line": 47,
+      "end_line": 53,
+      "excerpt": "exact \u27e8x,hi,(ih (cons x env) (fun n => by cases n <;> simp [cons,he,hx])).mp h\u03c6\u27e9",
+      "problem": "The same sub-proof appears four times: if x \u2208 M and every env i \u2208 M, then every cons x env i \u2208 M. It is the inline term `fun n => by cases n <;> simp [cons,he,hx]`. It occurs twice in Formula.absolute (lines 50 and 53) and twice in sep_mem (lines 132 and 137). It is a case split plus a simp call that depends on unfolding `cons`, so each use is opaque and fragile if `cons` changes.",
+      "proposed_change": "Prove one lemma right after cons_succ:\n\ntheorem cons_mem {M x : ZFSet.{u}} {env : \u2115 \u2192 ZFSet.{u}} (hx : x \u2208 M) (he : \u2200 i, env i \u2208 M) : \u2200 i, cons x env i \u2208 M\n  | 0 => hx\n  | n+1 => he n\n\nThen replace each inline `fun n => by cases n <;> simp [cons,he,hx]` with `cons_mem hx he` (or `cons_mem hxM he` in sep_mem). The same lemma supplies the environment hypothesis for \u03c6.absolute in the sep_mem iff argument of the previous finding.",
+      "benefit": "The invariant \"extending an M-valued environment by an element of M keeps it M-valued\" gets a name and a term-mode proof. The four proofs lose their simp calls and become shorter and more robust. Any future induction over bounded formulas can use the lemma directly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/Syntax/BoundedSetTheory.lean",
+          "declaration": "Formula.absolute",
+          "excerpt": "exact \u27e8x,hx,hi,(ih (cons x env) (fun n => by cases n <;> simp [cons,he,hx])).mpr h\u03c6\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Computability/DegreeRigidity/Syntax/BoundedSetTheory.lean",
+          "declaration": "sep_mem",
+          "excerpt": "exact (\u03c6.absolute M hM _ (fun n => by cases n <;> simp [cons,he,hxM])).mp h\u03c6"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 14650,
+    "cache_read_input_tokens": 18275,
+    "output_tokens": 3939,
+    "output_tokens_details": {
+      "thinking_tokens": 964
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14650,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3051,
+        "cache_read_input_tokens": 14346,
+        "cache_creation_input_tokens": 4233,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4233
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0998255,
+  "duration_ms": 26853,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:15:17",
+  "unit": "file",
+  "source_sha256": "77ff94ce22ecd93ac5dc99d2ffb168ef755398b17e769bef232f970746da7c91",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

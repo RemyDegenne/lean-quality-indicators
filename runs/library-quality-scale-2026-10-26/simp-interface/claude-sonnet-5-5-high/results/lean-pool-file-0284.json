@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0284",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the definitions in Combinators/Helpers.lean (idleDir, moveLeftDir, readBackWrite, writeAndMove_readBack, idleDir_start, idleDir_right_of_start). I grepped the Turing-machine library for how idleDir and moveLeftDir are unfolded elsewhere. Helpers.lean has no @[simp] lemmas and no lemma for the off-start case of either direction function. The repeated `rw [idleDir, ite_eq_right h]` and `simp [idleDir, \u2026]` unfoldings across files support the finding. I could not run Lean. I cannot rule out that adding a @[simp] lemma would interact with other proofs that `simp [idleDir]`. Only the missing-interface finding is reported. I found no rewrite cycles or competing simp rules in this file.",
+  "findings": [
+    {
+      "declaration": "rev_idle_eq / reverseTM_copy_loop / reverseTM_emit_loop (idleDir, moveLeftDir off-start unfolding)",
+      "start_line": 107,
+      "end_line": 110,
+      "excerpt": "rw [writeAndMove_readBack t h, idleDir, ite_eq_right h, Tape.move]",
+      "problem": "The simp interface for `idleDir` and `moveLeftDir` lacks the canonical off-start lemmas. Helpers.lean only provides the start-symbol cases (`idleDir_start`, `idleDir_right_of_start`, `moveLeftDir_right_of_start`). To reduce `idleDir g` or `moveLeftDir g` when `g \u2260 \u0393.start`, every proof unfolds the definition and then rewrites with `ite_eq_right`. This file does it at lines 110, 140, 146, 209, 233 and 239. Other files repeat it with `simp [idleDir, hread, Tape.move]` and `rw [idleDir, ite_eq_right hh]`. A file-private copy, `idleDir_stay_of_ge_one`, exists in Union.lean. Unfolding the definition exposes an `if` on `\u0393`-equality instead of a normal form, so `simp` cannot reduce `idleDir c.input.read` to `.stay` from a hypothesis `c.input.read \u2260 \u0393.start` without a case-specific unfold.",
+      "proposed_change": "In Helpers.lean, next to `idleDir_right_of_start`, add `theorem idleDir_of_ne_start {g : \u0393} (h : g \u2260 \u0393.start) : idleDir g = Dir3.stay` and `theorem moveLeftDir_of_ne_start {g : \u0393} (h : g \u2260 \u0393.start) : moveLeftDir g = Dir3.left`. Prove them by `simp [idleDir, h]` or `if_neg h`. Mark them `@[simp]` so that, with `h` in the simp set, `idleDir`/`moveLeftDir` reduce without being unfolded. Both are conditional on a hypothesis that is already discharged by assumption, so there is no looping risk. Then replace the `rw [idleDir, ite_eq_right \u2026]` and `rw [moveLeftDir, ite_eq_right \u2026]` sequences here with `rw [idleDir_of_ne_start h]` or `simp [h]`. Keep `idleDir_start` and `moveLeftDir_start` as the start-symbol cases, so the two cases are complementary and do not compete.",
+      "benefit": "The `if` encoding is kept out of the proofs, and the same two lemmas serve this file, ParkAll, CopyOutput, Subroutines/Internal and the other users. Proofs state the intent (an off-start head idles or moves left) instead of unfolding and chasing `ite`. Definitions can be changed later without touching every proof.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Combinators/Helpers.lean",
+          "declaration": "idleDir",
+          "excerpt": "if head = \u0393.start then .right else .stay"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Combinators/Internal/Union.lean",
+          "declaration": "idleDir_stay_of_ge_one",
+          "excerpt": "rw [idleDir, ite_eq_right]; rw [Tape.read]; exact hno _ hhead"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Subroutines/ParkAll.lean",
+          "declaration": "move_idleDir_eq_of_startInvariant",
+          "excerpt": "rw [idleDir, ite_eq_right hh]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Subroutines/UnaryLength/Internal.lean",
+          "declaration": "unaryLength step lemma",
+          "excerpt": "simp [idleDir, hread, Tape.move]"
+        }
+      ]
+    },
+    {
+      "declaration": "reverseTM_copy_loop and reverseTM_emit_loop (hwmove blocks)",
+      "start_line": 142,
+      "end_line": 147,
+      "excerpt": "rw [moveLeftDir, ite_eq_right hwne]\n        exact writeAndMove_readBack _ hwne _",
+      "problem": "The `hwmove` fact says that writing back the symbol read and moving left (via `moveLeftDir`) is `Tape.move Dir3.left`. It is proved twice with the same `funext` / `Subsingleton.elim` / unfold-`moveLeftDir` / `ite_eq_right` script, once in each loop (also at lines 236\u2013240). The simp set cannot do this step itself. `writeAndMove_readBack` is stated for `Dir3` arguments and is not simp. Nothing reduces `moveLeftDir t.read` for an off-start head, and the one-tape `fun i => \u2026` shape needs a manual `funext`. After `simp only [TM.step, reverseTM, \u2026]` the goal has the form `fun i => (c.work i).writeAndMove (readBackWrite \u2026).to\u0393 (moveLeftDir \u2026)`. The proof must then `rw [hwmove]` by hand.",
+      "proposed_change": "Add a lemma in Helpers.lean such as `theorem writeAndMove_readBack_moveLeftDir (t : Tape) (h : t.read \u2260 \u0393.start) : t.writeAndMove (readBackWrite t.read) (moveLeftDir t.read) = t.move Dir3.left`, and an analogous `idleDir` version for off-start heads. Prove them by `rw [moveLeftDir_of_ne_start h, writeAndMove_readBack t h]`. Mark them `@[simp]`, or at least use them via `simp only [...]`. Then the two `hwmove` blocks reduce to `funext i; simp [Subsingleton.elim i 0, hwne]`, or are removed in favour of the lemma.",
+      "benefit": "This removes about 12 duplicated lines. It also lets the `TM.step` simp call finish the tape update directly instead of via a hand-built `hwmove` equation and a later `rw`. Other machines with the same idle or rewind pattern can reuse it.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Combinators/Helpers.lean",
+          "declaration": "writeAndMove_readBack",
+          "excerpt": "t.writeAndMove (readBackWrite t.read) d = t.move d"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/BeyondBethe/Complexitylib/Models/TuringMachine/Combinators/Helpers.lean",
+          "declaration": "moveLeftDir",
+          "excerpt": "if head = \u0393.start then .right else .left"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 21854,
+    "cache_read_input_tokens": 97230,
+    "output_tokens": 4999,
+    "output_tokens_details": {
+      "thinking_tokens": 553
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21854,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2951,
+        "cache_read_input_tokens": 24121,
+        "cache_creation_input_tokens": 1746,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1746
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14715299999999998,
+  "duration_ms": 38238,
+  "turns": 9,
+  "attempts": 1,
+  "judged": "2026-10-27T00:59:08",
+  "unit": "file",
+  "source_sha256": "486eed3eeb0819261790c38d27b735ae5a2723b9c6da8a0d9f50b39722d57bf9",
+  "rubric": "simp-interface",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}
