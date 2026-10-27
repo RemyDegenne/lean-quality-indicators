@@ -1,0 +1,94 @@
+{
+  "id": "axiom-cfsg-file-0088",
+  "lib": "axiom-cfsg",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and checked the related Mathlib API (LinearEquiv.ofInvolutive, Basis.ext/ext'/sum_repr/constr_basis). I looked at these repeated blocks: the involutivity proof for the swap map, the basis-expansion preambles in the two \"fix\" lemmas, the duplicated `hru` derivation (3 lines, too short to report), and the coord-based nonvanishing arguments for `hv`/`hw` (short, not reported). I did not compile any proposed rewrite. The `LinearEquiv.coe_ofInvolutive` unfolding step in the first proposal is the part I'm least sure of.",
+  "findings": [
+    {
+      "declaration": "hdRo7CCoefAux_swap (involutivity proof) and hdRo7CCoefAux_swap_refl (first component)",
+      "start_line": 165,
+      "end_line": 179,
+      "excerpt": "have hcomp : T.comp T = LinearMap.id := by\n        apply b.ext\n        intro k",
+      "problem": "The same case analysis (k = i, k = j, other) on the basis is proved twice. It shows that the basis-swap map with scalar \u03b5 is an involution using h\u03b5 : \u03b5*\u03b5 = 1. First it appears inside the `LinearEquiv.ofInvolutive` argument of the definition, via `T.comp T = LinearMap.id` and three `rw` branches. Then `hdRo7CCoefAux_swap_refl` proves `g * g = 1` again with `b.ext'` and the same three branches (lines 210-221). The definition's proof is buried in a `by` block and cannot be reused, so the final `g * g = 1` is re-derived from scratch.",
+      "proposed_change": "Hoist the involutivity proof into a private lemma placed before the definition. Call it `hdRo7CCoefAux_swapMap_involutive (b i j \u03b5 hij h\u03b5) : Function.Involutive (b.constr (ZMod 3) fun k => if k = i then \u03b5 \u2022 b j else if k = j then \u03b5 \u2022 b i else b k)`. Its body is the current `T`/`hT`/`hcomp` proof. The definition becomes `LinearEquiv.ofInvolutive (b.constr \u2026) (hdRo7CCoefAux_swapMap_involutive b i j \u03b5 hij h\u03b5)`. Add a corollary `hdRo7CCoefAux_swap_apply_apply : swap \u2026 (swap \u2026 x) = x`, obtained from the lemma after `simp only [hdRo7CCoefAux_swap, LinearEquiv.coe_ofInvolutive]`. The first bullet of `hdRo7CCoefAux_swap_refl` then reduces to `ext x; exact hdRo7CCoefAux_swap_apply_apply \u2026`. The `b.ext'` block with its three-way `by_cases` (lines 210-221) disappears.",
+      "benefit": "The involution fact is proved once under its actual hypotheses (`hij`, `h\u03b5`). The definition becomes a one-line construction and `swap_refl` shrinks by about 12 lines. A change to the swap definition needs only one case analysis re-checked instead of two.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/CFSG/LocalAnalysis/StandardType/GGHdRo7CReflCoef.lean",
+          "declaration": "hdRo7CCoefAux_swap_refl",
+          "excerpt": "change g (g (b k)) = b k\n    by_cases hki : k = i"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-b63f6e8a68d2/Mathlib/Algebra/Module/Equiv/Defs.lean",
+          "declaration": "LinearEquiv.coe_ofInvolutive",
+          "excerpt": "\u21d1(ofInvolutive f hf) = f"
+        }
+      ]
+    },
+    {
+      "declaration": "hdRo7CCoefAux_signChange_fix and hdRo7CCoefAux_swap_fix",
+      "start_line": 137,
+      "end_line": 151,
+      "excerpt": "have hexp : u = \u2211 k, b.coord k u \u2022 b k := by\n    conv_lhs => rw [\u2190 b.sum_repr u]\n    apply Finset.sum_congr rfl\n    intro k _\n    rw [Module.Basis.coord_apply]\n  conv_lhs => rw [hexp]\n  rw [map_sum]",
+      "problem": "Both fixed-vector lemmas open with the same machinery. They prove `u = \u2211 k, b.coord k u \u2022 b k`, rewrite the left side with it, apply `map_sum`, rewrite the right side with it, and then compare the sums term by term. In `hdRo7CCoefAux_swap_fix` the same sequence appears at lines 309-317, with `simp_rw [map_smul]` and `conv_rhs => rw [hexp]`. Only the final termwise argument differs: `Finset.sum_congr rfl` for the sign change, and `Finset.sum_equiv (Equiv.swap i j)` for the swap. The expansion is nontrivial bookkeeping (the `coord_apply` rewrite under a sum, and `conv` on both sides) and is repeated verbatim.",
+      "proposed_change": "Add one private lemma and use it in both places, with the signature `hdRo7CCoefAux_apply_expand {V} [AddCommGroup V] [Module (ZMod 3) V] {m} (b : Module.Basis (Fin m) (ZMod 3) V) (L : V \u2243\u2097[ZMod 3] V) (u : V) : L u = \u2211 k, b.coord k u \u2022 L (b k)`. The proof is `conv_lhs => rw [\u2190 b.sum_repr u]`, then `rw [map_sum]`, then `Finset.sum_congr rfl` with `map_smul` and `Module.Basis.coord_apply`. In `signChange_fix`, after `rw [hdRo7CCoefAux_apply_expand b L u]` and `conv_rhs => rw [hexp]`, the goal is `\u2211 k, coord k u \u2022 L (b k) = \u2211 k, coord k u \u2022 b k`. For `k = i` the term is killed by `hu`, and otherwise `ggOrthSignChange_apply_of_ne` applies. In `swap_fix`, the same expansion gives `\u2211 k, coord k u \u2022 g (b k)`, which `Finset.sum_equiv (Equiv.swap i j)` compares with `\u2211 k, coord k u \u2022 b k` using the existing `hi`/`hj` and the apply lemmas.",
+      "benefit": "The expansion of a vector in a basis is stated and proved once. Each fix lemma then shows only its mathematical content: which coordinates are fixed or permuted. This removes about 8 duplicated lines. It also makes the common strategy for showing that an automorphism defined on the basis fixes u explicit, which helps if more such automorphisms are added.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/CFSG/LocalAnalysis/StandardType/GGHdRo7CReflCoef.lean",
+          "declaration": "hdRo7CCoefAux_swap_fix",
+          "excerpt": "have hexp : u = \u2211 k, b.coord k u \u2022 b k := by\n    conv_lhs => rw [\u2190 b.sum_repr u]\n    apply Finset.sum_congr rfl\n    intro k _\n    rw [Module.Basis.coord_apply]\n  conv_lhs => rw [hexp]\n  rw [map_sum]\n  simp_rw [map_smul]\n  conv_rhs => rw [hexp]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 31540,
+    "cache_read_input_tokens": 96873,
+    "output_tokens": 7303,
+    "output_tokens_details": {
+      "thinking_tokens": 3582
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31540,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3950,
+        "cache_read_input_tokens": 31035,
+        "cache_creation_input_tokens": 4434,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4434
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2088973,
+  "duration_ms": 53620,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-27T17:35:37",
+  "unit": "file",
+  "source_sha256": "715e0de45ea72f03bf8d85a79ff646431b5f3e1c077e443b23f0f4f678712bbb",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}
