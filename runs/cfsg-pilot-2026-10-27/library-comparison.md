@@ -8,4 +8,4 @@ Cells are files flagged / reviewed, with Wilson 95% intervals. Flags remain judg
 
 | Library | Flagged / reviewed | Rate (95% CI) |
 |---|---:|---:|
-| axiom-cfsg | 8/20 | 40.0% [21.9%, 61.3%] |
+| axiom-cfsg | 10/24 | 41.7% [24.5%, 61.2%] |
