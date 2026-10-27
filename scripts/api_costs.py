@@ -105,6 +105,8 @@ def main():
     for unit in ("theorems", "files"):
         selected += [(manifest.parent.parent.name, manifest.parent)
                      for manifest in (extra / unit).glob("*/*/judge.json")]
+        selected += [(manifest.parent.parent.name, manifest.parent)
+                     for manifest in (extra / 'scale-300' / unit).glob('*/*/judge.json')]
     expansion = ROOT / 'runs/library-quality-scale-2026-10-26'
     selected += [(manifest.parent.parent.name, manifest.parent)
                  for manifest in expansion.glob('*/*/judge.json')]

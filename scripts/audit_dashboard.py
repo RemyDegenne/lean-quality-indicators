@@ -275,25 +275,33 @@ def library_names():
 
 def add_extra_corpus(audit, is_file, samples, models):
     """Merge another corpus into each model's first pass, retaining cost provenance."""
-    run = EXTRA / ("files" if is_file else "theorems")
-    manifests = sorted((run / audit).glob("*/judge.json"))
-    if not manifests:
-        return samples, models
-    samples = {**samples, **{r["id"]: r for r in map(json.loads, (run / "samples.jsonl").read_text().splitlines())}}
-    for manifest in manifests:
-        protocol = json.loads(manifest.read_text())["protocol"]
-        name = MODEL_NAMES[protocol["model"]]
-        directory = manifest.parent
-        extra = {"label": directory.name, "directory": directory,
-                 "selected": set(protocol["sample_ids"]), "results": load(directory)}
-        if name not in models:
-            models[name] = [extra]
+    unit = 'file' if is_file else 'theorem'
+    subdirectory = 'files' if is_file else 'theorems'
+    for run in (EXTRA / subdirectory, EXTRA / 'scale-300' / subdirectory):
+        manifests = sorted((run / audit).glob("*/judge.json"))
+        if not manifests:
             continue
-        first = models[name][0]
-        components = first.get("components", [first.copy()]) + [extra]
-        first.update(selected=first["selected"] | extra["selected"],
-                     results={**first["results"], **extra["results"]}, components=components,
-                     directories=[c["directory"] for c in components])
+        rows = {r['id']: r for r in map(json.loads, (run / 'samples.jsonl').read_text().splitlines())}
+        for sid in samples.keys() & rows.keys():
+            if target_key(samples[sid], unit) != target_key(rows[sid], unit):
+                raise ValueError('OpenAI continuation changed sample identity')
+        samples = {**rows, **samples}
+        for manifest in manifests:
+            protocol = json.loads(manifest.read_text())["protocol"]
+            name = MODEL_NAMES[protocol["model"]]
+            directory = manifest.parent
+            extra = {"label": directory.name, "directory": directory,
+                     "selected": set(protocol["sample_ids"]), "results": load(directory)}
+            if name not in models:
+                models[name] = [extra]
+                continue
+            first = models[name][0]
+            if first['selected'] & extra['selected']:
+                raise ValueError('OpenAI continuation repeats an existing first-pass target')
+            components = first.get("components", [first.copy()]) + [extra]
+            first.update(selected=first["selected"] | extra["selected"],
+                         results={**first["results"], **extra["results"]}, components=components,
+                         directories=[c["directory"] for c in components])
     return samples, {name: models[name] for name in [*MODEL_NAMES.values()] if name in models}
 
 

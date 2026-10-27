@@ -184,6 +184,16 @@ with two Sol sessions, one session each for the other models, and the shared Cod
 results live in `runs/openai-math-2026-10-21/`; all 42 pinned dependencies are available
 as read-only sources. Resume with `python3 scripts/corpus_pilot.py judge --model Sol --jobs 2`.
 
+Sonnet's unnecessary-hypothesis and Mathlib-duplication audits now continue to 300 targets,
+adding targets 101–300 from the same frozen theorem selection. Its repeated-machinery
+coverage already exceeds that level at 372 files. The
+[theorem continuation](runs/openai-math-2026-10-21/scale-300/theorems/library-comparison.md)
+preserves the first 100 judgments and joins the same first pass in the main reports.
+Run `python3 scripts/openai_scale.py --prepare-only` to prepare, or omit the option to
+resume with one Sonnet 5.5 high session on the lean-fro subscription. The continuation
+has a $40 API-equivalent ceiling, refuses API-key billing and extra usage, and pauses
+on rate-limit rejection. Worker and publication templates are `scripts/openai-scale*.service`.
+
 ## Results so far: unnecessary hypotheses
 
 [Current reports for the seven main audits](AUDIT_RESULTS.md) give target/pass counts, flag

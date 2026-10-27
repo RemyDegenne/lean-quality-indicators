@@ -28,7 +28,8 @@ def publish(chosen):
             raise RuntimeError('Unrelated staged changes; defer publication')
         if staged:
             count = sum(bool(pilot.result_for(r, a)) for r in chosen for a in pilot.AUDITS)
-            subprocess.run(['git', 'commit', '-m', f'Publish {count} source-verified CFSG theorem judgments'],
+            name = getattr(pilot, 'CORPUS_NAME', 'CFSG')
+            subprocess.run(['git', 'commit', '-m', f'Publish {count} source-verified {name} theorem judgments'],
                            cwd=pilot.ROOT, check=True)
         subprocess.run(['git', 'push', 'origin', 'main'], cwd=pilot.ROOT, check=True)
 
