@@ -5,7 +5,7 @@ Sonnet 5.5 high; first-pass totals include the original 30 targets and the next 
 | Audit | Reviewed / planned | Flagged | Rate (95% CI) | API equivalent spent |
 |---|---:|---:|---:|---:|
 | repeated-proof-machinery | 106/300 | 51 | 48.1% [38.8%, 57.5%] | $10.83 |
-| unnecessary-hypotheses | 99/300 | 20 | 20.2% [13.5%, 29.2%] | $6.85 |
-| duplicates-mathlib-inclusive | 98/300 | 4 | 4.1% [1.6%, 10.0%] | $2.27 |
+| unnecessary-hypotheses | 101/300 | 21 | 20.8% [14.0%, 29.7%] | $7.01 |
+| duplicates-mathlib-inclusive | 101/300 | 4 | 4.0% [1.6%, 9.7%] | $2.33 |
 
 Subscription account lean-fro; actual API charges $0.
