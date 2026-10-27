@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0348",
+  "lib": "openai-math",
+  "coverage": "complete",
+  "review_notes": "I read the whole file as supplied in the prompt and did not open other files. Candidate 0 is a real repeat of nontrivial machinery: the weighted-sum norm bound with sign-coefficient bookkeeping. Candidate 1 is a short norm-ball convexity calculation, and a new lemma for it would only wrap Mathlib's `convex_closedBall`. I looked for other repeated proofs and found none that qualify. `extreme_unit_norm_add` and `extreme_unit_scaled_norm_add` are a reduction by scaling, not a repeat. The `![0, ...]` median extractions in `dist_extreme_unit_eq_two` and `extreme_unit_spear` are short `simpa` calls. The two branches of `extreme_unit_dual_face_norming` and the `h01`/`h02` simpa calls are branch or routine duplication. The `hnu`/`hnv` unit-norm checks are two lines each. `cost_error` and `plus_norm` use different sum manipulations. I did not run Lean, so the rewrites below are untested and might need small `simp`/`ring` adjustments.",
+  "claims": [
+    {
+      "finding_index": 0,
+      "assessment": "confirmed",
+      "reason": "`plus_norm` and `minus_norm` have the same 14-line proof, differing only in the sign in `(1 \u00b1 R.sign i)/2`. Each proof does four things: it applies `norm_sum_le`; it shows each coefficient is nonnegative by a `rcases R.sign_eq i` plus `nlinarith` case split; it bounds each term via `norm_smul`, `abs_of_nonneg` and `point_norm`; and it evaluates the coefficient sum with `sum_weight` and `sum_sign`. This is nontrivial and is more than a unit-ball convexity fact. `T` and `a` have no sign assumptions. The structure already supplies `sign_eq`, `weight_nonneg`, `point_norm`, `sum_weight` and `sum_sign`, so nothing extra is needed. No dependency cycle arises, because the helpers sit before `plus` and use only the structure fields. A fix to the nonnegativity case split or the sum evaluation currently has to be made twice. The change keeps the statements of `plus_norm`, `minus_norm` and `difference_mem` unchanged. The benefit is moderate but real: one generic reusable weighted-norm lemma, plus one sign-parametrised lemma.",
+      "shared_lemma": "lemma norm_sum_smul_le_sum {\u03b9 : Type*} (s : Finset \u03b9) (c : \u03b9 \u2192 \u211d) (p : \u03b9 \u2192 E) (hc : \u2200 i \u2208 s, 0 \u2264 c i) (hp : \u2200 i \u2208 s, \u2016p i\u2016 \u2264 1) : \u2016\u2211 i \u2208 s, c i \u2022 p i\u2016 \u2264 \u2211 i \u2208 s, c i\n-- Proof: `norm_sum_le`, then `sum_le_sum`. For each i, `rw [norm_smul, Real.norm_eq_abs, abs_of_nonneg (hc i hi)]` and `mul_le_of_le_one_right (hc i hi) (hp i hi)`.\n\nlemma SignedUnitRepresentation.part_norm {\u03b5 : \u211d} (h\u03b5 : \u03b5 = 1 \u2228 \u03b5 = -1) : \u2016\u2211 i, ((1 + \u03b5 * R.sign i)/2 * R.weight i) \u2022 R.point i\u2016 \u2264 (T + \u03b5 * a)/2\n-- Proof: apply `norm_sum_smul_le_sum`. Coefficient nonnegativity is `rcases R.sign_eq i, h\u03b5` followed by `nlinarith [R.weight_nonneg i]`. Then rewrite the coefficient sum as `\u2211 (w i + \u03b5 * (w i * sign i))/2` and use `\u2190 sum_div, sum_add_distrib, \u2190 mul_sum, R.sum_weight, R.sum_sign`.",
+      "rewritten_uses": [
+        "lemma plus_norm : \u2016R.plus\u2016 \u2264 (T+a)/2 := by\n  have h := R.part_norm (\u03b5 := 1) (Or.inl rfl)\n  simpa [plus] using h   -- `1 * s` and `1 * a` simplify away",
+        "lemma minus_norm : \u2016R.minus\u2016 \u2264 (T-a)/2 := by\n  have h := R.part_norm (\u03b5 := -1) (Or.inr rfl)\n  simp only [neg_mul, one_mul, \u2190 sub_eq_add_neg] at h   -- turns `1 + -s` into `1 - s` and `T + -a` into `T - a`\n  exact h   -- or `simpa [minus, sub_eq_add_neg] using h`; `convert h using 3 <;> ring` is a fallback"
+      ],
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Mahler/Medians.lean",
+          "declaration": "SymmetricMahler.SignedUnitRepresentation.plus_norm",
+          "excerpt": "have hc : 0 \u2264 (1+R.sign i)/2 * R.weight i := by\n        rcases R.sign_eq i with h | h <;> rw [h] <;> nlinarith [R.weight_nonneg i]\n      rw [norm_smul, Real.norm_eq_abs, abs_of_nonneg hc]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Mahler/Medians.lean",
+          "declaration": "SymmetricMahler.SignedUnitRepresentation.minus_norm",
+          "excerpt": "have hc : 0 \u2264 (1-R.sign i)/2 * R.weight i := by\n        rcases R.sign_eq i with h | h <;> rw [h] <;> nlinarith [R.weight_nonneg i]\n      rw [norm_smul, Real.norm_eq_abs, abs_of_nonneg hc]"
+        }
+      ]
+    },
+    {
+      "finding_index": 1,
+      "assessment": "refuted",
+      "reason": "The two bullets are textually parallel calc chains, but they only prove that a convex combination of two vectors of norm \u2264 C has norm \u2264 C. That is convexity of a norm ball, a short and standard calculation. Mathlib already has `convex_closedBall (0 : E) C`, and the file uses it in `unitBall_eq_finite_convexHull_of_medians`. A new `norm_convex_comb_le` lemma would therefore be a thin wrapper around existing API, or a repackaged calc. The better fix is to call `convex_closedBall` directly at the two bullets, with no shared lemma. The rubric rejects short calculations and thin wrappers, and this candidate is a local cleanup for another rubric. The dedup also saves only about 8 lines inside one proof. The 'reuse in `aggregate_decomposition_of_support`' suggestion has no real counterpart there, because that proof uses `Convex.add` and `convex_closedBall` already.",
+      "shared_lemma": "",
+      "rewritten_uses": [],
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Mahler/Medians.lean",
+          "declaration": "SymmetricMahler.convex_aggregateSet",
+          "excerpt": "_ \u2264 a * A + b * A := add_le_add (mul_le_mul_of_nonneg_left hzp ha)\n        (mul_le_mul_of_nonneg_left hvp hb)\n      _ = A := by rw [\u2190 add_mul, hab, one_mul]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Mahler/Medians.lean",
+          "declaration": "SymmetricMahler.aggregate_decomposition_of_support",
+          "excerpt": "have hv : Convex \u211d S := (convex_aggregateSet w A B).add (convex_closedBall 0 R)"
+        }
+      ]
+    }
+  ],
+  "missed_findings": [],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 27074,
+    "cache_read_input_tokens": 4261,
+    "output_tokens": 5280,
+    "output_tokens_details": {
+      "thinking_tokens": 2318
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27074,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5280,
+        "cache_read_input_tokens": 4261,
+        "cache_creation_input_tokens": 27074,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 27074
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1615261,
+  "duration_ms": 35744,
+  "turns": 2,
+  "attempts": 1,
+  "judged": "2026-10-27T14:08:53",
+  "unit": "file_validation",
+  "source_sha256": "147ad57541fd30758f6b39624bcc7a01c4850267898f23a999ca5b68fa6ba7fc",
+  "baseline_sha256": "4048038eb1c4fd5edcbc4c093c8440185715a7f42b7244fdafe5d759096409d8",
+  "baseline_stratum": "flagged",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

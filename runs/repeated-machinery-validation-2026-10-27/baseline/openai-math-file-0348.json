@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0348",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I looked for nontrivial reasoning repeated across proofs. I confirmed the plus_norm/minus_norm and convex_aggregateSet duplications by reading the line ranges. I did not run Lean, so the proposed helper statements and rewrites are uncompiled sketches. Other near-repeats are branch-level or short: the two branches of extreme_unit_dual_face_norming, and hnu/hnv in extreme_unit_norm_add. I judged these too small or too branch-local to report.",
+  "findings": [
+    {
+      "declaration": "SymmetricMahler.SignedUnitRepresentation.plus_norm / minus_norm",
+      "start_line": 495,
+      "end_line": 523,
+      "excerpt": "lemma minus_norm : \u2016R.minus\u2016 \u2264 (T-a)/2 := by\n  calc\n    _ \u2264 \u2211 i, \u2016((1-R.sign i)/2*R.weight i) \u2022 R.point i\u2016 := norm_sum_le _ _",
+      "problem": "plus_norm (495\u2013508) and minus_norm (510\u2013523) have the same 14-line proof, differing only in the sign in front of R.sign i. Both apply the triangle inequality for finite sums. Both prove nonnegativity of the coefficient by a case split on sign_eq with nlinarith. Both use norm_smul and point_norm to bound each term by its coefficient. Both rewrite the coefficient sum with sum_weight and sum_sign. A fix to one proof (for example the nlinarith case split or the simp_rw) has to be copied to the other by hand.",
+      "proposed_change": "Add a general helper before `plus`, with n arbitrary and no signed-representation structure: `lemma norm_sum_smul_le_sum {\u03b9} (s : Finset \u03b9) (c : \u03b9 \u2192 \u211d) (p : \u03b9 \u2192 E) (hc : \u2200 i, 0 \u2264 c i) (hp : \u2200 i, \u2016p i\u2016 \u2264 1) : \u2016\u2211 i \u2208 s, c i \u2022 p i\u2016 \u2264 \u2211 i \u2208 s, c i`. Prove it with norm_sum_le, then sum_le_sum, using norm_smul, abs_of_nonneg and mul_le_of_le_one_right. Then add a signed-part lemma with a sign parameter \u03b5, using hypothesis `h\u03b5 : \u03b5 = 1 \u2228 \u03b5 = -1`: `lemma part_norm : \u2016\u2211 i, ((1 + \u03b5 * R.sign i)/2 * R.weight i) \u2022 R.point i\u2016 \u2264 (T + \u03b5 * a)/2`. The coefficient nonnegativity is then a single `rcases R.sign_eq i, h\u03b5` case split, and the sum evaluation is one `rw [\u2190 sum_div, sum_add_distrib, \u2190 mul_sum, ...]`. Either define plus and minus as the \u03b5 = 1 and \u03b5 = -1 instances, or prove `plus_norm` and `minus_norm` from `part_norm` with a short `simpa` that normalises `1 + (-1)*s` to `1 - s`. The statements of plus_norm, minus_norm and difference_mem stay unchanged.",
+      "benefit": "The nonnegativity, norm-bound and sum-evaluation reasoning is written once, so fixes and changes to plus/minus stay in one place. The generic helper `norm_sum_smul_le_sum` is also reusable outside this structure.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Mahler/Medians.lean",
+          "declaration": "SymmetricMahler.SignedUnitRepresentation.plus_norm",
+          "excerpt": "rcases R.sign_eq i with h | h <;> rw [h] <;> nlinarith [R.weight_nonneg i]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Mahler/Medians.lean",
+          "declaration": "SymmetricMahler.SignedUnitRepresentation.minus_norm",
+          "excerpt": "rw [\u2190 sum_div, sum_sub_distrib, R.sum_weight, R.sum_sign]"
+        }
+      ]
+    },
+    {
+      "declaration": "SymmetricMahler.convex_aggregateSet",
+      "start_line": 286,
+      "end_line": 301,
+      "excerpt": "      _ \u2264 \u2016a \u2022 zm\u2016 + \u2016b \u2022 vm\u2016 := norm_add_le _ _\n      _ = a * \u2016zm\u2016 + b * \u2016vm\u2016 := by",
+      "problem": "The second and third bullets of convex_aggregateSet (286\u2013293 and 294\u2013301) are identical 8-line calc chains. Each proves that a convex combination a\u2022p + b\u2022q of two vectors of norm \u2264 C has norm \u2264 C, once with C = A and once with C = B. Each runs norm_add_le, norm_smul, abs_of_nonneg, monotonicity, then add_mul/hab/one_mul. This is the convexity of a norm ball. The file already uses `convex_closedBall (0 : E) 1` elsewhere, in unitBall_eq_finite_convexHull_of_medians.",
+      "proposed_change": "Prove the two norm bounds with one shared fact. One option is `lemma norm_convex_comb_le {p q : E} {C a b : \u211d} (hp : \u2016p\u2016 \u2264 C) (hq : \u2016q\u2016 \u2264 C) (ha : 0 \u2264 a) (hb : 0 \u2264 b) (hab : a + b = 1) : \u2016a \u2022 p + b \u2022 q\u2016 \u2264 C`. Prove it once with the existing calc, or by applying `convex_closedBall (0 : E) C` to the two points via `mem_closedBall_zero_iff`. The second and third bullets then become `exact norm_convex_comb_le hzp hvp ha hb hab` and `exact norm_convex_comb_le hzm hvm ha hb hab`. The same helper can be reused in the compactness/convexity arguments for the set S in aggregate_decomposition_of_support if needed.",
+      "benefit": "This removes about 8 duplicated lines of norm arithmetic and makes the convexity proof read as the three facts it checks (sum, plus-norm, minus-norm). It also isolates the one analytic step, so it is easier to maintain or replace with the Mathlib ball-convexity API.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Mahler/Medians.lean",
+          "declaration": "SymmetricMahler.convex_aggregateSet",
+          "excerpt": "_ \u2264 a * A + b * A := add_le_add (mul_le_mul_of_nonneg_left hzp ha)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Analysis/Mahler/Medians.lean",
+          "declaration": "SymmetricMahler.unitBall_eq_finite_convexHull_of_medians",
+          "excerpt": "(convex_closedBall (0 : E) 1)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 30721,
+    "cache_read_input_tokens": 64643,
+    "output_tokens": 4557,
+    "output_tokens_details": {
+      "thinking_tokens": 1474
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30721,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3879,
+        "cache_read_input_tokens": 32174,
+        "cache_creation_input_tokens": 2476,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2476
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1749303,
+  "duration_ms": 32505,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T01:53:36",
+  "unit": "file",
+  "source_sha256": "147ad57541fd30758f6b39624bcc7a01c4850267898f23a999ca5b68fa6ba7fc",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

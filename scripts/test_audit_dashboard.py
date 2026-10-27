@@ -7,11 +7,30 @@ import tempfile
 from unittest.mock import patch
 
 from audit_dashboard import (correlation, phi, union_results, union_counts, union_correlation,
-                             add_extra_corpus, combined_summary)
+                             add_extra_corpus, combined_summary, models_for, is_positive)
 from api_costs import token_cost, full_pass_estimate, directory_expenditure, DIRECTORY_CACHE
 
 
 class DashboardTests(unittest.TestCase):
+    def test_merged_opus_baseline_selects_thousand_but_repeat_stays_three_hundred(self):
+        samples = {f'test-{i:04d}': {'lib': 'test'} for i in range(1000)}
+        with tempfile.TemporaryDirectory() as tmp:
+            models = models_for('unnecessary-hypotheses', Path(tmp), samples, False)
+        self.assertEqual(len(models['Opus'][0]['selected']), 1000)
+        self.assertEqual(len(models['Opus'][1]['selected']), 300)
+
+    def test_definition_targets_in_same_file_remain_distinct_and_use_their_own_flags(self):
+        samples = {str(i): {'lib': 'test', 'dir': 'repo', 'commit': 'abc', 'path': 'A.lean',
+                            'line': i + 1, 'name': f'def{i}'} for i in range(2)}
+        bundle = {'audit': 'definition-fidelity', 'unit': 'definition', 'samples': samples,
+                  'models': {'Opus': [{'selected': set(samples), 'results': {
+                      '0': {'verdict': 'no_docstring'}, '1': {'verdict': 'faithful'}}}]}}
+        union, targets = union_results([bundle])
+        self.assertEqual(len(targets), 2)
+        self.assertEqual(union_counts(union['Opus'], targets, unit='definition')['flagged'], 1)
+        self.assertTrue(is_positive('definition-fidelity', False, {'verdict': 'too_narrow'}))
+        self.assertFalse(is_positive('definition-fidelity', False, {'verdict': 'unclear'}))
+
     def test_appendix_cannot_change_main_union_coverage_cost_or_correlations(self):
         sample = {"lib": "test", "dir": "repo", "commit": "abc", "path": "A.lean"}
         def bundle(audit, flagged, sid):

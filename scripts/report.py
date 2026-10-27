@@ -52,7 +52,7 @@ def main() -> None:
     names = {lib["id"]: lib["name"] for lib in
              tomllib.loads((ROOT / "libraries.toml").read_text())["library"]}
     cfg = indicator.config(ROOT / "indicators" / args.indicator)
-    samples = [s for s in map(json.loads, (run / "samples.jsonl").open())
+    samples = [s for s in map(json.loads, (run / "samples.jsonl").read_text().splitlines())
                if s["lib"] not in cfg["skip_libraries"]]
     results = {}
     for p in (lab / "results").glob("*.json"):

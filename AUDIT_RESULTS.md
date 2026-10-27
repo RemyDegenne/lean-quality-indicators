@@ -1,12 +1,12 @@
 # Audit results
 
-Generated 2026-10-27T13:43:58+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
+Generated 2026-10-27T14:05:34+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
 
 [Appendix: simp interface and concept reinvention — not ready for use](AUDIT_APPENDIX.md). These audits do not contribute to the summaries below.
 
 ## Combined summary
 
-Union across **6 audits**: a target counts once per model if any audit flags it. First passes only; theorem and file samples are counted separately. Each rate uses only targets reviewed on **every contributing audit**; a dash means no such targets. [Aggregation details](AUDIT_METHODS.md#combined-summary).
+Union across **7 audits**: a target counts once per model if any audit flags it. First passes only; theorem, definition and file samples are counted separately. Each rate uses only targets reviewed on **every contributing audit**; a dash means no such targets. [Aggregation details](AUDIT_METHODS.md#combined-summary).
 
 ### Theorem audits: library comparison
 
@@ -15,11 +15,23 @@ Contributing audits: [unnecessary-hypotheses](#unnecessary-hypotheses), [duplica
 | Library | Opus | Sol | Sonnet | Luna | DeepSeek |
 |---|---:|---:|---:|---:|---:|
 | Mathlib | — | 215/300<br>71.7% [66.3%, 76.5%] | 85/300<br>28.3% [23.5%, 33.7%] | 176/300<br>58.7% [53.0%, 64.1%] | 49/100<br>49.0% [39.4%, 58.7%] |
-| Tau Ceti | 39/400<br>9.8% [7.2%, 13.1%] | 65/300<br>21.7% [17.4%, 26.7%] | 22/300<br>7.3% [4.9%, 10.9%] | 62/300<br>20.7% [16.5%, 25.6%] | 11/100<br>11.0% [6.3%, 18.6%] |
-| Formal Frontier | 32/400<br>8.0% [5.7%, 11.1%] | 78/300<br>26.0% [21.4%, 31.2%] | 19/300<br>6.3% [4.1%, 9.7%] | 78/300<br>26.0% [21.4%, 31.2%] | 11/100<br>11.0% [6.3%, 18.6%] |
-| Lean Pool | 83/400<br>20.8% [17.1%, 25.0%] | 95/300<br>31.7% [26.7%, 37.1%] | 55/300<br>18.3% [14.4%, 23.1%] | 87/300<br>29.0% [24.2%, 34.4%] | 22/100<br>22.0% [15.0%, 31.1%] |
-| FLT (Anthropic) | 123/400<br>30.8% [26.4%, 35.4%] | 148/300<br>49.3% [43.7%, 55.0%] | 75/300<br>25.0% [20.4%, 30.2%] | 118/300<br>39.3% [34.0%, 45.0%] | 35/100<br>35.0% [26.4%, 44.7%] |
+| Tau Ceti | 118/1000<br>11.8% [9.9%, 13.9%] | 65/300<br>21.7% [17.4%, 26.7%] | 22/300<br>7.3% [4.9%, 10.9%] | 62/300<br>20.7% [16.5%, 25.6%] | 11/100<br>11.0% [6.3%, 18.6%] |
+| Formal Frontier | 79/1000<br>7.9% [6.4%, 9.7%] | 78/300<br>26.0% [21.4%, 31.2%] | 19/300<br>6.3% [4.1%, 9.7%] | 78/300<br>26.0% [21.4%, 31.2%] | 11/100<br>11.0% [6.3%, 18.6%] |
+| Lean Pool | 215/1000<br>21.5% [19.1%, 24.2%] | 95/300<br>31.7% [26.7%, 37.1%] | 55/300<br>18.3% [14.4%, 23.1%] | 87/300<br>29.0% [24.2%, 34.4%] | 22/100<br>22.0% [15.0%, 31.1%] |
+| FLT (Anthropic) | 319/1000<br>31.9% [29.1%, 34.9%] | 148/300<br>49.3% [43.7%, 55.0%] | 75/300<br>25.0% [20.4%, 30.2%] | 118/300<br>39.3% [34.0%, 45.0%] | 35/100<br>35.0% [26.4%, 44.7%] |
 | OpenAI Math | 18/100<br>18.0% [11.7%, 26.7%] | 23/100<br>23.0% [15.8%, 32.2%] | 17/100<br>17.0% [10.9%, 25.5%] | 24/100<br>24.0% [16.7%, 33.2%] | 18/100<br>18.0% [11.7%, 26.7%] |
+
+### Definition audits: library comparison
+
+Contributing audits: [definition-fidelity](#definition-fidelity).
+
+| Library | Opus | Sol | Sonnet | Luna | DeepSeek |
+|---|---:|---:|---:|---:|---:|
+| Mathlib | 10/1000<br>1.0% [0.5%, 1.8%] | — | — | — | — |
+| Tau Ceti | 11/1000<br>1.1% [0.6%, 2.0%] | — | — | — | — |
+| Formal Frontier | 41/1000<br>4.1% [3.0%, 5.5%] | — | — | — | — |
+| Lean Pool | 33/1000<br>3.3% [2.4%, 4.6%] | — | — | — | — |
+| FLT (Anthropic) | 1000/1000<br>100.0% [99.6%, 100.0%] | — | — | — | — |
 
 ### File audits: library comparison
 
@@ -36,13 +48,13 @@ Contributing audits: [statement-generality](#statement-generality), [vacuity-and
 
 ### Model comparison
 
-| Model | Audits with results | Theorems selected | Files selected | Audit passes done/planned | Theorems flagged / reviewed | Files flagged / reviewed | Judgments done/planned | API expenditure / full-pass estimate |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Opus | 6/6 | 4500 | 100 | 7/7 | 295/1700 | 95/100 | 8100/8100 | $601.49 / $580.09 |
-| Sol | 6/6 | 5100 | 100 | 7/7 | 624/1600 | 93/100 | 8600/8600 | $515.64 / $481.77 |
-| Sonnet | 6/6 | 5100 | 3000 | 6/7 | 273/1600 | 119/130 | 10822/11590 | $471.63 / $260.81 |
-| Luna | 6/6 | 5100 | 130 | 7/7 | 545/1600 | 79/130 | 8720/8720 | $25.31 / $23.11 |
-| DeepSeek | 6/6 | 600 | 40 | 6/6 | 146/600 | 36/40 | 1360/1360 | $10.81 / $48.15 |
+| Model | Audits with results | Theorems selected | Definitions selected | Files selected | Audit passes done/planned | Theorems flagged / reviewed | Definitions flagged / reviewed | Files flagged / reviewed | Judgments done/planned | API expenditure / full-pass estimate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Opus | 7/7 | 5100 | 5000 | 100 | 8/8 | 749/4100 | 1095/5000 | 95/100 | 16100/16100 | $1165.07 / $1142.01 |
+| Sol | 6/7 | 5100 | 0 | 100 | 7/7 | 624/1600 | — | 93/100 | 8600/8600 | $515.64 / $622.87 |
+| Sonnet | 6/7 | 5100 | 0 | 3000 | 6/7 | 273/1600 | — | 119/130 | 10822/11590 | $471.63 / $367.39 |
+| Luna | 6/7 | 5100 | 0 | 130 | 7/7 | 545/1600 | — | 79/130 | 8720/8720 | $25.31 / $29.70 |
+| DeepSeek | 6/7 | 600 | 0 | 40 | 6/6 | 146/600 | — | 36/40 | 1360/1360 | $10.81 / $70.78 |
 
 ### Theorem union correlations
 
@@ -53,6 +65,16 @@ Contributing audits: [statement-generality](#statement-generality), [vacuity-and
 | Sonnet | 0.81 [0.76, 0.85]; n=1300 | 0.54 [0.51, 0.57]; n=1600 | 0.87 [0.83, 0.92]; n=1500 | 0.52 [0.47, 0.56]; n=1600 | 0.65 [0.57, 0.72]; n=600 |
 | Luna | 0.57 [0.51, 0.61]; n=1300 | 0.66 [0.63, 0.70]; n=1600 | 0.52 [0.47, 0.56]; n=1600 | 0.73 [0.66, 0.78]; n=1500 | 0.66 [0.60, 0.72]; n=600 |
 | DeepSeek | 0.74 [0.66, 0.81]; n=500 | 0.63 [0.57, 0.69]; n=600 | 0.65 [0.57, 0.72]; n=600 | 0.66 [0.60, 0.72]; n=600 | — |
+
+### Definition union correlations
+
+| Model | Opus | Sol | Sonnet | Luna | DeepSeek |
+|---|---:|---:|---:|---:|---:|
+| Opus | — | — | — | — | — |
+| Sol | — | — | — | — | — |
+| Sonnet | — | — | — | — | — |
+| Luna | — | — | — | — | — |
+| DeepSeek | — | — | — | — | — |
 
 ### File union correlations
 
@@ -72,24 +94,24 @@ Contributing audits: [statement-generality](#statement-generality), [vacuity-and
 
 | Library | Opus | Sol | Sonnet | Luna | DeepSeek |
 |---|---:|---:|---:|---:|---:|
-| Mathlib | 15/400<br>3.8% [2.3%, 6.1%] | 12/300<br>4.0% [2.3%, 6.9%] | 6/300<br>2.0% [0.9%, 4.3%] | 12/300<br>4.0% [2.3%, 6.9%] | 3/100<br>3.0% [1.0%, 8.5%] |
-| Tau Ceti | 23/400<br>5.8% [3.9%, 8.5%] | 19/300<br>6.3% [4.1%, 9.7%] | 12/300<br>4.0% [2.3%, 6.9%] | 19/300<br>6.3% [4.1%, 9.7%] | 5/100<br>5.0% [2.2%, 11.2%] |
-| Formal Frontier | 17/400<br>4.2% [2.7%, 6.7%] | 18/300<br>6.0% [3.8%, 9.3%] | 12/300<br>4.0% [2.3%, 6.9%] | 15/300<br>5.0% [3.1%, 8.1%] | 1/100<br>1.0% [0.2%, 5.4%] |
-| Lean Pool | 61/400<br>15.2% [12.1%, 19.1%] | 60/300<br>20.0% [15.9%, 24.9%] | 39/300<br>13.0% [9.7%, 17.3%] | 48/300<br>16.0% [12.3%, 20.6%] | 13/100<br>13.0% [7.8%, 21.0%] |
-| FLT (Anthropic) | 82/400<br>20.5% [16.8%, 24.7%] | 78/300<br>26.0% [21.4%, 31.2%] | 52/300<br>17.3% [13.5%, 22.0%] | 61/300<br>20.3% [16.2%, 25.2%] | 21/100<br>21.0% [14.2%, 30.0%] |
+| Mathlib | 31/1000<br>3.1% [2.2%, 4.4%] | 12/300<br>4.0% [2.3%, 6.9%] | 6/300<br>2.0% [0.9%, 4.3%] | 12/300<br>4.0% [2.3%, 6.9%] | 3/100<br>3.0% [1.0%, 8.5%] |
+| Tau Ceti | 68/1000<br>6.8% [5.4%, 8.5%] | 19/300<br>6.3% [4.1%, 9.7%] | 12/300<br>4.0% [2.3%, 6.9%] | 19/300<br>6.3% [4.1%, 9.7%] | 5/100<br>5.0% [2.2%, 11.2%] |
+| Formal Frontier | 34/1000<br>3.4% [2.4%, 4.7%] | 18/300<br>6.0% [3.8%, 9.3%] | 12/300<br>4.0% [2.3%, 6.9%] | 15/300<br>5.0% [3.1%, 8.1%] | 1/100<br>1.0% [0.2%, 5.4%] |
+| Lean Pool | 150/1000<br>15.0% [12.9%, 17.3%] | 60/300<br>20.0% [15.9%, 24.9%] | 39/300<br>13.0% [9.7%, 17.3%] | 48/300<br>16.0% [12.3%, 20.6%] | 13/100<br>13.0% [7.8%, 21.0%] |
+| FLT (Anthropic) | 203/1000<br>20.3% [17.9%, 22.9%] | 78/300<br>26.0% [21.4%, 31.2%] | 52/300<br>17.3% [13.5%, 22.0%] | 61/300<br>20.3% [16.2%, 25.2%] | 21/100<br>21.0% [14.2%, 30.0%] |
 | OpenAI Math | 17/100<br>17.0% [10.9%, 25.5%] | 21/100<br>21.0% [14.2%, 30.0%] | 15/100<br>15.0% [9.3%, 23.3%] | 19/100<br>19.0% [12.5%, 27.8%] | 16/100<br>16.0% [10.1%, 24.4%] |
 
 ### Model comparison
 
-Full-pass reference: **2100 targets**.
+Full-pass reference: **5100 targets**.
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Opus | 2100 | 2/2 | 3600/3600 | 365 | 222 | 10.2% [9.0%, 11.6%] | $264.19 / $154.11 |
-| Sol | 1600 | 2/2 | 3100/3100 | 395 | 210 | 13.0% [11.4%, 14.7%] | $145.80 / $98.77 |
-| Sonnet | 1600 | 2/2 | 3100/3100 | 260 | 152 | 8.5% [7.2%, 10.0%] | $110.14 / $74.61 |
-| Luna | 1600 | 2/2 | 3100/3100 | 329 | 212 | 10.9% [9.4%, 12.5%] | $6.81 / $4.61 |
-| DeepSeek | 600 | 1/1 | 600/600 | 59 | 59 | 9.8% [7.7%, 12.5%] | $4.52 / $15.84 |
+| Opus | 5100 | 2/2 | 6600/6600 | 653 | 510 | 9.9% [9.1%, 10.7%] | $491.63 / $379.90 |
+| Sol | 1600 | 2/2 | 3100/3100 | 395 | 210 | 13.0% [11.4%, 14.7%] | $145.80 / $239.87 |
+| Sonnet | 1600 | 2/2 | 3100/3100 | 260 | 152 | 8.5% [7.2%, 10.0%] | $110.14 / $181.20 |
+| Luna | 1600 | 2/2 | 3100/3100 | 329 | 212 | 10.9% [9.4%, 12.5%] | $6.81 / $11.20 |
+| DeepSeek | 600 | 1/1 | 600/600 | 59 | 59 | 9.8% [7.7%, 12.5%] | $4.52 / $38.46 |
 
 #### Correlation matrix
 
@@ -139,6 +161,36 @@ Full-pass reference: **5100 targets**.
 | Sonnet | 0.74 [0.70, 0.78]; n=4100 | 0.48 [0.46, 0.51]; n=5100 | — | 0.50 [0.48, 0.53]; n=5100 | 0.61 [0.51, 0.70]; n=600 |
 | Luna | 0.54 [0.51, 0.57]; n=4100 | 0.69 [0.67, 0.72]; n=5100 | 0.50 [0.48, 0.53]; n=5100 | — | 0.67 [0.60, 0.73]; n=600 |
 | DeepSeek | 0.63 [0.48, 0.74]; n=500 | 0.61 [0.54, 0.68]; n=600 | 0.61 [0.51, 0.70]; n=600 | 0.67 [0.60, 0.73]; n=600 | — |
+
+## definition-fidelity
+
+[Library breakdowns](runs/defs1/definition-fidelity/audit-comparison.md)
+
+Opus includes automatic missing-docstring flags. Rates use all reviewed definitions. [Assessed-only rates](runs/defs1/definition-fidelity/claude-opus-5-5-high/report.md).
+
+### Library comparison
+
+| Library | Opus |
+|---|---:|
+| Mathlib | 10/1000<br>1.0% [0.5%, 1.8%] |
+| Tau Ceti | 11/1000<br>1.1% [0.6%, 2.0%] |
+| Formal Frontier | 41/1000<br>4.1% [3.0%, 5.5%] |
+| Lean Pool | 33/1000<br>3.3% [2.4%, 4.6%] |
+| FLT (Anthropic) | 1000/1000<br>100.0% [99.6%, 100.0%] |
+
+### Model comparison
+
+Full-pass reference: **5000 targets**.
+
+| Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Opus | 5000 | 1/1 | 5000/5000 | 1095 | 1095 | 21.9% [20.8%, 23.1%] | $336.14 / $336.14 |
+
+#### Correlation matrix
+
+| Model | Opus |
+|---|---:|
+| Opus | — |
 
 ## statement-generality
 
@@ -217,6 +269,8 @@ Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 0 not a
 ## repeated-proof-machinery
 
 [Library breakdowns](runs/file-quality-pilot-2026-10-21/reports/repeated-proof-machinery-comparison.md)
+
+[Balanced validation sample](runs/repeated-machinery-validation-2026-10-27/validation-report.md) is reported separately from the first-pass counts below.
 
 ### Library comparison
 

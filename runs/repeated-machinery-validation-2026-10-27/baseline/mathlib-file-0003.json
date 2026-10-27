@@ -1,0 +1,96 @@
+{
+  "id": "mathlib-file-0003",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and searched Mathlib for existing helper lemmas. Candidates I dismissed because they are short or thin: the three base>1 and base<1 `tendsto_rpow_*_of_base_*` lemmas, `tendsto_rpow_div` and `tendsto_rpow_neg_div`, and the `sqrt` wrappers. I reported two real duplications: the two `mul_atTop_rpow` theorems, and the final calc steps of the two cpow theorems. I did not compile the proposed replacements. The exact elaborated goal shape after `Eventually.isBigO` (Pi-multiplication unfolding) is inferred from the existing proofs, so the helper statement may need a `show` or small adjustment. In the first finding, the `\u2115` version still needs the cast step `Nat.one_le_cast`, so the saving is modest.",
+  "findings": [
+    {
+      "declaration": "IsBigO.mul_atTop_rpow_of_isBigO_rpow / IsBigO.mul_atTop_rpow_natCast_of_isBigO_rpow",
+      "start_line": 274,
+      "end_line": 293,
+      "excerpt": "rw [\u2190 Real.rpow_add (zero_lt_one.trans_le ht), Real.norm_of_nonneg (Real.rpow_nonneg\n    (zero_le_one.trans ht) (a + b))]\n  exact Real.rpow_le_rpow_of_exponent_le ht h",
+      "problem": "The two theorems have the same proof, line for line. Both do `refine (hf.mul hg).trans (Eventually.isBigO ?_)` and `filter_upwards [eventually_ge_atTop 1]`. Both then merge `t^a * t^b` into `t^(a+b)` with `rpow_add`, strip the norm with `norm_of_nonneg`, and finish with `rpow_le_rpow_of_exponent_le`. The only difference is a cast step in the `\u2115` version. The pointwise analytic inequality `\u2016t^a * t^b\u2016 \u2264 t^c` for `1 \u2264 t` and `a + b \u2264 c` is therefore written out twice. Any change to it, such as the norm form or the `rpow_add` side conditions, has to be made in both places.",
+      "proposed_change": "Add a private (or public) lemma with the core pointwise inequality, e.g.\n`lemma norm_rpow_mul_rpow_le_rpow {a b c t : \u211d} (ht : 1 \u2264 t) (h : a + b \u2264 c) : \u2016t ^ a * t ^ b\u2016 \u2264 t ^ c`.\nProof sketch: `rw [\u2190 Real.rpow_add (zero_lt_one.trans_le ht), Real.norm_of_nonneg (Real.rpow_nonneg (zero_le_one.trans ht) _)]; exact Real.rpow_le_rpow_of_exponent_le ht h`.\nThe real-variable theorem then becomes `(hf.mul hg).trans (Eventually.isBigO (by filter_upwards [eventually_ge_atTop 1] with t ht; exact norm_rpow_mul_rpow_le_rpow ht h))`.\nThe `\u2115` theorem is the same with `exact norm_rpow_mul_rpow_le_rpow (Nat.one_le_cast.mpr ht) h`.\nBoth keep their current hypotheses (`SeminormedRing E`, `atTop`), and the lemma needs no new imports.",
+      "benefit": "The analytic argument is stated and maintained once. Each theorem shrinks to the filter and cast plumbing that actually differs between them, so a reader can see that the `\u2115` version is the `\u211d` version transported along the cast.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "IsBigO.mul_atTop_rpow_natCast_of_isBigO_rpow",
+          "excerpt": "replace ht : 1 \u2264 (t : \u211d) := Nat.one_le_cast.mpr ht"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "IsBigO.mul_atTop_rpow_of_isBigO_rpow",
+          "excerpt": "exact Real.rpow_le_rpow_of_exponent_le ht h"
+        }
+      ]
+    },
+    {
+      "declaration": "Complex.isBigO_cpow_rpow / Complex.isTheta_cpow_rpow",
+      "start_line": 185,
+      "end_line": 206,
+      "excerpt": "_ =\u0398[l] fun x => \u2016f x\u2016 ^ (g x).re / (1 : \u211d) :=\n      (isTheta_refl _ _).div (isTheta_exp_arg_mul_im hl_im)\n    _ =\u1da0[l] (fun x => \u2016f x\u2016 ^ (g x).re) := by\n      simp only [div_one, EventuallyEq.rfl]",
+      "problem": "Both calc proofs end with the same two steps. They divide `\u2016f x\u2016 ^ (g x).re` by `Real.exp (arg (f x) * im (g x))`, replace that denominator by `1` via `isTheta_exp_arg_mul_im`, and then simplify with `div_one`. Only the first step differs: `isBigO_of_le` with `norm_cpow_le` versus `of_norm_eventuallyEq` with `norm_cpow_of_imp`. The `isBigO` version needs extra `show \u03b1 \u2192 \u211d from` annotations to elaborate the same chain.",
+      "proposed_change": "Factor out `lemma isTheta_norm_rpow_div_exp_arg_mul_im (hl : IsBoundedUnder (\u00b7 \u2264 \u00b7) l fun x => |(g x).im|) : (fun x => \u2016f x\u2016 ^ (g x).re / Real.exp (arg (f x) * im (g x))) =\u0398[l] fun x => \u2016f x\u2016 ^ (g x).re`.\nProof sketch: `((isTheta_refl _ _).div (isTheta_exp_arg_mul_im hl)).trans_eventuallyEq (by simp only [div_one, EventuallyEq.rfl])`, or the existing calc steps.\nThen `isBigO_cpow_rpow` is `(isBigO_of_le _ fun _ => (norm_cpow_le _ _).trans (le_abs_self _)).trans_isTheta (isTheta_norm_rpow_div_exp_arg_mul_im hl)`.\n`isTheta_cpow_rpow` is `(.of_norm_eventuallyEq <| hl.mono fun _ => norm_cpow_of_imp).trans (isTheta_norm_rpow_div_exp_arg_mul_im hl_im)`.\nThe hypotheses `hl` and `hl_im` are unchanged.",
+      "benefit": "Each theorem then shows only what distinguishes it: the one-sided bound versus the two-sided equivalence, and the extra non-vanishing hypothesis. The shared 'the exp factor is bounded above and below' reduction is stated once. This removes the `show \u03b1 \u2192 \u211d from` clutter and the duplicated calc tail.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "Complex.isBigO_cpow_rpow",
+          "excerpt": "((isTheta_refl _ _).div (isTheta_exp_arg_mul_im hl))"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean",
+          "declaration": "Complex.isTheta_cpow_rpow",
+          "excerpt": "(isTheta_refl _ _).div (isTheta_exp_arg_mul_im hl_im)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 8611,
+    "cache_read_input_tokens": 56335,
+    "output_tokens": 5917,
+    "output_tokens_details": {
+      "thinking_tokens": 2397
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 8611,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3044,
+        "cache_read_input_tokens": 22891,
+        "cache_creation_input_tokens": 2442,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2442
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.0992595,
+  "duration_ms": 39816,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-21T04:27:02",
+  "unit": "file",
+  "source_sha256": "f736afe5ee0e392168895c13ce258c142fdc5d3b45ecb5d3dd12af9299a8ee42",
+  "rubric": "repeated-proof-machinery"
+}

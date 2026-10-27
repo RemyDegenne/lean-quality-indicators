@@ -186,7 +186,7 @@ as read-only sources. Resume with `python3 scripts/corpus_pilot.py judge --model
 
 ## Results so far: unnecessary hypotheses
 
-[Current reports for the six main audits](AUDIT_RESULTS.md) give target/pass counts, flag
+[Current reports for the seven main audits](AUDIT_RESULTS.md) give target/pass counts, flag
 rates with Wilson 95% intervals, matched-target Pearson correlation matrices with paired
 bootstrap intervals, and API-equivalent expenditure / estimated cost of one pass at the
 largest completed model's scale. [Cost details](runs/main/api-equivalent-costs.md) include
@@ -508,6 +508,25 @@ reduces concurrency and pauses admissions. It never switches to another account 
 uses an API key. Costs in the comparison reports remain API equivalents; these
 sessions consume the subscription. Reports refresh every five minutes, and final
 results are verified and pushed when the window finishes or weekly quota is used.
+
+## Repeated proof machinery validation
+
+The [validation run](runs/repeated-machinery-validation-2026-10-27/validation-report.md)
+checks another 20 flagged and 10 unflagged files per library under Sonnet 5.5 high,
+using the lean-fro subscription with two sessions. It excludes the earlier manual
+sample. Candidate checks attempt to refute each original finding; discovery tasks
+look for missed findings. Source evidence, proposed shared lemmas and rewritten uses
+are required. This is a separate conditional check, not another first pass or compiled
+verification, and its judgments do not change the main flag counts.
+
+Prepare with `python3 scripts/validate_repeated_machinery.py --prepare-only`; resume
+with `python3 scripts/validate_repeated_machinery.py --jobs 2`. The runner preserves
+attempt output, checks subscription quotas every minute, stops admissions on a rejected
+rate limit and caps API-equivalent inference at $50. Actual API charges are zero under
+the subscription; extra usage is refused. A separate monitor verifies and publishes
+progress every five minutes, without making inference requests. Service templates are
+`scripts/machinery-validation.service` and `scripts/machinery-validation-monitor.service`.
+Expansion from 372 to 500 files per library remains conditional on reviewing this check.
 
 ## DeepSeek pilot
 

@@ -1,0 +1,104 @@
+{
+  "id": "flt-anthropic-file-0202",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also checked the Mathlib `Valuation.map_neg` declaration and grepped for other uses of `net`. `net` is used in P2M/Sol/S_ValuationSubring_isCompact_ratClosure_inter_closedBall_of_liesOverPrime.lean, so it has to stay. I found two repeated-proof patterns: the natAbs/sign-cast block (three copies) and the \"approximate q by a natural number and bound the valuation of the difference\" tail (two copies). Nothing was compiled. The proposed rewrites are sketches, and the `simpa` details in the second one are untested. The remaining repetition in the file is short calculations or routine unfolding, which I did not report.",
+  "findings": [
+    {
+      "declaration": "den_coprime_of_vA_le_one / vA_ratCast_eq_zpow / eq_of_varpi_dvd_sub (natAbs sign-case block)",
+      "start_line": 103,
+      "end_line": 108,
+      "excerpt": "rcases Int.natAbs_eq q.num with hn | hn\n    \u00b7 rw [hn, \u2190 hcast]; exact h\n    \u00b7 rw [hn, Int.cast_neg, Valuation.map_neg, \u2190 hcast]; exact h",
+      "problem": "The same argument appears three times. To transfer a valuation fact from `((z.natAbs : \u2115) : AlgebraicClosure \u211a)` to `((z : \u2124) : AlgebraicClosure \u211a)`, each proof builds a `hcast : ((z.natAbs:\u2115):K) = ((z.natAbs:\u2124):K)`. It then splits with `rcases Int.natAbs_eq z` into the two sign cases and rewrites with `Int.cast_neg` and `Valuation.map_neg` in the negative case. The copies are at lines 103\u2013108 (z = q.num, target value 1), 179\u2013184 (z = q.num, target value v(r)^a) and 393\u2013399 (z = (a:\u2124)-b, target value 1). Only the target value in `exact` differs.",
+      "proposed_change": "Add one lemma next to `vA_intCast_le_one`:\n\ntheorem vA_intCast_eq_natAbs (z : \u2124) : A.valuation (z : AlgebraicClosure \u211a) = A.valuation ((z.natAbs : \u2115) : AlgebraicClosure \u211a)\n\nProof sketch: `rcases Int.natAbs_eq z with hn | hn`, then `conv_lhs => rw [hn]`. In the first case use `Int.cast_natCast`. In the second case use `Int.cast_neg`, `Valuation.map_neg` and `Int.cast_natCast`.\n\nThe three uses then become one-line rewrites:\n- `hvnum` in `den_coprime_of_vA_le_one`: `rw [vA_intCast_eq_natAbs]; exact vA_natCast_eq_one_of_coprime A hA hnum`.\n- `hvnum` in `vA_ratCast_eq_zpow`: `rw [vA_intCast_eq_natAbs]; exact ha`.\n- `h1` in `eq_of_varpi_dvd_sub`: `rw [vA_intCast_eq_natAbs]; exact vA_natCast_eq_one_of_not_dvd A hr hA hnd`.\n\nThe lemma needs no new imports or hypotheses, and each caller keeps its existing hypotheses. The `Valuation.map_neg` lemma it uses is already used in all three blocks.",
+      "benefit": "This removes about 15 lines of duplicated case analysis and cast bookkeeping. It states the fact \"v(z) = v(|z|)\" once, so a reader no longer has to re-check three near-identical blocks. A future change to the cast handling is made in one place.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ValuationSubring_isDiscreteValuationRing_valuationSubring_ratClosure_and_irreducible_natCast_and_finite_quotient_of_liesOverPrime.lean",
+          "declaration": "vA_ratCast_eq_zpow",
+          "excerpt": "\u00b7 rw [hn, Int.cast_neg, Valuation.map_neg, \u2190 hcast]; exact ha"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ValuationSubring_isDiscreteValuationRing_valuationSubring_ratClosure_and_irreducible_natCast_and_finite_quotient_of_liesOverPrime.lean",
+          "declaration": "eq_of_varpi_dvd_sub",
+          "excerpt": "rcases Int.natAbs_eq ((a : \u2124) - b) with hn | hn"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/RingTheory/Valuation/Basic.lean",
+          "declaration": "Valuation.map_neg",
+          "excerpt": "theorem map_neg (x : R) : v (-x) = v x :="
+        }
+      ]
+    },
+    {
+      "declaration": "exists_nat_lt_varpi_dvd_sub (hqa step) duplicating the tail of net",
+      "start_line": 355,
+      "end_line": 364,
+      "excerpt": "rw [hc, v_ratCast, key, Rat.cast_div, Rat.cast_mul, Rat.cast_natCast, Rat.cast_intCast, Rat.cast_natCast,\n      map_div\u2080, map_mul, vA_natCast_eq_one_of_coprime A hA hcop, div_one, \u2190 v_natCast]",
+      "problem": "The `hqa` step in `exists_nat_lt_varpi_dvd_sub` repeats the argument of `net`. Both call `exists_nat_sub_mul_den_eq` with a coprime denominator. Both then turn `(q - a) * q.den = r^N * w` into `q - a = r^N * w / q.den` with `eq_div_iff`. Finally they push the valuation through with the same long `rw` chain (`Rat.cast_div \u2026 map_div\u2080, map_mul, vA_natCast_eq_one_of_coprime \u2026 div_one`) and close with `mul_le_of_le_one_right zero_le' (vA_intCast_le_one A w)`. Compare lines 143\u2013156 in `net` with lines 353\u2013364. The `hqa` step is exactly `net` with m = 0 and n = 1, so the reasoning is done twice, with different cast bookkeeping each time.",
+      "proposed_change": "Reuse `net` in `exists_nat_lt_varpi_dvd_sub` and delete lines 353\u2013364. After `hq1`, write:\n\nobtain \u27e8a, ha, hqa'\u27e9 := net A hr hA 0 1 q (by simpa using hq1)\n\nThis gives `a < r ^ (1 + 0)` and `A.valuation ((q - (a:\u211a)/(r:\u211a)^0 : \u211a) : AlgebraicClosure \u211a) \u2264 A.valuation (r:AlgebraicClosure \u211a) ^ 1`. Normalize it with `pow_zero`, `div_one` and `pow_one`. Then get `hqa` from `v_ratCast`, `Rat.cast_sub` and `v_natCast`, relating `((q - a : \u211a) : Completion)` to `(q:Completion) - (a:Completion)`; `hc` already does this. The rest of the proof (`hax`, the final `dvd_of_le`) is unchanged.\n\nAll the hypotheses `net` needs are available here: `hr`, `hA` and `v(q) \u2264 1`. The `hq1` fact is proved just above. If `net`'s `(v r)\u207b\u00b9 ^ m` hypothesis form is awkward, factor the shared tail out instead. For example:\n\nlemma vA_ratCast_sub_le (hr) (hA) {q : \u211a} {a N : \u2115} {w : \u2124} (hcop : q.den.Coprime r) (hw : ((q - a) * q.den : \u211a) = (r:\u211a)^N * w) : A.valuation ((q - a : \u211a) : AlgebraicClosure \u211a) \u2264 A.valuation (r:AlgebraicClosure \u211a)^N\n\nThen use it in both `net` (after its `key` rewrite) and `exists_nat_lt_varpi_dvd_sub`.",
+      "benefit": "It removes a second copy of the denominator-coprime / `Rat.cast` / valuation-of-quotient chain, which is the fragile part. The long `rw` lists no longer have to be kept in sync across two proofs. It also makes the link explicit: the residue-class step is the m = 0, n = 1 case of the general approximation lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ValuationSubring_isDiscreteValuationRing_valuationSubring_ratClosure_and_irreducible_natCast_and_finite_quotient_of_liesOverPrime.lean",
+          "declaration": "net",
+          "excerpt": "map_div\u2080, map_mul, map_pow, vA_natCast_eq_one_of_coprime A hA hcop, div_one]\n  exact mul_le_of_le_one_right zero_le' (vA_intCast_le_one A w)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ValuationSubring_isDiscreteValuationRing_valuationSubring_ratClosure_and_irreducible_natCast_and_finite_quotient_of_liesOverPrime.lean",
+          "declaration": "exists_nat_lt_varpi_dvd_sub",
+          "excerpt": "exact mul_le_of_le_one_right zero_le' (vA_intCast_le_one A w)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 6395,
+    "cache_read_input_tokens": 83983,
+    "output_tokens": 6805,
+    "output_tokens_details": {
+      "thinking_tokens": 1656
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 6395,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4091,
+        "cache_read_input_tokens": 23904,
+        "cache_creation_input_tokens": 1843,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1843
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1020443,
+  "duration_ms": 45973,
+  "turns": 10,
+  "attempts": 2,
+  "judged": "2026-10-27T00:23:43",
+  "unit": "file",
+  "source_sha256": "1afd71dc14bc085df1c9d832e5fa5b2ad1c6e2b43e34356af5fb7c2551d08c94",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

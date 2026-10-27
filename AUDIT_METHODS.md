@@ -2,7 +2,7 @@
 
 ## Report scope
 
-Main summaries include the two theorem audits and four file audits. Concept reinvention
+Main summaries include two theorem audits, definition fidelity and four file audits. Concept reinvention
 and simp interface are [appendix audits, not ready for use](AUDIT_APPENDIX.md): they do
 not contribute to the combined flags, coverage, correlations or summary expenditure.
 Their individual reports and judgments remain available. The cost ledger retains their
@@ -10,6 +10,13 @@ expenditure in a separate appendix section and includes it in historical totals.
 Reporting placement is defined in `scripts/audit_reporting.py`, independently of frozen
 prompts and inference manifests; newly added audits contribute to the main reports unless
 explicitly placed in the appendix.
+
+Definition fidelity uses a separate definition sample and a composite protocol: Opus
+judges documented definitions, while missing docstrings are flagged automatically at no
+inference cost. Combined-report rates use all reviewed definitions; Remy's original
+definition report also gives rates excluding technical or unclear definitions. Definition
+targets never enter the theorem or whole-file unions. The later repeated-machinery
+validation is a separate conditional check and does not add to first-pass coverage or flags.
 
 ## Coverage and flags
 

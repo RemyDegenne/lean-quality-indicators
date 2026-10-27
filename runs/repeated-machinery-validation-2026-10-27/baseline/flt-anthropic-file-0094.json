@@ -1,0 +1,120 @@
+{
+  "id": "flt-anthropic-file-0094",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I focused on the proof blocks that repeat in several declarations: the two qCoeff_mul_of_* theorems, the towerA/towerB pad evaluations, and the three index-bound blocks in exists_poly_generator. I did not open the imported lemmas such as hg.qCoeff_prime_pow_of_dvd, so the proposed rewrites assume they have the shapes the file's own uses imply. I could not compile anything, so every proposed lemma and rewrite is untested. I looked at qCoeff_U_aeval_quadratic, qCoeff_U_aeval_linear and qCoeff_U_aeval_one. They share only a short simp and rw skeleton, so I did not report them. I judged rootsGood_X_sub_C and rootsGood_quadratic too different to share a lemma.",
+  "findings": [
+    {
+      "declaration": "towerA / towerB (repeated pad evaluation blocks e1, e2, e3)",
+      "start_line": 176,
+      "end_line": 223,
+      "excerpt": "rw [pow_one, pad, if_pos (dvd_mul_left q _), Nat.mul_div_cancel _ hq0]",
+      "problem": "The same fact is re-proved in seven separate `have` blocks. The fact is `pad d b (m * d) = d * b m` for `d = q` or `d = q * q`. The blocks are e1/e2/e3 for `i = 1` in towerA (lines 186\u2013191), e2/e3 for `i = 2` (lines 201\u2013206), and e1/e2 in towerB (lines 218\u2013221). Each block redoes the unfold of `pad`, the `if_pos (dvd_mul_left ..)` step and the `Nat.mul_div_cancel` step. For `q ^ 2`, the `pow_two`, `mul_assoc` and `Nat.cast_mul` bookkeeping is also repeated. towerB's `i = 1` branch is a strict sub-case of towerA's, with `H` specialised. A change to the definition of `pad`, or to the `L` indexing, has to be made in about seven places.",
+      "proposed_change": "Add one lemma, `pad_apply_mul {d : \u2115} (hd : 0 < d) (c : \u2115 \u2192 \u2102) (m : \u2115) : pad d c (m * d) = (d : \u2102) * c m`. Prove it by `unfold pad; rw [if_pos (dvd_mul_left d m), Nat.mul_div_cancel _ hd]`. Every `i = 1` block becomes `rw [pow_one, pad_apply_mul hq0]`, e.g. `pad (q^1) b (n*q*q) = q * b (n*q)`. For `i = 2`, rewrite `n * q * q * q = (n*q) * (q*q)` and `n * q * q = n * (q*q)`, and then `pad_apply_mul (Nat.mul_pos hq0 hq0)` gives e2 and e3 together with `Nat.cast_mul` (the bookkeeping on lines 202\u2013206). Only the `if q \u2223 n` branch of e1 for `q ^ 2` needs its own argument. The `i = 1` branch of towerB can then reuse the same three rewrites.",
+      "benefit": "The five `i = 1` and the two `i = 2` mod-`q` evaluations share one statement with one proof. The towers shrink to their genuinely different algebra (the `ring` closing steps and the use of `H`). The facts about `pad` sit in one lemma next to `pad_mul`, instead of being re-derived inline.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "towerB",
+          "excerpt": "rw [pow_one, pad, if_pos (dvd_mul_left q n), Nat.mul_div_cancel _ hq0]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "towerA",
+          "excerpt": "rw [pow_one, pad, if_pos (dvd_mul_left q _), Nat.mul_div_cancel _ hq0]"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_poly_generator (three proofs of the bound on the exponent `i`)",
+      "start_line": 338,
+      "end_line": 368,
+      "excerpt": "rw [show q ^ i = q ^ (i - 2) * q ^ 2 by rw [\u2190 pow_add]; congr 1; omega]; ring\u27e9 hdRM",
+      "problem": "Three branches each prove `q ^ 3 \u2223 N` from `q ^ i * d' * R \u2223 N`, using different divisibility of `R` and a different bound on `i`. Each branch writes its own `Dvd` witness: `\u27e8q ^ (i - 1) * d' * R', _\u27e9` at 343, `\u27e8q ^ (i - 2) * d' * R', _\u27e9` at 357 and `\u27e8q ^ (i - 3) * d' * R, _\u27e9` at 367. Each rewrites `q ^ i` as `q ^ (i - k) * q ^ k` with `rw [\u2190 pow_add]; congr 1; omega`, and each finishes with `ring` and `dvd_trans \u2026 hdRM`. This is the same argument with three constants. The witnesses are tedious natural-number subtraction manipulations.",
+      "proposed_change": "Add a lemma `cube_dvd_of_pow_mul_dvd {q N R d' i s : \u2115} (hdvd : q ^ i * d' * R \u2223 N) (hs : q ^ s \u2223 R) (hi : 3 \u2264 i + s) : q ^ 3 \u2223 N`. For the proof, `pow_dvd_pow q hi` gives `q ^ 3 \u2223 q ^ (i + s) = q ^ i * q ^ s`. Then `q ^ s \u2223 d' * R` by `dvd_mul_of_dvd_right`, and `mul_assoc` with `mul_dvd_mul_left (q ^ i)` gives `q ^ i * q ^ s \u2223 q ^ i * d' * R`. Finish with `dvd_trans _ hdvd`. The three uses become `hcube (cube_dvd_of_pow_mul_dvd hdRM hqR2 (by omega))` (with `s = 2`, `i > 0`), `hcube (\u2026 hdRM hqR (by omega))` (with `s = 1`, `\u00ac i \u2264 1`) and `hcube (\u2026 hdRM (by simp : q ^ 0 \u2223 R) (by omega))` (with `s = 0`, `\u00ac i \u2264 2`). Here `hdRM` has type `q ^ i * d' * R \u2223 N` after the `rfl` substitution on line 322.",
+      "benefit": "The divisibility reasoning is written once and each branch states only the arithmetic condition `3 \u2264 i + s`. This removes three ad hoc `Dvd` witnesses with natural-number subtraction, and the long `exists_poly_generator` proof is easier to read. If the conductor hypothesis changes (for instance to a `q ^ 4` bound), only one lemma and the three numerals need editing.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "exists_poly_generator",
+          "excerpt": "exact dvd_trans \u27e8q ^ (i - 3) * d' * R, by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "exists_poly_generator",
+          "excerpt": "exact dvd_trans \u27e8q ^ (i - 1) * d' * R', by"
+        }
+      ]
+    },
+    {
+      "declaration": "qCoeff_mul_of_not_dvd / qCoeff_mul_of_dvd",
+      "start_line": 89,
+      "end_line": 124,
+      "excerpt": "obtain \u27e8r, m', hm', rfl\u27e9 := Nat.exists_eq_pow_mul_and_not_dvd hm.ne' q hq.ne_one",
+      "problem": "The two theorems have almost the same proof. Both split off `m = 0` and write `m = q ^ r * m'` with `q \u2224 m'`. Both build the same `hcop` (lines 96\u201397 and 116\u2013117). Both treat `r = 0` with the same rewrite chain (`mul_comm m' q`, `show q * m' = q ^ 1 * m' \u2026`, `hg.qCoeff_mul_of_coprime _ _ (hcop 1)`, `pow_one`). In the successor case both rewrite `q ^ (r+1) * m' * q = q ^ (r+2) * m'` and apply `qCoeff_mul_of_coprime` to split off `m'`. They differ only in which prime-power recurrence they use (`qCoeff_prime_pow_of_not_dvd` versus `qCoeff_prime_pow_of_dvd`) and in the correction term. About 25 lines of multiplicativity bookkeeping are therefore maintained twice.",
+      "proposed_change": "Prove one general statement, for example `qCoeff_mul_prime (hg) (hq) (m) : qCoeff g (m * q) = qCoeff g q * qCoeff g m - (if q \u2223 R then 0 else (q : \u2102) * (if q \u2223 m then qCoeff g (m / q) else 0))`. The decomposition, `hcop` and the `r = 0` case are done once. Only the `r + 1` case does `by_cases hqR : q \u2223 R` before the final `ring`, choosing `qCoeff_prime_pow_of_dvd` or `qCoeff_prime_pow_of_not_dvd`. The `r = 0` case needs `if_neg hm'` and `sub_zero` only in the not-dvd branch. Then state `qCoeff_mul_of_not_dvd` and `qCoeff_mul_of_dvd` as short corollaries (`by simpa [hqR] using qCoeff_mul_prime \u2026`) so the call sites at lines 349, 362 and 375 stay unchanged. Alternatively, extract just the factoring step as `qCoeff_pow_mul (hg) (hq) (hm' : \u00ac q \u2223 m') (s) : qCoeff g (q^s * m') = qCoeff g (q^s) * qCoeff g m'`, which removes both `hcop` definitions and the repeated `hg.qCoeff_mul_of_coprime _ _ (hcop _)` rewrites.",
+      "benefit": "The Hecke-recurrence argument for composite `m` is stated and proved once. The dvd and not-dvd cases are visibly the same except for the Euler-factor term. That makes it easier to see that the conditions on `q \u2223 R` enter only through the prime-power recurrence. Future changes, such as a different normalisation, need one edit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "qCoeff_mul_of_dvd",
+          "excerpt": "rw [h1, hg.qCoeff_mul_of_coprime _ _ (hcop _), hg.qCoeff_mul_of_coprime _ _ (hcop _),"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_CuspForm_exists_heckeULin_mul_aeval_eq_zero_isIntegral_of_sq_dvd_of_not_cube_dvd.lean",
+          "declaration": "qCoeff_mul_of_not_dvd",
+          "excerpt": "have h1 : q ^ (r + 1) * m' * q = q ^ (r + 2) * m' := by ring"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 24474,
+    "cache_read_input_tokens": 22529,
+    "output_tokens": 7995,
+    "output_tokens_details": {
+      "thinking_tokens": 3219
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24474,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 6553,
+        "cache_read_input_tokens": 18600,
+        "cache_creation_input_tokens": 9803,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 9803
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.18010690000000001,
+  "duration_ms": 59823,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-10-26T23:01:34",
+  "unit": "file",
+  "source_sha256": "2535bc227321ceab0c223026aa579cad3ee125cd3a3267285d5e3463d26aae8d",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

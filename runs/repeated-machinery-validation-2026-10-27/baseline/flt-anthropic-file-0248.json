@@ -1,0 +1,109 @@
+{
+  "id": "flt-anthropic-file-0248",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked related definitions: laurentOfInt_apply in Definitions/Def_ModularCurve_TateFormal.lean, and stackOrd in Definitions/Def_ModularCurve_ModPFormFn.lean. I grepped for an existing \"laurentOfInt \u2260 0 from a coefficient\" lemma and found none. Nothing was compiled, so both proposed helpers are untested sketches. For the second finding I could not find the statement of exists_coe_eq_thetaL_jqModC_zpow_and_stackOrd_eq, so I have not seen the exact form of `hst`. I only claim that the helper would replace the end of each branch (the gcd/divisibility goal). The omega calls that use `hst` would stay unchanged. I also considered the smaller repeats (the `max 1 w` decides, the `placeWidth` rewrites) and judged them too routine to report.",
+  "findings": [
+    {
+      "declaration": "delta_ne_zero / E4_ne_zero / E6_ne_zero",
+      "start_line": 176,
+      "end_line": 199,
+      "excerpt": "  have h1 := congrArg (fun x : LaurentSeries K => x.coeff ((0 : \u2115) : \u2124)) h",
+      "problem": "Three theorems repeat the same argument. Assume laurentOfInt K p = 0, apply congrArg with the coefficient functional at a natural index, run the same `simp only [laurentOfInt_apply, HahnSeries.ofPowerSeries_apply_coeff, PowerSeries.coeff_map, HahnSeries.coeff_zero]`, and rewrite the coefficient to 1. Only the index (1 for \u0394, 0 for E4 and E6) and the final coefficient lemma differ. The long simp list is copied three times, so a change to the representation of laurentOfInt would have to be fixed in three places.",
+      "proposed_change": "Add a helper, in section Series with K a Field (so K is nontrivial):\n\ntheorem laurentOfInt_ne_zero_of_coeff_eq_one (p : PowerSeries \u2124) (n : \u2115) (hp : PowerSeries.coeff n p = 1) : laurentOfInt K p \u2260 0\n\nProof sketch: intro h; take `congrArg (fun x : LaurentSeries K => x.coeff (n : \u2124)) h`; run the existing `simp only [laurentOfInt_apply, HahnSeries.ofPowerSeries_apply_coeff, PowerSeries.coeff_map, HahnSeries.coeff_zero] at h1`; rewrite with hp and `map_one`; finish with `one_ne_zero h1`.\n\nThe three uses become:\n- E4_ne_zero := laurentOfInt_ne_zero_of_coeff_eq_one K _ 0 (by rw [PowerSeries.coeff_zero_eq_constantCoeff_apply, constantCoeff_eisenstein4])\n- E6_ne_zero is the same with constantCoeff_eisenstein6.\n- delta_ne_zero := laurentOfInt_ne_zero_of_coeff_eq_one K _ 1 (by rw [show (1:\u2115) = 0+1 from rfl, PowerSeries.coeff_succ_X_mul, PowerSeries.coeff_zero_eq_constantCoeff_apply, constantCoeff_dedekindEtaUnit]).\n\nThese hypotheses are exactly the rewrites the current proofs already perform.",
+      "benefit": "The coefficient-extraction argument is stated and maintained once. Each nonvanishing theorem then only records which coefficient equals 1, which is the mathematical content. The file shrinks by about 15 lines.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_gcd_natAbs_ord_eisensteinRatio_pow_eq_div_placeWidth_of_not_mem_ssPlaces.lean",
+          "declaration": "E6_ne_zero",
+          "excerpt": "rw [PowerSeries.coeff_zero_eq_constantCoeff_apply, constantCoeff_eisenstein6, map_one] at h1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_gcd_natAbs_ord_eisensteinRatio_pow_eq_div_placeWidth_of_not_mem_ssPlaces.lean",
+          "declaration": "E4_ne_zero",
+          "excerpt": "rw [PowerSeries.coeff_zero_eq_constantCoeff_apply, constantCoeff_eisenstein4, map_one] at h1"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_gcd_natAbs_ord_eisensteinRatio_pow_eq_div_placeWidth_of_not_mem_ssPlaces.lean",
+          "declaration": "delta_ne_zero",
+          "excerpt": "have h1 := congrArg (fun x : LaurentSeries K => x.coeff ((1 : \u2115) : \u2124)) h"
+        }
+      ]
+    },
+    {
+      "declaration": "solution (affine-place case analysis on jWidth)",
+      "start_line": 336,
+      "end_line": 385,
+      "excerpt": "        exact Nat.gcd_mul_left_left 3 k",
+      "problem": "The affine-place case contains the same endgame five times, with the width w taking the values 3, 3\u21921, 2, 2\u21921 and 1. The width-3 block (lines 336\u2013357) and the width-2 block (lines 364\u2013385) are line-for-line copies with 3 replaced by 2. Each repeats the following steps:\n- obtain \u27e8k, hk\u27e9 : \u2203 k, n = w * k from the divisibility fact;\n- derive v.ord b = k (or = n in the width-1 sub-branch) by omega;\n- rewrite the goal with `max 1 w`, `Int.natAbs_natCast` and `show w * k / w = k`;\n- close with gcd_mul_left_left (width > 1) or gcd_self (width 1).\nThe arithmetic goal `max 1 w \u2223 n \u2227 Nat.gcd n m.natAbs = n / max 1 w` is re-proved by hand in each branch. The same pattern appears in the cusp branch with gcd_mul_right_right.",
+      "proposed_change": "Prove one arithmetic lemma before `solution`:\n\ntheorem gcd_max_one_aux (n w k : \u2115) (hw : 0 < w) (hk : n = w * k) : max 1 w \u2223 n \u2227 Nat.gcd n k = n / max 1 w\n\nProof sketch: rewrite `max 1 w = w` with `max_eq_right hw`; get \u27e8k, hk\u27e9 for the divisibility; then `n / w = k` by `hk` and `Nat.mul_div_cancel_left`; then `Nat.gcd_mul_left_left w k`.\n\nUse in the width-3 and width-2 branches: after `have hob : v.ord b = k`, close with `rw [hpw, hob, Int.natAbs_natCast]; exact gcd_max_one_aux n 3 k (by norm_num) hk` (and 2 respectively).\n\nUse in the width-1 sub-branches: with `hob : v.ord b = n`, close with `exact gcd_max_one_aux n 1 n one_pos (one_mul n).symm` after the same rewrite.\n\nThe omega steps that use `hst` and the `placeWidth` rewrites stay as they are. Only the repeated divisibility/gcd/`max`/`Nat.div` bookkeeping is removed.",
+      "benefit": "The roughly 50 lines of near-duplicate branches shrink to a few lines per case, which makes the real case split (width 1, 2, 3 or 0) readable. The `max 1 w` and `Nat.gcd` bookkeeping is proved once instead of being kept consistent across five or six sites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_gcd_natAbs_ord_eisensteinRatio_pow_eq_div_placeWidth_of_not_mem_ssPlaces.lean",
+          "declaration": "solution",
+          "excerpt": "          exact Nat.gcd_mul_left_left 2 k"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_gcd_natAbs_ord_eisensteinRatio_pow_eq_div_placeWidth_of_not_mem_ssPlaces.lean",
+          "declaration": "solution",
+          "excerpt": "        rw [hob, Int.natAbs_natCast]\n        exact Nat.gcd_self n"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_ModularCurve_FullLevel_gcd_natAbs_ord_eisensteinRatio_pow_eq_div_placeWidth_of_not_mem_ssPlaces.lean",
+          "declaration": "solution",
+          "excerpt": "obtain \u27e8k, hk\u27e9 : \u2203 k, n = 3 * k := \u27e8n / 3, by omega\u27e9"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 24898,
+    "cache_read_input_tokens": 78295,
+    "output_tokens": 6331,
+    "output_tokens_details": {
+      "thinking_tokens": 2113
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24898,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3623,
+        "cache_read_input_tokens": 27758,
+        "cache_creation_input_tokens": 1069,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1069
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1707475,
+  "duration_ms": 43788,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:40:33",
+  "unit": "file",
+  "source_sha256": "0a08595c9eb2928ce5813abc5d85cf4ba5e94b1489483f09427a0c2d21e37aea",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

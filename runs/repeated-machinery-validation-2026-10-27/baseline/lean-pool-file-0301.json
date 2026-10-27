@@ -1,0 +1,83 @@
+{
+  "id": "lean-pool-file-0301",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the three `*_generator_zero` proofs in full. I compared them with Mathlib's `hasDerivWithinAt_Ici_of_tendsto_deriv`. I also looked at the other repeated-looking pieces: the `realHeatList_*` induction proofs, the `HasDerivAt`/`HasDerivWithinAt` product rules in `EulerStrongOperatorDerivative`, and the `hD`/`hDD` jet-word coordinate proofs. Those are short, or differ in substance, so I did not report them. I did not run Lean, so the proposed lemma and rewrites are untested. I expect `Mathlib.Analysis.Calculus.FDeriv.Extend` to be available through the existing imports, because the current proofs already use the Mathlib lemma it contains.",
+  "findings": [
+    {
+      "declaration": "EulerGaussianCylinderHeat.realLineHeat_generator_zero / realHeatList_generator_zero / realCylinderHeat_generator_zero",
+      "start_line": 178,
+      "end_line": 193,
+      "excerpt": "apply hasDerivWithinAt_Ici_of_tendsto_deriv (s := Set.Ioi 0)",
+      "problem": "Three theorems repeat the same argument for extending a positive-time derivative formula to a right derivative at 0. Each one (1) builds a `Tendsto` of the half-generator along `\ud835\udcdd[>] 0` from continuity of `s \u21a6 (1/2) \u2022 heat s X` and the value at time 0, (2) applies `hasDerivWithinAt_Ici_of_tendsto_deriv (s := Set.Ioi 0)` with differentiability taken from the positive-time `HasDerivAt`, (3) rewrites the limit with `hlim.congr'`, and (4) uses `(\u2026generator_pos \u2026).deriv.symm`. Only the family, its continuity lemma and its time-zero lemma differ. The proof is about 15 lines, copied three times at 178\u2013193, 429\u2013448 and 531\u2013551. The cylinder copy has slightly different bookkeeping, so the copies can drift apart.",
+      "proposed_change": "Add one general lemma before `realLineHeat_generator_zero`, for example in a small namespace such as `EulerGaussianCylinderHeat`:\n\n`theorem hasDerivWithinAt_Ici_zero_of_pos {E : Type*} [NormedAddCommGroup E] [NormedSpace \u211d E] {\u03c6 \u03c8 : \u211d \u2192 E} (h\u03c6 : Continuous \u03c6) (h\u03c8 : Continuous \u03c8) (hd : \u2200 t, 0 < t \u2192 HasDerivAt \u03c6 (\u03c8 t) t) : HasDerivWithinAt \u03c6 (\u03c8 0) (Set.Ici 0) 0`\n\nProof sketch: apply `hasDerivWithinAt_Ici_of_tendsto_deriv (s := Set.Ioi 0)`. Differentiability on `Ioi 0` is `fun t ht => (hd t ht).differentiableAt.differentiableWithinAt`. Continuity is `h\u03c6.continuousAt.continuousWithinAt`, and `hs` is `self_mem_nhdsWithin`. For the limit, take `(h\u03c8.continuousAt.continuousWithinAt (s := Set.Ioi 0)).tendsto`, then `.congr'` with `filter_upwards [self_mem_nhdsWithin] with t ht; exact (hd t ht).deriv.symm`.\n\nRewritten uses:\n- Line: take `\u03c6 = fun s => realLineHeat period a s f`, `\u03c8 = fun s => (1/2:\u211d) \u2022 realLineHeat period a s h`. The hypotheses are `realLineHeat_continuous period a f`, `(realLineHeat_continuous period a h).const_smul _` and `realLineHeat_generator_pos period a f g h hD hDD`. Then `simpa only [realLineHeat_zero] using` the lemma.\n- List: take `\u03c6 = fun s => realHeatList period (indices.map direction) s f`, `\u03c8 = fun s => (1/2:\u211d) \u2022 realHeatList period (indices.map direction) s ((indices.map ddf).sum)`. Use `realHeatList_continuous` and `realHeatList_generator_pos period indices direction f df ddf hD hDD`. Finish with `simpa only [realHeatList_zero_time]`.\n- Cylinder: take `\u03c6 = fun s => realCylinderHeat period s f`, `\u03c8 = fun s => (1/2:\u211d) \u2022 realCylinderHeat period s (jetLaplacian period J)`. Continuity comes from `(cylinderHeat_continuous period _).comp continuous_real_toNNReal`, and the derivative from `realCylinderHeat_generator_pos period J`. Finish with `simpa only [realCylinderHeat, Real.toNNReal_zero, cylinderHeat_zero]`.\n\nThese rewrites apply under the current hypotheses and imports, since the positive-time derivative theorems are already stated as `HasDerivAt \u2026 t` for all `0 < t`.",
+      "benefit": "Each `_generator_zero` theorem shrinks to a few lines: continuity facts, the positive-time generator, and a time-zero simplification. The one-sided-derivative extension argument gets a single named statement, so a reader sees what is specific to each semigroup. Future changes to the limit argument are made once, not three times, and further heat families can reuse the lemma.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerGaussianCylinderHeat.realHeatList_generator_zero",
+          "excerpt": "apply hasDerivWithinAt_Ici_of_tendsto_deriv (s := Set.Ioi 0)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/NavierStokesAndEuler/Euler/SobolevHeatGenerator.lean",
+          "declaration": "EulerGaussianCylinderHeat.realCylinderHeat_generator_zero",
+          "excerpt": "exact (realCylinderHeat_generator_pos period J ht).deriv.symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-c55e6e786f49/Mathlib/Analysis/Calculus/FDeriv/Extend.lean",
+          "declaration": "hasDerivWithinAt_Ici_of_tendsto_deriv",
+          "excerpt": "(f_lim' : Tendsto (fun x => deriv f x) (\ud835\udcdd[>] a) (\ud835\udcdd e)) : HasDerivWithinAt f e (Ici a) a"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 24113,
+    "cache_read_input_tokens": 51926,
+    "output_tokens": 4327,
+    "output_tokens_details": {
+      "thinking_tokens": 1043
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24113,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2839,
+        "cache_read_input_tokens": 25077,
+        "cache_creation_input_tokens": 2965,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2965
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14492660000000002,
+  "duration_ms": 30218,
+  "turns": 7,
+  "attempts": 1,
+  "judged": "2026-10-27T01:24:13",
+  "unit": "file",
+  "source_sha256": "b103d4c5926b34750c2f1c9fa4c81ed6f56ea0368683a64950c5d18db5bb00a6",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

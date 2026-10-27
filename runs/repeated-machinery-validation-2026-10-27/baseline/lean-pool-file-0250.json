@@ -1,0 +1,109 @@
+{
+  "id": "lean-pool-file-0250",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole target file. I also read the neighbouring definitions: TestFunction.lean, the vlDeriv/IsVlKernel/vlConv definitions, JSpace.lean 70\u2013180, RegularisedInitialData.lean 430\u2013549, and LocalSolutionDivFreePairing.lean 60\u2013120. JSpaceMollify imports JSpace, and the target imports JSpace directly, so a lemma in JSpace.lean would be visible to all the sites below. I grepped for existing shared lemmas on continuity, compact support or L\u00b2 membership of `WeakTestFunction.partialDeriv` and found none. The only related lemmas are `private` or about the whole gradient vector (`testGradient_*`). I could not run Lean, so the proposed lemma statements and the rewrites are untested. In particular the `\u03c8.partialDeriv_reflect` unfolding and the exact `MemLp` instance arguments need checking. Other duplicated sites exist (ForcePressure*, H1EstimateSliceConvection, SmoothingSliceH2). I did not read them all, so the count of sites is not exhaustive. Within the file itself the only repeated block is the per-coordinate integrability argument. The two `integral_finsetSum` plus sign-flip endings are short and I did not count them.",
+  "findings": [
+    {
+      "declaration": "ESS.LPS.lps_conv_div_free (reflected-kernel test function and its derivative)",
+      "start_line": 38,
+      "end_line": 55,
+      "excerpt": "have hpartial : \u2200 (i : Fin 3) (y : Vec3), \u03c8.partialDeriv i y = -vlDeriv \u03b7 i (x - y) := by",
+      "problem": "The proof builds the test function y \u21a6 \u03b7 (x - y) as a `WeakTestFunction`, with smoothness from `contDiff_const.sub contDiff_id` and compact support from `Homeomorph.subLeft x`. It then proves its coordinate derivative is `-(\u2202\u1d62\u03b7)(x - y)` by a chain-rule computation: `hasFDerivAt_id.const_sub`, `HasFDerivAt.comp`, `.fderiv`, `Function.comp_def`. `regularisedProfileConvolution_divergence_eq_zero` in RegularisedInitialData.lean repeats the same construction and derivative computation for a different kernel \u03ba. Only the kernel name and the `fderiv \u211d \u03ba (x - y) (basisVec i)` form of the result differ. The chain-rule block is the non-trivial part, and the two copies would have to be fixed in step.",
+      "proposed_change": "Add a shared constructor and derivative lemma next to `testGradient` in CaffarelliKohnNirenberg/Leray/JSpace.lean. Both users already import that file, the target directly and RegularisedInitialData through JSpaceMollify.\n\n  def WeakTestFunction.reflect (\u03ba : Vec3 \u2192 \u211d) (h\u03ba : ContDiff \u211d (\u22a4 : \u2115\u221e) \u03ba) (h\u03bac : HasCompactSupport \u03ba) (x : Vec3) : WeakTestFunction (Set.univ : Set Vec3) := \u27e8fun y => \u03ba (x - y), h\u03ba.comp (contDiff_const.sub contDiff_id), h\u03bac.comp_homeomorph (Homeomorph.subLeft x), Set.subset_univ _\u27e9\n\n  theorem WeakTestFunction.reflect_partialDeriv (\u03ba h\u03ba h\u03bac x) (i : Fin 3) (y : Vec3) : (WeakTestFunction.reflect \u03ba h\u03ba h\u03bac x).partialDeriv i y = -(fderiv \u211d \u03ba (x - y)) (basisVec i)\n\nThe proof of the second lemma is the current lines 46\u201355, with \u03ba in place of \u03b7.\n\nIn `lps_conv_div_free` the block becomes `let \u03c8 := WeakTestFunction.reflect \u03b7 h\u03b7.1 h\u03b7.2 x` and `hpartial i y := \u03c8.reflect_partialDeriv ..`. The `vlDeriv` form follows by `rfl` or `simp [vlDeriv]`. In RegularisedInitialData, `\u03c8` and `h\u03c8deriv` (lines 459\u2013471) become the same two lines.",
+      "benefit": "The chain-rule computation is written and proved once, in the shared `WeakTestFunction` API. The two div-free proofs shrink to their real content: pairing with the weak divergence condition, then a change of variables. A change to the representation of `WeakTestFunction` would then be a one-place fix.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/RegularisedInitialData.lean",
+          "declaration": "CKN.Leray.regularisedProfileConvolution_divergence_eq_zero",
+          "excerpt": "\u27e8fun y => \u03ba (x - y), h\u03ba.comp (contDiff_const.sub contDiff_id),\n      h\u03bac.comp_homeomorph (Homeomorph.subLeft x), Set.subset_univ _\u27e9"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/RegularisedInitialData.lean",
+          "declaration": "CKN.Leray.regularisedProfileConvolution_divergence_eq_zero",
+          "excerpt": "have hcomp := houter.comp y hinner"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/JSpaceMollify.lean",
+          "declaration": "module imports",
+          "excerpt": "public import LeanPool.CaffarelliKohnNirenberg.Leray.JSpace"
+        }
+      ]
+    },
+    {
+      "declaration": "ESS.LPS.lps_weak_gradient_trace_zero (L\u00b2 integrability of w_j \u00b7 \u2202_j \u03c8)",
+      "start_line": 102,
+      "end_line": 111,
+      "excerpt": "have hcont : Continuous (fun x : Vec3 => \u03c8.partialDeriv j x) :=\n          (hg.continuous_fderiv (by simp)).clm_apply continuous_const",
+      "problem": "`hint2` proves that `\u03c8.partialDeriv j` is continuous, compactly supported (via `HasCompactSupport.fderiv_apply`) and hence in L\u00b2. It then multiplies by an L\u00b2 component to get integrability. This regularity argument for `WeakTestFunction.partialDeriv` is re-proved inline in many places, and no public lemma exists for it. Copies appear in JSpace.lean (`smoothSolenoidal_test_integral_zero`, the `hderivS` block, and the private `testGradient_hasCompactSupport`), in `regularisedProfileConvolution_divergence_eq_zero` (`hgradCont`, `hgradCompact`, `hgradLp`), and in `forcedHeat_divergence_pairing_eq_zero` (`hdc`, `hds`). The only partially reusable results are private or are stated for the whole gradient vector.",
+      "proposed_change": "Add public lemmas in JSpace.lean for `\u03c8 : WeakTestFunction (Set.univ : Set Vec3)` and `i : Fin 3`:\n\n  theorem WeakTestFunction.continuous_partialDeriv : Continuous (fun x => \u03c8.partialDeriv i x)\n  theorem WeakTestFunction.hasCompactSupport_partialDeriv : HasCompactSupport (fun x => \u03c8.partialDeriv i x)\n  theorem WeakTestFunction.memLp_partialDeriv : MemLp (fun x => \u03c8.partialDeriv i x) 2 volume\n\nThe proofs are the current lines 105\u2013110: `(\u03c8.contDiff.continuous_fderiv (by simp)).clm_apply continuous_const`, `\u03c8.hasCompactSupport.fderiv_apply (\ud835\udd5c := \u211d) _`, and `memLp_of_hasCompactSupport`.\n\nIn the target, `hint2` becomes `fun j => (memLp_pi_iff.1 hw.1 j).integrable_mul (\u03c8.memLp_partialDeriv j)`. Its under-hypothesis form is unchanged: `hw.1 : MemLp w 2 volume` and `\u03c8` is built from `g`, `hg`, `hgc`. The `hgradLp` block in RegularisedInitialData and the `hdc`/`hds` pair in LocalSolutionDivFreePairing reduce to one-liners. The private `testGradient_hasCompactSupport` can then use the new compact-support lemma.",
+      "benefit": "The same regularity argument appears in at least four files. After the change each user cites it by name instead of re-deriving it. The `hint2` block here drops from ten lines to one. Readers see the weak-divergence pairing argument without the regularity boilerplate.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/RegularisedInitialData.lean",
+          "declaration": "CKN.Leray.regularisedProfileConvolution_divergence_eq_zero",
+          "excerpt": "have hgradLp (i : Fin 3) : MemLp\n      (fun y : Vec3 => \u03c8.partialDeriv i y) (2 : \u211d\u22650\u221e) volume :=\n    (hgradCont i).continuous.memLp_of_hasCompactSupport (hgradCompact i)"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/EscauriazaSereginSverak/PartV/LocalSolutionDivFreePairing.lean",
+          "declaration": "ESS.forcedHeat_divergence_pairing_eq_zero",
+          "excerpt": "(\u03c8.contDiff.continuous_fderiv (by simp)).clm_apply continuous_const"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/CaffarelliKohnNirenberg/Leray/JSpace.lean",
+          "declaration": "CKN.Leray.smoothSolenoidal_test_integral_zero",
+          "excerpt": "exact \u03c8.hasCompactSupport.fderiv_apply (\ud835\udd5c := \u211d) (basisVec i)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 36771,
+    "cache_read_input_tokens": 215431,
+    "output_tokens": 8169,
+    "output_tokens_details": {
+      "thinking_tokens": 2275
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 36771,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3685,
+        "cache_read_input_tokens": 40239,
+        "cache_creation_input_tokens": 461,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 461
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.2503531,
+  "duration_ms": 61199,
+  "turns": 15,
+  "attempts": 1,
+  "judged": "2026-10-27T00:41:38",
+  "unit": "file",
+  "source_sha256": "7f552d1024c8e24f1ec732681d9233ce0cfc52710ad74a00c36e9b885332ee31",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

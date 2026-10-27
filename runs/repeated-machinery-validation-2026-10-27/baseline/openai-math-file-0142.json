@@ -1,0 +1,99 @@
+{
+  "id": "openai-math-file-0142",
+  "lib": "openai-math",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file. I also read the helper lemmas `whitening` (TracePositivity.lean) and `matrix_inverse_trace_congruence` (MatrixFrameNormalization.lean). I checked other uses of `posSemidef_star_left_conjugate_iff` in the repo, and Mathlib's `IsHermitian.spectral_theorem`. I found no existing lemma in Mathlib or the repo that already packages either repeated block. Both proposed lemmas are untested sketches: I could not compile them, and the exact simp normal forms (especially `RCLike.ofReal \u2218 _` versus `fun i => (_ : \u2102)`) may need small adjustments. The two findings are moderate in size. The first is the stronger one because the duplicated step is the whole whitening-and-congruence reduction, not just a few lines. I did not report the repeated `hM.conjTranspose_mul_mul_same (Matrix.mulVec_injective_iff_isUnit.mpr hB)` one-liner or the repeated `Complex.pos_iff` bookkeeping, because each is too short.",
+  "findings": [
+    {
+      "declaration": "inverse_trace_relative_upper (duplicating the reduction in inverse_trace_lower_psd)",
+      "start_line": 148,
+      "end_line": 159,
+      "excerpt": "simpa only [mul_sub,sub_mul,mul_smul_comm,smul_mul_assoc,hBG] using hh\n  exact hB.posSemidef_star_left_conjugate_iff.mp he",
+      "problem": "`inverse_trace_lower_psd` (lines 45\u201363) and `inverse_trace_relative_upper` (lines 148\u2013159) use the same whitening reduction for a pencil inequality `(c \u2022 P \u2212 Q).PosSemidef`. Each one obtains a unit `B` with `B\u1d34 P B = 1` from `whitening`. Each proves the whitened inequality `(c \u2022 1 \u2212 B\u1d34 Q B).PosSemidef`. Each then transports it back with the same step: distribute `B\u1d34 * (_) * B` over `c \u2022 P \u2212 Q` using `mul_sub, sub_mul, mul_smul_comm, smul_mul_assoc, hBM/hBG`, and finish with `posSemidef_star_left_conjugate_iff.mp`. Each also repeats the surrounding setup: `obtain \u27e8B,hB,_\u27e9 := whitening _ _`, `let N := B\u1d34*_*B`, the PosDef of N, and the trace-congruence transport. Only the proof of the whitened inequality differs: `trace_upper_psd` plus slack in one lemma, `inverse_trace_det_upper` in the other.",
+      "proposed_change": "Add a helper in `KaehlerCalculus` before `inverse_trace_lower_psd`:\n\nlemma pencil_psd_of_whitened {P Q : Matrix (Fin n) (Fin n) \u2102} (hP : P.PosDef) (c : \u211d)\n    (h : \u2200 B : Matrix (Fin n) (Fin n) \u2102, IsUnit B \u2192 B\u1d34*P*B = 1 \u2192\n      (((c:\u2102) \u2022 (1 : Matrix (Fin n) (Fin n) \u2102)) - B\u1d34*Q*B).PosSemidef) :\n    (((c:\u2102) \u2022 P) - Q).PosSemidef := by\n  obtain \u27e8B,hB,hBP\u27e9 := whitening P hP\n  have hp : (B\u1d34*(((c:\u2102) \u2022 P) - Q)*B).PosSemidef := by\n    simpa only [mul_sub,sub_mul,mul_smul_comm,smul_mul_assoc,hBP] using h B hB hBP\n  exact hB.posSemidef_star_left_conjugate_iff.mp hp\n\nThe proof is the existing lines 45/61\u201363 (and 148/157\u2013159).\n\nThen `inverse_trace_lower_psd` becomes `pencil_psd_of_whitened hM R (fun B hB hBM => ?_)`, where the body keeps `N`, `hN`, `htr`, `trace_upper_psd` and the slack addition, ending with `rw [he] at hh; exact hh`.\n\nAnd `inverse_trace_relative_upper` becomes `pencil_psd_of_whitened hG (D*R^(n-1)) (fun B hB hBG => ?_)`, where the body keeps `N`, `hN`, `htr`, `hd`, and `exact inverse_trace_det_upper hN hR0 (htr \u25b8 hR) hd`.\n\nThe cast `((D*R^(n-1):\u211d):\u2102)` matches the `c : \u211d` argument directly. The roles are P=M, Q=G in the first lemma and P=G, Q=M in the second. The hypotheses (`PosDef` of the reference matrix, real scalar) are exactly those already available in both lemmas.",
+      "benefit": "The congruence-transport argument is stated and proved once, instead of in two slightly different spellings. Each caller then shows only its own whitened-inequality argument (trace bound versus trace-and-determinant bound). A future change, such as another pencil bound reduced by whitening, becomes a short call rather than a third copy of the reduction.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/TraceEllipticity.lean",
+          "declaration": "inverse_trace_lower_psd",
+          "excerpt": "simpa only [mul_sub,sub_mul,mul_smul_comm,smul_mul_assoc,hBM] using hh\n  exact (hB.posSemidef_star_left_conjugate_iff).mp hp"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/TracePositivity.lean",
+          "declaration": "whitening",
+          "excerpt": "\u2203 B : Matrix (Fin n) (Fin n) \u2102, IsUnit B \u2227 B\u1d34*M*B = 1"
+        }
+      ]
+    },
+    {
+      "declaration": "eig_upper_psd and inverse_trace_eigenvalues (repeated spectral decomposition unpacking)",
+      "start_line": 31,
+      "end_line": 33,
+      "excerpt": "have hs := hh.spectral_theorem\n  simp only [Unitary.conjStarAlgAut_apply,Function.comp_def] at hs",
+      "problem": "Both `eig_upper_psd` (lines 31\u201333) and `inverse_trace_eigenvalues` (lines 68\u201372) convert Mathlib's `spectral_theorem` (stated with `conjStarAlgAut` and `RCLike.ofReal \u2218 eigenvalues`) into the concrete matrix identity `M = U * diagonal (fun i => (ev i : \u2102)) * U\u1d34`. They do this with the same `simp only [Unitary.conjStarAlgAut_apply, Function.comp_def] at hs`. The second lemma adds a `change` to state the target form explicitly. Both lemmas also re-derive the same unitary identities `U * U\u1d34 = 1` (`Unitary.coe_mul_star_self`) and `U\u1d34 * U = 1` (`Unitary.coe_star_mul_self`), writing out the long coerced type `(\u2026 : Matrix (Fin n) (Fin n) \u2102)` repeatedly. This is routine but noisy, and any change to Mathlib's spectral-theorem normal form must be fixed in two places.",
+      "proposed_change": "Add one lemma before `eig_upper_psd`:\n\nlemma hermitian_spectral_decomp {M : Matrix (Fin n) (Fin n) \u2102} (hh : M.IsHermitian) :\n    M = (hh.eigenvectorUnitary : Matrix (Fin n) (Fin n) \u2102) *\n      Matrix.diagonal (fun i => (hh.eigenvalues i : \u2102)) *\n      (hh.eigenvectorUnitary : Matrix (Fin n) (Fin n) \u2102)\u1d34 := by\n  have hs := hh.spectral_theorem\n  simp only [Unitary.conjStarAlgAut_apply,Function.comp_def] at hs\n  exact hs\n\nThis is the existing lines 68\u201372 with the `change` replaced by `exact`; `change` should also work if `exact` fails to unify. In `eig_upper_psd`, replace lines 31\u201333 with `exact (hermitian_spectral_decomp hh) \u25b8 hu`. In `inverse_trace_eigenvalues`, replace lines 68\u201372 with `have hs := hermitian_spectral_decomp hM.isHermitian`. Both uses sit under their existing hypotheses: `IsHermitian` for the first, and `PosDef.isHermitian` for the second.",
+      "benefit": "The spectral-theorem normalization is done once with a readable statement. Both proofs then start from an explicit `M = U D U\u1d34` equation instead of a Mathlib-internal `conjStarAlgAut` form. The reader of `eig_upper_psd` also sees at a glance what `hs \u25b8 hu` rewrites.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/openai-math/lean/OAI/Geometry/PrescribedPotential/TraceEllipticity.lean",
+          "declaration": "inverse_trace_eigenvalues",
+          "excerpt": "have hs := hM.isHermitian.spectral_theorem\n  simp only [Unitary.conjStarAlgAut_apply,Function.comp_def] at hs"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-d13f23b723b8/Mathlib/Analysis/Matrix/Spectrum.lean",
+          "declaration": "Matrix.IsHermitian.spectral_theorem",
+          "excerpt": "A = conjStarAlgAut \ud835\udd5c _ hA.eigenvectorUnitary (diagonal (RCLike.ofReal \u2218 hA.eigenvalues))"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 21853,
+    "cache_read_input_tokens": 55469,
+    "output_tokens": 8630,
+    "output_tokens_details": {
+      "thinking_tokens": 4067
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21853,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3759,
+        "cache_read_input_tokens": 20929,
+        "cache_creation_input_tokens": 4853,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4853
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.17927490000000001,
+  "duration_ms": 61918,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-10-26T23:10:59",
+  "unit": "file",
+  "source_sha256": "30f08ca0a8707fe0b90c90955e7016b5216447490ce26b199828ac3950fd27d9",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

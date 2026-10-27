@@ -108,6 +108,12 @@ def main():
     expansion = ROOT / 'runs/library-quality-scale-2026-10-26'
     selected += [(manifest.parent.parent.name, manifest.parent)
                  for manifest in expansion.glob('*/*/judge.json')]
+    selected.append(('definition-fidelity', ROOT / 'runs/defs1/definition-fidelity/claude-opus-5-5-high'))
+    validation = ROOT / 'runs/repeated-machinery-validation-2026-10-27/repeated-proof-machinery/claude-sonnet-5-5-high'
+    if (validation / 'judge.json').exists():
+        selected.append(('repeated-proof-machinery-validation', validation))
+        largest_pass['repeated-proof-machinery-validation'] = len(
+            json.loads((validation / 'judge.json').read_text())['protocol']['sample_ids'])
     for source_audit, directory in selected:
         audit = "duplicates-mathlib-inclusive" if source_audit == "duplicates-mathlib" else source_audit
         directory_completed = 0
@@ -117,6 +123,8 @@ def main():
             result = json.loads(p.read_text())
             directory_completed += 1
             name = model_names.get(result.get("model"), result.get("model", "unknown"))
+            if audit == 'definition-fidelity' and name == 'rule':
+                name = 'Opus'  # Same composite protocol; missing-docstring flags incur no inference cost.
             row = groups[audit, name]
             row["completed"] += 1
             amount, method = token_cost(result)
@@ -133,13 +141,17 @@ def main():
             model = json.loads(results_model.read_text()).get("model")
         if model:
             name = model_names.get(model, model)
+            if audit == 'definition-fidelity' and name == 'rule':
+                name = 'Opus'
             row = groups[audit, name]
             expenditure = directory_expenditure(directory)
             row["api_usd"] += expenditure["retry_api_usd"]
             row["retry_api_usd"] = row.get("retry_api_usd", 0) + expenditure["retry_api_usd"]
             row["uncosted_attempts"] = row.get("uncosted_attempts", 0) + expenditure["uncosted_attempts"]
     for audit in largest_pass:
-        report = FILES / "reports" / f"{audit}-comparison.json" if audit in RUBRICS else MAIN / audit / "audit-comparison.json"
+        report = (ROOT / 'runs/defs1/definition-fidelity/audit-comparison.json' if audit == 'definition-fidelity'
+                  else FILES / "reports" / f"{audit}-comparison.json" if audit in RUBRICS
+                  else MAIN / audit / "audit-comparison.json")
         if report.exists():
             largest_pass[audit] = json.loads(report.read_text())["groups"]["all"]["full_pass_reference_targets"]
     table_header = ["| Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |",
@@ -148,6 +160,9 @@ def main():
              f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · "
              "[Methods and notation](../../AUDIT_METHODS.md).", "",
              *table_header]
+    lines[4:4] = ['Definition fidelity groups automatic missing-docstring flags with its Opus protocol; '
+                  'rule-only decisions cost $0. Repeated-machinery validation is a separate check, '
+                  'excluded from the original first-pass judgment and coverage counts.', '']
     totals = defaultdict(float)
     order = {name: i for i, name in enumerate(["Opus", "Sol", "Sonnet", "Luna", "DeepSeek"])}
     audits = {audit: i for i, audit in enumerate(dict.fromkeys(audit for audit, _ in groups))}

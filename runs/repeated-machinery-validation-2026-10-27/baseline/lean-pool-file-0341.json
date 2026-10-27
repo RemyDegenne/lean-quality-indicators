@@ -1,0 +1,135 @@
+{
+  "id": "lean-pool-file-0341",
+  "lib": "lean-pool",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and compared the repeated blocks by line. I also grepped the Moise directory for an existing helper for the intersection-card bound and found none. The strongest duplicates are: (1) the \"distinct triangles share at most two vertices\" argument, which appears four times; (2) the \"non-boundary edge gives a second triangle, so the point is interior to the support\" argument, which appears three times, with the existing lemma `edgeCarrier_diff_vertices_subset_interior_support` already covering two of them; (3) the edge-to-simplex membership boilerplate. I did not compile anything. The rewrites below are proof sketches under the stated hypotheses, and moving a lemma earlier in the file may need small ordering adjustments. I skipped the repeated \"hull of a \u22641-vertex set is a vertex position\" branch (near lines 892 and 1055) because its sites differ in context.",
+  "findings": [
+    {
+      "declaration": "TriangleMesh.disjoint_interior_triangleCarrier_edgeCarrier / disjoint_interior_triangleCarrier_triangleCarrier / eraseTriangle_support_eq_closure_diff_triangleCarrier / triangle_inter_eq_edge",
+      "start_line": 435,
+      "end_line": 450,
+      "excerpt": "have hInterCard : (T.1 \u2229 U.1 : Finset M.Vertex).card \u2264 2 := by\n    by_contra h",
+      "problem": "The same argument is reproved four times: if two distinct maximal triangles shared three vertices, the intersection would have card 3 = card T = card U, forcing T = U. The blocks are at 435-450, 468-483, 576-588 and 725-739. Each uses `card_le_card inter_subset_left`, `omega`, and two `eq_of_subset_of_card_le` calls, with small variations in how they are written. Beyond that, `disjoint_interior_triangleCarrier_edgeCarrier` (423-461) repeats the entire second half of `disjoint_interior_triangleCarrier_triangleCarrier` (465-492), namely the `triangle_inter` rewrite followed by the card-\u22642 disjointness lemma. The edge version only adds `convexHull_mono (Set.image_mono heData.1)`. The `eraseTriangle_support_eq_closure_diff_triangleCarrier` block (576-593) is likewise exactly `disjoint_interior_triangleCarrier_triangleCarrier` applied with `huData.1 : U.1 \u2260 T.1`.",
+      "proposed_change": "Add one lemma before `disjoint_interior_triangleCarrier_edgeCarrier`:\n\ntheorem card_inter_triangle_le_two {T U : M.Triangle} (hne : T.1 \u2260 U.1) : (T.1 \u2229 U.1 : Finset M.Vertex).card \u2264 2\n\nProof: `by_contra`. Then `(T.1 \u2229 U.1).card = 3` from `card_le_card inter_subset_left` and `card_triangle`. So `T.1 \u2229 U.1 = T.1` and `= U.1` by `Finset.eq_of_subset_of_card_le`, contradicting `hne`.\n\nUse it as follows:\n- Replace `hInterCard` in both disjointness theorems with `M.card_inter_triangle_le_two hne`.\n- Replace the whole `hinterCard` block in `eraseTriangle_support_eq_closure_diff_triangleCarrier` with `M.card_inter_triangle_le_two (T := U) (U := T) huData.1`.\n- Replace the `hcard` block in `triangle_inter_eq_edge` with `M.card_inter_triangle_le_two hTU`.\n\nOptionally, move `disjoint_interior_triangleCarrier_triangleCarrier` above `..._edgeCarrier` and prove the edge version as `(disjoint_interior_triangleCarrier_triangleCarrier hTU).mono_right (convexHull_mono (Set.image_mono heData.1))`. The `hTU : T.1 = U.1` case stays as it is. In `eraseTriangle_support_eq...`, the `hqInter` computation and the final `Set.disjoint_left.mp ...` would then collapse to `Set.disjoint_left.mp (M.disjoint_interior_triangleCarrier_triangleCarrier huData.1) hq hqT`.",
+      "benefit": "This removes roughly 70 lines of identical cardinality reasoning and one duplicated geometric tail. A reader sees a single statement that distinct triangles share at most an edge. If the triangle-card hypothesis changes, one place needs fixing instead of four.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.disjoint_interior_triangleCarrier_triangleCarrier",
+          "excerpt": "have hInterCard : (T.1 \u2229 U.1 : Finset M.Vertex).card \u2264 2 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.eraseTriangle_support_eq_closure_diff_triangleCarrier",
+          "excerpt": "have hinterCard : (U.1 \u2229 T.1 : Finset M.Vertex).card \u2264 2 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.triangle_inter_eq_edge",
+          "excerpt": "have hcard : (T.1 \u2229 U.1 : Finset M.Vertex).card \u2264 2 := by"
+        }
+      ]
+    },
+    {
+      "declaration": "TriangleMesh.exists_boundaryEdge_through_frontier_point / vertex_mem_triangle_of_frontier_not_mem_boundaryEdges / edgeCarrier_diff_vertices_subset_interior_support",
+      "start_line": 1446,
+      "end_line": 1483,
+      "excerpt": "have hother : \u2203 u \u2208 M.incidentTriangles e, u \u2260 t := by",
+      "problem": "Three proofs repeat the following argument. A non-incidence-one edge `e \u2286 t` has a second incident triangle `u`. Then `mem_interior_union_triangleCarrier_of_shared_edge...` gives a point of `e` away from its endpoints in `interior (T \u222a U)`. Next, the union is shown to be a subset of the support (the long `Set.union_subset (Set.subset_iUnion_of_subset ...)` block). Finally `interior_mono` puts the point in `interior support`. The proof of `edgeCarrier_diff_vertices_subset_interior_support` (1387-1424) is the original, and it states precisely this conclusion. The proof of `exists_boundaryEdge_through_frontier_point` (1446-1483) and the `\u00acIsBoundaryEdge` branch of `vertex_mem_triangle_of_frontier_not_mem_boundaryEdges` (1569-1600) redo it by hand: the `hother` singleton argument, the `U` construction, the union-subset proof, and `interior_mono`. Neither uses the already-proved lemma, even though it appears earlier in the file.",
+      "proposed_change": "No new lemma is needed.\n\n(a) In `vertex_mem_triangle_of_frontier_not_mem_boundaryEdges`, replace lines 1569-1600 with:\n`exact Set.disjoint_left.mp disjoint_interior_frontier (M.edgeCarrier_diff_vertices_subset_interior_support T.2 hecard heT heBoundary \u27e8hvEdge, hvNotVertices\u27e9) hvFrontier`.\n\n(b) In `exists_boundaryEdge_through_frontier_point`, keep `by_contra hne` and derive `hnb : \u00acM.IsBoundaryEdge e := fun h => hne h.2`. Then get `hpv' : p \u2209 M.position '' (e : Set M.Vertex)` from `hpv` (an image membership gives `\u2203 v, position v = p`). Finish with `exact Set.disjoint_left.mp disjoint_interior_frontier (M.edgeCarrier_diff_vertices_subset_interior_support ht hecard heT hnb \u27e8hpEdge, hpv'\u27e9) hpFrontier`.\n\nOptionally, factor the 'support contains `triangleCarrier t \u222a triangleCarrier u`' step into a small lemma `triangleCarrier_union_subset_support`. It also occurs at 1416, 1472 and 1591, and `triangleCarrier_subset_support` is open-coded at 1542+ and in `frontier_infinite_of_triangles_nonempty`.",
+      "benefit": "This deletes about 60 lines of the same nontrivial local-to-global interior argument. The two later proofs then say what they use, namely that non-boundary edge points are interior to the support. Any future change to the shared-edge neighbourhood argument is made once.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.edgeCarrier_diff_vertices_subset_interior_support",
+          "excerpt": "convexHull \u211d (M.position '' (e : Set M.Vertex)) \\\n        (M.position '' (e : Set M.Vertex)) \u2286 interior M.toPlaneComplex.support := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.vertex_mem_triangle_of_frontier_not_mem_boundaryEdges",
+          "excerpt": "have hother : \u2203 u \u2208 M.incidentTriangles e, u \u2260 T.1 := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.exists_boundaryEdge_through_frontier_point",
+          "excerpt": "have hpInteriorSupport : p \u2208 interior M.toPlaneComplex.support :=\n      interior_mono hUnionSubset hpInteriorUnion"
+        }
+      ]
+    },
+    {
+      "declaration": "TriangleMesh.edge_eq_of_nonvertex_mem_edgeCarriers / edgeCarrier_inter_edgeCarrier / vertex_mem_edge_of_position_mem_edgeCarrier",
+      "start_line": 864,
+      "end_line": 882,
+      "excerpt": "have heFace : e \u2208 M.toPlaneComplex.simplexes := by",
+      "problem": "The following chain recurs: `e \u2208 M.edges` gives a triangle `t` with `e \u2208 powersetCard 2 t`, then `mem_faces_iff` with `card_pos` gives a simplex, then `face_inter` and a `change` give the hull-intersection equation. It appears for both `e` and `f` in `edge_eq_of_nonvertex_mem_edgeCarriers` (864-881) and again in `edgeCarrier_inter_edgeCarrier` (920-931), and a third time for `e` in `vertex_mem_edge_of_position_mem_edgeCarrier` (939-943). The statement of `edgeCarrier_inter_edgeCarrier` is exactly the `hface` that `edge_eq_of_nonvertex_mem_edgeCarriers` constructs, but the lemma is declared afterwards and not used. `edge_subset_of_nonvertex_mem_triangleCarrier` (1009) builds the same `heSimplex` and `face_inter` data once more.",
+      "proposed_change": "Add `theorem mem_simplexes_of_mem_edges {e} (he : e \u2208 M.edges) : e \u2208 M.toPlaneComplex.simplexes`. Its proof takes `t` from `Finset.mem_biUnion.mp he`, uses `card_of_mem_edges` for positivity, and finishes with `mem_faces_iff.mpr \u27e8Finset.card_pos.mpr ..., t, ht, ...\u27e9`. Move `edgeCarrier_inter_edgeCarrier` above `edge_eq_of_nonvertex_mem_edgeCarriers`, and prove it as `M.toPlaneComplex.face_inter e (M.mem_simplexes_of_mem_edges he) f (M.mem_simplexes_of_mem_edges hf)`.\n\nThen in `edge_eq_of_nonvertex_mem_edgeCarriers`, start with `have hface := M.edgeCarrier_inter_edgeCarrier he hf` in place of lines 864-881. In `vertex_mem_edge_of_position_mem_edgeCarrier`, use `mem_simplexes_of_mem_edges he` for `heFace`.",
+      "benefit": "The simplex-membership boilerplate is stated once. `edge_eq_of_nonvertex_mem_edgeCarriers` shrinks to its real content, the card/point argument. The existing statement `edgeCarrier_inter_edgeCarrier` is reused instead of silently duplicated.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.edgeCarrier_inter_edgeCarrier",
+          "excerpt": "have heFace : e \u2208 M.toPlaneComplex.simplexes := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.vertex_mem_edge_of_position_mem_edgeCarrier",
+          "excerpt": "have heFace : e \u2208 M.toPlaneComplex.simplexes := by"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/lean-pool/LeanPool/ClassificationOfSurfaces/Moise/FreeTriangle.lean",
+          "declaration": "TriangleMesh.edge_eq_of_nonvertex_mem_edgeCarriers",
+          "excerpt": "have hface := M.toPlaneComplex.face_inter e heFace f hfFace"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 56961,
+    "cache_read_input_tokens": 215454,
+    "output_tokens": 9484,
+    "output_tokens_details": {
+      "thinking_tokens": 2691
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 56961,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5467,
+        "cache_read_input_tokens": 58736,
+        "cache_creation_input_tokens": 2154,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2154
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.3442494,
+  "duration_ms": 60531,
+  "turns": 10,
+  "attempts": 1,
+  "judged": "2026-10-27T01:40:10",
+  "unit": "file",
+  "source_sha256": "fa9b828d612e5c979f01aa4bd6ee059c7cd0f9f84714957a7e74a135ffdfe1ee",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

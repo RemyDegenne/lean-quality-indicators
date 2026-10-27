@@ -1,14 +1,16 @@
 # API-equivalent costs
 
-Generated 2026-10-27T13:44:49+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-27T14:10:31+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+
+Definition fidelity groups automatic missing-docstring flags with its Opus protocol; rule-only decisions cost $0. Repeated-machinery validation is a separate check, excluded from the original first-pass judgment and coverage counts.
 
 | Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |
 |---|---|---:|---:|---:|---:|
-| unnecessary-hypotheses | Opus | 3600 | 2100 | $264.19 / $154.11 | $73.39 |
-| unnecessary-hypotheses | Sol | 3100 | 2100 | $145.80 / $98.77 | $47.03 |
-| unnecessary-hypotheses | Sonnet | 3100 | 2100 | $110.14 / $74.61 | $35.53 |
-| unnecessary-hypotheses | Luna | 3100 | 2100 | $6.81 / $4.61 | $2.20 |
-| unnecessary-hypotheses | DeepSeek | 600 | 2100 | $4.52 / $15.84 | $7.54 |
+| unnecessary-hypotheses | Opus | 6600 | 5100 | $491.63 / $379.90 | $74.49 |
+| unnecessary-hypotheses | Sol | 3100 | 5100 | $145.80 / $239.87 | $47.03 |
+| unnecessary-hypotheses | Sonnet | 3100 | 5100 | $110.14 / $181.20 | $35.53 |
+| unnecessary-hypotheses | Luna | 3100 | 5100 | $6.81 / $11.20 | $2.20 |
+| unnecessary-hypotheses | DeepSeek | 600 | 5100 | $4.52 / $38.46 | $7.54 |
 | duplicates-mathlib-inclusive | Opus | 4100 | 5100 | $222.89 / $277.26 | $54.36 |
 | duplicates-mathlib-inclusive | Sol | 5100 | 5100 | $325.96 / $325.96 | $63.91 |
 | duplicates-mathlib-inclusive | Sonnet | 5100 | 5100 | $128.13 / $128.13 | $25.12 |
@@ -34,6 +36,8 @@ Generated 2026-10-27T13:44:49+00:00 · [Methods and notation](../../AUDIT_METHOD
 | readable-proof-simplification | Sonnet | 130 | 130 | $18.52 / $18.52 | $142.44 |
 | readable-proof-simplification | Luna | 130 | 130 | $0.50 / $0.50 | $3.86 |
 | readable-proof-simplification | DeepSeek | 40 | 130 | $1.16 / $3.76 | $28.89 |
+| definition-fidelity | Opus | 5000 | 5000 | $336.14 / $336.14 | $67.23 |
+| repeated-proof-machinery-validation | Sonnet | 39 | 180 | $4.59 / $21.16 | $117.57 |
 
 ## Appendix audits: not ready for use
 
@@ -56,12 +60,12 @@ Generated 2026-10-27T13:44:49+00:00 · [Methods and notation](../../AUDIT_METHOD
 
 | Model | API-equivalent USD |
 |---|---:|
-| Opus | $641.84 |
+| Opus | $1205.42 |
 | Sol | $534.09 |
-| Sonnet | $856.34 |
+| Sonnet | $860.92 |
 | Luna | $26.56 |
 | DeepSeek | $12.60 |
-| **Total** | **$2071.43** |
+| **Total** | **$2639.60** |
 
 ## Rate sources
 

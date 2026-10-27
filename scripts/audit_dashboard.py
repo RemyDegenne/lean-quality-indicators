@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 import random
 import tomllib
+import indicator
 
 from report import wilson
 from api_costs import directory_expenditure, full_pass_estimate
@@ -116,7 +117,7 @@ def models_for(audit, base, samples, is_file):
                 if is_file:
                     selected = list(samples)
                 else:
-                    limit = 1000 if audit.startswith("duplicates") else 400 if name == "Opus" and index == 0 else 300
+                    limit = 1000 if audit.startswith("duplicates") or (name == "Opus" and index == 0) else 300
                     selected = [i for i, s in samples.items() if int(i.rsplit("-", 1)[1]) < limit
                                 and not (name == "Opus" and audit.startswith("duplicates") and s["lib"] == "mathlib")]
             records.append({"label": label, "directory": directory, "selected": set(selected), "results": rows})
@@ -145,16 +146,15 @@ def library_table(data, libraries, names):
 def is_positive(audit, is_file, row):
     if is_file:
         return bool(row.get("findings"))
-    return row["verdict"] in (["duplicate", "special_case"] if audit.startswith("duplicates")
-                              else ["unnecessary_hypothesis_found"])
+    return row["verdict"] in indicator.config(ROOT / 'indicators' / audit)['positive']
 
 
-def make_report(audit, base, samples, is_file, resamples, models=None):
+def make_report(audit, base, samples, is_file, resamples, models=None, unit=None):
     models = models if models is not None else models_for(audit, base, samples, is_file)
     positive = lambda r: is_positive(audit, is_file, r)
     names = library_names()
     libraries = ordered_libraries({s["lib"] for s in samples.values()})
-    data = {"audit": audit, "unit": "file" if is_file else "theorem", "groups": {},
+    data = {"audit": audit, "unit": unit or ("file" if is_file else "theorem"), "groups": {},
             "reporting_status": reporting_status(audit)}
     methods = "../../../AUDIT_METHODS.md"
     lines = [f"# {audit}", "", f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · "
@@ -165,7 +165,15 @@ def make_report(audit, base, samples, is_file, resamples, models=None):
     if audit == "duplicates-mathlib-inclusive":
         lines += ["Opus uses the earlier prompt on four libraries, without Mathlib targets.", ""]
     if audit == "unnecessary-hypotheses":
-        lines += ["Original five libraries: Opus 400 then 300 targets/library; Sol, Sonnet and Luna 300 per pass.", ""]
+        lines += ["Original five libraries: Opus 1,000 then 300 targets/library; Sol, Sonnet and Luna 300 per pass.", ""]
+    if audit == 'definition-fidelity':
+        lines += ['Opus column includes the automatic missing-docstring rule; those flags require no model call. '
+                  'Rates here use all reviewed definitions, including technical definitions set aside by the judge. '
+                  '[Original report with assessed-only rates](claude-opus-5-5-high/report.md).', '']
+    if audit == 'repeated-proof-machinery':
+        lines += ['[Separate validation: 20 flagged and 10 unflagged targets per library]'
+                  '(../../repeated-machinery-validation-2026-10-27/validation-report.md). '
+                  'These checks do not enter the first-pass counts.', '']
     for lib, title in [(None, "All libraries"), *[(lib, names[lib]) for lib in libraries]]:
         scoped = {i: s for i, s in samples.items() if lib is None or s["lib"] == lib}
         group = {"models": {}, "correlations": {}}
@@ -307,8 +315,8 @@ def add_expansion(audit, samples, models):
 def target_key(sample, unit):
     """Match source targets across audits independently of sample numbering."""
     return json.dumps([unit, sample["lib"], sample.get("dir"), sample.get("commit"),
-                       sample["path"], sample.get("line") if unit == "theorem" else None,
-                       sample.get("name") if unit == "theorem" else None])
+                       sample["path"], sample.get("line") if unit != "file" else None,
+                       sample.get("name") if unit != "file" else None])
 
 
 def union_results(bundles):
@@ -378,7 +386,7 @@ def combined_summary(bundles, resamples):
                                                       for unit in units}}
     lines = ["## Combined summary", "",
              f"Union across **{len(bundles)} audits**: a target counts once per model if any audit flags it. "
-             "First passes only; theorem and file samples are counted separately. "
+             "First passes only; theorem, definition and file samples are counted separately. "
              "Each rate uses only targets reviewed on **every contributing audit**; a dash means no such targets. "
              "[Aggregation details](AUDIT_METHODS.md#combined-summary).", ""]
     for unit in units:
@@ -405,8 +413,10 @@ def combined_summary(bundles, resamples):
            for library in data["libraries"].values() for rows in library.values() for row in rows.values()):
         lines += [r"\* Some targets still await selected audits; their union flags can increase.", ""]
     lines += ["### Model comparison", "",
-              "| Model | Audits with results | Theorems selected | Files selected | Audit passes done/planned | Theorems flagged / reviewed | Files flagged / reviewed | Judgments done/planned | API expenditure / full-pass estimate |",
-              "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+              "| Model | Audits with results | " + " | ".join(f'{u.title()}s selected' for u in units) +
+              " | Audit passes done/planned | " + " | ".join(f'{u.title()}s flagged / reviewed' for u in units) +
+              " | Judgments done/planned | API expenditure / full-pass estimate |",
+              "|---|" + "---:|" * (4 + 2 * len(units))]
     for model, entries in union.items():
         rows = {unit: union_counts(entries, samples, unit=unit, audits=data["audits_by_unit"][unit]) for unit in units}
         audit_rows = [b["report"]["groups"]["all"]["models"][model] for b in bundles
@@ -424,10 +434,10 @@ def combined_summary(bundles, resamples):
                                  "passes_completed": passes_done, "passes_planned": passes_planned,
                                  "api_expenditure_usd": spend, "full_pass_estimate_usd": estimate}
         cells = [f"{rows[u]['flagged']}/{rows[u]['completed']}" if rows.get(u, {}).get("completed") else "—"
-                 for u in ("theorem", "file")]
+                 for u in units]
         money = f"${spend:.2f} / ${estimate:.2f}" if estimate is not None else f"${spend:.2f} / —"
-        selected = [rows.get(u, {}).get("selected", 0) for u in ("theorem", "file")]
-        lines.append(f"| {model} | {count}/{len(bundles)} | {selected[0]} | {selected[1]} | "
+        selected = ' | '.join(str(rows[u]['selected']) for u in units)
+        lines.append(f"| {model} | {count}/{len(bundles)} | {selected} | "
                      f"{passes_done}/{passes_planned} | " + " | ".join(cells) + f" | {done}/{planned} | {money} |")
     for unit in units:
         lines += ["", f"### {unit.title()} union correlations", "",
@@ -459,15 +469,23 @@ def main():
     if args.resamples < 100:
         parser.error("Use at least 100 bootstrap resamples")
     sections, appendix_sections, bundles = [], [], []
-    for audit, is_file in [("unnecessary-hypotheses", False), ("duplicates-mathlib-inclusive", False), *[(r, True) for r in RUBRICS]]:
-        run = FILES if is_file else MAIN
+    specs = [('unnecessary-hypotheses', 'theorem', MAIN), ('duplicates-mathlib-inclusive', 'theorem', MAIN),
+             ('definition-fidelity', 'definition', ROOT / 'runs/defs1'),
+             *[(r, 'file', FILES) for r in RUBRICS]]
+    for audit, unit, run in specs:
+        is_file = unit == 'file'
         samples = {s["id"]: s for s in map(json.loads, (run / "samples.jsonl").read_text().splitlines())}
-        models = models_for(audit, run / audit, samples, is_file)
-        samples, models = add_extra_corpus(audit, is_file, samples, models)
+        if unit == 'definition':
+            directory = run / audit / 'claude-opus-5-5-high'
+            models = {'Opus': [{'label': directory.name, 'directory': directory,
+                               'selected': set(samples), 'results': load(directory)}]}
+        else:
+            models = models_for(audit, run / audit, samples, is_file)
+            samples, models = add_extra_corpus(audit, is_file, samples, models)
         if is_file:
             samples, models = add_expansion(audit, samples, models)
-        path = make_report(audit, run / audit, samples, is_file, args.resamples, models)
-        bundles.append({"audit": audit, "unit": "file" if is_file else "theorem", "samples": samples,
+        path = make_report(audit, run / audit, samples, is_file, args.resamples, models, unit)
+        bundles.append({"audit": audit, "unit": unit, "samples": samples,
                         "models": models, "report": json.loads(path.with_suffix(".json").read_text())})
         text = path.read_text()
         library_section = text.split("## Library comparison\n", 1)[1].split("\n## ", 1)[0].strip()
@@ -475,6 +493,12 @@ def main():
         section = section.replace("### Correlation matrix", "#### Correlation matrix")
         note = ("Opus uses the earlier prompt on four libraries, without Mathlib targets.\n\n"
                 if audit == "duplicates-mathlib-inclusive" else "")
+        if unit == 'definition':
+            note = ('Opus includes automatic missing-docstring flags. Rates use all reviewed definitions. '
+                    f'[Assessed-only rates]({directory.relative_to(ROOT)}/report.md).\n\n')
+        if audit == 'repeated-proof-machinery':
+            note = ('[Balanced validation sample](runs/repeated-machinery-validation-2026-10-27/validation-report.md) '
+                    'is reported separately from the first-pass counts below.\n\n')
         rendered = (f"## {audit}\n\n[Library breakdowns]({path.relative_to(ROOT).as_posix()})\n\n" + note +
                     "### Library comparison\n\n" + library_section + "\n\n### Model comparison\n\n" + section)
         if is_main_audit(audit):

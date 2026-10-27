@@ -1,0 +1,83 @@
+{
+  "id": "mathlib-file-0263",
+  "lib": "mathlib",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and compared the two cyclotomic Eisenstein theorems closely. I also searched Mathlib for existing monic-comp API and found only `Monic.comp_X_sub_C`, so there is no ready replacement for the `X + 1` case. In the IsIntegral section, the two large proofs share some small pieces: the `hndiv` definition, the `isIntegral_norm` step, and the `1 \u2264 k` side condition used twice inside one proof. Those are short or sit inside a single proof, so I did not report them. My proposed helpers have not been compiled. In particular, the exact form of the goal after the `simp only` in the second theorem's constant-coefficient branch is inferred from the rewrite lemmas used.",
+  "findings": [
+    {
+      "declaration": "cyclotomic_comp_X_add_one_isEisensteinAt / cyclotomic_prime_pow_comp_X_add_one_isEisensteinAt",
+      "start_line": 47,
+      "end_line": 120,
+      "excerpt": "    intro h\n    obtain \u27e8k, hk\u27e9 := Int.natCast_dvd_natCast.1 h\n    have : 2 \u2264 p := Nat.Prime.two_le hp.out\n    have : p < p ^ 2 := by nlinarith\n    cases k <;> grind",
+      "problem": "The two theorems repeat three pieces of reasoning. (1) Lines 49-51 and 81-83 build the same prime-ideal `\u2260 \u22a4` argument for `Monic.isEisensteinAt_of_mem_of_notMem`. (2) Lines 52-55 and 84-87 are the same monic proof for `(cyclotomic _ \u2124).comp (X + 1)`, differing only in the cyclotomic index. (3) Lines 73-77 and 116-120 are character-for-character the same tail. After the different constant-coefficient rewrites, both goals reduce to `\u00ac (p:\u2124)^2 \u2223 (p:\u2124)`. Each branch then re-derives this by casting to \u2115, extracting a quotient `k`, proving `2 \u2264 p` and `p < p^2`, and finishing with `cases k <;> grind`. Any change to the hypotheses of `isEisensteinAt_of_mem_of_notMem` or to the cast lemmas has to be made in both places.",
+      "proposed_change": "Add three private lemmas before the first theorem.\n1. `private lemma monic_cyclotomic_comp_X_add_one (n : \u2115) : ((cyclotomic n \u2124).comp (X + 1)).Monic`. Proof: `rw [show (X + 1 : \u2124[X]) = X + C 1 by simp]; refine (cyclotomic.monic n \u2124).comp (monic_X_add_C 1) fun h => ?_; rw [natDegree_X_add_C] at h; exact zero_ne_one h.symm`.\n2. `private lemma not_sq_dvd_prime_int [hp : Fact p.Prime] : \u00ac (p : \u2124) ^ 2 \u2223 (p : \u2124)`. Proof: the existing tail, namely `intro h; obtain \u27e8k, hk\u27e9 := Int.natCast_dvd_natCast.1 h; have := hp.out.two_le; have : p < p ^ 2 := by nlinarith; cases k <;> grind`.\n3. A wrapper that bundles the prime-ideal `ne_top`: `private lemma isEisensteinAt_comp_X_add_one_of {f : \u2124[X]} [Fact p.Prime] (hf : f.Monic) (hmem : \u2200 {i}, i < (f.comp (X + 1)).natDegree \u2192 (f.comp (X + 1)).coeff i \u2208 \ud835\udcdf) (hnot : (f.comp (X + 1)).coeff 0 \u2209 \ud835\udcdf ^ 2) : (f.comp (X + 1)).IsEisensteinAt \ud835\udcdf`. Its body is `Monic.isEisensteinAt_of_mem_of_notMem (hf.comp ...) (Ideal.IsPrime.ne_top ...) hmem hnot`. It reuses the `Ideal.span_singleton_prime` expression once and can use the monic lemma from item 1.\nThe first theorem then becomes `isEisensteinAt_comp_X_add_one_of (cyclotomic.monic p \u2124) (fun {i hi} => <existing choose/binomial branch>) (by rw [coeff_zero_eq_eval_zero, eval_comp, cyclotomic_prime, ..., one_geom_sum, Ideal.submodule_span_eq, Ideal.span_singleton_pow, Ideal.mem_span_singleton]; exact not_sq_dvd_prime_int p)`. The second theorem becomes the same call with `cyclotomic.monic _ \u2124`, its induction branch, and its geometric-sum rewrite followed by `exact not_sq_dvd_prime_int p`. If the `Monic.comp` argument does not fit the wrapper, use item 1 directly.",
+      "benefit": "The two theorems are left with only what differs: the coefficient-divisibility argument and the evaluation of the constant coefficient. The non-obvious `p < p^2` / `cases k` argument gets a name and a statement and is written once. The prime-ideal and monicity boilerplate has a single place to maintain. A reader can see that both theorems follow the same Eisenstein pattern.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/Polynomial/Eisenstein/IsIntegral.lean",
+          "declaration": "cyclotomic_prime_pow_comp_X_add_one_isEisensteinAt",
+          "excerpt": "    obtain \u27e8k, hk\u27e9 := Int.natCast_dvd_natCast.1 h\n    have : 2 \u2264 p := Nat.Prime.two_le hp.out\n    have : p < p ^ 2 := by nlinarith\n    cases k <;> grind"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/RingTheory/Polynomial/Eisenstein/IsIntegral.lean",
+          "declaration": "cyclotomic_comp_X_add_one_isEisensteinAt",
+          "excerpt": "    refine (cyclotomic.monic p \u2124).comp (monic_X_add_C 1) fun h => ?_\n    rw [natDegree_X_add_C] at h\n    exact zero_ne_one h.symm"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/mathlib/Mathlib/Algebra/Polynomial/Monic.lean",
+          "declaration": "Polynomial.Monic.comp_X_sub_C",
+          "excerpt": "lemma Monic.comp_X_sub_C {p : R[X]} (hp : p.Monic) (r : R) : (p.comp (X - C r)).Monic := by"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 19666,
+    "cache_read_input_tokens": 77818,
+    "output_tokens": 6276,
+    "output_tokens_details": {
+      "thinking_tokens": 3075
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 19666,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3291,
+        "cache_read_input_tokens": 20172,
+        "cache_creation_input_tokens": 3423,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 3423
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.14922579999999996,
+  "duration_ms": 45224,
+  "turns": 6,
+  "attempts": 1,
+  "judged": "2026-10-27T00:44:58",
+  "unit": "file",
+  "source_sha256": "e7e0dc8ce129148f1686d648a1e249cd6ba220f5b6669dfc86d300d6afebbfb8",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

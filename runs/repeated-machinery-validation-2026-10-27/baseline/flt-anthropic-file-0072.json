@@ -1,0 +1,99 @@
+{
+  "id": "flt-anthropic-file-0072",
+  "lib": "flt-anthropic",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file, with attention to the Vieta engine, the kernel_data/\u03a8\u2082Sq helpers and the two branches of `solution`. Two repetitions seemed worth reporting: the nonvanishing proof for a product of valuations, and the transfer of \u03a8\u2082Sq/pre\u03a8'/\u0394 from W over \u2124 to the base change over AlgebraicClosure \u211a. I did not run Lean, so the proposed helpers are untested. For the second finding I only checked that `map_map` is `rfl`. I did not check how `\u2044` unfolds.",
+  "findings": [
+    {
+      "declaration": "prod_map_lt_of_lt_card (hA) and exists_root_in_A_of_coeff_not_dvd (hPne)",
+      "start_line": 49,
+      "end_line": 56,
+      "excerpt": "    apply Multiset.prod_ne_zero\n    intro h0\n    obtain \u27e8x, hx, hvx\u27e9 := Multiset.mem_map.mp h0\n    have h1x := hbig x (Multiset.mem_of_le hts hx)\n    rw [hvx] at h1x\n    exact zero_lt_one.asymm h1x",
+      "problem": "Two proofs in the same file repeat the same argument. If every element of a multiset has valuation > 1, the valuations are nonzero, so the product of the valuations is nonzero. The first copy is `hA` at lines 49\u201356. The second is `hPne` at lines 121\u2013128, with the same `Multiset.prod_ne_zero`, `Multiset.mem_map`, `rw [hvx] at h1x` and `zero_lt_one.asymm` steps. The only difference is the source of the membership proof (`hbig x (mem_of_le hts hx)` versus `hbig x hx`).",
+      "proposed_change": "Add a private lemma in the VietaEngine section before `prod_map_lt_of_lt_card`:\n\nprivate lemma prod_map_val_ne_zero (v : Valuation K \u0393) {s : Multiset K} (hbig : \u2200 x \u2208 s, 1 < v x) : (s.map v).prod \u2260 0\n\nProof: `Multiset.prod_ne_zero`. Given `0 \u2208 s.map v`, take `x \u2208 s` with `v x = 0` from `Multiset.mem_map`, then `hbig x hx` gives `1 < 0`, which `zero_lt_one.asymm` rules out. That is the existing 6-line block.\n\nUses:\n- `hA : (0 : \u0393) < (t.map v).prod := zero_lt_iff.mpr (prod_map_val_ne_zero v fun x hx => hbig x (Multiset.mem_of_le hts hx))`\n- `hPne : P \u2260 0 := prod_map_val_ne_zero A.valuation hbig`. The `set P ... with hP` is definitional, so `rw [hP]` can be dropped or kept.\n\nThe hypotheses and typeclasses (`Field K`, `LinearOrderedCommGroupWithZero \u0393`) are the same as in the surrounding section.",
+      "benefit": "The product-nonvanishing argument is written and maintained once. Both proofs shrink by about 7 lines each. The valuation-nonzero fact gets a name, which makes the `1 < v x` strategy easier to follow.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassCurve_exists_torsionBy_integral_of_not_dvd_apOfModel_all_primes.lean",
+          "declaration": "exists_root_in_A_of_coeff_not_dvd (hPne)",
+          "excerpt": "    obtain \u27e8x, hx, hvx\u27e9 := Multiset.mem_map.mp h0\n    have h1x := hbig x hx\n    rw [hvx] at h1x\n    exact zero_lt_one.asymm h1x"
+        }
+      ]
+    },
+    {
+      "declaration": "solution (hfc in both branches, together with h\u0394cast) and coeff_\u03a8\u2082Sq_baseChange",
+      "start_line": 354,
+      "end_line": 360,
+      "excerpt": "      have h1 : E.\u03a8\u2082Sq =\n          (W.\u03a8\u2082Sq).map ((algebraMap \u211a (AlgebraicClosure \u211a)).comp (Int.castRingHom \u211a)) := by\n        show ((W.map (Int.castRingHom \u211a)).map (algebraMap \u211a (AlgebraicClosure \u211a))).\u03a8\u2082Sq = _\n        rw [map_\u03a8\u2082Sq, map_\u03a8\u2082Sq, Polynomial.map_map]\n      rw [hf, h1, coeff_map, eq_intCast]",
+      "problem": "The coefficient-transfer argument from the \u211a-model to the integral model is written out twice in `solution`: for \u03a8\u2082Sq at lines 354\u2013360 and for pre\u03a8' at lines 382\u2013388. The same reasoning appears again for \u0394 (`h\u0394cast`, lines 342\u2013344) and, over a general field k, in `coeff_\u03a8\u2082Sq_baseChange`. Each copy re-proves that mapping \u2124\u2192\u211a\u2192K is mapping \u2124\u2192K, then pushes `map_*` through and finishes with `coeff_map` and `eq_intCast`. The only difference is the polynomial or invariant involved.",
+      "proposed_change": "Prove once the curve identity\n\nprivate lemma map_cast_eq (W : WeierstrassCurve \u2124) (K) [Field K] [CharZero K] : (W.map (Int.castRingHom \u211a)).map (algebraMap \u211a K) = W.map (algebraMap \u2124 K)\n\nProof: `WeierstrassCurve.map_map`, which is `rfl`, followed by `congr 1` and `RingHom.ext_int` (or `Subsingleton.elim`) for the ring-hom equality. Then `E` is literally `W\u2044K`. This lets `hfc` in both branches reuse the existing `coeff_\u03a8\u2082Sq_baseChange`, and a sibling `coeff_pre\u03a8'_baseChange` stated like it, via `map_pre\u03a8'` and `coeff_map`. It also lets `h\u0394cast` use `map_\u0394` once.\n\nAlternatively, state a single `coeff_baseChange` lemma parameterised by the polynomial-valued invariant and its `map_*` naturality lemma. Either way each branch's `hfc` becomes one line, e.g. `hfc := coeff_\u03a8\u2082Sq_baseChange' W K`.",
+      "benefit": "This removes two near-identical 7-line blocks and the third copy for \u0394. It also unifies the \u2124\u2192K base-change bookkeeping, which is currently done differently in `coeff_\u03a8\u2082Sq_baseChange` (via `algebraMap \u2124 k`) and `solution` (via \u211a). A future change to the base-change setup then needs one edit.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassCurve_exists_torsionBy_integral_of_not_dvd_apOfModel_all_primes.lean",
+          "declaration": "solution (hfc, odd branch)",
+          "excerpt": "        show ((W.map (Int.castRingHom \u211a)).map (algebraMap \u211a (AlgebraicClosure \u211a))).pre\u03a8' p = _\n        rw [map_pre\u03a8', map_pre\u03a8', Polynomial.map_map]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/flt-anthropic/P2M/Sol/S_WeierstrassCurve_exists_torsionBy_integral_of_not_dvd_apOfModel_all_primes.lean",
+          "declaration": "coeff_\u03a8\u2082Sq_baseChange",
+          "excerpt": "  rw [W.map_\u03a8\u2082Sq (algebraMap \u2124 k), Polynomial.coeff_map, eq_intCast]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/deps/mathlib-db584cd6d46c/Mathlib/AlgebraicGeometry/EllipticCurve/Weierstrass.lean",
+          "declaration": "WeierstrassCurve.map_map",
+          "excerpt": "lemma map_map {B : Type w} [CommRing B] (g : A \u2192+* B) : (W.map f).map g = W.map (g.comp f) :="
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 22700,
+    "cache_read_input_tokens": 46780,
+    "output_tokens": 5575,
+    "output_tokens_details": {
+      "thinking_tokens": 1988
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22700,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3034,
+        "cache_read_input_tokens": 24991,
+        "cache_creation_input_tokens": 1638,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1638
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.15123999999999999,
+  "duration_ms": 39645,
+  "turns": 5,
+  "attempts": 1,
+  "judged": "2026-10-26T22:57:36",
+  "unit": "file",
+  "source_sha256": "59cc1e930d8930806444421428ca68a91a1f5cd32e41f3e2d12d42240d4f5509",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}
