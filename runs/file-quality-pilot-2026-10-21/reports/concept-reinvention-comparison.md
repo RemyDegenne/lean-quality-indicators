@@ -1,6 +1,6 @@
 # concept-reinvention
 
-Generated 2026-10-27T20:10:35+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T20:11:50+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 **Not ready for use.** Appendix audit; excluded from main summaries and library-quality conclusions. [Assessment and retained results](../../../AUDIT_APPENDIX.md#concept-reinvention).
 

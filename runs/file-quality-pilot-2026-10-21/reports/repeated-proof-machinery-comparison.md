@@ -1,6 +1,6 @@
 # repeated-proof-machinery
 
-Generated 2026-10-27T20:10:37+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T20:11:51+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 [Separate validation: 20 flagged and 10 unflagged targets per library](../../repeated-machinery-validation-2026-10-27/validation-report.md). These checks do not enter the first-pass counts.
 
@@ -14,19 +14,19 @@ Generated 2026-10-27T20:10:37+00:00 · [Methods and notation](../../../AUDIT_MET
 | Lean Pool | — | — | 180/372<br>48.4% [43.4%, 53.5%] | 3/10<br>30.0% [10.8%, 60.3%] | 7/10<br>70.0% [39.7%, 89.2%] |
 | FLT (Anthropic) | — | — | 189/372<br>50.8% [45.7%, 55.9%] | — | — |
 | OpenAI Math | 48/100<br>48.0% [38.5%, 57.7%] | 20/100<br>20.0% [13.3%, 28.9%] | 154/372<br>41.4% [36.5%, 46.5%] | 20/100<br>20.0% [13.3%, 28.9%] | 5/10<br>50.0% [23.7%, 76.3%] |
-| CFSG (AxiomMath) | — | — | 158/295<br>53.6% [47.9%, 59.2%] | — | — |
+| CFSG (AxiomMath) | — | — | 162/300<br>54.0% [48.3%, 59.6%] | — | — |
 
 ## All libraries
 
-Full-pass reference: **130 targets**.
+Full-pass reference: **270 targets**.
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Opus | 100 | 1/1 | 100/100 | 48 | 48 | 48.0% [38.5%, 57.7%] | $26.18 / $34.04 |
-| Sol | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $8.15 / $10.60 |
-| Sonnet | 3300 | 0/1 | 2527/3300 | 933 | 933 | 36.9% [35.1%, 38.8%] | $218.50 / $11.24 |
-| Luna | 130 | 1/1 | 130/130 | 25 | 25 | 19.2% [13.4%, 26.8%] | $0.46 / $0.46 |
-| DeepSeek | 40 | 1/1 | 40/40 | 17 | 17 | 42.5% [28.5%, 57.8%] | $0.55 / $1.79 |
+| Opus | 100 | 1/1 | 100/100 | 48 | 48 | 48.0% [38.5%, 57.7%] | $26.18 / $70.70 |
+| Sol | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $8.15 / $22.02 |
+| Sonnet | 3300 | 0/1 | 2532/3300 | 937 | 937 | 37.0% [35.1%, 38.9%] | $219.14 / $23.37 |
+| Luna | 130 | 1/1 | 130/130 | 25 | 25 | 19.2% [13.4%, 26.8%] | $0.46 / $0.96 |
+| DeepSeek | 40 | 1/1 | 40/40 | 17 | 17 | 42.5% [28.5%, 57.8%] | $0.55 / $3.72 |
 
 ### Correlation matrix
 
@@ -186,13 +186,13 @@ Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 1 not a
 
 ## CFSG (AxiomMath)
 
-Full-pass reference: **30 targets**.
+Full-pass reference: **300 targets**.
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
-| Sonnet | 300 | 0/1 | 295/300 | 158 | 158 | 53.6% [47.9%, 59.2%] | $32.36 / $3.29 |
+| Sonnet | 300 | 1/1 | 300/300 | 162 | 162 | 54.0% [48.3%, 59.6%] | $33.00 / $33.00 |
 | Luna | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | DeepSeek | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 
