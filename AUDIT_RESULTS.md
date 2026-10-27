@@ -1,6 +1,6 @@
 # Audit results
 
-Generated 2026-10-27T16:08:25+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
+Generated 2026-10-27T17:08:55+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
 
 [Appendix: simp interface and concept reinvention — not ready for use](AUDIT_APPENDIX.md). These audits do not contribute to the summaries below.
 
@@ -20,7 +20,7 @@ Contributing audits: [unnecessary-hypotheses](#unnecessary-hypotheses), [duplica
 | Lean Pool | 215/1000<br>21.5% [19.1%, 24.2%] | 95/300<br>31.7% [26.7%, 37.1%] | 55/300<br>18.3% [14.4%, 23.1%] | 87/300<br>29.0% [24.2%, 34.4%] | 22/100<br>22.0% [15.0%, 31.1%] |
 | FLT (Anthropic) | 319/1000<br>31.9% [29.1%, 34.9%] | 148/300<br>49.3% [43.7%, 55.0%] | 75/300<br>25.0% [20.4%, 30.2%] | 118/300<br>39.3% [34.0%, 45.0%] | 35/100<br>35.0% [26.4%, 44.7%] |
 | OpenAI Math | 18/100<br>18.0% [11.7%, 26.7%] | 23/100<br>23.0% [15.8%, 32.2%] | 17/100<br>17.0% [10.9%, 25.5%] | 24/100<br>24.0% [16.7%, 33.2%] | 18/100<br>18.0% [11.7%, 26.7%] |
-| CFSG (AxiomMath) | — | — | 6/30<br>20.0% [9.5%, 37.3%] | — | — |
+| CFSG (AxiomMath) | — | — | 6/34<br>17.6% [8.3%, 33.5%] | — | — |
 
 ### Definition audits: library comparison
 
@@ -52,11 +52,11 @@ Contributing audits: [statement-generality](#statement-generality), [vacuity-and
 
 | Model | Audits with results | Theorems selected | Definitions selected | Files selected | Audit passes done/planned | Theorems flagged / reviewed | Definitions flagged / reviewed | Files flagged / reviewed | Judgments done/planned | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Opus | 7/7 | 5100 | 5000 | 100 | 8/8 | 749/4100 | 1095/5000 | 95/100 | 16100/16100 | $1165.07 / $1143.65 |
-| Sol | 6/7 | 5100 | 0 | 100 | 7/7 | 624/1600 | — | 93/100 | 8600/8600 | $515.64 / $624.79 |
-| Sonnet | 6/7 | 5130 | 0 | 3030 | 6/7 | 279/1630 | — | 119/130 | 10912/11680 | $477.30 / $369.35 |
-| Luna | 6/7 | 5100 | 0 | 130 | 7/7 | 545/1600 | — | 79/130 | 8720/8720 | $25.31 / $29.80 |
-| DeepSeek | 6/7 | 600 | 0 | 40 | 6/6 | 146/600 | — | 36/40 | 1360/1360 | $10.81 / $70.89 |
+| Opus | 7/7 | 5100 | 5000 | 100 | 8/8 | 749/4100 | 1095/5000 | 95/100 | 16100/16100 | $1165.07 / $1142.01 |
+| Sol | 6/7 | 5100 | 0 | 100 | 7/7 | 624/1600 | — | 93/100 | 8600/8600 | $515.64 / $622.87 |
+| Sonnet | 6/7 | 5400 | 0 | 3300 | 4/7 | 279/1634 | — | 119/130 | 10926/12490 | $477.99 / $368.76 |
+| Luna | 6/7 | 5100 | 0 | 130 | 7/7 | 545/1600 | — | 79/130 | 8720/8720 | $25.31 / $29.70 |
+| DeepSeek | 6/7 | 600 | 0 | 40 | 6/6 | 146/600 | — | 36/40 | 1360/1360 | $10.81 / $70.78 |
 
 ### Theorem union correlations
 
@@ -102,7 +102,7 @@ Contributing audits: [statement-generality](#statement-generality), [vacuity-and
 | Lean Pool | 150/1000<br>15.0% [12.9%, 17.3%] | 60/300<br>20.0% [15.9%, 24.9%] | 39/300<br>13.0% [9.7%, 17.3%] | 48/300<br>16.0% [12.3%, 20.6%] | 13/100<br>13.0% [7.8%, 21.0%] |
 | FLT (Anthropic) | 203/1000<br>20.3% [17.9%, 22.9%] | 78/300<br>26.0% [21.4%, 31.2%] | 52/300<br>17.3% [13.5%, 22.0%] | 61/300<br>20.3% [16.2%, 25.2%] | 21/100<br>21.0% [14.2%, 30.0%] |
 | OpenAI Math | 17/100<br>17.0% [10.9%, 25.5%] | 21/100<br>21.0% [14.2%, 30.0%] | 15/100<br>15.0% [9.3%, 23.3%] | 19/100<br>19.0% [12.5%, 27.8%] | 16/100<br>16.0% [10.1%, 24.4%] |
-| CFSG (AxiomMath) | — | — | 4/30<br>13.3% [5.3%, 29.7%] | — | — |
+| CFSG (AxiomMath) | — | — | 4/34<br>11.8% [4.7%, 26.6%] | — | — |
 
 ### Model comparison
 
@@ -112,7 +112,7 @@ Full-pass reference: **5100 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 5100 | 2/2 | 6600/6600 | 653 | 510 | 9.9% [9.1%, 10.7%] | $491.63 / $379.90 |
 | Sol | 1600 | 2/2 | 3100/3100 | 395 | 210 | 13.0% [11.4%, 14.7%] | $145.80 / $239.87 |
-| Sonnet | 1630 | 2/2 | 3130/3130 | 264 | 156 | 8.6% [7.3%, 10.0%] | $112.00 / $182.49 |
+| Sonnet | 1900 | 1/2 | 3134/3400 | 264 | 156 | 8.6% [7.3%, 10.0%] | $112.24 / $182.65 |
 | Luna | 1600 | 2/2 | 3100/3100 | 329 | 212 | 10.9% [9.4%, 12.5%] | $6.81 / $11.20 |
 | DeepSeek | 600 | 1/1 | 600/600 | 59 | 59 | 9.8% [7.7%, 12.5%] | $4.52 / $38.46 |
 
@@ -142,19 +142,19 @@ Opus uses the earlier prompt on four libraries, without Mathlib targets.
 | Lean Pool | 68/1000<br>6.8% [5.4%, 8.5%] | 149/1000<br>14.9% [12.8%, 17.2%] | 58/1000<br>5.8% [4.5%, 7.4%] | 147/1000<br>14.7% [12.6%, 17.0%] | 9/100<br>9.0% [4.8%, 16.2%] |
 | FLT (Anthropic) | 137/1000<br>13.7% [11.7%, 16.0%] | 255/1000<br>25.5% [22.9%, 28.3%] | 118/1000<br>11.8% [9.9%, 13.9%] | 230/1000<br>23.0% [20.5%, 25.7%] | 16/100<br>16.0% [10.1%, 24.4%] |
 | OpenAI Math | 1/100<br>1.0% [0.2%, 5.4%] | 2/100<br>2.0% [0.6%, 7.0%] | 2/100<br>2.0% [0.6%, 7.0%] | 5/100<br>5.0% [2.2%, 11.2%] | 2/100<br>2.0% [0.6%, 7.0%] |
-| CFSG (AxiomMath) | — | — | 2/30<br>6.7% [1.8%, 21.3%] | — | — |
+| CFSG (AxiomMath) | — | — | 2/34<br>5.9% [1.6%, 19.1%] | — | — |
 
 ### Model comparison
 
-Full-pass reference: **5130 targets**.
+Full-pass reference: **5100 targets**.
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Opus | 4100 | 1/1 | 4100/4100 | 302 | 302 | 7.4% [6.6%, 8.2%] | $222.89 / $278.89 |
-| Sol | 5100 | 1/1 | 5100/5100 | 1449 | 1449 | 28.4% [27.2%, 29.7%] | $325.96 / $327.87 |
-| Sonnet | 5130 | 1/1 | 5130/5130 | 523 | 523 | 10.2% [9.4%, 11.1%] | $128.75 / $128.75 |
-| Luna | 5100 | 1/1 | 5100/5100 | 1357 | 1357 | 26.6% [25.4%, 27.8%] | $16.33 / $16.42 |
-| DeepSeek | 600 | 1/1 | 600/600 | 90 | 90 | 15.0% [12.4%, 18.1%] | $2.26 / $19.36 |
+| Opus | 4100 | 1/1 | 4100/4100 | 302 | 302 | 7.4% [6.6%, 8.2%] | $222.89 / $277.26 |
+| Sol | 5100 | 1/1 | 5100/5100 | 1449 | 1449 | 28.4% [27.2%, 29.7%] | $325.96 / $325.96 |
+| Sonnet | 5400 | 0/1 | 5134/5400 | 523 | 523 | 10.2% [9.4%, 11.0%] | $128.87 / $128.02 |
+| Luna | 5100 | 1/1 | 5100/5100 | 1357 | 1357 | 26.6% [25.4%, 27.8%] | $16.33 / $16.33 |
+| DeepSeek | 600 | 1/1 | 600/600 | 90 | 90 | 15.0% [12.4%, 18.1%] | $2.26 / $19.25 |
 
 #### Correlation matrix
 
@@ -286,7 +286,7 @@ Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 0 not a
 | Lean Pool | — | — | 180/372<br>48.4% [43.4%, 53.5%] | 3/10<br>30.0% [10.8%, 60.3%] | 7/10<br>70.0% [39.7%, 89.2%] |
 | FLT (Anthropic) | — | — | 189/372<br>50.8% [45.7%, 55.9%] | — | — |
 | OpenAI Math | 48/100<br>48.0% [38.5%, 57.7%] | 20/100<br>20.0% [13.3%, 28.9%] | 154/372<br>41.4% [36.5%, 46.5%] | 20/100<br>20.0% [13.3%, 28.9%] | 5/10<br>50.0% [23.7%, 76.3%] |
-| CFSG (AxiomMath) | — | — | 12/30<br>40.0% [24.6%, 57.7%] | — | — |
+| CFSG (AxiomMath) | — | — | 14/36<br>38.9% [24.8%, 55.1%] | — | — |
 
 ### Model comparison
 
@@ -296,7 +296,7 @@ Full-pass reference: **130 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 100 | 1/1 | 100/100 | 48 | 48 | 48.0% [38.5%, 57.7%] | $26.18 / $34.04 |
 | Sol | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $8.15 / $10.60 |
-| Sonnet | 3030 | 0/1 | 2262/3030 | 787 | 787 | 34.8% [32.9%, 36.8%] | $189.32 / $10.88 |
+| Sonnet | 3300 | 0/1 | 2268/3300 | 789 | 789 | 34.8% [32.9%, 36.8%] | $189.65 / $10.87 |
 | Luna | 130 | 1/1 | 130/130 | 25 | 25 | 19.2% [13.4%, 26.8%] | $0.46 / $0.46 |
 | DeepSeek | 40 | 1/1 | 40/40 | 17 | 17 | 42.5% [28.5%, 57.8%] | $0.55 / $1.79 |
 
@@ -310,7 +310,7 @@ Full-pass reference: **130 targets**.
 | Luna | 0.32 [0.15, 0.49]; n=100 | 0.50 [0.27, 0.69]; n=100 | 0.44 [0.27, 0.58]; n=130 | — | 0.54 [0.33, 0.72]; n=40 |
 | DeepSeek | 0.60 [0.00, 1.00]; n=10 | 0.33 [—]; n=10 | 0.70 [0.49, 0.90]; n=40 | 0.54 [0.33, 0.72]; n=40 | — |
 
-Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 1 not applicable; Sonnet: 7 partial, 23 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
+Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 1 not applicable; Sonnet: 7 partial, 24 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
 
 ## readable-proof-simplification
 

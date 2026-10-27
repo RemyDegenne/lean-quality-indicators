@@ -539,6 +539,15 @@ Run `python3 scripts/cfsg_theorem_audits.py --prepare-only` to prepare, or omit 
 option to resume. This pilot has its own $20 API-equivalent ceiling, subscription-only
 billing, and worker/publication service templates in `scripts/`.
 
+The [300-target expansion](runs/cfsg-pilot-2026-10-27/scale-300/progress.md) continues
+all three CFSG audits with targets 31–300 from those fixed selections. It preserves
+the original manifests and judgments and adds each continuation to the same first
+pass in the main reports. Run `python3 scripts/cfsg_scale.py file` and
+`python3 scripts/cfsg_scale.py theorem` (one session each); add `--prepare-only` to
+prepare without judging. The file and theorem workers have separate subscription-only
+API-equivalent ceilings of $60 and $50. A publication monitor verifies and pushes
+progress every five minutes. Service templates are `scripts/cfsg-scale-*.service`.
+
 ## Repeated proof machinery validation
 
 The [validation run](runs/repeated-machinery-validation-2026-10-27/validation-report.md)

@@ -113,6 +113,9 @@ def main():
                  for manifest in cfsg.glob('*/*/judge.json')]
     selected += [(manifest.parent.parent.name, manifest.parent)
                  for manifest in (cfsg / 'theorems').glob('*/*/judge.json')]
+    for unit in ('files', 'theorems'):
+        selected += [(manifest.parent.parent.name, manifest.parent)
+                     for manifest in (cfsg / 'scale-300' / unit).glob('*/*/judge.json')]
     selected.append(('definition-fidelity', ROOT / 'runs/defs1/definition-fidelity/claude-opus-5-5-high'))
     validation = ROOT / 'runs/repeated-machinery-validation-2026-10-27/repeated-proof-machinery/claude-sonnet-5-5-high'
     if (validation / 'judge.json').exists():

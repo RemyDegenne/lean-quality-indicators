@@ -324,22 +324,29 @@ def add_expansion(audit, samples, models):
 
 
 def add_cfsg_pilot(audit, samples, models, unit='file'):
-    base = CFSG / 'theorems' if unit == 'theorem' else CFSG
-    manifest = base / audit / 'claude-sonnet-5-5-high' / 'judge.json'
-    if not manifest.exists():
-        return samples, models
-    selected = set(json.loads(manifest.read_text())['protocol']['sample_ids'])
-    rows = {r['id']: r for r in map(json.loads, (base / 'samples.jsonl').read_text().splitlines())}
-    if samples.keys() & rows.keys():
-        raise ValueError('CFSG pilot overlaps another corpus')
-    extra = {'label': manifest.parent.name, 'directory': manifest.parent,
-             'selected': selected, 'results': load(manifest.parent)}
-    first = models['Sonnet'][0]
-    components = first.get('components', [first.copy()]) + [extra]
-    first.update(selected=first['selected'] | selected,
-                 results={**first['results'], **extra['results']}, components=components,
-                 directories=[c['directory'] for c in components])
-    return {**samples, **rows}, models
+    initial = CFSG / 'theorems' if unit == 'theorem' else CFSG
+    continuation = CFSG / 'scale-300' / ('theorems' if unit == 'theorem' else 'files')
+    for base in (initial, continuation):
+        manifest = base / audit / 'claude-sonnet-5-5-high' / 'judge.json'
+        if not manifest.exists():
+            continue
+        selected = set(json.loads(manifest.read_text())['protocol']['sample_ids'])
+        rows = {r['id']: r for r in map(json.loads, (base / 'samples.jsonl').read_text().splitlines())}
+        for sid in samples.keys() & rows.keys():
+            if target_key(samples[sid], unit) != target_key(rows[sid], unit):
+                raise ValueError('CFSG continuation changed sample identity')
+        extra = {'label': manifest.parent.name, 'directory': manifest.parent,
+                 'selected': selected, 'results': load(manifest.parent)}
+        first = models['Sonnet'][0]
+        if first['selected'] & selected:
+            raise ValueError('CFSG continuation repeats an existing first-pass target')
+        components = first.get('components', [first.copy()]) + [extra]
+        first.update(selected=first['selected'] | selected,
+                     results={**first['results'], **extra['results']}, components=components,
+                     directories=[c['directory'] for c in components])
+        # Keep canonical snapshot paths for targets already in the fixed selection.
+        samples = {**rows, **samples}
+    return samples, models
 
 
 def target_key(sample, unit):
