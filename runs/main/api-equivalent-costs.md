@@ -1,6 +1,6 @@
 # API-equivalent costs
 
-Generated 2026-10-27T14:43:01+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-27T14:48:05+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 Definition fidelity groups automatic missing-docstring flags with its Opus protocol; rule-only decisions cost $0. Repeated-machinery validation is a separate check, excluded from the original first-pass judgment and coverage counts.
 
@@ -37,7 +37,7 @@ Definition fidelity groups automatic missing-docstring flags with its Opus proto
 | readable-proof-simplification | Luna | 130 | 130 | $0.50 / $0.50 | $3.86 |
 | readable-proof-simplification | DeepSeek | 40 | 130 | $1.16 / $3.76 | $28.89 |
 | definition-fidelity | Opus | 5000 | 5000 | $336.14 / $336.14 | $67.23 |
-| repeated-proof-machinery-validation | Sonnet | 149 | 180 | $15.92 / $19.24 | $106.86 |
+| repeated-proof-machinery-validation | Sonnet | 152 | 180 | $16.17 / $19.15 | $106.37 |
 
 ## Appendix audits: not ready for use
 
@@ -62,10 +62,10 @@ Definition fidelity groups automatic missing-docstring flags with its Opus proto
 |---|---:|
 | Opus | $1205.42 |
 | Sol | $534.09 |
-| Sonnet | $872.26 |
+| Sonnet | $872.51 |
 | Luna | $26.56 |
 | DeepSeek | $12.60 |
-| **Total** | **$2650.93** |
+| **Total** | **$2651.18** |
 
 ## Rate sources
 
