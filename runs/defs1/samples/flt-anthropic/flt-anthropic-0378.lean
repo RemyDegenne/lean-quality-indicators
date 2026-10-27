@@ -1,0 +1,33 @@
+namespace P2MW.S_ModularCurve_FullLevel_relfinrank_adjoin_qExpand_image_laurentBaseChange_gamma0_fieldBar_le_of_eq_two
+
+attribute [-instance] ModularCurve.instIsDomainTensorProduct AlgebraicClosure.Rat.isGalois AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.IsCurveOver.instNontrivialKaehler AlgebraicCurve.IsCurveOver.instFreeKaehler AlgebraicCurve.IsCurveOver.toHasPrincipalDivisors AlgebraicCurve.IsCurveOver.instFiniteResidue AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation ModularCurve.PhiGen.instNeZeroPhiGenCosetA ModularCurve.instFiniteProjectiveLine ModularCurve.unimodularRowSetoid
+
+set_option autoImplicit false
+
+p2m_open
+
+open scoped MatrixGroups
+
+noncomputable section
+
+namespace ModularCurve
+
+namespace FullLevel
+
+namespace K1Road
+
+p2m_open
+
+variable (q : ℕ) [Fact q.Prime] (M : ℕ) [NeZero M]
+
+section Count
+
+def Jq : IntermediateField (AlgebraicClosure ℚ) (LaurentSeries (AlgebraicClosure ℚ)) :=
+  IntermediateField.adjoin (AlgebraicClosure ℚ) {qExpand (AlgebraicClosure ℚ) q (jqModC (AlgebraicClosure ℚ))}
+
+end Count
+end K1Road
+end FullLevel
+end ModularCurve
+end
+end P2MW.S_ModularCurve_FullLevel_relfinrank_adjoin_qExpand_image_laurentBaseChange_gamma0_fieldBar_le_of_eq_two

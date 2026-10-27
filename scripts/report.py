@@ -63,27 +63,33 @@ def main() -> None:
     positive = cfg["positive"]
     split = positive if len(positive) > 1 else []  # one column per kind of finding
     field = cfg["split_field"]  # optional boolean field counted among the findings
+    excl = cfg["denominator_excludes"]  # verdicts left out of the rate's denominator
     libs = list(dict.fromkeys(s["lib"] for s in samples))
     lines = [f"# {args.indicator}: run `{args.run}`, judge `{lab.name}`", "",
-             "| Library | Sampled | Judged | Flagged | "
-             + "".join(f"`{v}` | " for v in split)
+             "| Library | Sampled | Judged | "
+             + "".join(f"`{v}` | " for v in excl) + ("Assessed | " if excl else "")
+             + "Flagged | " + "".join(f"`{v}` | " for v in split)
              + (f"`{field}` | " if field else "") + "Rate | 95% CI | Cost |",
-             "|---|---:|---:|---:|" + "---:|" * (len(split) + bool(field)) + "---:|---:|---:|"]
+             "|---|---:|---:|" + "---:|" * (len(excl) + bool(excl)) + "---:|"
+             + "---:|" * (len(split) + bool(field)) + "---:|---:|---:|"]
     table = []
     for lib in libs:
         ss = [s for s in samples if s["lib"] == lib]
         rs = [results[s["id"]] for s in ss if s["id"] in results]
         k = sum(r["verdict"] in positive for r in rs)
-        n = len(rs)
+        n = sum(r["verdict"] not in excl for r in rs)  # the rate's denominator
         lo, hi = wilson(k, n)
         cost = sum(r.get("cost_usd") or 0 for r in rs)
         cost_display = f"${cost:.2f}" if all(r.get("cost_usd") is not None for r in rs) else "unknown"
         rate = f"{k / n:.1%}" if n else "–"
+        excluded = "".join(f"{sum(r['verdict'] == v for r in rs)} | " for v in excl)
+        if excl:
+            excluded += f"{n} | "
         kinds = "".join(f"{sum(r['verdict'] == v for r in rs)} | " for v in split)
         if field:
             kinds += f"{sum(r['verdict'] in positive and bool(r.get(field)) for r in rs)} | "
-        row = (f"| {names.get(lib, lib)} | {len(ss)} | {n} | {k} | {kinds}{rate} | "
-               f"{lo:.1%}–{hi:.1%} | {cost_display} |")
+        row = (f"| {names.get(lib, lib)} | {len(ss)} | {len(rs)} | {excluded}{k} | {kinds}"
+               f"{rate} | {lo:.1%}–{hi:.1%} | {cost_display} |")
         lines.append(row)
         table.append(row)
     lines.append("")

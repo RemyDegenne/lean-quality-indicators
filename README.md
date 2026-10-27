@@ -17,9 +17,16 @@ Indicators (one directory each in `indicators/`):
   General principles of logic, equality and structure (`Eq.subst`, `map_add`, ext lemmas, …)
   applied to the library's own definitions do not count. Judged against the Mathlib version
   each library pins; not run on Mathlib itself. Results below.
+- **`definition-fidelity`**: a definition (`def`, `abbrev`, `structure`, `class`) that does
+  not faithfully formalize the mathematical object its docstring describes: `incorrect` (it
+  defines something else) or `too_narrow` (the right object in a narrower generality than its
+  natural one, e.g. on `ℝ^d` when it makes sense in any Banach space, or with stronger
+  hypotheses than the construction uses). A definition without a docstring is flagged
+  `no_docstring` by rule, without a judge. Results below.
 
-All results come from experiment `runs/main`: corpus pinned in October 2026, judge
-`claude-opus-5-5` at effort `high`, theorems sampled uniformly per library.
+The theorem indicators come from experiment `runs/main` and the definition indicator from
+`runs/defs1`: corpus pinned in October 2026, judge `claude-opus-5-5` at effort `high`,
+declarations sampled uniformly per library.
 
 ### Sol, Luna and Sonnet reproduction
 
@@ -186,15 +193,15 @@ largest completed model's scale. [Cost details](runs/main/api-equivalent-costs.m
 rates and retained retry expenditure. Local reports refresh every five minutes while
 the OpenAI Math runs finish; the committed reports are snapshots.
 
-400 theorems per library:
+1000 theorems per library:
 
-| Library | Flagged / 400 | Rate | 95% CI |
+| Library | Flagged / 1000 | Rate | 95% CI |
 |---|---:|---:|---:|
-| Mathlib | 15 | 3.8% | 2.3%–6.1% |
-| Formal Frontier | 17 | 4.2% | 2.7%–6.7% |
-| Tau Ceti | 23 | 5.8% | 3.9%–8.5% |
-| Lean Pool | 61 | 15.2% | 12.1%–19.1% |
-| FLT (Anthropic) | 82 | 20.5% | 16.8%–24.7% |
+| Mathlib | 31 | 3.1% | 2.2%–4.4% |
+| Formal Frontier | 34 | 3.4% | 2.4%–4.7% |
+| Tau Ceti | 68 | 6.8% | 5.4%–8.5% |
+| Lean Pool | 150 | 15.0% | 12.9%–17.3% |
+| FLT (Anthropic) | 203 | 20.3% | 17.9%–22.9% |
 
 A second, independent run of the same judge on the first 300 theorems per library, blind to
 the first verdicts, reproduces these rates within 1.3 points per library (Cohen's κ = 0.92):
@@ -226,6 +233,39 @@ proves the Mathlib result another way.
 
 Judge verdicts, not yet audited beyond a 40-theorem test, and not yet test-retested.
 
+## Results so far: definition fidelity
+
+1000 definitions per library (`runs/defs1`, seed 1). Definitions the judge classes as
+technical devices with no mathematical counterpart (auxiliary constructions, internal data)
+are set aside; the first rate is over the remaining *assessed* definitions, the second over
+all 1000.
+
+| Library | Set aside | Assessed | `incorrect` | `too_narrow` | `no_docstring` | Rate, assessed (95% CI) | Rate, all (95% CI) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Mathlib | 170 | 830 | 2 | 6 | 2 | 1.2% (0.7–2.2%) | 1.0% (0.5–1.8%) |
+| Tau Ceti | 88 | 912 | 1 | 10 | 0 | 1.2% (0.7–2.1%) | 1.1% (0.6–2.0%) |
+| Formal Frontier | 231 | 769 | 0 | 29 | 12 | 5.3% (4.0–7.2%) | 4.1% (3.0–5.5%) |
+| Lean Pool | 615 | 385 | 3 | 29 | 1 | 8.6% (6.2–11.8%) | 3.3% (2.4–4.6%) |
+| FLT (Anthropic) | 0 | 1000 | 0 | 0 | 1000 | 100% (99.6–100%) | 100% (99.6–100%) |
+
+FLT has no docstring on any of its definitions (0 out of 79,590 eligible), against 98.7–100%
+coverage in the other libraries. The share set aside as technical differs widely: 62% of Lean
+Pool's sampled definitions, 9–23% elsewhere.
+
+Two checks of the judge (prompt and settings as in the run):
+
+- **Sensitivity** (`runs/defs-sensitivity`, picked in
+  `indicators/definition-fidelity/sensitivity.txt`): of 7 definitions written in a narrower
+  setting than a Mathlib counterpart (e.g. a Frobenius norm on square `Fin n` real matrices),
+  5 are flagged `too_narrow`; the 3 controls stay `faithful`.
+- **Mutation test** (`runs/defs-mutants`, `scripts/mutate.py`, spec in
+  `indicators/definition-fidelity/mutations.json`): 16 definitions previously judged faithful
+  are made wrong by a one-line, type-preserving change (a reversed inequality, `∧` for `∨`, a
+  dropped factor, …) in copies of the repositories, keeping their docstrings; all 16 are
+  answered `incorrect`, and the 6 unchanged controls `faithful`. Since the docstrings were
+  kept, this shows that body/docstring mismatches are caught, not that subtler conceptual
+  errors would be.
+
 ## Repository layout
 
 | Path | Content |
@@ -234,13 +274,14 @@ Judge verdicts, not yet audited beyond a 40-theorem test, and not yet test-retes
 | `libraries.lock.json` | The commit of each of the 47 source repositories |
 | `scripts/fetch.py` | Clones the sources into `repos/` at the pinned commits, and with `--deps` the Mathlib and Batteries versions they pin |
 | `scripts/leanscan.py` | Syntactic Lean scanner: finds the theorems and rebuilds the context of each |
-| `scripts/sample.py` | Builds the population of each library and draws a seeded uniform sample |
+| `scripts/sample.py` | Builds the population of each library (theorems or definitions) and draws a seeded uniform sample, or takes a hand-picked list (`--pick`) |
 | `scripts/judge.py` | Runs a judge (headless Claude Code) on each sampled theorem, or exports its inputs |
 | `scripts/stats.py` | Progress of a judge run |
 | `scripts/report.py` | Flag rates, confidence intervals and the list of flags of a judge run |
 | `scripts/agreement.py` | Compares two judge runs on the same theorems (test-retest) |
 | `scripts/verify.py` | Adversarial second judge that sees the first judge's claims |
 | `scripts/indicator.py` | Reads an indicator's `config.toml` |
+| `scripts/mutate.py` | Builds and scores a mutation test of a definition indicator |
 | `indicators/<name>/` | Judge prompt (`prompt.md`), per-theorem message (`message.md`), answer schema (`schema.json`), settings (`config.toml`) |
 | `runs/main/` | The current experiment: sample, snippets, verdicts and reports |
 
@@ -290,10 +331,15 @@ and `{dirs}`), `schema.json` (answer schema, with a string field `verdict`) and
 positive = ["duplicate", "special_case"]  # verdicts that count as findings
 mathlib = "pinned"  # Mathlib the judge reads: "master" (repos/mathlib) or "pinned"
 skip_libraries = ["mathlib"]  # libraries the indicator does not apply to
+split_field = "proof_uses_it"  # boolean answer field counted among the findings
+denominator_excludes = ["not_a_mathematical_object"]  # verdicts left out of the rate
+flag_missing_docstring = true  # undocumented declarations get `no_docstring`, no judge
 ```
 
 `report.py`, `stats.py` and `agreement.py` count the `positive` verdicts; the report lists
-the other fields of each finding.
+the other fields of each finding. A definition indicator runs on a sample drawn with
+`sample.py --kind definitions --keep-docstrings`, whose snippets keep the definition's
+docstring.
 
 ## Reproducing the current experiment
 
@@ -303,9 +349,15 @@ the sample of a single `--n 1000` draw. Coverage of the judge runs:
 
 | Indicator | Label | Theorems |
 |---|---|---|
-| `unnecessary-hypotheses` | `claude-opus-5-5-high` | the first 400 per library |
+| `unnecessary-hypotheses` | `claude-opus-5-5-high` | all 1000 per library |
 | `unnecessary-hypotheses` | `rejudge-claude-opus-5-5-high` (blind second run) | the first 300 per library |
 | `duplicates-mathlib` | `claude-opus-5-5-high` | all 1000 per library, Mathlib excepted |
+
+`runs/defs1` holds 1000 definitions per library, drawn with seed 1 (`--kind definitions
+--keep-docstrings --n 100`, then `--extend --n 900`), all judged for `definition-fidelity`
+(label `claude-opus-5-5-high`). To reproduce it, replace `--run main` by `--run defs1` and
+use `--indicator definition-fidelity` below; the sample check is
+`python3 scripts/sample.py --run check --kind definitions --keep-docstrings --n 1000 --seed 1`.
 
 1. Clone this repository and fetch the corpus at the pinned commits, with the pinned Mathlib
    and Batteries versions that `duplicates-mathlib` needs:
@@ -373,8 +425,8 @@ All under `runs/main/`:
   name, GitHub link); `samples/<lib>/<id>.lean`: the snippet each judge received; `run.json`:
   seed, population sizes, commits, batches.
 - `unnecessary-hypotheses/claude-opus-5-5-high/`: first run. `results/<id>.json` per theorem;
-  `report.md` (400 per library), `report-batch1.md`, `report-batch2.md`, `report-batch3.md`
-  (100, 200, 300 per library).
+  `report.md` (1000 per library), `report-400.md`, `report-batch3.md`, `report-batch2.md`,
+  `report-batch1.md` (400, 300, 200, 100 per library).
 - `unnecessary-hypotheses/claude-opus-5-5-high/verify/claude-opus-5-5-high/`: adversarial
   verification of the 157 flags among the first 300 per library (it confirmed all 235
   claims, so it does not discriminate; kept for the record).
@@ -386,6 +438,13 @@ All under `runs/main/`:
   (1000 per library), `report-400.md`, `report-700.md`. The first 10 theorems per library
   were judged in the test of the final prompt, the rest in the full run (the runner judges
   the libraries in turn, so progress is even across them).
+
+Under `runs/defs1/definition-fidelity/claude-opus-5-5-high/`: `results/<id>.json` per
+definition, `report.md` (1000 per library) and `report-100.md`. The two checks of this judge
+are `runs/defs-sensitivity/` and `runs/defs-mutants/` (with `key.json`, saying which samples
+are mutants); `python3 scripts/mutate.py --spec indicators/definition-fidelity/mutations.json
+--run defs-mutants` rebuilds the mutated copies under `repos/work/` and `--score` scores the
+run.
 
 The full session transcripts of the judges (about 140 MB: every file each judge read or
 searched) are not in the repository; ask for them if you need them.
@@ -405,6 +464,10 @@ searched) are not in the repository; ask for them if you need them.
   | FLT (Anthropic) | 433,929 |
   | Formal Frontier | 10,318 |
 
+  For `definition-fidelity`, every `def`, `abbrev`, `structure`, `class` and
+  `irreducible_def`, with the same exclusions: 37,545 in Mathlib, 23,974 in Tau Ceti, 78,295
+  in Lean Pool, 79,590 in FLT and 3,884 in Formal Frontier.
+
 - **Mathlib**: `Mathlib/` without `Tactic`, `Util`, `Lean`, `Testing`, `Deprecated`.
 - **Formal Frontier**: the main `lean_lib` of each of the 43 library repositories of the
   GitHub organisation (not `pod`, not the Sutherland drafts, not the Test/Examples
@@ -414,8 +477,10 @@ searched) are not in the repository; ask for them if you need them.
   it. About 93% of the population are helper lemmas of the `P2M/Sol` proofs.
 - **Everywhere**: `*/Certificates/*` is excluded (about 81K generated numerical checks in
   Lean Pool, which would otherwise be 22% of its sample).
-- **Sampling** is uniform over theorems within each library, so larger projects and files
-  weigh in proportion to their number of theorems.
+- **Sampling** is uniform over declarations within each library, so larger projects and
+  files weigh in proportion to their number of declarations. Each index is drawn uniformly
+  and redrawn if already taken, so a longer draw starts with the shorter one and samples
+  can be extended (`--extend`).
 - **Snippet.** Each sampled theorem is shown with the enclosing `namespace`/`section`
   commands and the `variable`, `open`, `universe`, `include`, `omit`, `set_option`, local
   attribute/instance and notation commands in effect, then the theorem and its proof, with
@@ -467,8 +532,10 @@ targets remain unanswered while other selected targets continue.
 
 The `cost_usd` fields are what the same tokens would cost at API rates, as reported by
 `claude -p`; with a Claude subscription, the runs draw on its usage quota instead. The first
-`unnecessary-hypotheses` run cost about $146 for 2000 theorems (a median of 3 agent turns
-per theorem), its second run $108 for 1500; the `duplicates-mathlib` run about $216 for 4000.
+`unnecessary-hypotheses` run cost about $374 for 5000 theorems (a median of 3 agent turns
+per theorem), its second run $108 for 1500; the `duplicates-mathlib` run about $216 for 4000;
+the `definition-fidelity` run about $336 for the 4000 definitions it judged (FLT's are
+flagged by rule).
 
 Verify the DeepSeek run without making API calls:
 

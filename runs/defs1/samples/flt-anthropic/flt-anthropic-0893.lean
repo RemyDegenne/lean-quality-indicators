@@ -1,0 +1,26 @@
+namespace P2MW.S_AlgebraicCurve_exists_ringEquiv_closure_of_support_correspondence_single_eq_of_essFiniteType
+
+attribute [-instance] AlgebraicCurve.Place.instIsPrimeCenter AlgebraicCurve.Place.instIsFractionRingIntegralClosureAt AlgebraicCurve.Place.instIsTorsionFreeSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsDedekindDomainIntegralClosureAt AlgebraicCurve.Place.instFiniteSubtypeMemValuationSubringToValuationSubringIntegralClosureAt AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation instDecEqAlgebraicClosureRat WeierstrassCurve.Affine.Point.instDistribMulActionAlgEquiv WeierstrassCurve.Affine.Point.instModuleZModTorsionBy WeierstrassCurve.Affine.Point.instSMulTorsionBy WeierstrassCurve.Affine.Point.instDistribMulActionTorsionBy WeierstrassCurve.Affine.Point.instSMulAlgEquiv WeierstrassCurve.Affine.Point.instSMulCommClassAlgEquivZModTorsionBy AlgebraicCurve.RationalFunctionField.instNontrivialSubtypeUnitsWithZeroMultiplicativeIntMemSubgroupValueGroupRatFuncValuationInftyValuation_definitions
+
+set_option autoImplicit false
+
+open AlgebraicCurve
+
+open scoped TensorProduct
+
+namespace ImageCurveDet
+
+open scoped TensorProduct
+
+variable {K : Type} [Field K]
+
+section Supplied
+
+variable {F : Type} [Field F] [Algebra K F]
+
+noncomputable def evalHom (v : Place K F) (hv : v.IsRational) : ↥v.toValuationSubring →+* K :=
+  (residueFieldEquiv v hv).symm.toRingHom.comp (IsLocalRing.residue ↥v.toValuationSubring)
+
+end Supplied
+end ImageCurveDet
+end P2MW.S_AlgebraicCurve_exists_ringEquiv_closure_of_support_correspondence_single_eq_of_essFiniteType

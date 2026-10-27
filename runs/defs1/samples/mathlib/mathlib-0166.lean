@@ -1,0 +1,28 @@
+@[expose] public section
+
+open Set BoundedContinuousFunction
+
+section CompactlySupported
+
+variable {α γ : Type*} [TopologicalSpace α] [NonUnitalNormedRing γ]
+
+@[inherit_doc]
+scoped[BoundedContinuousFunction] notation
+  "C_cb(" α ", " γ ")" => compactlySupported α γ
+
+/-- A compactly supported continuous function is automatically bounded. This constructor gives
+an object of `α →ᵇ γ` from `g : α → γ` and these assumptions. -/
+def ofCompactSupport (g : α → γ) (hg₁ : Continuous g) (hg₂ : HasCompactSupport g) : α →ᵇ γ where
+  toFun := g
+  continuous_toFun := hg₁
+  map_bounded' := by
+    obtain (hs | hs) := (tsupport g).eq_empty_or_nonempty
+    · exact ⟨0, by simp [tsupport_eq_empty_iff.mp hs]⟩
+    · obtain ⟨z, _, hmax⟩ := hg₂.exists_isMaxOn hs hg₁.norm.continuousOn
+      refine ⟨2 * ‖g z‖, dist_le_two_norm' fun x ↦ ?_⟩
+      by_cases hx : x ∈ tsupport g
+      · exact isMaxOn_iff.mp hmax x hx
+      · simp [image_eq_zero_of_notMem_tsupport hx]
+
+end CompactlySupported
+end

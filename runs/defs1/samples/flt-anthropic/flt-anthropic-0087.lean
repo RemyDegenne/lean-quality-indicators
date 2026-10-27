@@ -1,0 +1,18 @@
+namespace P2MW.S_AlgebraicCurve_exists_residue_pow_mul_eq_of_sum_smul_single_sub_single_sub_sum_sub_sum_smul_quadruple_mem_principal_of_semistableCovering_of_discFibres_of_rankOne_of_lifts_of_charZero_of_semistableModel
+
+attribute [-instance] AlgebraicCurve.Place.instIsRankOneDiscreteWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.Place.instIsTrivialOnWithZeroMultiplicativeIntAdicValuation AlgebraicCurve.instFundamentalIdentityOfSumRamificationInertia AlgebraicCurve.Place.instIsScalarTowerResidueFieldRestrictPushforward AlgebraicCurve.Place.instAlgebraResidueFieldRestrictPushforward AlgebraicCurve.Place.instIsLocalHomRestrictInclusion ModularCurve.Gamma0Pair.isElliptic
+
+set_option autoImplicit false
+
+open AlgebraicCurve IsLocalRing
+
+open scoped TensorProduct
+
+namespace LC2
+
+variable {K F : Type*} [Field K] [Field F] [Algebra K F]
+
+noncomputable def mass : Divisor K F →+ ℤ := Finsupp.liftAddHom fun _ => AddMonoidHom.id ℤ
+
+end LC2
+end P2MW.S_AlgebraicCurve_exists_residue_pow_mul_eq_of_sum_smul_single_sub_single_sub_sum_sub_sum_smul_quadruple_mem_principal_of_semistableCovering_of_discFibres_of_rankOne_of_lifts_of_charZero_of_semistableModel

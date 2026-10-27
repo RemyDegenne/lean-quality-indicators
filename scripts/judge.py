@@ -259,6 +259,19 @@ def main() -> None:
                                             "argv": sys.argv[1:],
             "sample_ids": [s["id"] for s in samples]}, indent=2) + "\n")
     todo = [s for s in samples if not (out / f"{s['id']}.json").exists()]
+    if indicator.config(ind)["flag_missing_docstring"]:
+        # A declaration without a docstring is a finding by rule: no judge is asked.
+        undocumented = [s for s in todo if s.get("has_docstring") is False]
+        for s in undocumented:
+            res = {"id": s["id"], "lib": s["lib"], "verdict": "no_docstring",
+                   "explanation": "No docstring: what the declaration is meant to be is "
+                                  "undocumented. Flagged by rule, without a judge.",
+                   "model": "rule", "effort": "", "cost_usd": 0.0, "duration_ms": 0,
+                   "turns": 0, "attempts": 0,
+                   "judged": datetime.datetime.now().isoformat(timespec="seconds")}
+            (out / f"{s['id']}.json").write_text(json.dumps(res, indent=1) + "\n")
+        todo = [s for s in todo if s.get("has_docstring") is not False]
+        print(f"{len(undocumented)} without a docstring, flagged by rule")
     if args.order == "interleave":
         by_lib: dict[str, list[dict]] = {}
         for s in todo:

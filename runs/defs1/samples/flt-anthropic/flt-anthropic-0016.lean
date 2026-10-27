@@ -1,0 +1,18 @@
+namespace P2MW.S_AlgebraicGeometry_exists_sectionsEquiv_algHom_muP_of_bialgEquiv_monoidAlgebra_two
+
+set_option autoImplicit false
+
+noncomputable section
+
+namespace MuTwoGroupAlgebraRepr
+
+namespace GroupAlgebraPoints
+
+p2m_open
+
+abbrev C2 : Type := Multiplicative (ZMod 2)
+
+end GroupAlgebraPoints
+end MuTwoGroupAlgebraRepr
+end
+end P2MW.S_AlgebraicGeometry_exists_sectionsEquiv_algHom_muP_of_bialgEquiv_monoidAlgebra_two

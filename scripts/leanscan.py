@@ -20,6 +20,8 @@ MODIFIERS = {
     "meta", "scoped", "local",
 }
 THEOREM_KW = {"theorem", "lemma"}
+# Declarations that define mathematical objects (sampled by the definition indicators).
+DEFINITION_KW = {"def", "abbrev", "structure", "class", "irreducible_def"}
 DECL_KW = THEOREM_KW | {
     "def", "abbrev", "instance", "structure", "class", "inductive", "coinductive",
     "example", "axiom", "opaque", "irreducible_def", "alias", "builtin_initialize",
@@ -270,8 +272,9 @@ def _dropped_at_scope_end(masked: str, cmd: Command) -> bool:
 
 
 def scan(text: str, extra_ctx: set[str] = frozenset(), extra_other: set[str] = frozenset(),
-         with_context: bool = True):
-    """Return (theorems, docs) for one file."""
+         with_context: bool = True, kinds: set[str] = frozenset(THEOREM_KW)):
+    """Return (declarations, docs) for one file: the declarations whose head keyword is in
+    `kinds` (by default theorems and lemmas), each with its context."""
     masked, docs = mask(text)
     cmds = split_commands(masked, docs, set(extra_ctx) | set(extra_other))
     line_starts = [0] + [m.end() for m in re.finditer("\n", masked)]
@@ -323,8 +326,11 @@ def scan(text: str, extra_ctx: set[str] = frozenset(), extra_other: set[str] = f
             frames[-1].ctx.append(cmd)
         elif h == "instance" and ("local" in cmd.mods or "scoped" in cmd.mods):
             frames[-1].ctx.append(cmd)
-        elif h in THEOREM_KW:
+        elif h in kinds:
             name = _first_word_after(masked, cmd)
+            if h == "class" and name == "inductive":  # `class inductive Foo`
+                rest = masked[cmd.head_pos + len(h):cmd.end].split()
+                name = rest[1] if len(rest) > 1 else "?"
             m = _NAME_RE.match(name)
             name = m.group() if m else "?"
             if name.startswith("_root_."):
@@ -340,8 +346,10 @@ def scan(text: str, extra_ctx: set[str] = frozenset(), extra_other: set[str] = f
     return theorems, docs
 
 
-def render_context(text: str, docs, thm: Theorem) -> str:
-    """Self-contained snippet: scope openers, context commands, the theorem, `end`s."""
+def render_context(text: str, docs, thm: Theorem, keep_docs: bool = False) -> str:
+    """Self-contained snippet: scope openers, context commands, the declaration, `end`s.
+
+    Doc comments are removed, except the declaration's own when `keep_docs`."""
     out: list[str] = []
     closers: list[str] = []
     for opener_text, kind, ctx in thm.frames:
@@ -353,6 +361,7 @@ def render_context(text: str, docs, thm: Theorem) -> str:
             closers.append(f"end {name}".rstrip())
         for c in ctx:
             out += [strip_docs(text, c.start, c.end, docs), ""]
-    out += [strip_docs(text, thm.cmd.start, thm.cmd.end, docs), ""]
+    own = strip_docs(text, thm.cmd.start, thm.cmd.end, [] if keep_docs else docs)
+    out += [own, ""]
     out += reversed(closers)
     return "\n".join(out).rstrip() + "\n"

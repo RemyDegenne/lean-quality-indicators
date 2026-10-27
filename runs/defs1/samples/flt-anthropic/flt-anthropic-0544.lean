@@ -1,0 +1,38 @@
+namespace P2MW.S_LanglandsTunnell_RankinSelberg_exists_forall_integrable_rsFinCellIntegrand_pureTensorTerm_dual_and_hybrid_of_depth_twisted_torusFinite_central_growth_of_principalLevel_of_gammaHyp
+
+attribute [-instance] instHenselianLocalRingOfCompactSpaceOfIsNoetherianRing NumberField.instHenselianLocalRingAdicCompletionIntegers instIsAdicCompleteMaximalIdealOfCompactSpace NumberField.instIsAdicCompleteMaximalIdealAdicCompletionIntegers RestrictedProduct.SecondCountableTopology_of_principal instCountableElemSetSetsCofinite_definitions
+
+set_option autoImplicit false
+
+set_option linter.unusedVariables false
+
+set_option linter.unusedSectionVars false
+
+set_option linter.unnecessarySimpa false
+
+open IsDedekindDomain NumberField AutomorphicForm LanglandsTunnell LanglandsTunnell.Converse
+
+open NumberField.TateGlobal NumberField.AdelicLevel NumberField.AdelicBox NumberField.InfinitePlace.Completion
+
+open LanglandsTunnell.RankinSelberg LanglandsTunnell.CubicInduction MeasureTheory UnramifiedWhittaker AdelicDock
+
+open LanglandsTunnell.TateLocal NumberField.StandardAddChar Topology
+
+open scoped nonZeroDivisors NNReal ENNReal Matrix Pointwise
+
+attribute [local instance] NumberField.AdelicHaar.glBorel NumberField.AdelicHaar.borelSpace_glBorel
+
+noncomputable section
+
+namespace KcRsCellTermsTw3
+
+section W0
+
+variable (w₀ : GL (Fin 2) ℚ)
+
+def w₀At (p : HeightOneSpectrum (𝓞 ℚ)) : GL (Fin 2) (p.adicCompletion ℚ) := localAt ℚ p (globalPoints (𝓞 ℚ) ℚ w₀)
+
+end W0
+end KcRsCellTermsTw3
+end
+end P2MW.S_LanglandsTunnell_RankinSelberg_exists_forall_integrable_rsFinCellIntegrand_pureTensorTerm_dual_and_hybrid_of_depth_twisted_torusFinite_central_growth_of_principalLevel_of_gammaHyp
