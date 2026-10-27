@@ -56,7 +56,7 @@ def reorder(text):
 
 
 def main():
-    paths = [ROOT / "README.md", ROOT / "AUDIT_RESULTS.md", *list((ROOT / "runs/main").rglob("*.md")),
+    paths = [ROOT / "README.md", ROOT / "AUDIT_RESULTS.md", ROOT / "AUDIT_APPENDIX.md", *list((ROOT / "runs/main").rglob("*.md")),
              *list((ROOT / "runs/file-quality-pilot-2026-10-21/reports").rglob("*.md"))]
     for path in paths:
         text = path.read_text()

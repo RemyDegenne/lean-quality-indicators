@@ -1,6 +1,6 @@
 # API-equivalent costs
 
-Generated 2026-10-27T05:00:16+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-27T13:44:49+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 | Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |
 |---|---|---:|---:|---:|---:|
@@ -14,11 +14,6 @@ Generated 2026-10-27T05:00:16+00:00 · [Methods and notation](../../AUDIT_METHOD
 | duplicates-mathlib-inclusive | Sonnet | 5100 | 5100 | $128.13 / $128.13 | $25.12 |
 | duplicates-mathlib-inclusive | Luna | 5100 | 5100 | $16.33 / $16.33 | $3.20 |
 | duplicates-mathlib-inclusive | DeepSeek | 600 | 5100 | $2.26 / $19.25 | $3.77 |
-| concept-reinvention | Opus | 100 | 130 | $15.66 / $20.36 | $156.59 |
-| concept-reinvention | Sol | 100 | 130 | $8.47 / $11.02 | $84.75 |
-| concept-reinvention | Sonnet | 2231 | 130 | $155.15 / $9.04 | $69.54 |
-| concept-reinvention | Luna | 130 | 130 | $0.65 / $0.65 | $5.04 |
-| concept-reinvention | DeepSeek | 40 | 130 | $0.67 / $2.17 | $16.71 |
 | statement-generality | Opus | 100 | 130 | $32.26 / $41.93 | $322.57 |
 | statement-generality | Sol | 100 | 130 | $13.16 / $17.11 | $131.61 |
 | statement-generality | Sonnet | 130 | 130 | $16.38 / $16.38 | $125.96 |
@@ -29,11 +24,6 @@ Generated 2026-10-27T05:00:16+00:00 · [Methods and notation](../../AUDIT_METHOD
 | vacuity-and-misstatement | Sonnet | 130 | 130 | $12.33 / $12.33 | $94.88 |
 | vacuity-and-misstatement | Luna | 130 | 130 | $0.58 / $0.58 | $4.49 |
 | vacuity-and-misstatement | DeepSeek | 40 | 130 | $1.15 / $3.73 | $28.70 |
-| simp-interface | Opus | 100 | 130 | $24.70 / $32.11 | $246.97 |
-| simp-interface | Sol | 100 | 130 | $9.98 / $12.97 | $99.78 |
-| simp-interface | Sonnet | 2226 | 130 | $229.55 / $13.41 | $103.12 |
-| simp-interface | Luna | 130 | 130 | $0.59 / $0.59 | $4.57 |
-| simp-interface | DeepSeek | 40 | 130 | $1.12 / $3.65 | $28.09 |
 | repeated-proof-machinery | Opus | 100 | 130 | $26.18 / $34.04 | $261.84 |
 | repeated-proof-machinery | Sol | 100 | 130 | $8.15 / $10.60 | $81.55 |
 | repeated-proof-machinery | Sonnet | 2232 | 130 | $186.14 / $10.84 | $83.40 |
@@ -44,6 +34,23 @@ Generated 2026-10-27T05:00:16+00:00 · [Methods and notation](../../AUDIT_METHOD
 | readable-proof-simplification | Sonnet | 130 | 130 | $18.52 / $18.52 | $142.44 |
 | readable-proof-simplification | Luna | 130 | 130 | $0.50 / $0.50 | $3.86 |
 | readable-proof-simplification | DeepSeek | 40 | 130 | $1.16 / $3.76 | $28.89 |
+
+## Appendix audits: not ready for use
+
+[Assessment](../../AUDIT_APPENDIX.md). Excluded from the main report aggregates; their recorded expenditure remains part of the totals below.
+
+| Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |
+|---|---|---:|---:|---:|---:|
+| concept-reinvention | Opus | 100 | 130 | $15.66 / $20.36 | $156.59 |
+| concept-reinvention | Sol | 100 | 130 | $8.47 / $11.02 | $84.75 |
+| concept-reinvention | Sonnet | 2231 | 130 | $155.15 / $9.04 | $69.54 |
+| concept-reinvention | Luna | 130 | 130 | $0.65 / $0.65 | $5.04 |
+| concept-reinvention | DeepSeek | 40 | 130 | $0.67 / $2.17 | $16.71 |
+| simp-interface | Opus | 100 | 130 | $24.70 / $32.11 | $246.97 |
+| simp-interface | Sol | 100 | 130 | $9.98 / $12.97 | $99.78 |
+| simp-interface | Sonnet | 2226 | 130 | $229.55 / $13.41 | $103.12 |
+| simp-interface | Luna | 130 | 130 | $0.59 / $0.59 | $4.57 |
+| simp-interface | DeepSeek | 40 | 130 | $1.12 / $3.65 | $28.09 |
 
 ## Totals by model
 

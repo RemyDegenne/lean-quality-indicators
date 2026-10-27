@@ -12,6 +12,7 @@ import tomllib
 from report import wilson
 from api_costs import directory_expenditure, full_pass_estimate
 from file_audits import RUBRICS
+from audit_reporting import APPENDIX_AUDITS, is_main_audit, reporting_status
 
 ROOT = Path(__file__).resolve().parent.parent
 FILES = ROOT / "runs/file-quality-pilot-2026-10-21"
@@ -153,10 +154,14 @@ def make_report(audit, base, samples, is_file, resamples, models=None):
     positive = lambda r: is_positive(audit, is_file, r)
     names = library_names()
     libraries = ordered_libraries({s["lib"] for s in samples.values()})
-    data = {"audit": audit, "unit": "file" if is_file else "theorem", "groups": {}}
+    data = {"audit": audit, "unit": "file" if is_file else "theorem", "groups": {},
+            "reporting_status": reporting_status(audit)}
     methods = "../../../AUDIT_METHODS.md"
     lines = [f"# {audit}", "", f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · "
              f"[Methods and notation]({methods}) · {resamples:,} bootstrap draws.", ""]
+    if not is_main_audit(audit):
+        lines += ["**Not ready for use.** Appendix audit; excluded from main summaries and library-quality conclusions. "
+                  f"[Assessment and retained results](../../../AUDIT_APPENDIX.md#{audit}).", ""]
     if audit == "duplicates-mathlib-inclusive":
         lines += ["Opus uses the earlier prompt on four libraries, without Mathlib targets.", ""]
     if audit == "unnecessary-hypotheses":
@@ -361,6 +366,9 @@ def union_correlation(first, second, samples, unit, seed, resamples, repeat=Fals
 
 
 def combined_summary(bundles, resamples):
+    # Enforce readiness here too, so every caller excludes appendix judgments from
+    # union decisions, coverage, correlations and the main summary's expenditure.
+    bundles = [bundle for bundle in bundles if is_main_audit(bundle["audit"])]
     union, samples = union_results(bundles)
     names = library_names()
     models = list(union)
@@ -450,7 +458,7 @@ def main():
     args = parser.parse_args()
     if args.resamples < 100:
         parser.error("Use at least 100 bootstrap resamples")
-    sections, bundles = [], []
+    sections, appendix_sections, bundles = [], [], []
     for audit, is_file in [("unnecessary-hypotheses", False), ("duplicates-mathlib-inclusive", False), *[(r, True) for r in RUBRICS]]:
         run = FILES if is_file else MAIN
         samples = {s["id"]: s for s in map(json.loads, (run / "samples.jsonl").read_text().splitlines())}
@@ -467,15 +475,34 @@ def main():
         section = section.replace("### Correlation matrix", "#### Correlation matrix")
         note = ("Opus uses the earlier prompt on four libraries, without Mathlib targets.\n\n"
                 if audit == "duplicates-mathlib-inclusive" else "")
-        sections.append(f"## {audit}\n\n[Library breakdowns]({path.relative_to(ROOT).as_posix()})\n\n" + note +
-                        "### Library comparison\n\n" + library_section + "\n\n### Model comparison\n\n" + section)
+        rendered = (f"## {audit}\n\n[Library breakdowns]({path.relative_to(ROOT).as_posix()})\n\n" + note +
+                    "### Library comparison\n\n" + library_section + "\n\n### Model comparison\n\n" + section)
+        if is_main_audit(audit):
+            sections.append(rendered)
+        else:
+            appendix_sections.append(rendered.replace("### Library comparison", APPENDIX_AUDITS[audit] +
+                                     "\n\n### Library comparison", 1))
         print(path.relative_to(ROOT), flush=True)
     summary, combined = combined_summary(bundles, args.resamples)
+    combined["appendix_audits"] = {b["audit"]: reporting_status(b["audit"]) for b in bundles
+                                  if not is_main_audit(b["audit"])}
     (ROOT / "AUDIT_RESULTS.json").write_text(json.dumps(combined, indent=2) + "\n")
     (ROOT / "AUDIT_RESULTS.md").write_text("# Audit results\n\n" +
         f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · " +
         "[Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).\n\n" +
+        "[Appendix: simp interface and concept reinvention — not ready for use](AUDIT_APPENDIX.md). "
+        "These audits do not contribute to the summaries below.\n\n" +
         summary + "\n\n" + "\n\n".join(sections) + "\n")
+    (ROOT / "AUDIT_APPENDIX.md").write_text("# Appendix: audits not ready for use\n\n"
+        "**Concept reinvention and simp interface are not ready for use in library comparisons.** "
+        "Their judgments and protocols are retained for investigation, but excluded from the "
+        "[main reports](AUDIT_RESULTS.md), combined flag rates, correlations and summary expenditure. "
+        "The [cost ledger](runs/main/api-equivalent-costs.md) retains their expenditure separately.\n\n"
+        "The [60-target source review](runs/library-quality-scale-2026-10-26/sample-review-2026-10-27.json) "
+        "records the assessment behind this placement. It sampled 20 targets per audit across six libraries, "
+        "including 14 flagged and six unflagged targets. It was a static source review, without compiling "
+        "replacements; this positive-enriched sample does not estimate defect prevalence.\n\n" +
+        "\n\n".join(appendix_sections) + "\n")
 
 
 if __name__ == "__main__":

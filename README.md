@@ -159,14 +159,17 @@ judge is Sonnet 5.5 at high effort, with two sessions total (180 independent jud
 Samples, protocol snapshots and model results are separated so coverage and models can
 be expanded without replacing the pilot data.
 
-The concept-reinvention rubric protects useful named API and requires an actual competing
-concept with a concrete cost. Its thirty Sonnet reviews are complete. Repeated proof
-machinery has thirty completed Sonnet reviews, using a concise rubric requiring a shared
-lemma, a proof sketch and rewritten existing uses. Its
+Repeated proof machinery has thirty completed Sonnet pilot reviews, using a concise
+rubric requiring a shared lemma, a proof sketch and rewritten existing uses. Its
 [results](runs/file-quality-pilot-2026-10-21/reports/claude-sonnet-5-5-high-structure-machinery/summary.md)
 use the same file sample.
 Every positive has an [individual source review](runs/file-quality-pilot-2026-10-21/reviews/repeated-machinery-2026-10-21.md).
 Luna has completed all six audits on the same thirty files (180 blind reviews).
+
+Concept reinvention and simp interface are **not ready for use** in library comparisons.
+Their results are retained in the [appendix](AUDIT_APPENDIX.md), and excluded from the
+main summaries. The four main file audits are statement generality, vacuity and
+misstatement, repeated proof machinery, and readable proof simplification.
 
 OpenAI Math has fixed selections of 2,000 theorem targets and 2,000 whole files from
 `lean/OAI/`. Opus, Sol, Sonnet and Luna are judging the first 100 targets on each audit,
@@ -176,7 +179,7 @@ as read-only sources. Resume with `python3 scripts/corpus_pilot.py judge --model
 
 ## Results so far: unnecessary hypotheses
 
-[Current reports for all eight audits](AUDIT_RESULTS.md) give target/pass counts, flag
+[Current reports for the six main audits](AUDIT_RESULTS.md) give target/pass counts, flag
 rates with Wilson 95% intervals, matched-target Pearson correlation matrices with paired
 bootstrap intervals, and API-equivalent expenditure / estimated cost of one pass at the
 largest completed model's scale. [Cost details](runs/main/api-equivalent-costs.md) include
@@ -422,13 +425,15 @@ searched) are not in the repository; ask for them if you need them.
 
 ## Subscription-funded library expansion
 
-The three audits **concept reinvention**, **repeated proof machinery**, and **simp
-interface** are expanding under Sonnet 5.5 at high effort, comparing Mathlib, Tau Ceti,
-Formal Frontier, Lean Pool, FLT and OpenAI Math. The
+The completed subscription window expanded **repeated proof machinery** under Sonnet 5.5
+at high effort to 372 reviewed files each from Mathlib, Tau Ceti, Formal Frontier,
+Lean Pool, FLT and OpenAI Math. The
 [library comparison](runs/library-quality-scale-2026-10-26/library-comparison.md)
 includes existing first-pass judgments; new sessions skip those targets. Source
-selection extends the original seed-zero SHA256 file ordering to 500 files per library.
-This is a queue ceiling, not a promise to complete every selected file in this window.
+selection extends the original seed-zero SHA256 file ordering to 500 files per library;
+the window ended before the queue was exhausted. The same run expanded concept
+reinvention and simp interface, now retained only in the comparison's appendix and
+marked **not ready for use**. See the [source review](runs/library-quality-scale-2026-10-26/sample-review-2026-10-27.json).
 
 `scripts/subscription_audits.py` uses only the `lean-fro` OAuth credential and refuses
 new work if extra usage is enabled. It pauses near either quota limit, can resume

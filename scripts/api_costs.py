@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from file_audits import RUBRICS
+from audit_reporting import is_main_audit, reporting_status
 
 ROOT = Path(__file__).resolve().parent.parent
 MAIN = ROOT / "runs/main"
@@ -141,21 +142,30 @@ def main():
         report = FILES / "reports" / f"{audit}-comparison.json" if audit in RUBRICS else MAIN / audit / "audit-comparison.json"
         if report.exists():
             largest_pass[audit] = json.loads(report.read_text())["groups"]["all"]["full_pass_reference_targets"]
+    table_header = ["| Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |",
+                    "|---|---|---:|---:|---:|---:|"]
     lines = ["# API-equivalent costs", "",
              f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} · "
              "[Methods and notation](../../AUDIT_METHODS.md).", "",
-             "| Audit | Model | Accepted judgments | Full-pass targets | API expenditure / full-pass estimate | USD / 1,000 judgments |",
-             "|---|---|---:|---:|---:|---:|"]
+             *table_header]
     totals = defaultdict(float)
     order = {name: i for i, name in enumerate(["Opus", "Sol", "Sonnet", "Luna", "DeepSeek"])}
     audits = {audit: i for i, audit in enumerate(dict.fromkeys(audit for audit, _ in groups))}
-    for (audit, model), row in sorted(groups.items(), key=lambda item: (audits[item[0][0]], order.get(item[0][1], 99))):
+    appendix_started = False
+    for (audit, model), row in sorted(groups.items(), key=lambda item: (
+            not is_main_audit(item[0][0]), audits[item[0][0]], order.get(item[0][1], 99))):
+        if not is_main_audit(audit) and not appendix_started:
+            lines += ["", "## Appendix audits: not ready for use", "",
+                      "[Assessment](../../AUDIT_APPENDIX.md). Excluded from the main report aggregates; "
+                      "their recorded expenditure remains part of the totals below.", "", *table_header]
+            appendix_started = True
         cost = row["api_usd"]
         totals[model] += cost
         unit = cost / row["costed"] * 1000 if row["costed"] else 0
         full = full_pass_estimate(cost, row["completed"], largest_pass[audit])
         row["full_pass_reference_targets"] = largest_pass[audit]
         row["full_pass_estimate_usd"] = full
+        row["reporting_status"] = reporting_status(audit)
         money = f"${cost:.2f} / ${full:.2f}" if full is not None else f"${cost:.2f} / —"
         lines.append(f"| {audit} | {model} | {row['completed']} | {largest_pass[audit]} | {money} | ${unit:.2f} |")
     lines += ["", "## Totals by model", "", "| Model | API-equivalent USD |", "|---|---:|"]

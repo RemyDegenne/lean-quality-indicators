@@ -58,6 +58,19 @@ class SubscriptionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'Extra usage'):
                 audits.quota()
 
+    def test_expansion_report_keeps_unready_audits_only_in_appendix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(audits, 'BASE', Path(tmp)), patch.object(audits, 'LIBRARIES', ['test']), \
+                 patch.object(audits, 'result_for', return_value={'findings': [1]}):
+                totals = audits.report([{'lib': 'test'}])
+            text = (Path(tmp) / 'library-comparison.md').read_text()
+            main, appendix = text.split('## Appendix: not ready for use', 1)
+            self.assertIn('## repeated-proof-machinery', main)
+            for audit in ['concept-reinvention', 'simp-interface']:
+                self.assertNotIn(audit, main)
+                self.assertIn('### ' + audit, appendix)
+                self.assertEqual(totals[audit + ':test']['flagged'], 1)
+
     def test_timeout_keeps_partial_paid_output_as_an_attempt(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

@@ -1,14 +1,10 @@
 # File quality audits, version 1
 
-The concept rubric protects useful named API and requires a competing definition with a
-concrete cost. Its thirty Sonnet reviews are complete. To run it alone on the existing
-thirty-file sample, with separate reports:
-
-```sh
-python3 -u scripts/reinvention_audit.py --run file-quality-pilot-2026-10-21 \
-  --files-per-library 10 --model claude-sonnet-5-5 \
-  --label claude-sonnet-5-5-high-concept --jobs 2
-```
+Four file audits contribute to the [main reports](../../AUDIT_RESULTS.md): statement
+generality, vacuity or misstatement, repeated proof machinery, and readable proof
+simplification. Concept reinvention and simp interface are **not ready for use** in
+library comparisons; their frozen protocols and judgments remain available through the
+[appendix](../../AUDIT_APPENDIX.md). Reporting placement does not alter the inference protocols.
 
 The repeated-machinery rubric requires a shared lemma, a proof sketch and rewritten
 existing uses showing an overall improvement. Run it on the same sample, with a separate

@@ -18,6 +18,7 @@ import file_audits
 import judge
 import sample
 from report import wilson
+from audit_reporting import is_main_audit
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = ROOT / 'runs/library-quality-scale-2026-10-26'
@@ -182,12 +183,21 @@ def result_for(row, audit):
 
 
 def report(rows):
-    lines = ['# Library quality expansion', '', 'Sonnet 5.5, high effort. Three unchanged rubrics; subscription account lean-fro.',
+    lines = ['# Library quality expansion', '', 'Sonnet 5.5, high effort; subscription account lean-fro.',
              'Counts include the existing first pass, without rerunning or charging it again.',
              'Cells are files flagged / reviewed, with Wilson 95% intervals. Flags remain judge claims.', '']
     totals = {}
-    for audit in AUDITS:
-        lines += ['## ' + audit, '', '| Library | Flagged / reviewed | Rate (95% CI) |', '|---|---:|---:|']
+    ordered = [a for a in AUDITS if is_main_audit(a)] + [a for a in AUDITS if not is_main_audit(a)]
+    appendix_started = False
+    for audit in ordered:
+        if not is_main_audit(audit) and not appendix_started:
+            lines += ['## Appendix: not ready for use', '',
+                      'Concept reinvention and simp interface are excluded from the main reports. '
+                      'These retained results are not ready for library-quality comparisons. '
+                      '[Assessment and full appendix](../../AUDIT_APPENDIX.md).', '']
+            appendix_started = True
+        lines += [('### ' if not is_main_audit(audit) else '## ') + audit, '',
+                  '| Library | Flagged / reviewed | Rate (95% CI) |', '|---|---:|---:|']
         for lib in LIBRARIES:
             records = [result_for(r, audit) for r in rows if r['lib'] == lib]
             records = [r for r in records if r]
@@ -251,7 +261,7 @@ def refresh_reports():
 def publish_results(rows):
     verification = verify_results(rows)
     refresh_reports()
-    paths = [str(BASE.relative_to(ROOT)), 'AUDIT_RESULTS.md', 'AUDIT_RESULTS.json',
+    paths = [str(BASE.relative_to(ROOT)), 'AUDIT_RESULTS.md', 'AUDIT_RESULTS.json', 'AUDIT_APPENDIX.md',
              'runs/main/api-equivalent-costs.md', 'runs/main/api-equivalent-costs.json']
     paths += [str(p.relative_to(ROOT)) for p in (ROOT / 'runs/file-quality-pilot-2026-10-21/reports').glob('*-comparison.*')]
     paths += [str(p.relative_to(ROOT)) for p in (ROOT / 'runs/main').glob('*/audit-comparison.*')]

@@ -1,19 +1,8 @@
 # Library quality expansion
 
-Sonnet 5.5, high effort. Three unchanged rubrics; subscription account lean-fro.
+Sonnet 5.5, high effort; subscription account lean-fro.
 Counts include the existing first pass, without rerunning or charging it again.
 Cells are files flagged / reviewed, with Wilson 95% intervals. Flags remain judge claims.
-
-## concept-reinvention
-
-| Library | Flagged / reviewed | Rate (95% CI) |
-|---|---:|---:|
-| mathlib | 28/372 | 7.5% [5.3%, 10.7%] |
-| tauceti | 9/372 | 2.4% [1.3%, 4.5%] |
-| formal-frontier | 30/372 | 8.1% [5.7%, 11.3%] |
-| lean-pool | 52/371 | 14.0% [10.9%, 17.9%] |
-| flt-anthropic | 56/372 | 15.1% [11.8%, 19.0%] |
-| openai-math | 25/372 | 6.7% [4.6%, 9.7%] |
 
 ## repeated-proof-machinery
 
@@ -26,7 +15,22 @@ Cells are files flagged / reviewed, with Wilson 95% intervals. Flags remain judg
 | flt-anthropic | 189/372 | 50.8% [45.7%, 55.9%] |
 | openai-math | 154/372 | 41.4% [36.5%, 46.5%] |
 
-## simp-interface
+## Appendix: not ready for use
+
+Concept reinvention and simp interface are excluded from the main reports. These retained results are not ready for library-quality comparisons. [Assessment and full appendix](../../AUDIT_APPENDIX.md).
+
+### concept-reinvention
+
+| Library | Flagged / reviewed | Rate (95% CI) |
+|---|---:|---:|
+| mathlib | 28/372 | 7.5% [5.3%, 10.7%] |
+| tauceti | 9/372 | 2.4% [1.3%, 4.5%] |
+| formal-frontier | 30/372 | 8.1% [5.7%, 11.3%] |
+| lean-pool | 52/371 | 14.0% [10.9%, 17.9%] |
+| flt-anthropic | 56/372 | 15.1% [11.8%, 19.0%] |
+| openai-math | 25/372 | 6.7% [4.6%, 9.7%] |
+
+### simp-interface
 
 | Library | Flagged / reviewed | Rate (95% CI) |
 |---|---:|---:|

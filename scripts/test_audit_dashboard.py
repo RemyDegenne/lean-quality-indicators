@@ -6,11 +6,42 @@ from pathlib import Path
 import tempfile
 from unittest.mock import patch
 
-from audit_dashboard import correlation, phi, union_results, union_counts, union_correlation, add_extra_corpus
+from audit_dashboard import (correlation, phi, union_results, union_counts, union_correlation,
+                             add_extra_corpus, combined_summary)
 from api_costs import token_cost, full_pass_estimate, directory_expenditure, DIRECTORY_CACHE
 
 
 class DashboardTests(unittest.TestCase):
+    def test_appendix_cannot_change_main_union_coverage_cost_or_correlations(self):
+        sample = {"lib": "test", "dir": "repo", "commit": "abc", "path": "A.lean"}
+        def bundle(audit, flagged, sid):
+            row = {"api_expenditure_usd": 1, "full_pass_estimate_usd": 1,
+                   "judgments_completed": 1, "judgments_planned": 1,
+                   "passes_completed": 1, "passes_planned": 1}
+            return {"audit": audit, "unit": "file", "samples": {sid: sample},
+                    "models": {"Test": [{"selected": {sid}, "results": {
+                        sid: {"findings": [1] if flagged else []}}}]},
+                    "report": {"groups": {"all": {"models": {"Test": row}}}}}
+        main = bundle("repeated-proof-machinery", False, "original")
+        excluded = [bundle("simp-interface", True, "simp"),
+                    bundle("concept-reinvention", True, "concept")]
+        # Appendix-only coverage must not inflate the selected-target count either.
+        excluded[0]["samples"]["extra"] = {**sample, "path": "Extra.lean"}
+        excluded[0]["models"]["Test"][0]["selected"].add("extra")
+        with patch("audit_dashboard.library_names", return_value={"test": "Test library"}):
+            _, expected = combined_summary([main], 100)
+            text, actual = combined_summary([main, *excluded], 100)
+            self.assertEqual(actual, expected)
+            self.assertEqual(actual["libraries"]["test"]["file"]["Test"]["flagged"], 0)
+            self.assertEqual(actual["models"]["Test"]["api_expenditure_usd"], 1)
+            self.assertNotIn("simp-interface", text)
+            self.assertNotIn("concept-reinvention", text)
+            # New main audits still join automatically.
+            _, extended = combined_summary([main, *excluded,
+                                           bundle("new-file-audit", True, "new")], 100)
+            self.assertEqual(extended["libraries"]["test"]["file"]["Test"]["flagged"], 1)
+            self.assertEqual(extended["audits"], ["repeated-proof-machinery", "new-file-audit"])
+
     def test_union_deduplicates_source_targets_and_tracks_pending_audits(self):
         sample = {"lib": "test", "dir": "repo", "commit": "abc", "path": "A.lean",
                   "line": 10, "name": "foo"}
