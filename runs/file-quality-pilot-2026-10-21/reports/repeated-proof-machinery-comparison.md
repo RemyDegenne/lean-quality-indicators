@@ -1,6 +1,6 @@
 # repeated-proof-machinery
 
-Generated 2026-10-27T19:34:39+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T19:38:20+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 [Separate validation: 20 flagged and 10 unflagged targets per library](../../repeated-machinery-validation-2026-10-27/validation-report.md). These checks do not enter the first-pass counts.
 
@@ -14,7 +14,7 @@ Generated 2026-10-27T19:34:39+00:00 · [Methods and notation](../../../AUDIT_MET
 | Lean Pool | — | — | 180/372<br>48.4% [43.4%, 53.5%] | 3/10<br>30.0% [10.8%, 60.3%] | 7/10<br>70.0% [39.7%, 89.2%] |
 | FLT (Anthropic) | — | — | 189/372<br>50.8% [45.7%, 55.9%] | — | — |
 | OpenAI Math | 48/100<br>48.0% [38.5%, 57.7%] | 20/100<br>20.0% [13.3%, 28.9%] | 154/372<br>41.4% [36.5%, 46.5%] | 20/100<br>20.0% [13.3%, 28.9%] | 5/10<br>50.0% [23.7%, 76.3%] |
-| CFSG (AxiomMath) | — | — | 113/215<br>52.6% [45.9%, 59.1%] | — | — |
+| CFSG (AxiomMath) | — | — | 114/219<br>52.1% [45.5%, 58.6%] | — | — |
 
 ## All libraries
 
@@ -24,7 +24,7 @@ Full-pass reference: **130 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 100 | 1/1 | 100/100 | 48 | 48 | 48.0% [38.5%, 57.7%] | $26.18 / $34.04 |
 | Sol | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $8.15 / $10.60 |
-| Sonnet | 3300 | 0/1 | 2447/3300 | 888 | 888 | 36.3% [34.4%, 38.2%] | $208.70 / $11.09 |
+| Sonnet | 3300 | 0/1 | 2451/3300 | 889 | 889 | 36.3% [34.4%, 38.2%] | $209.11 / $11.09 |
 | Luna | 130 | 1/1 | 130/130 | 25 | 25 | 19.2% [13.4%, 26.8%] | $0.46 / $0.46 |
 | DeepSeek | 40 | 1/1 | 40/40 | 17 | 17 | 42.5% [28.5%, 57.8%] | $0.55 / $1.79 |
 
@@ -38,7 +38,7 @@ Full-pass reference: **130 targets**.
 | Luna | 0.32 [0.15, 0.49]; n=100 | 0.50 [0.27, 0.69]; n=100 | 0.44 [0.27, 0.58]; n=130 | — | 0.54 [0.33, 0.72]; n=40 |
 | DeepSeek | 0.60 [0.00, 1.00]; n=10 | 0.33 [—]; n=10 | 0.70 [0.49, 0.90]; n=40 | 0.54 [0.33, 0.72]; n=40 | — |
 
-Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 1 not applicable; Sonnet: 7 partial, 26 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
+Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 1 not applicable; Sonnet: 7 partial, 27 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
 
 ## Mathlib
 
@@ -192,7 +192,7 @@ Full-pass reference: **30 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
-| Sonnet | 300 | 0/1 | 215/300 | 113 | 113 | 52.6% [45.9%, 59.1%] | $22.56 / $3.15 |
+| Sonnet | 300 | 0/1 | 219/300 | 114 | 114 | 52.1% [45.5%, 58.6%] | $22.97 / $3.15 |
 | Luna | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | DeepSeek | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 
@@ -206,4 +206,4 @@ Full-pass reference: **30 targets**.
 | Luna | — | — | — | — | — |
 | DeepSeek | — | — | — | — | — |
 
-Coverage annotations: Opus: 0 partial, 0 not applicable; Sol: 0 partial, 0 not applicable; Sonnet: 0 partial, 3 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
+Coverage annotations: Opus: 0 partial, 0 not applicable; Sol: 0 partial, 0 not applicable; Sonnet: 0 partial, 4 not applicable; Luna: 0 partial, 0 not applicable; DeepSeek: 0 partial, 0 not applicable.
