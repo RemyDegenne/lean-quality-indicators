@@ -4,8 +4,8 @@ Sonnet 5.5, high effort. The same 270 additional theorems from a fixed 2,000-tar
 
 | Audit | Reviewed | Flagged | Rate (95% CI) | API equivalent spent |
 |---|---:|---:|---:|---:|
-| unnecessary-hypotheses | 67/270 | 14 | 20.9% [12.9%, 32.1%] | $4.64 |
-| duplicates-mathlib-inclusive | 67/270 | 2 | 3.0% [0.8%, 10.2%] | $1.63 |
+| unnecessary-hypotheses | 68/270 | 15 | 22.1% [13.8%, 33.3%] | $4.75 |
+| duplicates-mathlib-inclusive | 68/270 | 2 | 2.9% [0.8%, 10.1%] | $1.65 |
 
 Subscription account lean-fro; actual API charges $0. Hypotheses checks use current-master Mathlib, frozen at preparation; duplication uses CFSG’s pinned Mathlib. The original prompts, schemas and validators are unchanged.
 
