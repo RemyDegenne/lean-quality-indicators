@@ -1,0 +1,109 @@
+{
+  "id": "axiom-cfsg-file-0005",
+  "lib": "axiom-cfsg",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the related Fi24 definitions: `rowsOfSeed` in Certificates/Data/CFSGNative/Fi24/Core.lean, `matF` in Certificate.lean, `basisRows` in ExtCertInputs.lean, and `rowW`/`ofTrits_wf` in MatSpec.lean. I also checked Mathlib's `det_ne_zero_of_left_inverse`. The two `hdet` blocks in `invW253_spec` and `invW781_spec` repeat a short argument that existing Mathlib API already replaces. That is not a shared-lemma case, so I did not report it. I also left out the `X[i] = rowW X i` rewrites (short) and the repeated `by_cases hi : i < n \u2026 rowW_ge \u2026 W.val_zero` out-of-range branch in several `zeroFrom_*` lemmas, since extracting that branch only moves a duplicated branch into a helper. I did not compile any proposed replacement. In finding 2, the `Matrix.diagonal` lemma names (`diagonal_mul`, `mul_diagonal`) were not checked in the Mathlib sources, and the `ofTrits_val` hypothesis `d \u2264 832` is taken from usage in the file.",
+  "findings": [
+    {
+      "declaration": "rowsWF_rowsOfSeed', rowsWF_matF, rowsWF_basisRows (and zeroFrom_rowsOfSeed / zeroFrom_basisRows)",
+      "start_line": 261,
+      "end_line": 325,
+      "excerpt": "obtain \u27e8i, rfl\u27e9 := Array.mem_ofFn.1 hx",
+      "problem": "`rowsWF_rowsOfSeed'`, `rowsWF_matF` and `rowsWF_basisRows` have the same proof: unfold the definition, destructure membership in `Array.ofFn`, and apply `ofTrits_wf`. `rowsOfSeed`, `matF` and `basisRows` are all defined as `Array.ofFn (n := n) fun i => ofTrits d (...)`. `zeroFrom_rowsOfSeed` and `zeroFrom_basisRows` likewise repeat the same argument: `rowW_ofFn`/`ofTrits_val` with `if_neg` for in-range rows, and `rowW_ge` with `W.val_zero` beyond the size. The same three-line `RowsWF` proof also appears in SetupBase.lean (`rowsWF_rowsOfSeed`) and ExtFi23.lean (`rowsWF_rowsOfSeed_253`). The rubric requires the shared reasoning to be nontrivial. The part worth extracting is the pair of per-row facts for `ofTrits` rows. The `RowsWF` proof is only a few lines, so it supports the lemma but is not enough alone.",
+      "proposed_change": "Add two generic lemmas before these uses.\n\n(a) `theorem rowsWF_ofFn_ofTrits {n d : \u2115} (hd : d \u2264 832) (f : Fin n \u2192 \u2115 \u2192 \u2115) : RowsWF (Array.ofFn fun i : Fin n => ofTrits d (f i))`. Proof: `intro x hx; obtain \u27e8i, rfl\u27e9 := Array.mem_ofFn.1 hx; exact ofTrits_wf hd _`.\n\n(b) `theorem zeroFrom_ofFn_ofTrits {n d : \u2115} (hd : d \u2264 832) (f : Fin n \u2192 \u2115 \u2192 \u2115) : ZeroFrom d (Array.ofFn fun i : Fin n => ofTrits d (f i))`. Proof: for `i < n`, use `rowW_ofFn`, `dif_pos`, `ofTrits_val hd` and `if_neg`; otherwise use `rowW_ge` (size is `n`) and `W.val_zero`.\n\nThe existing declarations then become one-line corollaries. For example, `rowsWF_matF` is `by unfold matF; exact rowsWF_ofFn_ofTrits (by norm_num) _`. `rowsWF_basisRows`, `rowsWF_rowsOfSeed'` and `zeroFrom_basisRows` follow the same pattern, and `zeroFrom_rowsOfSeed` is `by unfold rowsOfSeed; exact zeroFrom_ofFn_ofTrits (by omega) _`. The SetupBase.lean and ExtFi23.lean copies could reuse the lemma too, though that depends on import order.",
+      "benefit": "The Array.ofFn/ofTrits well-formedness and zero-padding facts are proved once rather than five or more times. Any new seeded or table-derived matrix in this development gets these facts in one line. The lemma statements also document what the `ofTrits`-row construction guarantees.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/Certificates/Data/CFSGNative/Fi24/Core.lean",
+          "declaration": "rowsOfSeed",
+          "excerpt": "Array.ofFn (n := d) fun i => ofTrits d fun j => e[i.val * d + j]?.getD 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/Certificates/Data/CFSGNative/Fi24/Certificate.lean",
+          "declaration": "matF",
+          "excerpt": "Array.ofFn (n := 781) fun i => ofTrits 781 fun j => e[781 * i.val + j]?.getD 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/CFSG/Sporadic/Fi24/ExtCertInputs.lean",
+          "declaration": "basisRows",
+          "excerpt": "Array.ofFn (n := 253) fun i => ofTrits 253 fun j => e[253 * i.val + j]?.getD 0"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/CFSG/Sporadic/Fi24/SetupBase.lean",
+          "declaration": "rowsWF_rowsOfSeed",
+          "excerpt": "obtain \u27e8i, rfl\u27e9 := Array.mem_ofFn.1 hx"
+        }
+      ]
+    },
+    {
+      "declaration": "pad_one_mul, mul_pad_one",
+      "start_line": 150,
+      "end_line": 178,
+      "excerpt": "theorem mul_pad_one (A : Matrix (Fin 781) (Fin 781) (ZMod 3)) (i j : Fin 781) :",
+      "problem": "`pad_one_mul` and `mul_pad_one` are mirror-image proofs, each about 14 lines. Both run `Finset.sum_eq_single` at the diagonal index, unfold `pad`, split on `i.val < 253`, and use `Matrix.one_apply` to kill the off-diagonal terms. The only differences are the side of the multiplication and the `zero_mul`/`mul_zero` lemmas. The shared fact is that `pad 1` is the diagonal 0/1 projection onto the first 253 coordinates. Both proofs rediscover it separately through a dependent-`if` unfolding.",
+      "proposed_change": "Prove one lemma, `pad_one_eq_diagonal : (pad 1 : Matrix (Fin 781) (Fin 781) (ZMod 3)) = Matrix.diagonal fun i => if i.val < 253 then 1 else 0`. Proof: `ext i j`, then `unfold pad`, case on `i = j`, and use `Matrix.one_apply` and `Matrix.diagonal_apply`.\n\nBoth statements then follow from Mathlib's `Matrix.diagonal_mul` and `Matrix.mul_diagonal`. For `pad_one_mul`: `rw [pad_one_eq_diagonal, Matrix.diagonal_mul]` and finish with `split_ifs <;> simp`. For `mul_pad_one`: `rw [pad_one_eq_diagonal, Matrix.mul_diagonal]` and finish the same way. `eq_pad_of` is unchanged, since it only uses the two statements. I did not check the exact Mathlib lemma names or the final `simp` steps.",
+      "benefit": "The two duplicated sum-collapse proofs are replaced by one structural fact about `pad 1`. The left and right cases are then no longer maintained as separate copies. The mathematical reason (`pad 1` is a diagonal projection) is also stated explicitly.",
+      "evidence": [
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/CFSG/Sporadic/Fi24/ExtWSpec.lean",
+          "declaration": "pad_one_mul",
+          "excerpt": "rw [Matrix.mul_apply, Finset.sum_eq_single i]"
+        },
+        {
+          "path": "/home/kim/worktrees/lean-quality-indicators/repos/axiom-cfsg/CFSG/Sporadic/Fi24/ExtWSpec.lean",
+          "declaration": "mul_pad_one",
+          "excerpt": "rw [Matrix.mul_apply, Finset.sum_eq_single j]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 25615,
+    "cache_read_input_tokens": 169370,
+    "output_tokens": 7527,
+    "output_tokens_details": {
+      "thinking_tokens": 2280
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25615,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3258,
+        "cache_read_input_tokens": 28285,
+        "cache_creation_input_tokens": 1259,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1259
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.194699,
+  "duration_ms": 64924,
+  "turns": 13,
+  "attempts": 1,
+  "judged": "2026-10-27T15:16:48",
+  "unit": "file",
+  "source_sha256": "19074b0890c76ff37d5b305b070a1befc6cf0fe3442553fc49e20d2e3cb12621",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "lean-fro",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

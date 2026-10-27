@@ -53,6 +53,9 @@ Each **$X / $Y** cell is in USD:
 - **Y:** `X / completed judgments × full-pass reference targets`. The reference is the
   largest completed pass in that table's library group.
 
+When no pass in a group has finished, Y uses the largest selected pass and the report
+labels that reference planned. This avoids a zero-cost projection for a new corpus pilot.
+
 Y uses each model's own observed cost, averaged across its passes. It is an extrapolation
 when coverage is smaller; estimates from a handful of targets can be dominated by one
 expensive judgment. Models with cheaper tokens can still cost more if they use more tokens.

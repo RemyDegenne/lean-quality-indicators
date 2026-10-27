@@ -99,7 +99,7 @@ def prepare(selected):
         for index, number in enumerate(picked):
             row = population[number]
             sid = f"openai-math-{index:04d}"
-            snippet = sample.extract(lock, src, row)
+            snippet, _ = sample.extract(lock, src, row)
             target = f"samples/openai-math/{sid}.lean"
             (run / target).parent.mkdir(parents=True, exist_ok=True)
             (run / target).write_text(snippet)

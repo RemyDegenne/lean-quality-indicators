@@ -49,7 +49,7 @@ def verify(rows):
 
 
 def publish(rows):
-    with (run.BASE / 'publication.lock.log').open('a') as lock:
+    with (run.ROOT / 'runs/main/report-publication.lock.log').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         checked = verify(rows)
         data = run.report(rows)

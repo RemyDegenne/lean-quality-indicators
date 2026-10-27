@@ -7,11 +7,45 @@ import tempfile
 from unittest.mock import patch
 
 from audit_dashboard import (correlation, phi, union_results, union_counts, union_correlation,
-                             add_extra_corpus, combined_summary, models_for, is_positive)
+                             add_extra_corpus, combined_summary, models_for, is_positive, add_cfsg_pilot, make_report)
 from api_costs import token_cost, full_pass_estimate, directory_expenditure, DIRECTORY_CACHE
 
 
 class DashboardTests(unittest.TestCase):
+    def test_new_corpus_uses_labeled_planned_reference_until_a_pass_completes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp); (base / 'reports').mkdir()
+            models = {'Sonnet': [{'selected': {'first', 'second'}, 'directory': base / 'model',
+                                  'results': {'first': {'findings': []}}}]}
+            samples = {i: {'lib': 'test'} for i in ['first', 'second']}
+            costs = {'api_usd': 1.2, 'retry_api_usd': 0, 'uncosted_attempts': 0}
+            with patch('audit_dashboard.FILES', base), \
+                 patch('audit_dashboard.library_names', return_value={'test': 'Test'}), \
+                 patch('audit_dashboard.directory_expenditure', return_value=costs):
+                path = make_report('repeated-proof-machinery', base, samples, True, 100, models)
+            group = json.loads(path.with_suffix('.json').read_text())['groups']['test']
+            self.assertEqual(group['full_pass_reference_targets'], 2)
+            self.assertEqual(group['full_pass_reference_status'], 'planned')
+            self.assertAlmostEqual(group['models']['Sonnet']['full_pass_estimate_usd'], 2.4)
+            self.assertIn('planned; no completed pass yet', path.read_text())
+
+    def test_cfsg_pilot_adds_only_judged_selection_to_first_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp); directory = base / 'repeated-proof-machinery/claude-sonnet-5-5-high'
+            (directory / 'results').mkdir(parents=True)
+            rows = [{'id': f'axiom-cfsg-file-{i:04d}', 'lib': 'axiom-cfsg'} for i in range(2)]
+            (base / 'samples.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
+            (directory / 'judge.json').write_text(json.dumps({'protocol': {'sample_ids': [rows[0]['id']]}}))
+            (directory / 'results' / (rows[0]['id']+'.json')).write_text(json.dumps({'findings': []}))
+            first = {'selected': {'old'}, 'results': {'old': {'findings': [1]}}, 'directory': Path('old')}
+            with patch('audit_dashboard.CFSG', base):
+                samples, models = add_cfsg_pilot('repeated-proof-machinery', {'old': {'lib': 'old'}}, {'Sonnet': [first]})
+            self.assertEqual(set(samples), {'old', *[r['id'] for r in rows]})
+            self.assertEqual(first['selected'], {'old', rows[0]['id']})
+            self.assertEqual(len(models['Sonnet']), 1)
+            self.assertEqual(len(first['components']), 2)
+            self.assertNotIn(rows[1]['id'], first['selected'])
+
     def test_merged_opus_baseline_selects_thousand_but_repeat_stays_three_hundred(self):
         samples = {f'test-{i:04d}': {'lib': 'test'} for i in range(1000)}
         with tempfile.TemporaryDirectory() as tmp:

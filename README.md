@@ -509,6 +509,24 @@ uses an API key. Costs in the comparison reports remain API equivalents; these
 sessions consume the subscription. Reports refresh every five minutes, and final
 results are verified and pushed when the window finishes or weekly quota is used.
 
+## AxiomMath CFSG pilot
+
+The [CFSG pilot](runs/cfsg-pilot-2026-10-27/library-comparison.md) pins
+`AxiomMath/CFSG` at `5f8042b343bddcb64d288f3e34a6831f12ca05b4`. Its full tree contains
+229,089 Lean files; 194,203 candidate files lie under `CFSG/` after excluding certificate
+directories. The [source census](runs/cfsg-pilot-2026-10-27/source-census.json) records
+these counts. The pilot selects 2,000 eligible whole files using the existing seed-zero
+sampling protocol, then judges the first 30 against repeated proof machinery using
+Sonnet 5.5 high. These join that audit's library comparison as a new corpus, not a repeat.
+
+All Lean source files are available to the judge, together with every pinned dependency,
+including Tau Ceti, Mathlib and Lean core. Non-Lean certificate payloads and documentation
+are omitted from the checkout. No Lean code is built or executed. The pilot uses one
+lean-fro subscription session, refuses extra usage, and has a $20 API-equivalent ceiling.
+Fetch the pinned sources with `python3 scripts/fetch_cfsg.py`. Run
+`python3 scripts/cfsg_pilot.py --prepare-only` to prepare, or omit that option to
+resume the pilot. The pilot and publication monitor have service templates in `scripts/`.
+
 ## Repeated proof machinery validation
 
 The [validation run](runs/repeated-machinery-validation-2026-10-27/validation-report.md)

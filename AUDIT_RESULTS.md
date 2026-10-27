@@ -1,6 +1,6 @@
 # Audit results
 
-Generated 2026-10-27T14:05:34+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
+Generated 2026-10-27T15:19:19+00:00 · [Methods and notation](AUDIT_METHODS.md) · [Cost summary](runs/main/api-equivalent-costs.md).
 
 [Appendix: simp interface and concept reinvention — not ready for use](AUDIT_APPENDIX.md). These audits do not contribute to the summaries below.
 
@@ -45,6 +45,7 @@ Contributing audits: [statement-generality](#statement-generality), [vacuity-and
 | Lean Pool | — | — | 9/10<br>90.0% [59.6%, 98.2%] | 8/10<br>80.0% [49.0%, 94.3%] | 10/10<br>100.0% [72.2%, 100.0%] |
 | FLT (Anthropic) | — | — | — | — | — |
 | OpenAI Math | 95/100<br>95.0% [88.8%, 97.8%] | 93/100<br>93.0% [86.3%, 96.6%] | 91/100<br>91.0% [83.8%, 95.2%] | 61/100<br>61.0% [51.2%, 70.0%] | 9/10<br>90.0% [59.6%, 98.2%] |
+| CFSG (AxiomMath) | — | — | — | — | — |
 
 ### Model comparison
 
@@ -52,7 +53,7 @@ Contributing audits: [statement-generality](#statement-generality), [vacuity-and
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 7/7 | 5100 | 5000 | 100 | 8/8 | 749/4100 | 1095/5000 | 95/100 | 16100/16100 | $1165.07 / $1142.01 |
 | Sol | 6/7 | 5100 | 0 | 100 | 7/7 | 624/1600 | — | 93/100 | 8600/8600 | $515.64 / $622.87 |
-| Sonnet | 6/7 | 5100 | 0 | 3000 | 6/7 | 273/1600 | — | 119/130 | 10822/11590 | $471.63 / $367.39 |
+| Sonnet | 6/7 | 5100 | 0 | 3030 | 6/7 | 273/1600 | — | 119/130 | 10831/11620 | $472.64 / $367.41 |
 | Luna | 6/7 | 5100 | 0 | 130 | 7/7 | 545/1600 | — | 79/130 | 8720/8720 | $25.31 / $29.70 |
 | DeepSeek | 6/7 | 600 | 0 | 40 | 6/6 | 146/600 | — | 36/40 | 1360/1360 | $10.81 / $70.78 |
 
@@ -282,6 +283,7 @@ Coverage annotations: Opus: 0 partial, 1 not applicable; Sol: 0 partial, 0 not a
 | Lean Pool | — | — | 180/372<br>48.4% [43.4%, 53.5%] | 3/10<br>30.0% [10.8%, 60.3%] | 7/10<br>70.0% [39.7%, 89.2%] |
 | FLT (Anthropic) | — | — | 189/372<br>50.8% [45.7%, 55.9%] | — | — |
 | OpenAI Math | 48/100<br>48.0% [38.5%, 57.7%] | 20/100<br>20.0% [13.3%, 28.9%] | 154/372<br>41.4% [36.5%, 46.5%] | 20/100<br>20.0% [13.3%, 28.9%] | 5/10<br>50.0% [23.7%, 76.3%] |
+| CFSG (AxiomMath) | — | — | 5/9<br>55.6% [26.7%, 81.1%] | — | — |
 
 ### Model comparison
 
@@ -291,7 +293,7 @@ Full-pass reference: **130 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 100 | 1/1 | 100/100 | 48 | 48 | 48.0% [38.5%, 57.7%] | $26.18 / $34.04 |
 | Sol | 100 | 1/1 | 100/100 | 20 | 20 | 20.0% [13.3%, 28.9%] | $8.15 / $10.60 |
-| Sonnet | 3000 | 0/1 | 2232/3000 | 775 | 775 | 34.7% [32.8%, 36.7%] | $186.14 / $10.84 |
+| Sonnet | 3030 | 0/1 | 2241/3030 | 780 | 780 | 34.8% [32.9%, 36.8%] | $187.15 / $10.86 |
 | Luna | 130 | 1/1 | 130/130 | 25 | 25 | 19.2% [13.4%, 26.8%] | $0.46 / $0.46 |
 | DeepSeek | 40 | 1/1 | 40/40 | 17 | 17 | 42.5% [28.5%, 57.8%] | $0.55 / $1.79 |
 

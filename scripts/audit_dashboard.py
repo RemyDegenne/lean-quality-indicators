@@ -20,9 +20,10 @@ FILES = ROOT / "runs/file-quality-pilot-2026-10-21"
 MAIN = ROOT / "runs/main"
 EXTRA = ROOT / "runs/openai-math-2026-10-21"
 EXPANSION = ROOT / "runs/library-quality-scale-2026-10-26"
+CFSG = ROOT / 'runs/cfsg-pilot-2026-10-27'
 MODEL_NAMES = {"claude-opus-5-5": "Opus", "gpt-6.1-sol": "Sol", "claude-sonnet-5-5": "Sonnet",
                "gpt-6-luna": "Luna", "deepseek/deepseek-v4.1-flash-1017": "DeepSeek"}
-LIBRARY_ORDER = ["mathlib", "tauceti", "formal-frontier", "lean-pool", "flt-anthropic"]
+LIBRARY_ORDER = ["mathlib", "tauceti", "formal-frontier", "lean-pool", "flt-anthropic", "openai-math", "axiom-cfsg"]
 LABELS = {"Sol": ["gpt-6.1-sol-high", "gpt-6.1-sol-high-repeat-2"],
           "Sonnet": ["claude-sonnet-5-5-high", "claude-sonnet-5-5-high-repeat-2"],
           "Luna": ["gpt-6-luna-high", "gpt-6-luna-high-repeat-2"],
@@ -183,8 +184,16 @@ def make_report(audit, base, samples, is_file, resamples, models=None, unit=None
                            if component["selected"] & scoped.keys() and
                            component["selected"] & scoped.keys() <= component["results"].keys()]
         largest = max(completed_sizes, default=0)
+        reference_status = 'completed'
+        if not largest:
+            largest = max((len(component['selected'] & scoped.keys())
+                           for passes in models.values() for entry in passes
+                           for component in [entry, *entry.get('components', [])]), default=0)
+            reference_status = 'planned'
         group["full_pass_reference_targets"] = largest
-        lines += [f"## {title}", "", f"Full-pass reference: **{largest} targets**.", "",
+        group['full_pass_reference_status'] = reference_status
+        reference_note = ' (planned; no completed pass yet)' if reference_status == 'planned' else ''
+        lines += [f"## {title}", "", f"Full-pass reference: **{largest} targets**{reference_note}.", "",
                   "| Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |",
                   "|---|---:|---:|---:|---:|---:|---:|---:|"]
         for name, passes in models.items():
@@ -259,6 +268,8 @@ def library_names():
     names = {lib["id"]: lib["name"] for lib in tomllib.loads((ROOT / "libraries.toml").read_text())["library"]}
     if (EXTRA / "experiment.json").exists():
         names["openai-math"] = "OpenAI Math"
+    if (CFSG / 'experiment.json').exists():
+        names['axiom-cfsg'] = 'CFSG (AxiomMath)'
     return names
 
 
@@ -310,6 +321,24 @@ def add_expansion(audit, samples, models):
     first.update(selected=first['selected'] | selected, results={**first['results'], **extra['results']},
                  components=components, directories=[c['directory'] for c in components])
     return samples, models
+
+
+def add_cfsg_pilot(audit, samples, models):
+    manifest = CFSG / audit / 'claude-sonnet-5-5-high' / 'judge.json'
+    if not manifest.exists():
+        return samples, models
+    selected = set(json.loads(manifest.read_text())['protocol']['sample_ids'])
+    rows = {r['id']: r for r in map(json.loads, (CFSG / 'samples.jsonl').read_text().splitlines())}
+    if samples.keys() & rows.keys():
+        raise ValueError('CFSG pilot overlaps another corpus')
+    extra = {'label': manifest.parent.name, 'directory': manifest.parent,
+             'selected': selected, 'results': load(manifest.parent)}
+    first = models['Sonnet'][0]
+    components = first.get('components', [first.copy()]) + [extra]
+    first.update(selected=first['selected'] | selected,
+                 results={**first['results'], **extra['results']}, components=components,
+                 directories=[c['directory'] for c in components])
+    return {**samples, **rows}, models
 
 
 def target_key(sample, unit):
@@ -484,6 +513,7 @@ def main():
             samples, models = add_extra_corpus(audit, is_file, samples, models)
         if is_file:
             samples, models = add_expansion(audit, samples, models)
+            samples, models = add_cfsg_pilot(audit, samples, models)
         path = make_report(audit, run / audit, samples, is_file, args.resamples, models, unit)
         bundles.append({"audit": audit, "unit": unit, "samples": samples,
                         "models": models, "report": json.loads(path.with_suffix(".json").read_text())})

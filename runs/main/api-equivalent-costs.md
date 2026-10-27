@@ -1,6 +1,6 @@
 # API-equivalent costs
 
-Generated 2026-10-27T15:13:21+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-27T15:23:10+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 Definition fidelity groups automatic missing-docstring flags with its Opus protocol; rule-only decisions cost $0. Repeated-machinery validation is a separate check, excluded from the original first-pass judgment and coverage counts.
 
@@ -28,7 +28,7 @@ Definition fidelity groups automatic missing-docstring flags with its Opus proto
 | vacuity-and-misstatement | DeepSeek | 40 | 130 | $1.15 / $3.73 | $28.70 |
 | repeated-proof-machinery | Opus | 100 | 130 | $26.18 / $34.04 | $261.84 |
 | repeated-proof-machinery | Sol | 100 | 130 | $8.15 / $10.60 | $81.55 |
-| repeated-proof-machinery | Sonnet | 2232 | 130 | $186.14 / $10.84 | $83.40 |
+| repeated-proof-machinery | Sonnet | 2244 | 130 | $187.63 / $10.87 | $83.61 |
 | repeated-proof-machinery | Luna | 130 | 130 | $0.46 / $0.46 | $3.57 |
 | repeated-proof-machinery | DeepSeek | 40 | 130 | $0.55 / $1.79 | $13.76 |
 | readable-proof-simplification | Opus | 100 | 130 | $34.58 / $44.96 | $345.81 |
@@ -37,7 +37,7 @@ Definition fidelity groups automatic missing-docstring flags with its Opus proto
 | readable-proof-simplification | Luna | 130 | 130 | $0.50 / $0.50 | $3.86 |
 | readable-proof-simplification | DeepSeek | 40 | 130 | $1.16 / $3.76 | $28.89 |
 | definition-fidelity | Opus | 5000 | 5000 | $336.14 / $336.14 | $67.23 |
-| repeated-proof-machinery-validation | Sonnet | 179 | 180 | $19.45 / $19.56 | $108.66 |
+| repeated-proof-machinery-validation | Sonnet | 180 | 180 | $19.61 / $19.61 | $108.95 |
 
 ## Appendix audits: not ready for use
 
@@ -62,10 +62,10 @@ Definition fidelity groups automatic missing-docstring flags with its Opus proto
 |---|---:|
 | Opus | $1205.42 |
 | Sol | $534.09 |
-| Sonnet | $875.79 |
+| Sonnet | $877.44 |
 | Luna | $26.56 |
 | DeepSeek | $12.60 |
-| **Total** | **$2654.46** |
+| **Total** | **$2656.11** |
 
 ## Rate sources
 

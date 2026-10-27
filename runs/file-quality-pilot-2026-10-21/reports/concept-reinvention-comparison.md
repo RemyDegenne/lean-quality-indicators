@@ -1,6 +1,6 @@
 # concept-reinvention
 
-Generated 2026-10-27T14:05:31+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T15:19:15+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 **Not ready for use.** Appendix audit; excluded from main summaries and library-quality conclusions. [Assessment and retained results](../../../AUDIT_APPENDIX.md#concept-reinvention).
 
@@ -89,13 +89,13 @@ Coverage annotations: Opus: 0 partial, 0 not applicable; Sol: 0 partial, 0 not a
 
 ## Formal Frontier
 
-Full-pass reference: **0 targets**.
+Full-pass reference: **500 targets** (planned; no completed pass yet).
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
-| Sonnet | 500 | 0/1 | 372/500 | 30 | 30 | 8.1% [5.7%, 11.3%] | $23.12 / $0.00 |
+| Sonnet | 500 | 0/1 | 372/500 | 30 | 30 | 8.1% [5.7%, 11.3%] | $23.12 / $31.08 |
 | Luna | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | DeepSeek | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 
@@ -137,13 +137,13 @@ Coverage annotations: Opus: 0 partial, 0 not applicable; Sol: 0 partial, 0 not a
 
 ## FLT (Anthropic)
 
-Full-pass reference: **0 targets**.
+Full-pass reference: **500 targets** (planned; no completed pass yet).
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sol | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
-| Sonnet | 500 | 0/1 | 372/500 | 56 | 56 | 15.1% [11.8%, 19.0%] | $41.27 / $0.00 |
+| Sonnet | 500 | 0/1 | 372/500 | 56 | 56 | 15.1% [11.8%, 19.0%] | $41.27 / $55.47 |
 | Luna | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 | DeepSeek | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 
