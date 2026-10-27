@@ -22,7 +22,7 @@ This audit asks whether an argument can be deleted while leaving the rest of a t
 | OpenAI Math | 17/100 · **17.0%** [10.9%, 25.5%] | 15/100 · **15.0%** [9.3%, 23.3%] |
 | AxiomMath CFSG | — | 4/30 · **13.3%** [5.3%, 29.7%] |
 
-Both models flag Tau Ceti about twice as often as Mathlib. The Opus samples give a more precise comparison: 6.8% versus 3.1%, with 95% intervals that do not overlap. Formal Frontier (3.4%) remains close to Mathlib under Opus. Tau Ceti still has substantially fewer flags than Lean Pool and Anthropic FLT. OpenAI Math has a separate 100-theorem Opus pilot; CFSG has no Opus judgments for this audit yet. Judges inspect sources but cannot compile proposed replacements. [Detailed results](https://github.com/kim-em/lean-quality-indicators/blob/b235c6613/runs/main/unnecessary-hypotheses/audit-comparison.md).
+Both models flag Tau Ceti about twice as often as Mathlib: 6.8% versus 3.1% under Opus, and 4.0% versus 2.0% under Sonnet. Formal Frontier (3.4%) remains close to Mathlib under Opus. Tau Ceti still has substantially fewer flags than Lean Pool and Anthropic FLT. OpenAI Math has a separate 100-theorem Opus pilot; CFSG has no Opus judgments for this audit yet. Judges inspect sources but cannot compile proposed replacements. [Detailed results](https://github.com/kim-em/lean-quality-indicators/blob/b235c6613/runs/main/unnecessary-hypotheses/audit-comparison.md).
 
 ## 2. Results already available in Mathlib
 
