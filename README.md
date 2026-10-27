@@ -558,6 +558,15 @@ prepare without judging. The file and theorem workers have separate subscription
 API-equivalent ceilings of $60 and $50. A publication monitor verifies and pushes
 progress every five minutes. Service templates are `scripts/cfsg-scale-*.service`.
 
+The CFSG and OpenAI continuation service templates now use `scripts/sonnet_scale_control.py`:
+two isolated judge processes per worker, six sessions total, with starts shared and
+spaced five seconds apart. A shared quota check is cached for five minutes; failed
+checks retry without admitting new inference or discarding accepted judgments.
+Inference 429s and overage rejections stop admission across all three workers.
+The saved prompts, source snapshots, selections, validators and spending ceilings
+are unchanged; each continuation records its controller hash and runtime settings
+in `runtime-control.json`.
+
 ## Repeated proof machinery validation
 
 The [validation run](runs/repeated-machinery-validation-2026-10-27/validation-report.md)
