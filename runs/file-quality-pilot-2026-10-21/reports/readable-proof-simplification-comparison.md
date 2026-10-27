@@ -1,6 +1,6 @@
 # readable-proof-simplification
 
-Generated 2026-10-27T19:29:21+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T19:33:02+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## Library comparison
 
