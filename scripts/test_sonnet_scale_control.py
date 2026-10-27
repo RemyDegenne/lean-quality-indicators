@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -9,6 +10,24 @@ import sonnet_scale_control as control
 
 
 class ControlTests(unittest.TestCase):
+    def test_restart_condition_recovers_authentication_but_stops_when_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = root / 'run'
+            directory = base / 'audit/model'
+            (directory / 'results').mkdir(parents=True)
+            (base / 'window.json').write_text(json.dumps({'deadline': '2099-01-01T00:00:00+00:00'}))
+            (directory / 'judge.json').write_text(json.dumps({'protocol': {'sample_ids': ['test-0000']}}))
+            failure = directory / 'results/test-0000.failure.json'
+            failure.write_text(json.dumps({'error': 'success: OAuth token revoked'}))
+            with patch.object(control, 'CONTROL', root / 'control'), \
+                 patch.object(control, 'configure', return_value=SimpleNamespace(BASE=base)):
+                self.assertTrue(control.should_run('openai'))
+                failure.write_text(json.dumps({'error': 'source changed'}))
+                self.assertFalse(control.should_run('openai'))
+                (directory / 'results/test-0000.json').write_text('{}')
+                self.assertFalse(control.should_run('openai'))
+
     def usage(self):
         return {'session': {'percent_used': 10}, 'week_all_models': {'percent_used': 5},
                 'extra_usage': {'is_enabled': False}}

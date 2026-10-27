@@ -8,6 +8,7 @@ import multiprocessing
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 
 import api_costs
@@ -100,6 +101,34 @@ def configure(kind):
 def review(kind, row, audit):
     module = configure(kind)
     return runner.review(row, audit) if kind == 'cfsg-files' else module.review(row, audit)
+
+
+def should_run(kind):
+    """Allow recovery after credential/quota failures, but never restart finished work or a rate stop."""
+    if (CONTROL / 'rate-limit-stop.json').exists():
+        return False
+    module = configure(kind)
+    base = module.BASE
+    config = json.loads((base / 'window.json').read_text())
+    if time.time() >= runner.epoch(config['deadline']):
+        return False
+    todo = False
+    for manifest in base.glob('*/*/judge.json'):
+        protocol = json.loads(manifest.read_text())['protocol']
+        for sid in protocol['sample_ids']:
+            directory = manifest.parent / 'results'
+            if (directory / (sid + '.json')).exists():
+                continue
+            todo = True
+            import judge
+            if judge.codex_judge.next_attempt(directory, sid) > 3:
+                return False
+            failure = directory / (sid + '.failure.json')
+            if failure.exists():
+                error = json.loads(failure.read_text())['error']
+                if 'OAuth token revoked' not in error and not error.startswith('Invalid verdict:'):
+                    return False
+    return todo
 
 
 def run(kind):
@@ -203,4 +232,8 @@ def run(kind):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('kind', choices=['cfsg-files', 'cfsg-theorems', 'openai'])
-    run(parser.parse_args().kind)
+    parser.add_argument('--should-run', action='store_true')
+    args = parser.parse_args()
+    if args.should_run:
+        sys.exit(0 if should_run(args.kind) else 1)
+    run(args.kind)
