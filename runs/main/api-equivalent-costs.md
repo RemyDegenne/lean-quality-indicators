@@ -1,6 +1,6 @@
 # API-equivalent costs
 
-Generated 2026-10-27T17:49:21+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
+Generated 2026-10-27T17:52:18+00:00 · [Methods and notation](../../AUDIT_METHODS.md).
 
 Definition fidelity groups automatic missing-docstring flags with its Opus protocol; rule-only decisions cost $0. Repeated-machinery validation is a separate check, excluded from the original first-pass judgment and coverage counts.
 
@@ -8,7 +8,7 @@ Definition fidelity groups automatic missing-docstring flags with its Opus proto
 |---|---|---:|---:|---:|---:|
 | unnecessary-hypotheses | Opus | 6600 | 5100 | $491.63 / $379.90 | $74.49 |
 | unnecessary-hypotheses | Sol | 3100 | 5100 | $145.80 / $239.87 | $47.03 |
-| unnecessary-hypotheses | Sonnet | 3200 | 5100 | $116.93 / $186.36 | $36.54 |
+| unnecessary-hypotheses | Sonnet | 3201 | 5100 | $117.05 / $186.48 | $36.57 |
 | unnecessary-hypotheses | Luna | 3100 | 5100 | $6.81 / $11.20 | $2.20 |
 | unnecessary-hypotheses | DeepSeek | 600 | 5100 | $4.52 / $38.46 | $7.54 |
 | duplicates-mathlib-inclusive | Opus | 4100 | 5100 | $222.89 / $277.26 | $54.36 |
@@ -62,10 +62,10 @@ Definition fidelity groups automatic missing-docstring flags with its Opus proto
 |---|---:|
 | Opus | $1205.42 |
 | Sol | $534.09 |
-| Sonnet | $895.63 |
+| Sonnet | $895.74 |
 | Luna | $26.56 |
 | DeepSeek | $12.60 |
-| **Total** | **$2674.30** |
+| **Total** | **$2674.41** |
 
 ## Rate sources
 
