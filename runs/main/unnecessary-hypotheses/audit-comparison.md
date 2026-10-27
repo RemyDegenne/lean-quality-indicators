@@ -1,6 +1,6 @@
 # unnecessary-hypotheses
 
-Generated 2026-10-27T20:15:49+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T20:16:51+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 Original five libraries: Opus 1,000 then 300 targets/library; Sol, Sonnet and Luna 300 per pass.
 
@@ -14,7 +14,7 @@ Original five libraries: Opus 1,000 then 300 targets/library; Sol, Sonnet and Lu
 | Lean Pool | 150/1000<br>15.0% [12.9%, 17.3%] | 60/300<br>20.0% [15.9%, 24.9%] | 39/300<br>13.0% [9.7%, 17.3%] | 48/300<br>16.0% [12.3%, 20.6%] | 13/100<br>13.0% [7.8%, 21.0%] |
 | FLT (Anthropic) | 203/1000<br>20.3% [17.9%, 22.9%] | 78/300<br>26.0% [21.4%, 31.2%] | 52/300<br>17.3% [13.5%, 22.0%] | 61/300<br>20.3% [16.2%, 25.2%] | 21/100<br>21.0% [14.2%, 30.0%] |
 | OpenAI Math | 17/100<br>17.0% [10.9%, 25.5%] | 21/100<br>21.0% [14.2%, 30.0%] | 48/300<br>16.0% [12.3%, 20.6%] | 19/100<br>19.0% [12.5%, 27.8%] | 16/100<br>16.0% [10.1%, 24.4%] |
-| CFSG (AxiomMath) | — | — | 69/298<br>23.2% [18.7%, 28.3%] | — | — |
+| CFSG (AxiomMath) | — | — | 70/300<br>23.3% [18.9%, 28.4%] | — | — |
 
 ## All libraries
 
@@ -24,7 +24,7 @@ Full-pass reference: **5100 targets**.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 5100 | 2/2 | 6600/6600 | 653 | 510 | 9.9% [9.1%, 10.7%] | $491.63 / $379.90 |
 | Sol | 1600 | 2/2 | 3100/3100 | 395 | 210 | 13.0% [11.4%, 14.7%] | $145.80 / $239.87 |
-| Sonnet | 2100 | 1/2 | 3598/3600 | 362 | 254 | 11.3% [10.1%, 12.8%] | $139.54 / $197.79 |
+| Sonnet | 2100 | 2/2 | 3600/3600 | 363 | 255 | 11.4% [10.1%, 12.8%] | $139.68 / $197.88 |
 | Luna | 1600 | 2/2 | 3100/3100 | 329 | 212 | 10.9% [9.4%, 12.5%] | $6.81 / $11.20 |
 | DeepSeek | 600 | 1/1 | 600/600 | 59 | 59 | 9.8% [7.7%, 12.5%] | $4.52 / $38.46 |
 
@@ -172,13 +172,13 @@ Full-pass reference: **300 targets**.
 
 ## CFSG (AxiomMath)
 
-Full-pass reference: **30 targets**.
+Full-pass reference: **300 targets**.
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Opus | 0 | 0/2 | 0/0 | 0 | 0 | — | $0.00 / — |
 | Sol | 0 | 0/2 | 0/0 | 0 | 0 | — | $0.00 / — |
-| Sonnet | 300 | 0/2 | 298/300 | 69 | 69 | 23.2% [18.7%, 28.3%] | $19.28 / $1.94 |
+| Sonnet | 300 | 1/2 | 300/300 | 70 | 70 | 23.3% [18.9%, 28.4%] | $19.42 / $19.42 |
 | Luna | 0 | 0/2 | 0/0 | 0 | 0 | — | $0.00 / — |
 | DeepSeek | 0 | 0/1 | 0/0 | 0 | 0 | — | $0.00 / — |
 
