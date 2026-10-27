@@ -1,6 +1,6 @@
 # repeated-proof-machinery
 
-Generated 2026-10-27T15:57:42+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-10-27T16:02:58+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 [Separate validation: 20 flagged and 10 unflagged targets per library](../../repeated-machinery-validation-2026-10-27/validation-report.md). These checks do not enter the first-pass counts.
 
