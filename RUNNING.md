@@ -425,6 +425,56 @@ monitor verifies and publishes progress every five minutes, without making infer
 requests. Service templates are `scripts/machinery-validation.service` and
 `scripts/machinery-validation-monitor.service`.
 
+## Explicit unfoldings of definitions
+
+[def_unfolds.py](scripts/def_unfolds.py) counts, for each public `def`, `abbrev` and named
+`instance`, its uses and the uses that unfold it explicitly (`unfold`/`delta`/`unseal`, a
+bare item of a `simp`-like or `rw`-like list, or an equation lemma `foo.eq_def`), in its own
+file, in the rest of its directory and elsewhere. No LLM is involved.
+
+Two backends write the same files (`defs.jsonl`, `unfoldings.jsonl`, `summary.json`,
+`meta.json`, `report.md`):
+
+- `source` reads only the sources and resolves names syntactically (namespaces, `open`,
+  local binders, field notation through binder types or unique names). It needs the
+  dependencies' sources for name resolution, not a build:
+
+  ```sh
+  deps=$(python3 -c "import json; m=json.load(open('repos/axiom-cfsg/lake-manifest.json')); \
+    print(' '.join('repos/deps/%s-%s' % (p['name'].strip('«»'), p['rev'][:12]) for p in m['packages']))")
+  python3 scripts/def_unfolds.py source --root repos/axiom-cfsg --include CFSG \
+    --exclude '*/Certificates/*' --deps $deps ~/.elan/toolchains/leanprover--lean4---v4.35.0-rc3/src/lean \
+    --jobs 24 --label "CFSG (AxiomMath)" --out runs/def-unfolds-2026-11-02/cfsg-source
+  ```
+
+- `ilean` ([def_unfolds_ilean.py](scripts/def_unfolds_ilean.py)) reads the `.ilean`
+  reference index of a built library, where Lean has resolved every name. It is the
+  reference for the source backend; modules whose index no longer matches the source are
+  listed as stale and left out of comparisons.
+
+  ```sh
+  python3 scripts/def_unfolds.py ilean --root ../mathlib4 --lib Mathlib --out DIR
+  python3 scripts/def_unfolds.py compare REF_DIR SOURCE_DIR --out comparison.md
+  ```
+
+[def_unfolds_corpus.py](scripts/def_unfolds_corpus.py) runs the source backend on every
+corpus library (the five of `libraries.toml`, OpenAI Math and CFSG) in the scope of the
+other audits, and writes `runs/def-unfolds-2026-11-02/<library>/` and
+`runs/def-unfolds-2026-11-02/library-comparison.md`. Clone the sources first
+(`scripts/fetch.py`, the OpenAI Math checkout in `repos/openai-math`,
+`scripts/fetch_cfsg.py`), then:
+
+```sh
+python3 scripts/def_unfolds_corpus.py --fetch   # every package of each lake-manifest.json
+python3 scripts/def_unfolds_corpus.py           # or --only tauceti lean-pool ...
+```
+
+FLT's scoping commands (`p2m_open`, `p2m_export`, `p2m_alias`) are interpreted. Formal
+Frontier is measured repository by repository and merged, so a definition used from
+another of its repositories counts as a dependency there, not as a use.
+
+Unit tests: `cd scripts && python3 -m unittest test_def_unfolds`.
+
 ## DeepSeek pilot
 
 The matched eight-audit pilot uses DeepSeek V4.1 Flash via OpenRouter on InferenceNet FP8,
