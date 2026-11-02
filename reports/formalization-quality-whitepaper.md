@@ -6,7 +6,7 @@ These are local measures of formalization quality: unnecessary assumptions, over
 
 We sample theorems or complete source files from pinned library snapshots, and give judges access to the source and relevant dependencies. The first two tables show **Opus 5.5 high** and **Sonnet 5.5 high**; the repeated-machinery table shows Sonnet alone. The Opus unnecessary-hypothesis samples cover 1,000 theorems from the older libraries, and then decreasing coverage for newer libraries and audits. Cross-model and repeated-pass checks support the broad unnecessary-hypothesis pattern (Opus/Sonnet flag correlation is 0.86 on 1,600 shared targets) but model independence is less established for the other measures.
 
-Each cell shows flagged / sampled, the flag rate, and a 95% interval for sampling uncertainty. A dash means no judgments. Sonnet now covers 300 theorems per audit for both OpenAI Math and CFSG, 300 CFSG files, and 372 OpenAI Math files.
+Each cell shows flagged / sampled, the flag rate, and a 95% interval for sampling uncertainty. A dash means no judgments. Sonnet covers the same number of targets in every corpus: 300 theorems for unnecessary hypotheses, 1,000 theorems for duplication, and 372 files for repeated machinery.
 
 ## 1. Unnecessary hypotheses
 
@@ -33,8 +33,8 @@ This audit looks for a result already supplied by a single declaration in Mathli
 | Formal Frontier | 46/1,000 · **4.6%** [3.5%, 6.1%] | 45/1,000 · **4.5%** [3.4%, 6.0%] |
 | Lean Pool | 68/1,000 · **6.8%** [5.4%, 8.5%] | 58/1,000 · **5.8%** [4.5%, 7.4%] |
 | Anthropic FLT | 137/1,000 · **13.7%** [11.7%, 16.0%] | 118/1,000 · **11.8%** [9.9%, 13.9%] |
-| OpenAI Math | 1/100 · **1.0%** [0.2%, 5.4%] | 8/300 · **2.7%** [1.4%, 5.2%] |
-| AxiomMath CFSG | — | 15/300 · **5.0%** [3.1%, 8.1%] |
+| OpenAI Math | 1/100 · **1.0%** [0.2%, 5.4%] | 24/1,000 · **2.4%** [1.6%, 3.5%] |
+| AxiomMath CFSG | — | 48/1,000 · **4.8%** [3.6%, 6.3%] |
 
 Anthropic FLT stands out here with a high flag rate; the differences among the other external corpora are smaller. OpenAI Math has few duplication flags despite its higher unnecessary-hypothesis rate, illustrating that the measures capture different properties. Some flagged declarations already use their Mathlib counterpart and provide a deliberate named interface. Each finding therefore raises a question about whether that additional API earns its place. Search completeness and the project’s mathematical overlap with Mathlib also affect the rate. [Detailed results](https://github.com/RemyDegenne/lean-quality-indicators/blob/main/runs/main/duplicates-mathlib-inclusive/audit-comparison.md).
 ## 3. Repeated proof machinery
@@ -49,6 +49,6 @@ This audit searches a complete file for substantial mathematical reasoning repea
 | Lean Pool | 180/372 · **48.4%** [43.4%, 53.5%] |
 | Anthropic FLT | 189/372 · **50.8%** [45.7%, 55.9%] |
 | OpenAI Math | 154/372 · **41.4%** [36.5%, 46.5%] |
-| AxiomMath CFSG | 162/300 · **54.0%** [48.3%, 59.6%] |
+| AxiomMath CFSG | 201/372 · **54.0%** [49.0%, 59.0%] |
 
 The initial Sonnet flags put Mathlib and Tau Ceti together, Formal Frontier in the middle, and the remaining corpora higher. The judges are *not* asked to compile their proposals, so these flag rates only represent potential refactorings. File length and organization affect opportunities to find repetition, and compiling proposed refactorings remains an important next step. We ran a small scale pilot that checked proposed refactorings more carefully; fewer survived scrutiny at Tau Ceti relative to all the other libraries. [Detailed results](https://github.com/RemyDegenne/lean-quality-indicators/blob/main/runs/file-quality-pilot-2026-10-21/reports/repeated-proof-machinery-comparison.md), [follow-up validation](https://github.com/RemyDegenne/lean-quality-indicators/blob/main/runs/repeated-machinery-validation-2026-10-27/validation-report.md).

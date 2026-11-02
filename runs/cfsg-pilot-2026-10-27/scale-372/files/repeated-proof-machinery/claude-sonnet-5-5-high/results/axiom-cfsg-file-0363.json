@@ -1,0 +1,99 @@
+{
+  "id": "axiom-cfsg-file-0363",
+  "lib": "axiom-cfsg",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "Read the whole file and the cited S45/LSymFix API (exists_congr_diagonal, rotMat_mul_self, rotMat_diag, det_rotMat). The main exists_isometry_D8 proof repeatedly pushes products through the transport X ↦ Q*X*Pᵀ with Pᵀ*Q = 1, Q*Pᵀ = 1, and does so with copy-pasted calc blocks (one h1 block appears verbatim twice). I did not report the ±1 diagonal `by_cases … simp` pattern shared by reflD_mul_self, reflD_diag and hRR, since it is a short routine calculation. Replacement lemmas were not compiled. Their statements and proofs mirror the existing calc steps, so I expect them to work.",
+  "findings": [
+    {
+      "declaration": "CFSG.GH74.Generic.BProg.B3.L2CompSymD8.exists_isometry_D8 (multiplicativity of X ↦ Q * X * Pᵀ)",
+      "start_line": 132,
+      "end_line": 184,
+      "excerpt": "calc Q * R * Pᵀ * (Q * R * Pᵀ) = Q * R * (Pᵀ * Q) * R * Pᵀ := by\n            simp only [Matrix.mul_assoc]\n        _ = Q * (R * R) * Pᵀ := by rw [hPQ, Matrix.mul_one]; simp only [Matrix.mul_assoc]",
+      "problem": "The proof repeatedly uses the same argument: since Pᵀ * Q = 1, the transported product (Q*X*Pᵀ)*(Q*Y*Pᵀ) equals Q*(X*Y)*Pᵀ. The block `h1` is copied verbatim at lines 133–136 and 154–157. The same argument is redone with fresh `calc`s for Q*(R*R)*Pᵀ squared (159–163), for D (170–172), for the mixed product D·R·D (174–178) and for the cube of R (180–184). Each time it inserts `(Pᵀ*Q)`, re-associates, and rewrites with `hPQ`/`mul_one`. The long calcs hide the real content of each case, which is just hR2, hRR, hD2 and hDR.",
+      "proposed_change": "Add a local lemma before the main theorem:\n\ntheorem conj_mul_conj {n : Type*} [Fintype n] {F : Type*} [Field F] {P Q X Y : Matrix n n F} (hPQ : Pᵀ * Q = 1) :\n    Q * X * Pᵀ * (Q * Y * Pᵀ) = Q * (X * Y) * Pᵀ := by\n  calc Q * X * Pᵀ * (Q * Y * Pᵀ) = Q * X * (Pᵀ * Q) * Y * Pᵀ := by simp only [Matrix.mul_assoc]\n    _ = Q * (X * Y) * Pᵀ := by rw [hPQ, Matrix.mul_one]; simp only [Matrix.mul_assoc]\n\n(Here `n` needs only `Fintype`. The file's `Fin m` setting is a special case.)\n\nThen: h1 becomes `conj_mul_conj hPQ` (used at 133 and 154, with `rw [conj_mul_conj hPQ, hR2] at hl`). Line 159–163 becomes `rw [conj_mul_conj hPQ, hRR]` followed by `Matrix.mul_one` and `hQP`. The D-involution (170–173) becomes `rw [conj_mul_conj hPQ, hD2, Matrix.mul_one, hQP]`. The relation at 174–184 becomes `rw [conj_mul_conj hPQ, conj_mul_conj hPQ, hDR, ← conj_mul_conj hPQ, ← conj_mul_conj hPQ]` (or a short calc doing the same). Each conclusion then reduces to a one- or two-line rewrite using hR2, hRR, hD2 and hDR.",
+      "benefit": "This removes about 40 lines of copy-pasted associativity calculations, including one block duplicated exactly. The case proofs then show only the algebraic facts used about R and D. A change to the transport, for example using P⁻¹ directly, is then made in one place rather than in six.",
+      "evidence": [
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/GH74/Generic/BProg/B3/L2CompSymD8.lean",
+          "declaration": "exists_isometry_D8 (D-involution case)",
+          "excerpt": "calc Q * D * Pᵀ * (Q * D * Pᵀ) = Q * D * (Pᵀ * Q) * D * Pᵀ := by\n          simp only [Matrix.mul_assoc]"
+        },
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/GH74/Generic/BProg/B3/L2CompSymD8.lean",
+          "declaration": "exists_isometry_D8 (order-4 case, second copy of h1)",
+          "excerpt": "_ = Q * (R * R) * Pᵀ := by rw [hPQ, Matrix.mul_one]; simp only [Matrix.mul_assoc]"
+        }
+      ]
+    },
+    {
+      "declaration": "CFSG.GH74.Generic.BProg.B3.L2CompSymD8.exists_isometry_D8 (determinant and isometry goals for c and b)",
+      "start_line": 126,
+      "end_line": 169,
+      "excerpt": "rw [Matrix.det_mul, Matrix.det_mul, hDdet, mul_one, ← Matrix.det_mul, hQP, Matrix.det_one]",
+      "problem": "The determinant goals for c = Q*R*Pᵀ and b = Q*D*Pᵀ (lines 126 and 164) are the same argument with a different matrix. The isometry goals (127–131 and 165–169) are the same four-line calc repeated for R and D. It transposes the product, regroups into Q*(X*(PᵀBP)*Xᵀ)*Qᵀ, rewrites with hPd and the stabilizer fact, and finishes with hB'. Both patterns hold for any X that has det 1 or stabilizes the diagonal form. Only the hypothesis (hRdet/hDdet, hR1/hDd) differs.",
+      "proposed_change": "Add two general lemmas:\n\ntheorem det_conj_transport {P Q X : Matrix (Fin m) (Fin m) F} (hQP : Q * Pᵀ = 1) (hX : X.det = 1) : (Q * X * Pᵀ).det = 1 := by\n  rw [Matrix.det_mul, Matrix.det_mul, hX, mul_one, ← Matrix.det_mul, hQP, Matrix.det_one]\n\ntheorem isometry_transport {P Q X B M : Matrix (Fin m) (Fin m) F} (hM : Pᵀ * B * P = M) (hX : X * M * Xᵀ = M) (hB' : Q * M * Qᵀ = B) : Q * X * Pᵀ * B * (Q * X * Pᵀ)ᵀ = B := by\n  subst hM\n  calc _ = Q * (X * (Pᵀ * B * P) * Xᵀ) * Qᵀ := by simp only [Matrix.transpose_mul, Matrix.transpose_transpose, Matrix.mul_assoc]\n    _ = Q * (Pᵀ * B * P) * Qᵀ := by rw [hX]\n    _ = B := hB'\n\n(The calc is the existing one with `hPd, hR1` replaced by `hX`.) The four goals then become `det_conj_transport hQP hRdet`, `det_conj_transport hQP hDdet`, `isometry_transport (M := Matrix.diagonal d) hPd (hR1) (hPd ▸ hB')` and the same with `hDd`. Here hB' is first restated or rewritten with hPd so that it has the form Q * diagonal d * Qᵀ = B.",
+      "benefit": "The main theorem keeps only the genuinely different facts: the determinants and stabilizer facts of R and D. The two verbatim proof copies go away. The transport lemmas are also reusable if other files conjugate an involution or rotation back from diagonal form.",
+      "evidence": [
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/GH74/Generic/BProg/B3/L2CompSymD8.lean",
+          "declaration": "exists_isometry_D8 (c.det goal)",
+          "excerpt": "rw [Matrix.det_mul, Matrix.det_mul, hRdet, mul_one, ← Matrix.det_mul, hQP, Matrix.det_one]"
+        },
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/GH74/Generic/BProg/B3/L2CompSymD8.lean",
+          "declaration": "exists_isometry_D8 (b isometry goal)",
+          "excerpt": "_ = Q * (Pᵀ * B * P) * Qᵀ := by rw [hPd, hDd]"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 12226,
+    "cache_read_input_tokens": 15433,
+    "output_tokens": 5010,
+    "output_tokens_details": {
+      "thinking_tokens": 1355
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12226,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4373,
+        "cache_read_input_tokens": 11504,
+        "cache_creation_input_tokens": 4651,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4651
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1005553,
+  "duration_ms": 34457,
+  "turns": 4,
+  "attempts": 1,
+  "judged": "2026-11-02T16:38:24",
+  "unit": "file",
+  "source_sha256": "df7e7911a97c34806048428d02b235cf07ecfec67fc7aead99a212c4f954dcd0",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "remy-degenne-max",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

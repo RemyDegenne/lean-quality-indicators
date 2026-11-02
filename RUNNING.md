@@ -374,6 +374,39 @@ are unchanged; each continuation records its controller hash and runtime setting
 in `runtime-control.json`. Service templates for the workers and publication monitors
 are `scripts/cfsg-*.service`.
 
+## Sonnet parity continuations (OpenAI Math and CFSG)
+
+`scripts/sonnet_parity.py` brings the Sonnet first pass on OpenAI Math and CFSG to the
+coverage of the other libraries, continuing the same fixed selections with the saved
+prompts, schemas, validators and source roots:
+
+- `duplicates-mathlib-inclusive`, targets 301–1000 of each theorem selection
+  (`runs/openai-math-2026-10-21/scale-1000/theorems/`,
+  `runs/cfsg-pilot-2026-10-27/scale-1000/theorems/`);
+- `repeated-proof-machinery`, CFSG files 301–372 (`runs/cfsg-pilot-2026-10-27/scale-372/files/`).
+
+Unnecessary hypotheses was already at 300 per library everywhere. Each manifest chains to
+the manifests of the earlier passes it continues (`continued_from`).
+
+```sh
+python3 scripts/fetch_cfsg.py                    # CFSG sources and pinned dependencies
+git init -q repos/openai-math && git -C repos/openai-math fetch -q --depth 1 \
+  https://github.com/openai/math 1581d4cbdd69a0faf34b2089614fe2a814316a6a \
+  && git -C repos/openai-math checkout -q --detach FETCH_HEAD
+python3 scripts/corpus_pilot.py dependencies      # OpenAI Math's pinned dependencies
+python3 scripts/sonnet_parity.py prepare
+python3 scripts/sonnet_parity.py run openai-theorems --jobs 4   # likewise cfsg-theorems, cfsg-files
+python3 scripts/sonnet_parity.py verify
+```
+
+These sessions use the Claude Code login of the machine running them (a Max subscription,
+recorded as `remy-degenne-max`), not the lean-fro account. The runner strips API keys and
+parent-session variables, rejects sessions that do not report subscription authentication,
+stops admissions after a rate-limit rejection or overage event, and stops when weekly
+subscription usage reaches `--max-weekly` percent (default 90) or the continuation's
+API-equivalent ceiling is reached. Rerunning `run` resumes. The judge-facing protocol is
+frozen; changes to the runner code are recorded in the manifest's `runner_history`.
+
 ## Repeated proof machinery validation
 
 `runs/repeated-machinery-validation-2026-10-27/` checks another 20 flagged and 10

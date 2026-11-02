@@ -97,7 +97,8 @@ def main():
     selected = []
     for audit in ["unnecessary-hypotheses", "duplicates-mathlib-inclusive", "duplicates-mathlib"]:
         for directory in (MAIN / audit).iterdir():
-            if directory.is_dir() and not directory.name.startswith("pilot"):
+            # Pilots and earlier prompt versions (test-v*) are local scratch runs, not part of the record.
+            if directory.is_dir() and not directory.name.startswith(("pilot", "test-v")):
                 selected.append((audit, directory))
     for audit in RUBRICS:
         selected += [(audit, d) for d in (FILES / audit).iterdir() if d.is_dir()]
@@ -106,7 +107,7 @@ def main():
         selected += [(manifest.parent.parent.name, manifest.parent)
                      for manifest in (extra / unit).glob("*/*/judge.json")]
         selected += [(manifest.parent.parent.name, manifest.parent)
-                     for manifest in (extra / 'scale-300' / unit).glob('*/*/judge.json')]
+                     for manifest in extra.glob(f'scale-*/{unit}/*/*/judge.json')]
     expansion = ROOT / 'runs/library-quality-scale-2026-10-26'
     selected += [(manifest.parent.parent.name, manifest.parent)
                  for manifest in expansion.glob('*/*/judge.json')]
@@ -117,7 +118,7 @@ def main():
                  for manifest in (cfsg / 'theorems').glob('*/*/judge.json')]
     for unit in ('files', 'theorems'):
         selected += [(manifest.parent.parent.name, manifest.parent)
-                     for manifest in (cfsg / 'scale-300' / unit).glob('*/*/judge.json')]
+                     for manifest in cfsg.glob(f'scale-*/{unit}/*/*/judge.json')]
     selected.append(('definition-fidelity', ROOT / 'runs/defs1/definition-fidelity/claude-opus-5-5-high'))
     validation = ROOT / 'runs/repeated-machinery-validation-2026-10-27/repeated-proof-machinery/claude-sonnet-5-5-high'
     if (validation / 'judge.json').exists():

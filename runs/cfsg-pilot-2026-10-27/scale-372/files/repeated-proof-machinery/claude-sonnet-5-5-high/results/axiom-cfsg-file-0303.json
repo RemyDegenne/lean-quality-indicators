@@ -1,0 +1,99 @@
+{
+  "id": "axiom-cfsg-file-0303",
+  "lib": "axiom-cfsg",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and the supporting definitions: residue_inter in Gallery.lean, IsWeylIsometry in Building.lean, and unitTypes/orthTypes in InitialIsometryF4.lean. I looked for repeated proof blocks. Two patterns are repeated enough to report: the residue-intersection narrowing (6 copies) and the EqOn-congruence transfer for the glued maps (6 copies). I also noticed that subset_orthTypes_cases and subset_types_cases both use a three-element encard contradiction. I did not report it because it is short and the two copies differ. I could not run Lean, so neither rewrite has been compiled. The first helper's statement and proof are direct from residue_inter. The second's proof follows the existing inline steps.",
+  "findings": [
+    {
+      "declaration": "exists_correction (hΨA/hΨB) and exists_initial_isometry_of_hasClassicalEnds (hφO/hφZ)",
+      "start_line": 223,
+      "end_line": 258,
+      "excerpt": "have : y ∈ residue cs4 δ' ({0, 1} ∩ {1, 2}) c' := by\n          rw [← residue_inter hδ']\n          exact ⟨hy, hyC⟩",
+      "problem": "The same \"intersect two residues, rewrite the type set to a smaller one, then rwa\" argument appears six times: lines 223-231, 238-246, 250-258 in exists_correction, and lines 352-355, 362-371, 375-384 in exists_initial_isometry_of_hasClassicalEnds. Each copy has the same shape. It states `y ∈ residue (J ∩ K)` via `rw [← residue_inter hδ]; exact ⟨_, _⟩`. It then proves a set equality `J ∩ K = L` with `ext j; simp only [...]; rcases fin_f4_cases j ... <;> decide`. It finishes with `rwa [e] at this`. Only the sets and the residue hypotheses change, so the proofs are hard to read and each new case costs about 9 lines.",
+      "proposed_change": "Add one lemma next to residue_inter (or at the top of this file):\n\ntheorem mem_residue_of_inter_eq (hδ : IsWeylDistanceBuilding cs4 δ) {J K L : Set (Fin Tag.F4.rank)} (hL : J ∩ K = L) {c y : C} (hJ : y ∈ residue cs4 δ J c) (hK : y ∈ residue cs4 δ K c) : y ∈ residue cs4 δ L c := by\n  rw [← hL, ← residue_inter hδ]; exact ⟨hJ, hK⟩\n\nThen each use becomes one line. For example, hy1 is `mem_residue_of_inter_eq hδ' (by ext j; simp only [Set.mem_inter_iff, Set.mem_insert_iff, Set.mem_singleton_iff]; rcases fin_f4_cases j with rfl | rfl | rfl | rfl <;> decide) hy hyC`, and hx3 and hx0 in the second theorem change the same way. The existing `unitTypes_inter_orthTypes` already has this form: `mem_residue_of_inter_eq hδ unitTypes_inter_orthTypes hxU hx`. The set equalities ({0,1}∩{1,2}={1}, insert 2 {0}∩{1,2}={2}, insert 2 {0}∩{0,1}={0}, insert 3 {0}∩unitTypes={3}, insert 3 {0}∩orthTypes={0}) could also be named lemmas. Their `decide` proofs would then stop being copied. The lemma is generic in δ, so it serves both δ' in exists_correction and δ in the other theorem.",
+      "benefit": "This removes roughly 40 lines of near-identical proof text. A reader of hΨA, hΨB, hφO and hφZ can see the real mathematical step (use `prodMap_eq_fst` or `prodMap_eq_snd`, or the hτP/hab' agreement) without re-checking the residue bookkeeping. Any change to the residue API is then fixed in one place.",
+      "evidence": [
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/Monster/B/Geometry/Gallery.lean",
+          "declaration": "residue_inter",
+          "excerpt": "residue cs δ J x ∩ residue cs δ K x = residue cs δ (J ∩ K) x"
+        },
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/Monster/B/Geometry/InitialIsometryF4Init.lean",
+          "declaration": "exists_initial_isometry_of_hasClassicalEnds (hφZ)",
+          "excerpt": "have : x ∈ residue cs4 δ (insert 3 {0} ∩ orthTypes) c := by\n            rw [← residue_inter hδ]\n            exact ⟨hx, hxO⟩"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_correction (hΨres) and exists_initial_isometry_of_hasClassicalEnds (hres)",
+      "start_line": 275,
+      "end_line": 288,
+      "excerpt": "refine ⟨(hτsub hC).congr hEq, fun x hx y hy => ?_⟩\n      rw [← hEq hx, ← hEq hy]",
+      "problem": "Six case branches transfer an isometry property from a known map (id, τ, a, b', or prodMap P) to the glued map (Ψ or φ) along `Set.EqOn`. They are lines 275-288 in hΨres and lines 392-407 in hres. Every branch repeats the same steps. It builds `hEq : Set.EqOn g f (residue ..)`. It uses `BijOn.congr hEq` for the bijection. It then does `fun x hx y hy => ?_; rw [← hEq hx, ← hEq hy]` to move the distance claim from f to g. The statement of hres and hΨres is just `IsWeylIsometry` unfolded by hand (`BijOn ∧ ∀ x ∈ _, ∀ y ∈ _, δ' (f x) (f y) = δ x y`). No `IsWeylIsometry.congr` exists in the library (only the def in Building.lean), so the congruence is redone inline each time.",
+      "proposed_change": "Add to Building.lean (or locally) a lemma:\n\ntheorem IsWeylIsometry.congr {X : Set C} {X' : Set C'} {f g : C → C'} (hf : IsWeylIsometry δ δ' X X' f) (h : Set.EqOn f g X) : IsWeylIsometry δ δ' X X' g :=\n  ⟨hf.1.congr h, fun x hx y hy => by rw [← h hx, ← h hy]; exact hf.2 x hx y hy⟩\n\nThen state hΨres and hres with `IsWeylIsometry δ' δ' (residue ..) (residue ..) Ψ` (or keep the conjunction, which is defeq). Each branch becomes a single term. For example, the τ branch is `(IsWeylIsometry.congr ⟨hτsub hC, fun x hx y hy => hτd x (residue_mono hC c' hx) y (residue_mono hC c' hy)⟩ hEq)`. The a and b' branches are `(IsWeylIsometry.congr (isometry_residue_of_subset hδ hδ' hU ha hac) hEq)`. The prodMap branches are `IsWeylIsometry.congr ⟨hprod.1, fun x hx y hy => hprod.dist_eq hδ hδ' hx hy⟩ hEq`. The final calls to isWeylIsometry_residueFoundation_glue and isWeylIsometry_foundation_glue are unchanged, because the unfolded form is defeq.",
+      "benefit": "This removes the duplicated `rw [← hEq hx, ← hEq hy]` boilerplate in six places. The three-way case analysis then shows only what differs between branches, namely which known isometry is used. The `IsWeylIsometry.congr` lemma is also reusable by other gluing arguments in the F4 development.",
+      "evidence": [
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/Monster/B/Geometry/Building.lean",
+          "declaration": "IsWeylIsometry",
+          "excerpt": "Set.BijOn f X X' ∧ ∀ x ∈ X, ∀ y ∈ X, δ' (f x) (f y) = δ x y"
+        },
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/Monster/B/Geometry/InitialIsometryF4Init.lean",
+          "declaration": "exists_initial_isometry_of_hasClassicalEnds (hres)",
+          "excerpt": "refine ⟨h1.congr hEq, fun x hx y hy => ?_⟩\n      rw [← hEq hx, ← hEq hy]\n      exact h2 x hx y hy"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 28260,
+    "cache_read_input_tokens": 125678,
+    "output_tokens": 7379,
+    "output_tokens_details": {
+      "thinking_tokens": 2476
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28260,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3225,
+        "cache_read_input_tokens": 30353,
+        "cache_creation_input_tokens": 1836,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1836
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19942180000000004,
+  "duration_ms": 57869,
+  "turns": 12,
+  "attempts": 1,
+  "judged": "2026-11-02T16:22:04",
+  "unit": "file",
+  "source_sha256": "3a3946d04861683281cb110b9b1056b698eb52e244cb72f0167814a3fad4c509",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "remy-degenne-max",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

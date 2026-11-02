@@ -1,0 +1,99 @@
+{
+  "id": "axiom-cfsg-file-0341",
+  "lib": "axiom-cfsg",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked the repeated blocks. I looked up card_sup_mul_card_inf_of_le_normalizer' in HarrisLit82T1S74Coprime.lean. Its statement has no Finite hypotheses, so a shared lemma needs none. I also grepped for external uses of card_inf_mul_card_le/_eq and exists_conj_*_of_sylow. Their signatures would not change under either refactor. The two findings are modest in size: the duplicated blocks are about 5 and 5–6 lines. The duplication is real, but a reviewer could judge it small. I could not compile any of the proposed lemmas. I also saw that hQ' (the IsPGroup of subgroupOf transport) appears in three theorems. It is a one-liner, so I did not count it as a finding.",
+  "findings": [
+    {
+      "declaration": "card_inf_mul_card_le / card_inf_mul_card_eq",
+      "start_line": 38,
+      "end_line": 60,
+      "excerpt": "have h := card_sup_mul_card_inf_of_le_normalizer' hB",
+      "problem": "The two theorems repeat the same derivation of the product formula |L ⊔ H⊓C|·|L ⊓ C| = |L|·|H⊓C|. Each proves H ⊓ C ≤ normalizer L with le_normalizer_of_conj_mem. Each then applies the second-isomorphism cardinality lemma. Each then re-proves L ⊓ (H ⊓ C) = L ⊓ C by `rw [← inf_assoc, inf_of_le_left hLH]`. They differ only in the last step: the equality case rewrites L ⊔ H⊓C to H using hcov, while the inequality case bounds L ⊔ H⊓C ≤ H by cardinality. The same setup would be needed again for any further variant.",
+      "proposed_change": "Add one lemma carrying the shared reasoning, with no Finite hypotheses (the primed cardinality lemma has none):\n\ntheorem card_sup_inf_mul_card_inf_eq {H L C : Subgroup G} (hLH : L ≤ H) (hLn : ∀ h ∈ H, ∀ l ∈ L, h * l * h⁻¹ ∈ L) :\n    Nat.card ↥(L ⊔ H ⊓ C) * Nat.card ↥(L ⊓ C) = Nat.card L * Nat.card ↥(H ⊓ C) := by\n  have hB : H ⊓ C ≤ normalizer (L : Set G) := le_normalizer_of_conj_mem hLn inf_le_left\n  have h := card_sup_mul_card_inf_of_le_normalizer' hB\n  rwa [show L ⊓ (H ⊓ C) = L ⊓ C by rw [← inf_assoc, inf_of_le_left hLH]] at h\n\nThen `card_inf_mul_card_eq` becomes `have h := card_sup_inf_mul_card_inf_eq (C := C) hLH hLn; rw [le_antisymm (sup_le hLH inf_le_left) hcov] at h; rw [mul_comm, ← h]`. And `card_inf_mul_card_le` becomes `have h := card_sup_inf_mul_card_inf_eq (C := C) hLH hLn; have hle : Nat.card ↥(L ⊔ H ⊓ C) ≤ Nat.card H := card_le_of_le (sup_le hLH inf_le_left)` followed by the existing calc, with `h.symm` fed through mul_comm.",
+      "benefit": "The normalizer/second-isomorphism argument and the inf-associativity fact are stated and proved once. Each theorem then shows only what distinguishes it: the covering hypothesis in one, the cardinality bound in the other. A fix to the hypotheses or the form of the product formula is made in one place.",
+      "evidence": [
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/LocalAnalysis/ComponentClassification/HarrisLit82T1S74Coprime.lean",
+          "declaration": "card_sup_mul_card_inf_of_le_normalizer'",
+          "excerpt": "Nat.card (A ⊔ B : Subgroup G) * Nat.card (A ⊓ B : Subgroup G) = Nat.card A * Nat.card B"
+        },
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/LocalAnalysis/ComponentClassification/HarrisLit82T1S74GBasic.lean",
+          "declaration": "card_inf_mul_card_eq",
+          "excerpt": "rw [hinf, le_antisymm (sup_le hLH inf_le_left) hcov] at h"
+        }
+      ]
+    },
+    {
+      "declaration": "exists_conj_eq_of_sylow / exists_conj_le_of_sylow",
+      "start_line": 94,
+      "end_line": 134,
+      "excerpt": "rw [hc, mem_toSylowIn] at h1",
+      "problem": "Both proofs choose c with c • P = P' using MulAction.exists_smul_eq. They then transport a point of P to a point of P' by hand, in the same four steps. First, show `c * ⟨x, _⟩ * c⁻¹ ∈ (c • P : Sylow 2 C)` by `rw [mem_smul_sylow_iff]; simpa [mul_assoc] using _`. Second, `rw [hc, mem_toSylowIn] at _`. Third, `simpa using _`. The `exists_conj_eq_of_sylow` direction ⊆ uses this block (hx, h1). `exists_conj_le_of_sylow` repeats it (hxR, hmem). `exists_conj_eq_of_sylow` also has a mirrored second direction using the inverse form of `mem_smul_sylow_iff`. The helper mem_smul_sylow_iff is stated as an iff, so every caller still redoes the simpa [mul_assoc] bookkeeping.",
+      "proposed_change": "State the forward transport once as a lemma that does not mention toSylowIn:\n\ntheorem conj_mem_of_smul_eq {C : Subgroup G} {P P' : Sylow 2 ↥C} {c : ↥C} (hc : c • P = P') {x : ↥C} (hx : x ∈ (P : Subgroup ↥C)) : c * x * c⁻¹ ∈ (P' : Subgroup ↥C)\n\nIts proof is `hc ▸ ((mem_smul_sylow_iff P c _).2 (by simpa [mul_assoc] using hx))`, or an equivalent unfolding, and it is the same as the current `rw [mem_smul_sylow_iff]; simpa [mul_assoc]` block. Then the forward branch of exists_conj_eq_of_sylow and the whole body of exists_conj_le_of_sylow reduce to `have := conj_mem_of_smul_eq hc ⟨x, _⟩ hx'` followed by `rw [mem_toSylowIn] at this; simpa using this`. A companion form with c⁻¹ can serve the reverse direction.",
+      "benefit": "The Sylow-conjugation bookkeeping (smul membership, conjugate rewriting by mul_assoc, coercion between ↥C and G) is proved once and reused by both conjugacy theorems. The theorems then read as: pick c from the transitive action, then transport membership. This also keeps the simp-normal-form fragility (`simpa [mul_assoc]`) in a single place.",
+      "evidence": [
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/LocalAnalysis/ComponentClassification/HarrisLit82T1S74GBasic.lean",
+          "declaration": "exists_conj_le_of_sylow",
+          "excerpt": "rw [hc, mem_toSylowIn] at hmem"
+        },
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/LocalAnalysis/ComponentClassification/HarrisLit82T1S74GBasic.lean",
+          "declaration": "mem_smul_sylow_iff",
+          "excerpt": "x ∈ ((c • P : Sylow 2 ↥C) : Subgroup ↥C) ↔ c⁻¹ * x * c ∈ (P : Subgroup ↥C)"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 29795,
+    "cache_read_input_tokens": 124181,
+    "output_tokens": 6630,
+    "output_tokens_details": {
+      "thinking_tokens": 2617
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29795,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4500,
+        "cache_read_input_tokens": 28751,
+        "cache_creation_input_tokens": 4973,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4973
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.19792210000000002,
+  "duration_ms": 55630,
+  "turns": 8,
+  "attempts": 1,
+  "judged": "2026-11-02T16:33:18",
+  "unit": "file",
+  "source_sha256": "b04c7071ec1b328219b8d660ad58e9203ada938daea79388322c391e79f8ae3d",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "remy-degenne-max",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

@@ -1,0 +1,104 @@
+{
+  "id": "axiom-cfsg-file-0334",
+  "lib": "axiom-cfsg",
+  "verdict": "findings_found",
+  "coverage": "complete",
+  "review_notes": "I read the whole file and checked usages of delta_conj and delta_mem' across the repo. Only the local theorems in this file use these two (the grep hits elsewhere are unrelated declarations of the same name). I also checked Mathlib's Subgroup.mem_centralizer_singleton_iff, which has the form k ∈ centralizer {g} ↔ k * g = g * k. I did not compile anything. The proposed rewrites are sketches, and tactic details such as rw patterns are untested. Other parts of the file (delta_inj', the F_card_* proofs, chain) were examined, and I found no further substantial duplication. The repeated 'a ∈ V → commutes → conjugate in V' idea in hMN and delta_inj'.hcen is short and not worth extracting.",
+  "findings": [
+    {
+      "declaration": "CFSG.GH74.GLS.Stage1.Thm6.Sec13.delta_mem' / CFSG.GH74.GLS.Stage1.Thm6.Sec13.delta_conj",
+      "start_line": 56,
+      "end_line": 81,
+      "excerpt": "have h1 : y * (y * g * y⁻¹ * g⁻¹) * y⁻¹ = g * y⁻¹ * g⁻¹ * y⁻¹ := by\n    calc y * (y * g * y⁻¹ * g⁻¹) * y⁻¹ = (y * y) * g * y⁻¹ * g⁻¹ * y⁻¹ := by group\n      _ = g * y⁻¹ * g⁻¹ * y⁻¹ := by rw [hy, one_mul]",
+      "problem": "The proof of delta_mem' (lines 59-69) re-derives, line for line, the identity y·δ·y⁻¹ = δ⁻¹ for δ = [y,g] when y² = 1. The same derivation (hyi, h1, h2, h3) is exactly the proof of delta_conj at lines 75-81. delta_mem' then uses this identity only through the rewrite e. delta_conj is stated after delta_mem' and is never used by it, so the six-step argument (square cancellation, inverse expansion, y⁻¹ = y) is maintained in two places.",
+      "proposed_change": "Move delta_conj above delta_mem' and keep its proof unchanged. Then replace the body of delta_mem' by a use of it:\n\ntheorem delta_mem' [Finite G] {P V : Subgroup G} (hsq : ∀ a ∈ P, a * a ∈ V) {y : G} (hy : y * y = 1)\n    (hyP : ∀ q ∈ P, y * q * y⁻¹ ∈ P) {g : G} (hg : g ∈ P) :\n    y * (y * g * y⁻¹ * g⁻¹) * y⁻¹ * (y * g * y⁻¹ * g⁻¹)⁻¹ ∈ V := by\n  rw [delta_conj hy g]\n  exact hsq _ (P.inv_mem (P.mul_mem (hyP g hg) (P.inv_mem hg)))\n\nThe left-hand side of delta_conj matches the prefix `y * δ * y⁻¹` of the goal syntactically, so the rewrite should fire and leave `δ⁻¹ * δ⁻¹ ∈ V`, as in the existing step `rw [e]`. Both hypotheses of delta_conj are already available (hy). The unused [Finite G] could also be dropped.",
+      "benefit": "This removes about 12 lines of duplicated group-theoretic bookkeeping, and the fact [y,g]^y = [y,g]⁻¹ is proved once. A future change to the identity, such as a different commutator convention, touches one proof. Reading delta_mem' becomes direct: rewrite by the conjugation lemma, then apply the squares-in-V hypothesis.",
+      "evidence": [
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/GH74/GLS/Stage1/Thm6/Sec13/S3ChainN.lean",
+          "declaration": "CFSG.GH74.GLS.Stage1.Thm6.Sec13.delta_conj",
+          "excerpt": "have h2 : (y * g * y⁻¹ * g⁻¹)⁻¹ = g * y * g⁻¹ * y⁻¹ := by group\n  have h3 : g * y⁻¹ * g⁻¹ * y⁻¹ = g * y * g⁻¹ * y⁻¹ := by rw [hyi]\n  rw [h1, h2, h3]"
+        },
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/GH74/GLS/Stage1/Thm6/Sec13/S3ChainN.lean",
+          "declaration": "CFSG.GH74.GLS.Stage1.Thm6.Sec13.delta_mem'",
+          "excerpt": "have e : y * (y * g * y⁻¹ * g⁻¹) * y⁻¹ * (y * g * y⁻¹ * g⁻¹)⁻¹ =\n      (y * g * y⁻¹ * g⁻¹)⁻¹ * (y * g * y⁻¹ * g⁻¹)⁻¹ := by\n    rw [h1, h2, h3]"
+        }
+      ]
+    },
+    {
+      "declaration": "CFSG.GH74.GLS.Stage1.Thm6.Sec13.NabFacts.chain (fixSec ⊥ V equivalence); also card_cent_V and F_card_le_aux",
+      "start_line": 251,
+      "end_line": 269,
+      "excerpt": "rw [mem_centralizer_iff]\n          intro w hw\n          rw [Set.mem_singleton_iff] at hw\n          rw [hw]",
+      "problem": "The file repeatedly converts between 'g ∈ centralizer {y}' and 'y·g·y⁻¹ = g' (or '[y,g] = 1') with the same manual routine: unfold mem_centralizer_iff, discharge the singleton quantifier by Set.mem_singleton_iff and rw [hw], then prove y*g = g*y with a `group` calc step. The routine occurs in card_cent_V (lines 26-33, forward, and 43-48, backward), in F_card_le_aux's hFK (lines 178-188, forward), and twice in chain's hfix (lines 254-263 forward, 264-269 backward). Each copy re-does the same unfolding and the same `(y*g*y⁻¹)*y = y*g` manipulation. Mathlib only gives g ∈ centralizer {y} ↔ g * y = y * g, so each site still adds its own conjugation or commutator rearrangement.",
+      "proposed_change": "Add one local lemma near the top of the file:\n\ntheorem mem_centralizer_iff_conj {y g : G} :\n    g ∈ centralizer ({y} : Set G) ↔ y * g * y⁻¹ = g := by\n  rw [Subgroup.mem_centralizer_singleton_iff, mul_inv_eq_iff_eq_mul, eq_comm]\n\nIts proof is Mathlib's lemma followed by mul_inv_eq_iff_eq_mul, though the exact rewrite chain has not been compiled. Then:\n- card_cent_V: `hzC := ⟨hzV, mem_centralizer_iff_conj.2 hzfix⟩`, and in hne `exact mem_centralizer_iff_conj.1 this.2` (the goal there is `y * v * y⁻¹ = v`).\n- hFK: `show y * g * y⁻¹ * g⁻¹ ∈ centralizer ({y} : Set G); exact mem_centralizer_iff_conj.2 (by rw [delta_conj hY.sq g]; exact inv_eq_of_mul_eq_one_right (hVsq _ hgV))`.\n- chain hfix: forward `⟨hgV, mem_centralizer_iff_conj.2 (mul_inv_eq_one.1 (Subgroup.mem_bot.1 hg1))⟩`, backward `⟨hgV, Subgroup.mem_bot.2 (mul_inv_eq_one.2 (mem_centralizer_iff_conj.1 hgC))⟩`.",
+      "benefit": "The 10-20 line blocks that unfold the centralizer at five sites collapse into one-line uses of a lemma whose statement is the form the file actually works in (y·g·y⁻¹ = g, matching hyV, hzfix and YCtx.moved). Readers no longer have to re-check the `group` calc steps at each site, and the pattern is maintained in one place.",
+      "evidence": [
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/GH74/GLS/Stage1/Thm6/Sec13/S3ChainN.lean",
+          "declaration": "CFSG.GH74.GLS.Stage1.Thm6.Sec13.card_cent_V",
+          "excerpt": "rw [mem_centralizer_iff]\n    intro w hw\n    rw [Set.mem_singleton_iff] at hw\n    rw [hw]\n    calc y * z = (y * z * y⁻¹) * y := by group"
+        },
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/axiom-cfsg/CFSG/GH74/GLS/Stage1/Thm6/Sec13/S3ChainN.lean",
+          "declaration": "CFSG.GH74.GLS.Stage1.Thm6.Sec13.F_card_le_aux",
+          "excerpt": "show y * g * y⁻¹ * g⁻¹ ∈ centralizer ({y} : Set G)\n    rw [mem_centralizer_iff]\n    intro w hw\n    rw [Set.mem_singleton_iff] at hw"
+        },
+        {
+          "path": "/home/rdegenne/Documents/Lean/quality-indicators/repos/deps/mathlib-b63f6e8a68d2/Mathlib/GroupTheory/Subgroup/Centralizer.lean",
+          "declaration": "Subgroup.mem_centralizer_singleton_iff",
+          "excerpt": "k ∈ Subgroup.centralizer {g} ↔ k * g = g * k"
+        }
+      ]
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "backend": "claude",
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 27069,
+    "cache_read_input_tokens": 132014,
+    "output_tokens": 7015,
+    "output_tokens_details": {
+      "thinking_tokens": 1843
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 27069,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5079,
+        "cache_read_input_tokens": 30547,
+        "cache_creation_input_tokens": 451,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 451
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "cost_usd": 0.1916514,
+  "duration_ms": 51404,
+  "turns": 11,
+  "attempts": 1,
+  "judged": "2026-11-02T16:30:52",
+  "unit": "file",
+  "source_sha256": "9405614c533e9cb27aa880528415409bfae5fa0c0e7c70aebe0cf8cab5873cd7",
+  "rubric": "repeated-proof-machinery",
+  "subscription_account": "remy-degenne-max",
+  "billing": "subscription",
+  "actual_api_charge_usd": 0
+}

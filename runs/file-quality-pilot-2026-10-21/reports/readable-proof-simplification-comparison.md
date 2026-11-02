@@ -1,6 +1,6 @@
 # readable-proof-simplification
 
-Generated 2026-10-27T20:21:29+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
+Generated 2026-11-02T15:54:26+00:00 · [Methods and notation](../../../AUDIT_METHODS.md) · 2,000 bootstrap draws.
 
 ## Library comparison
 
@@ -17,9 +17,9 @@ Full-pass reference: **130 targets**.
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Opus | 100 | 1/1 | 100/100 | 84 | 84 | 84.0% [75.6%, 89.9%] | $34.58 / $44.96 |
+| Opus | 100 | 1/1 | 100/100 | 84 | 84 | 84.0% [75.6%, 89.9%] | $33.59 / $43.67 |
 | Sol | 100 | 1/1 | 100/100 | 82 | 82 | 82.0% [73.3%, 88.3%] | $12.68 / $16.48 |
-| Sonnet | 130 | 1/1 | 130/130 | 102 | 102 | 78.5% [70.6%, 84.7%] | $18.52 / $18.52 |
+| Sonnet | 130 | 1/1 | 130/130 | 102 | 102 | 78.5% [70.6%, 84.7%] | $17.64 / $17.64 |
 | Luna | 130 | 1/1 | 130/130 | 36 | 36 | 27.7% [20.7%, 35.9%] | $0.50 / $0.50 |
 | DeepSeek | 40 | 1/1 | 40/40 | 32 | 32 | 80.0% [65.2%, 89.5%] | $1.16 / $3.76 |
 
@@ -113,9 +113,9 @@ Full-pass reference: **100 targets**.
 
 | Model | Selected targets | Passes done/planned | Judgments done/planned | Flagged judgments | Distinct targets flagged | First-pass rate (95% CI) | API expenditure / full-pass estimate |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Opus | 100 | 1/1 | 100/100 | 84 | 84 | 84.0% [75.6%, 89.9%] | $34.58 / $34.58 |
+| Opus | 100 | 1/1 | 100/100 | 84 | 84 | 84.0% [75.6%, 89.9%] | $33.59 / $33.59 |
 | Sol | 100 | 1/1 | 100/100 | 82 | 82 | 82.0% [73.3%, 88.3%] | $12.68 / $12.68 |
-| Sonnet | 100 | 1/1 | 100/100 | 78 | 78 | 78.0% [68.9%, 85.0%] | $15.00 / $15.00 |
+| Sonnet | 100 | 1/1 | 100/100 | 78 | 78 | 78.0% [68.9%, 85.0%] | $14.13 / $14.13 |
 | Luna | 100 | 1/1 | 100/100 | 25 | 25 | 25.0% [17.5%, 34.3%] | $0.38 / $0.38 |
 | DeepSeek | 10 | 1/1 | 10/10 | 7 | 7 | 70.0% [39.7%, 89.2%] | $0.21 / $2.08 |
 

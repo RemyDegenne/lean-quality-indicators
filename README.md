@@ -32,8 +32,11 @@ audit in [`runs/file-quality-pilot-2026-10-21/reports/`](runs/file-quality-pilot
 OpenAI Math ([theorems](runs/openai-math-2026-10-21/scale-300/theorems/library-comparison.md)),
 CFSG ([files](runs/cfsg-pilot-2026-10-27/library-comparison.md),
 [theorems](runs/cfsg-pilot-2026-10-27/theorems/library-comparison.md),
-[300-target expansion](runs/cfsg-pilot-2026-10-27/scale-300/progress.md)) and the
-[file-audit expansion](runs/library-quality-scale-2026-10-26/library-comparison.md).
+[300-target expansion](runs/cfsg-pilot-2026-10-27/scale-300/progress.md)), the
+[file-audit expansion](runs/library-quality-scale-2026-10-26/library-comparison.md), and the
+Sonnet continuations that bring OpenAI Math and CFSG to the coverage of the other libraries
+(duplication to 1,000 theorems, CFSG repeated machinery to 372 files; see
+[RUNNING.md](RUNNING.md#sonnet-parity-continuations-openai-math-and-cfsg)).
 
 ## Sources evaluated
 

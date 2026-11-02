@@ -273,11 +273,17 @@ def library_names():
     return names
 
 
+def continuations(corpus, subdirectory):
+    """Coverage continuations of a corpus (scale-300, scale-1000, ...), by increasing coverage."""
+    runs = [p / subdirectory for p in corpus.glob('scale-*') if (p / subdirectory).is_dir()]
+    return sorted(runs, key=lambda p: int(p.parent.name.removeprefix('scale-')))
+
+
 def add_extra_corpus(audit, is_file, samples, models):
     """Merge another corpus into each model's first pass, retaining cost provenance."""
     unit = 'file' if is_file else 'theorem'
     subdirectory = 'files' if is_file else 'theorems'
-    for run in (EXTRA / subdirectory, EXTRA / 'scale-300' / subdirectory):
+    for run in (EXTRA / subdirectory, *continuations(EXTRA, subdirectory)):
         manifests = sorted((run / audit).glob("*/judge.json"))
         if not manifests:
             continue
@@ -333,8 +339,7 @@ def add_expansion(audit, samples, models):
 
 def add_cfsg_pilot(audit, samples, models, unit='file'):
     initial = CFSG / 'theorems' if unit == 'theorem' else CFSG
-    continuation = CFSG / 'scale-300' / ('theorems' if unit == 'theorem' else 'files')
-    for base in (initial, continuation):
+    for base in (initial, *continuations(CFSG, 'theorems' if unit == 'theorem' else 'files')):
         manifest = base / audit / 'claude-sonnet-5-5-high' / 'judge.json'
         if not manifest.exists():
             continue
