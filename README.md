@@ -23,6 +23,7 @@ a formalization.
 | [Costs](runs/main/api-equivalent-costs.md) | API-equivalent cost of each audit and judge |
 | `runs/<run>/<indicator>/<label>/report.md` | One judge run: rates per library and every flag, with the judge's argument and a link to the source |
 | [Explicit unfoldings](runs/def-unfolds-2026-11-02/library-comparison.md) | For every definition of each library, how often it is unfolded explicitly (`unfold`, `simp [f]`, `rw [f]`) outside its file; a static count, no LLM |
+| [Compression ratio](runs/compression-2026-11-03/results.md) | How much each library's source compresses (zstd), file by file, in fixed-size chunks and whole, and the share of code lines repeated verbatim in another file; no LLM |
 
 Comparisons of all judges on one audit:
 [unnecessary hypotheses](runs/main/unnecessary-hypotheses/audit-comparison.md),
@@ -269,6 +270,7 @@ Experiments in `runs/`:
 | [`repeated-machinery-validation-2026-10-27`](runs/repeated-machinery-validation-2026-10-27/) | Validation of the repeated proof machinery flags |
 | [`deepseek-pilot-2026-10-21`](runs/deepseek-pilot-2026-10-21/) | Selection and budget of the DeepSeek pilot; its verdicts are stored in the runs above |
 | [`def-unfolds-2026-11-02`](runs/def-unfolds-2026-11-02/) | Explicit unfoldings of every definition of the seven libraries, with a validation against Lean's name resolution |
+| [`compression-2026-11-03`](runs/compression-2026-11-03/) | Compression ratio of the seven libraries' sources, and code lines repeated across files |
 
 Each run holds its sample (`samples.jsonl`, with library, commit, path, lines and a GitHub
 link per target), the snippet or file each judge received, and one `results/<id>.json` per

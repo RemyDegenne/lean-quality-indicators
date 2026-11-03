@@ -494,6 +494,32 @@ another of its repositories counts as a dependency there, not as a use.
 
 Unit tests: `cd scripts && python3 -m unittest test_def_unfolds`.
 
+## Compression ratio
+
+[compression.py](scripts/compression.py) compresses the source of each corpus library, in
+the scope of the other audits, with zstd at level 19 (Python package `zstandard`). It does
+so as is, and as code only (comments, string literals and blank lines removed). It reports
+original size / compressed size at five scales:
+- each file alone;
+- chunks of 64 KB, 1 MB and 8 MB of the files concatenated in path order. These ratios do
+  not depend on the library's size;
+- the whole library.
+
+It also counts the code lines, of at least 40 characters, that occur verbatim in another
+file of the library.
+
+It needs the same clones as the unfolding counts, no build:
+
+```sh
+python3 scripts/compression.py            # or --only mathlib tauceti ...; --table
+```
+
+It writes `runs/compression-2026-11-03/<library>/`: `summary.json`, `meta.json` (commits)
+and `files.jsonl` (sizes of every file, not versioned). The table is
+`runs/compression-2026-11-03/results.md`. The run takes about 40 minutes on 32 cores,
+mostly to compress OpenAI Math and CFSG whole. Unit tests:
+`cd scripts && python3 -m unittest test_compression`.
+
 ## DeepSeek pilot
 
 The matched eight-audit pilot uses DeepSeek V4.1 Flash via OpenRouter on InferenceNet FP8,
