@@ -1050,7 +1050,8 @@ def compare(ref_dir: Path, other_dir: Path, samples: int = 15) -> str:
     O = {(r["name"], r["file"]): r for r in orows if r["file"] not in stale}
     common = R.keys() & O.keys()
     out = [f"# Source backend against the ilean reference: {rmeta.get('label', '')}".rstrip(),
-           "", f"Reference: `{ref_dir}` ({rmeta['backend']}). Compared: `{other_dir}` "
+           "", f"Reference: `{display_path(ref_dir)}` ({rmeta['backend']}). "
+           f"Compared: `{display_path(other_dir)}` "
            f"({ometa['backend']}).", ""]
     if stale:
         out += [f"{len(stale):,} files whose build index does not match the source are left "
@@ -1177,6 +1178,8 @@ def main(argv=None):
     i = sub.add_parser("ilean", help="reference backend, needs a built library")
     i.add_argument("--root", type=Path, required=True)
     i.add_argument("--lib", nargs="+", required=True, help="module prefixes, e.g. Mathlib")
+    i.add_argument("--include", nargs="*", default=[], help="directories under the root")
+    i.add_argument("--exclude", action="append", default=[], help="glob on relative paths")
     i.add_argument("--jobs", type=int, default=max(1, (mp.cpu_count() or 2) - 2))
     i.add_argument("--label", default="")
     i.add_argument("--save-uses", action="store_true", help="also write every use (uses.jsonl)")
@@ -1200,7 +1203,7 @@ def main(argv=None):
     else:
         import def_unfolds_ilean
         meta, rows, unf = def_unfolds_ilean.run(a.root.resolve(), a.lib, a.jobs, a.label,
-                                                uses)
+                                                uses, a.include, a.exclude)
     summary = write_output(a.out, meta, rows, unf, uses)
     for group, g in summary.items():
         f, d = g["outside_file"], g["outside_dir"]

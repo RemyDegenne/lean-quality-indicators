@@ -28,4 +28,15 @@ Against Lean's own name resolution ([README](README.md)), the source backend fin
 | OpenAI Math | 121,797 | 1,117,060 | 109,261 | 32,351 | 29.6% | 4,394,029 | 264,123 | 126,932 | 132,734 | 4,409 | 48 | 6.01 |
 | CFSG (AxiomMath) | 194,203 | 275,245 | 49,991 | 10,348 | 20.7% | 5,149,791 | 102,338 | 19,231 | 60,935 | 22,159 | 13 | 1.99 |
 
+## Exact counts for the built libraries
+
+Lean's own name resolution (ilean backend, on the `.ilean` files of a build restored from the library's cache at the same commit), next to the source backend. The unfoldings agree; the source backend misses part of the uses, so its shares and rates per use are higher. Comparisons in [ilean/mathlib/comparison.md](ilean/mathlib/comparison.md), [ilean/tauceti/comparison.md](ilean/tauceti/comparison.md).
+
+| Library | Backend | Used outside file | Unfolded there | Share | Per 100 uses | Used outside directory | Unfolded there | Share | Per 100 uses |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Mathlib | Lean | 16,432 | 2,857 | 17.4% | 2.31 | 11,292 | 1,688 | 14.9% | 1.95 |
+| Mathlib | source | 15,006 | 2,858 | 19.0% | 2.92 | 10,234 | 1,686 | 16.5% | 2.54 |
+| Tau Ceti | Lean | 15,312 | 308 | 2.0% | 0.28 | 9,070 | 119 | 1.3% | 0.23 |
+| Tau Ceti | source | 14,775 | 308 | 2.1% | 0.31 | 8,504 | 118 | 1.4% | 0.27 |
+
 Sources: Mathlib `e3e75e86143b`; Tau Ceti `e8b7b600c36c`; Lean Pool `01db1d7049cf`; FLT (Anthropic) `6e837e753555`; Formal Frontier (43 repositories); OpenAI Math `1581d4cbdd69`; CFSG (AxiomMath) `5f8042b343bd`.

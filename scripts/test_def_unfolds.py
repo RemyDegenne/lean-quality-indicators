@@ -196,5 +196,23 @@ theorem u (n : Nat) : bar n = n + 1 := by simp [bar]
         self.assertEqual(bar["unfolds"]["dir"]["simp"], 1)
 
 
+class IleanTests(unittest.TestCase):
+    def test_scope(self):
+        import def_unfolds_ilean as di
+        inc, exc = ["Mathlib/"], ["Mathlib/Tactic/*", "*/Certificates/*"]
+        self.assertTrue(di.in_scope("Mathlib/Data/Nat/Basic.lean", inc, exc))
+        self.assertFalse(di.in_scope("Mathlib/Tactic/Ring/Basic.lean", inc, exc))
+        self.assertFalse(di.in_scope("MathlibTest/Foo.lean", inc, exc))
+        self.assertFalse(di.in_scope("Mathlib/A/Certificates/B.lean", inc, exc))
+        self.assertTrue(di.in_scope("TauCeti/A.lean"))
+
+    def test_private_equation_lemma(self):
+        import def_unfolds_ilean as di
+        name = "_private.TauCeti.AlgebraicGeometry.Genus.0.AlgebraicGeometry.Scheme.genus.eq_def"
+        m = du.EQN.match(di.PRIVATE_PREFIX.sub("", name))
+        self.assertEqual(m.group(1), "AlgebraicGeometry.Scheme.genus")
+        self.assertEqual(di.PRIVATE_PREFIX.sub("", "Nat.add.eq_1"), "Nat.add.eq_1")
+
+
 if __name__ == "__main__":
     unittest.main()

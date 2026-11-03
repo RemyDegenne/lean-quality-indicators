@@ -9,12 +9,15 @@ It needs the library to be built, and the build to match the sources.
 A definition's kind is the keyword before its name in the source. A use is kept only if
 the source text at its range ends with the constant's last name component: this drops
 uses through notation (which the source backend cannot see either) and uses in modules
-whose source changed after the build. A module where fewer than half of all recorded
-uses match the source is reported as stale (`meta.json`), and `compare` leaves it out.
+whose source changed after the build. A module where fewer than half of the recorded uses
+match the source is reported as stale (`meta.json`), and `compare` leaves it out; uses whose
+source text has no ASCII letter (`ℕ`, `ℝ≥0∞`, `π`, numerals: notation) are not counted
+there, so that a module heavy in notation is not taken for stale.
 """
 from __future__ import annotations
 
 import bisect
+import fnmatch
 import json
 import multiprocessing as mp
 import re
@@ -29,6 +32,10 @@ KEYWORD = re.compile(r"(?<![\w.'])(theorem|lemma|def|abbrev|instance|structure|c
                      r"inductive|coinductive|opaque|axiom|irreducible_def|alias|example)"
                      r"(?![\w'!?])")
 STALE_BELOW = 0.5
+ASCII_LETTER = re.compile(r"[A-Za-z]")
+# Equation lemmas can be private to the module that realizes them (module system):
+# `_private.<module>.0.foo.eq_def`.
+PRIVATE_PREFIX = re.compile(r"^_private\.(?:[^.]+\.)*?0\.")
 
 DEFS: dict[str, tuple] = {}   # definition name -> (file, kind, line)
 ROOT = Path(".")
@@ -124,11 +131,12 @@ def _uses_job(ilean: str):
         for u in ref.get("usages", ()):
             s, e = src.offset(u[0], u[1]), src.offset(u[2], u[3])
             ok = _text_matches(src, s, e, name)
-            checked += 1
-            matched += ok
+            if ASCII_LETTER.search(src.text[s:e]):
+                checked += 1
+                matched += ok
             target, forced = name, None
             if name not in DEFS:
-                m = EQN.match(name)
+                m = EQN.match(PRIVATE_PREFIX.sub("", name))
                 if not (m and m.group(1) in DEFS):
                     continue
                 target, forced = m.group(1), "eq_def"
@@ -143,13 +151,27 @@ def _uses_job(ilean: str):
     return rel, occ, diag, (checked, matched)
 
 
-def run(root: Path, libs: list[str], jobs: int, label: str = "", uses: list | None = None):
+def in_scope(rel: str, include=(), exclude=()) -> bool:
+    """The source backend's scope rule: under one of the `include` paths, matching no
+    `exclude` glob."""
+    return ((not include or any(rel == p or rel.startswith(p.rstrip("/") + "/")
+                                for p in include))
+            and not any(fnmatch.fnmatch(rel, g) for g in exclude))
+
+
+def run(root: Path, libs: list[str], jobs: int, label: str = "", uses: list | None = None,
+        include=(), exclude=()):
+    """Definitions and uses are counted in the modules in scope (`include`/`exclude`, as in
+    the source backend); every module of `libs` provides the names."""
     global ROOT, BUILD
     ROOT, BUILD = root, root / ".lake/build/lib/lean"
     ileans = sorted(str(p) for lib in libs
                     for p in [BUILD / f"{lib}.ilean", *(BUILD / lib).rglob("*.ilean")]
                     if p.exists())
-    print(f"modules: {len(ileans):,}", file=sys.stderr)
+    scoped = [p for p in ileans
+              if in_scope(Path(p).relative_to(BUILD).with_suffix(".lean").as_posix(),
+                          include, exclude)]
+    print(f"modules: {len(ileans):,}, in scope: {len(scoped):,}", file=sys.stderr)
     ctx = mp.get_context("fork")
     diag = Counter()
     defs = {}
@@ -158,11 +180,12 @@ def run(root: Path, libs: list[str], jobs: int, label: str = "", uses: list | No
             diag.update(d)
             for name, kind, line in out:
                 DEFS[name] = (rel, kind, line)
-                defs[name, rel] = {"kind": kind, "line": line}
+                if in_scope(rel, include, exclude):
+                    defs[name, rel] = {"kind": kind, "line": line}
     print(f"definitions: {len(defs):,}", file=sys.stderr)
     occurrences, stale, files = [], [], 0
     with ctx.Pool(jobs) as pool:
-        for rel, occ, d, (checked, matched) in pool.imap_unordered(_uses_job, ileans,
+        for rel, occ, d, (checked, matched) in pool.imap_unordered(_uses_job, scoped,
                                                                      chunksize=16):
             files += 1
             diag.update(d)
@@ -174,8 +197,9 @@ def run(root: Path, libs: list[str], jobs: int, label: str = "", uses: list | No
               file=sys.stderr)
     rows, unfoldings = aggregate(defs, occurrences, uses)
     meta = {"backend": "ilean", "label": label, "root": display_path(root),
-            "commit": git_commit(root),
-            "libs": libs, "files": files, "stale_files": sorted(stale),
+            "commit": git_commit(root), "libs": libs,
+            "include": list(include), "exclude": list(exclude),
+            "files": files, "stale_files": sorted(stale),
             "diagnostics": dict(diag)}
     return meta, rows, unfoldings
 

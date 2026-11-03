@@ -457,6 +457,8 @@ Two backends write the same files (`defs.jsonl`, `unfoldings.jsonl`, `summary.js
   python3 scripts/def_unfolds.py compare REF_DIR SOURCE_DIR --out comparison.md
   ```
 
+  `--include`/`--exclude` restrict it to a scope, as in the source backend.
+
 [def_unfolds_corpus.py](scripts/def_unfolds_corpus.py) runs the source backend on every
 corpus library (the five of `libraries.toml`, OpenAI Math and CFSG) in the scope of the
 other audits, and writes `runs/def-unfolds-2026-11-02/<library>/` and
@@ -468,6 +470,23 @@ other audits, and writes `runs/def-unfolds-2026-11-02/<library>/` and
 python3 scripts/def_unfolds_corpus.py --fetch   # every package of each lake-manifest.json
 python3 scripts/def_unfolds_corpus.py           # or --only tauceti lean-pool ...
 ```
+
+Mathlib and Tau Ceti publish their builds, `.ilean` files included, so the ilean backend
+runs on them at the corpus commits without compiling anything:
+
+```sh
+(cd repos/mathlib && lake exe cache get)
+(cd repos/tauceti && lake exe cache get &&      # Tau Ceti's Mathlib, then its own modules
+  export LAKE_CACHE_DIR=$PWD/.lake/cache LAKE_ARTIFACT_CACHE=true LAKE_RESTORE_ARTIFACTS=true &&
+  bash scripts/lake-cache-get.sh . && LAKE_NO_CACHE=true lake build)   # restores, no compiling
+python3 scripts/def_unfolds_corpus.py --only mathlib tauceti --save-uses   # source, every use
+python3 scripts/def_unfolds_corpus.py --ilean --only mathlib tauceti   # ilean/<library>/
+python3 scripts/def_unfolds_corpus.py --table
+```
+
+`--ilean` writes `runs/def-unfolds-2026-11-02/ilean/<library>/` in the scope of the source
+backend, with `comparison.md` against it (individual uses are matched when the source run
+saved them, `--save-uses`).
 
 FLT's scoping commands (`p2m_open`, `p2m_export`, `p2m_alias`) are interpreted. Formal
 Frontier is measured repository by repository and merged, so a definition used from

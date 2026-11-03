@@ -5,6 +5,7 @@ library: the five libraries of libraries.toml, OpenAI Math and CFSG.
     python3 scripts/def_unfolds_corpus.py               # measure every library
     python3 scripts/def_unfolds_corpus.py --only tauceti flt-anthropic
     python3 scripts/def_unfolds_corpus.py --table       # only rebuild the comparison table
+    python3 scripts/def_unfolds_corpus.py --ilean --only mathlib tauceti   # built libraries
 
 The sources themselves come from scripts/fetch.py (libraries.toml), the OpenAI Math clone
 in repos/openai-math and scripts/fetch_cfsg.py. Each library is measured in the scope of
@@ -12,6 +13,11 @@ the other audits (`include`/`exclude`). Names are resolved against every package
 source's lake-manifest.json and the Lean core sources of its toolchain, or of the nearest
 installed toolchain. A library made of several repositories (Formal Frontier) is
 measured repository by repository, then merged.
+
+`--ilean` runs the ilean backend (Lean's own name resolution) on a library whose Lake
+project is built (`.lake/build`), in the same scope, writes `ilean/<library>/` and compares
+it with the source backend's output (`comparison.md`). Run the source backend with
+`--save-uses` first to also match individual uses.
 """
 from __future__ import annotations
 
@@ -114,25 +120,26 @@ def do_fetch(only: set[str]):
                     print(f"failed: {name} {p['rev'][:12]} ({p['url']}): {e}", file=sys.stderr)
 
 
-def _measure_source(lib_id: str, name: str, src: dict, jobs: int):
+def _measure_source(lib_id: str, name: str, src: dict, jobs: int, uses=None):
     root, include, exclude = lake_root(src)
     deps = [fetch.dep_dir(p["name"].strip("«»"), p["rev"]) for p in packages(root)]
     missing = [str(d) for d in deps if not d.exists()]
     deps = [d for d in deps if d.exists()]
     core, toolchain = core_dir(root)
     print(f"== {lib_id}: {src['dir']}", file=sys.stderr)
-    meta, rows, unf = du.run_source(root, include, exclude, deps + [core], jobs, name, None,
+    meta, rows, unf = du.run_source(root, include, exclude, deps + [core], jobs, name, uses,
                                     src["commands"])
     meta.update({"library": lib_id, "source": src["dir"], "toolchain": toolchain,
                  "missing_deps": [du.display_path(d) for d in missing]})
     return meta, rows, unf
 
 
-def measure(lib_id: str, name: str, sources: list[dict], jobs: int):
+def measure(lib_id: str, name: str, sources: list[dict], jobs: int, save_uses=False):
     out = OUT / lib_id
     if len(sources) == 1:
-        meta, rows, unf = _measure_source(lib_id, name, sources[0], jobs)
-        du.write_output(out, meta, rows, unf)
+        uses = [] if save_uses else None
+        meta, rows, unf = _measure_source(lib_id, name, sources[0], jobs, uses)
+        du.write_output(out, meta, rows, unf, uses)
         return
     all_rows, all_unf, metas, diag = [], [], [], Counter()
     for src in sources:
@@ -152,6 +159,26 @@ def measure(lib_id: str, name: str, sources: list[dict], jobs: int):
             "files": sum(m["files"] for m in metas), "sources": metas,
             "diagnostics": dict(diag)}
     du.write_output(out, meta, all_rows, all_unf)
+
+
+def measure_ilean(lib_id: str, name: str, sources: list[dict], jobs: int):
+    import def_unfolds_ilean
+    if len(sources) != 1:
+        print(f"{lib_id}: the ilean backend runs on single-repository libraries", file=sys.stderr)
+        return
+    root, include, exclude = lake_root(sources[0])
+    if not (root / ".lake/build/lib/lean").is_dir():
+        print(f"{lib_id}: {du.display_path(root)} is not built (lake exe cache get, lake build)",
+              file=sys.stderr)
+        return
+    libs = sorted({p.strip("/").split("/")[0] for p in include})
+    uses = []
+    meta, rows, unf = def_unfolds_ilean.run(root, libs, jobs, name, uses, include, exclude)
+    meta.update({"library": lib_id, "source": sources[0]["dir"]})
+    out = OUT / "ilean" / lib_id
+    du.write_output(out, meta, rows, unf, uses)
+    if (OUT / lib_id / "defs.jsonl").exists():
+        (out / "comparison.md").write_text(du.compare(out, OUT / lib_id))
 
 
 ORDER = ["mathlib", "tauceti", "lean-pool", "flt-anthropic", "formal-frontier", "openai-math",
@@ -194,6 +221,30 @@ def table() -> str:
                        f"{s['uses']:,} | {s['total_unfoldings']:,} | {u['unfold']:,} | "
                        f"{u['simp']:,} | {u['rw']:,} | {u['eq_def']:,} | {per} |")
         out.append("")
+    exact = [(name, lib_id) for lib_id in ORDER for name, meta, _ in rows
+             if meta.get("library") == lib_id and (OUT / "ilean" / lib_id / "summary.json").exists()]
+    if exact:
+        out += ["## Exact counts for the built libraries", "",
+                "Lean's own name resolution (ilean backend, on the `.ilean` files of a build "
+                "restored from the library's cache at the same commit), next to the source "
+                "backend. The unfoldings agree; the source backend misses part of the uses, "
+                "so its shares and rates per use are higher. Comparisons in "
+                + ", ".join(f"[ilean/{lib_id}/comparison.md](ilean/{lib_id}/comparison.md)"
+                            for _, lib_id in exact) + ".", "",
+                "| Library | Backend | Used outside file | Unfolded there | Share | Per 100 uses | "
+                "Used outside directory | Unfolded there | Share | Per 100 uses |",
+                "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+        for name, lib_id in exact:
+            for backend, d in (("Lean", OUT / "ilean" / lib_id), ("source", OUT / lib_id)):
+                g = json.loads((d / "summary.json").read_text())["def/abbrev"]
+                cells = []
+                for key in ("outside_file", "outside_dir"):
+                    s = g[key]
+                    per = f"{100 * s['total_unfoldings'] / s['uses']:.2f}" if s["uses"] else "–"
+                    cells += [f"{s['used']:,}", f"{s['unfolded']:,}",
+                              du._pct(s["unfolded"], s["used"]), per]
+                out.append(f"| {name} | {backend} | " + " | ".join(cells) + " |")
+        out.append("")
     out += ["Sources: " + "; ".join(
         f"{name} `{(meta.get('commit') or '')[:12]}`" if "sources" not in meta else
         f"{name} ({len(meta['sources'])} repositories)" for name, meta, _ in rows) + ".", ""]
@@ -214,6 +265,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--fetch", action="store_true", help="clone the pinned packages")
     ap.add_argument("--table", action="store_true", help="only rebuild the comparison table")
+    ap.add_argument("--ilean", action="store_true",
+                    help="ilean backend on the built libraries, compared with the source backend")
+    ap.add_argument("--save-uses", action="store_true", help="also write every use (uses.jsonl)")
     ap.add_argument("--only", nargs="*", default=[], help="library ids")
     ap.add_argument("--jobs", type=int, default=24)
     a = ap.parse_args()
@@ -221,10 +275,15 @@ def main():
     if a.fetch:
         do_fetch(only)
         return
+    if a.ilean:
+        for lib_id, name, sources in libraries():
+            if not only or lib_id in only:
+                measure_ilean(lib_id, name, sources, a.jobs)
+        return
     if not a.table:
         for lib_id, name, sources in libraries():
             if not only or lib_id in only:
-                measure(lib_id, name, sources, a.jobs)
+                measure(lib_id, name, sources, a.jobs, a.save_uses)
     text = table()
     (OUT / "library-comparison.md").write_text(text)
     print(text)
